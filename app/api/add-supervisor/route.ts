@@ -4,27 +4,29 @@ import User from '../../../models/User';
 
 export async function POST(req: Request) {
   try {
-    const { name, rollNo, password, migrationCode } = await req.json();
+    // Destructure email alongside existing fields
+    const { name, email, rollNo, password, migrationCode } = await req.json();
     await connectToDatabase();
-
-    // 1. Check if the Username/ID is already taken
-    const existingUser = await User.findOne({ rollNo });
+    
+    const existingUser = await User.findOne({ 
+      $or: [{ rollNo }, { email }] 
+    });
+    
     if (existingUser) {
-      return NextResponse.json({ error: 'This Username/ID already exists!' }, { status: 400 });
+      return NextResponse.json({ error: 'This Username/ID or Email already exists!' }, { status: 400 });
     }
-
-    // 2. Create the new supervisor
+    
     const newSupervisor = new User({
       name,
+      email, // Save the new email field
       rollNo,
       password,
       role: 'supervisor',
-      migrationCode
+      migrationCode,
+      notificationsEnabled: true // Ensure emails are active by default
     });
-
-    // 3. Save to MongoDB
+    
     await newSupervisor.save();
-
     return NextResponse.json({ message: 'Supervisor added successfully!' }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to add supervisor.' }, { status: 500 });

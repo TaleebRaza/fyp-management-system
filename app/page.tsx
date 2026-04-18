@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSession, signIn, signOut } from "next-auth/react";
-import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, LayoutDashboard, Users, PlusCircle, Code, FileText, Upload, CheckCircle, XCircle, Send, ArrowRightLeft, Loader2, Palette, Trash2, UserMinus, Globe, Wrench, ChevronRight, AlertTriangle,Download } from 'lucide-react';
+import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, LayoutDashboard, Users, PlusCircle, Code, FileText, Upload, CheckCircle, XCircle, Send, ArrowRightLeft, Loader2, Palette, Trash2, UserMinus, Globe, Wrench, ChevronRight, AlertTriangle, Download, Mail, MailX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
 
 
 type ThemeKey = 'ocean' | 'fiery' | 'zen';
@@ -107,7 +108,7 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
     e.preventDefault();
     const res = await fetch('/api/register', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: e.target.name.value, rollNo: e.target.rollNo.value, password: e.target.password.value, supervisorId: e.target.supervisor.value })
+      body: JSON.stringify({ name: e.target.name.value, email: e.target.email.value, rollNo: e.target.rollNo.value, password: e.target.password.value, supervisorId: e.target.supervisor.value })
     });
     const data = await res.json();
     if (res.ok) { showDialog({ title: "Welcome!", message: "Registration Successful! Please log in." }); setIsRegistering(false); } 
@@ -121,6 +122,7 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
         <h2 className="text-3xl font-extrabold tracking-tight text-center mb-8">Create Account</h2>
         <form onSubmit={handleRegister} className="space-y-4">
           <div><label className="block text-sm font-medium mb-1 opacity-80 pl-1">Full Name</label><StyledInput isDarkMode={isDarkMode} theme={theme} name="name" type="text" required placeholder="John Doe" /></div>
+          <div><label className="block text-sm font-medium mb-1 opacity-80 pl-1">Email Address</label><StyledInput isDarkMode={isDarkMode} theme={theme} name="email" type="email" required placeholder="student@example.com" /></div>
           <div><label className="block text-sm font-medium mb-1 opacity-80 pl-1">Roll Number</label><StyledInput isDarkMode={isDarkMode} theme={theme} name="rollNo" type="text" required placeholder="e.g. FA20-BCS-001" /></div>
           <div><label className="block text-sm font-medium mb-1 opacity-80 pl-1">Password</label><StyledInput isDarkMode={isDarkMode} theme={theme} name="password" type="password" required placeholder="••••••••" /></div>
           <div>
@@ -143,6 +145,7 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
 // --- DASHBOARDS ---
 const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [newSupName, setNewSupName] = useState('');
+  const [newSupEmail, setNewSupEmail] = useState('');
   const [newSupRollNo, setNewSupRollNo] = useState('');
   const [newSupPassword, setNewSupPassword] = useState('');
   const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
@@ -154,9 +157,10 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
     e.preventDefault();
     const res = await fetch('/api/add-supervisor', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newSupName, rollNo: newSupRollNo, password: newSupPassword, migrationCode: Math.random().toString(36).substring(2, 8).toUpperCase() })
+      body: JSON.stringify({ name: newSupName, email: newSupEmail, rollNo: newSupRollNo, password: newSupPassword, migrationCode: Math.random().toString(36).substring(2, 8).toUpperCase() })
     });
-    if (res.ok) { showDialog({ title: "Success", message: `Supervisor ${newSupName} added!` }); setNewSupName(''); setNewSupRollNo(''); setNewSupPassword(''); fetchSupervisors(); } 
+// And update the reset states on success to include:
+    if (res.ok) { showDialog({ title: "Success", message: `Supervisor ${newSupName} added!` }); setNewSupName(''); setNewSupEmail(''); setNewSupRollNo(''); setNewSupPassword(''); fetchSupervisors(); }
     else showDialog({ title: "Error", message: "Failed to add supervisor" });
   };
 
@@ -168,6 +172,18 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
         if (res.ok) fetchSupervisors(); else showDialog({ title: "Error", message: "Failed to delete." });
       }
     });
+  };
+
+  const handleToggleNotifications = async (id: string, currentStatus: boolean) => {
+    const res = await fetch('/api/supervisors/toggle-notifications', { 
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ id, enabled: !currentStatus }) 
+    });
+    if (res.ok) {
+      fetchSupervisors(); // Refresh the list to show the new toggle state
+    } else {
+      showDialog({ title: "Error", message: "Failed to toggle notifications." });
+    }
   };
 
   return (
@@ -188,6 +204,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
              <form onSubmit={handleAddSupervisor} className="space-y-5">
                <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupName} onChange={(e:any) => setNewSupName(e.target.value)} type="text" required placeholder="Full Name" /></div>
                <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupRollNo} onChange={(e:any) => setNewSupRollNo(e.target.value)} type="text" required placeholder="Username ID" /></div>
+               <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupEmail} onChange={(e:any) => setNewSupEmail(e.target.value)} type="email" required placeholder="Supervisor Email" /></div>
                <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupPassword} onChange={(e:any) => setNewSupPassword(e.target.value)} type="text" required placeholder="Assign Password" /></div>
                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" className={`w-full ${theme.bg} text-white font-bold py-3.5 rounded-2xl transition-colors duration-500 mt-2 shadow-lg`}>Create Account</motion.button>
              </form>
@@ -202,14 +219,28 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} key={sup._id} className={`p-4 rounded-2xl flex justify-between items-center border transition-all duration-300 hover:scale-[1.01] ${isDarkMode ? 'border-neutral-800 bg-neutral-800/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-gradient-to-br ${theme.gradient} transition-colors duration-500`}>{sup.name.charAt(0)}</div>
-                    <div><p className="font-bold text-lg tracking-tight">{sup.name}</p><p className="text-sm font-medium opacity-60">ID: {sup.rollNo}</p></div>
+                    <div>
+                      <p className="font-bold text-lg tracking-tight">{sup.name}</p>
+                      {/* Updated: Now displaying the email alongside the Roll No */}
+                      <p className="text-sm font-medium opacity-60">ID: {sup.rollNo} • {sup.email || 'No Email Assigned'}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-4 text-right">
                     <div>
                       <p className="text-[10px] uppercase font-bold tracking-wider opacity-40 mb-1">Code</p>
                       <span className={`text-sm font-mono px-3 py-1.5 rounded-xl flex items-center gap-2 border transition-colors duration-500 ${theme.lightBg} ${theme.text} ${isDarkMode ? 'border-white/5' : 'border-black/5'}`}><Code size={14} /> {sup.migrationCode}</span>
                     </div>
-                    <button onClick={() => handleDeleteSupervisor(sup._id, sup.name)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors mt-4"><Trash2 size={18} /></button>
+                    <div className="flex items-center gap-2 mt-4">
+                      {/* NEW: The Email Kill-Switch Toggle */}
+                      <button 
+                        onClick={() => handleToggleNotifications(sup._id, sup.notificationsEnabled !== false)} 
+                        title={sup.notificationsEnabled !== false ? "Disable Emails" : "Enable Emails"}
+                        className={`p-2.5 rounded-xl transition-colors ${sup.notificationsEnabled !== false ? 'bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white' : 'bg-neutral-500/10 text-neutral-500 hover:bg-neutral-500 hover:text-white'}`}
+                      >
+                        {sup.notificationsEnabled !== false ? <Mail size={18} /> : <MailX size={18} />}
+                      </button>
+                      <button onClick={() => handleDeleteSupervisor(sup._id, sup.name)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"><Trash2 size={18} /></button>
+                    </div>
                   </div>
                 </motion.div>
               ))}
