@@ -2,7 +2,7 @@ import mongoose, { Schema } from 'mongoose';
 
 const UserSchema = new Schema({
   name: { type: String, required: true },
-  email: { type: String, required: false, unique: true, sparse: true }, // NEW: Email field
+  email: { type: String, required: false, unique: true, sparse: true },
   rollNo: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
@@ -15,7 +15,8 @@ const UserSchema = new Schema({
   tools: { type: String, required: false },
   remarks: { type: String, required: false },
   pdfUrl: { type: String, required: false },
-  notificationsEnabled: { type: Boolean, default: true } // NEW: Supervisor kill-switch
+  notificationsEnabled: { type: Boolean, default: true },
+  isActive: { type: Boolean, default: true } // NEW: Soft-delete/Ban flag
 }, {
   timestamps: true
 });

@@ -84,7 +84,7 @@ const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => 
   const handleLogin = async (e: any) => {
     e.preventDefault(); 
     const result = await signIn("credentials", { redirect: false, rollNo: e.target.rollNo.value, password: e.target.password.value });
-    if (result?.error) showDialog({ title: "Login Failed", message: "Invalid Roll No or Password!" });
+    if (result?.error) showDialog({ title: "Login Failed", message: result.error });
   };
 
   return (
@@ -142,6 +142,83 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
   );
 };
 
+const ConnectionLines = ({ students, isDarkMode, theme }: any) => {
+  const [lines, setLines] = useState<any[]>([]);
+  const containerRef = React.useRef<SVGSVGElement>(null);
+
+  React.useEffect(() => {
+    const updateLines = () => {
+      if (!containerRef.current) return;
+      const svgRect = containerRef.current.getBoundingClientRect();
+      const newLines: any[] = [];
+
+      students.forEach((student: any) => {
+        if (!student.supervisorId) return; // Skip unassigned students
+
+        const stuEl = document.getElementById(`stu-${student._id}`);
+        const supEl = document.getElementById(`sup-${student.supervisorId}`);
+
+        if (stuEl && supEl) {
+          const stuRect = stuEl.getBoundingClientRect();
+          const supRect = supEl.getBoundingClientRect();
+
+          // Transform exact viewport coordinates into the SVG coordinate space
+          // startX is the left edge of the student pill
+          const startX = stuRect.left - svgRect.left;
+          const startY = stuRect.top - svgRect.top + (stuRect.height / 2);
+
+          // endX is the right edge of the supervisor pill
+          const endX = supRect.right - svgRect.left;
+          const endY = supRect.top - svgRect.top + (supRect.height / 2);
+
+          // Bezier control points for the smooth S-curve
+          const cp1X = startX - 60;
+          const cp1Y = startY;
+          const cp2X = endX + 60;
+          const cp2Y = endY;
+
+          newLines.push({
+            id: student._id,
+            d: `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`,
+            isActive: student.isActive
+          });
+        }
+      });
+      setLines(newLines);
+    };
+
+    // Delay slightly to ensure DOM is fully painted, and recalculate on window resize
+    const timer = setTimeout(updateLines, 50);
+    window.addEventListener('resize', updateLines);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateLines);
+    };
+  }, [students]);
+
+  return (
+    <svg ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible">
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" opacity="0.6" />
+        </marker>
+      </defs>
+      {lines.map(line => (
+        <path
+          key={line.id}
+          d={line.d}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeDasharray="6 6"
+          className={`transition-all duration-700 ${line.isActive === false ? 'opacity-10 text-red-500' : `opacity-40 ${theme.text}`}`}
+          markerEnd="url(#arrowhead)"
+        />
+      ))}
+    </svg>
+  );
+};
+
 // --- DASHBOARDS ---
 const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [newSupName, setNewSupName] = useState('');
@@ -149,6 +226,38 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [newSupRollNo, setNewSupRollNo] = useState('');
   const [newSupPassword, setNewSupPassword] = useState('');
   const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
+
+  // NEW: Graph Modal State & Data
+  const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
+  const [graphData, setGraphData] = useState({ supervisors: [], students: [] });
+  const [isGraphLoading, setIsGraphLoading] = useState(false);
+
+  const openGraphModal = async () => {
+    setIsGraphModalOpen(true);
+    setIsGraphLoading(true);
+    try {
+      const res = await fetch('/api/admin/graph-data');
+      const data = await res.json();
+      setGraphData(data);
+    } catch (err) {
+      console.error("Failed to load graph data", err);
+    } finally {
+      setIsGraphLoading(false);
+    }
+  };
+
+  // NEW: Soft-Delete Toggle for Students
+  const handleToggleStudentStatus = async (studentId: string, currentStatus: boolean) => {
+    const res = await fetch('/api/admin/toggle-student', { 
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ studentId, isActive: !currentStatus }) 
+    });
+    if (res.ok) {
+      openGraphModal(); // Silently refresh the graph data to update the UI
+    } else {
+      showDialog({ title: "Error", message: "Failed to update student status." });
+    }
+  };
 
   const fetchSupervisors = () => fetch('/api/supervisors').then(res => res.json()).then(data => setAdminSupervisors(Array.isArray(data) ? data : [])).catch(console.error);
   useEffect(() => { fetchSupervisors(); }, []);
@@ -159,7 +268,6 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newSupName, email: newSupEmail, rollNo: newSupRollNo, password: newSupPassword, migrationCode: Math.random().toString(36).substring(2, 8).toUpperCase() })
     });
-// And update the reset states on success to include:
     if (res.ok) { showDialog({ title: "Success", message: `Supervisor ${newSupName} added!` }); setNewSupName(''); setNewSupEmail(''); setNewSupRollNo(''); setNewSupPassword(''); fetchSupervisors(); }
     else showDialog({ title: "Error", message: "Failed to add supervisor" });
   };
@@ -188,6 +296,113 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col md:flex-row gap-6 min-h-[80vh]">
+      {/* NEW: The Relationship Graph Modal */}
+      <AnimatePresence>
+        {isGraphModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 md:p-8">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsGraphModalOpen(false)} />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.95 }} 
+              className={`relative w-full h-full max-w-7xl flex flex-col rounded-[2rem] border shadow-2xl backdrop-blur-3xl overflow-hidden ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+            >
+              <div className="p-6 border-b flex justify-between items-center z-10 relative">
+                 <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
+                   <Users className={theme.text} size={28} /> Total Students Mapping
+                 </h2>
+                 <button onClick={() => setIsGraphModalOpen(false)} className="p-2 rounded-full hover:bg-neutral-500/20 transition-colors">
+                   <XCircle size={28} className="opacity-60" />
+                 </button>
+              </div>
+              
+              <div className="flex-1 p-8 relative overflow-y-auto flex flex-col items-center justify-center">
+                 {isGraphLoading && graphData.students.length === 0 ? (
+                   <Loader2 size={48} className={`animate-spin ${theme.text}`} />
+                 ) : (
+                   <div className="flex-1 w-full overflow-y-auto custom-scrollbar">
+                     <div className="relative w-full min-h-full px-4 md:px-20 max-w-5xl mx-auto flex flex-col gap-12 py-12">
+                       <ConnectionLines students={graphData.students} isDarkMode={isDarkMode} theme={theme} />
+
+                       {graphData.supervisors.map((sup: any) => {
+                         const myStudents = graphData.students.filter((s: any) => s.supervisorId === sup._id);
+
+                         return (
+                           <div key={sup._id} className="flex justify-between items-center w-full z-10">
+                             
+                             {/* Left Column: The Supervisor Node */}
+                             <div className="w-64 shrink-0">
+                               <div id={`sup-${sup._id}`} className={`p-5 rounded-2xl border shadow-sm flex items-center justify-center text-center font-bold transition-all ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200'}`}>
+                                 {sup.name}
+                               </div>
+                             </div>
+
+                             {/* Right Column: The Student Cluster */}
+                             <div className="flex flex-col gap-4 w-80 shrink-0">
+                               {myStudents.length === 0 ? (
+                                  <div className="p-4 rounded-2xl border border-dashed opacity-40 text-center text-sm font-medium">No students assigned</div>
+                               ) : (
+                                 myStudents.map((student: any) => (
+                                   <div key={student._id} id={`stu-${student._id}`} className={`p-4 rounded-2xl border shadow-sm flex justify-between items-center transition-all ${student.isActive === false ? 'opacity-50 bg-red-500/5 border-red-500/20' : (isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200')}`}>
+                                     <div className="flex flex-col truncate pr-2">
+                                        <span className={`font-bold truncate ${student.isActive === false ? 'line-through opacity-70' : ''}`}>{student.name}</span>
+                                        {student.isActive === false && <span className="text-[10px] uppercase font-black tracking-wider text-red-500 mt-0.5">Deactivated</span>}
+                                     </div>
+                                     <button 
+                                       onClick={() => handleToggleStudentStatus(student._id, student.isActive !== false)}
+                                       title={student.isActive !== false ? "Deactivate Student" : "Restore Student"}
+                                       className={`p-2.5 rounded-xl transition-colors shrink-0 ${student.isActive !== false ? 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'}`}
+                                     >
+                                       {student.isActive !== false ? <Trash2 size={18} /> : <CheckCircle size={18} />}
+                                     </button>
+                                   </div>
+                                 ))
+                               )}
+                             </div>
+                           </div>
+                         );
+                       })}
+
+                       {/* Isolated Cluster for Unassigned Students */}
+                       {(() => {
+                          const unassigned = graphData.students.filter((s: any) => !s.supervisorId);
+                          if (unassigned.length === 0) return null;
+                          
+                          return (
+                            <div className="flex justify-between items-center w-full z-10 pt-8 border-t border-dashed border-neutral-500/30">
+                              <div className="w-64 shrink-0">
+                                <div className={`p-5 rounded-2xl border border-dashed opacity-50 flex items-center justify-center text-center font-bold ${isDarkMode ? 'border-neutral-500' : 'border-neutral-400'}`}>
+                                  Unassigned
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-4 w-80 shrink-0">
+                                {unassigned.map((student: any) => (
+                                  <div key={student._id} id={`stu-${student._id}`} className={`p-4 rounded-2xl border shadow-sm flex justify-between items-center transition-all ${student.isActive === false ? 'opacity-50 bg-red-500/5 border-red-500/20' : (isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200')}`}>
+                                    <div className="flex flex-col truncate pr-2">
+                                       <span className={`font-bold truncate ${student.isActive === false ? 'line-through opacity-70' : ''}`}>{student.name}</span>
+                                       {student.isActive === false && <span className="text-[10px] uppercase font-black tracking-wider text-red-500 mt-0.5">Deactivated</span>}
+                                    </div>
+                                    <button 
+                                      onClick={() => handleToggleStudentStatus(student._id, student.isActive !== false)}
+                                      className={`p-2.5 rounded-xl transition-colors shrink-0 ${student.isActive !== false ? 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'}`}
+                                    >
+                                      {student.isActive !== false ? <Trash2 size={18} /> : <CheckCircle size={18} />}
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                       })()}
+                     </div>
+                   </div>
+                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <GlassCard isDarkMode={isDarkMode} className="w-full md:w-72 flex flex-col p-6">
         <h3 className="text-xl font-extrabold mb-8 flex items-center gap-3 tracking-tight"><div className={`p-2 rounded-xl ${theme.lightBg} ${theme.text} transition-colors duration-500`}><LayoutDashboard size={20} /></div> Admin Panel</h3>
         <ul className="space-y-3 flex-1"><li className={`flex items-center gap-3 font-semibold p-4 rounded-2xl cursor-pointer transition-all duration-300 ${theme.lightBg} ${theme.text}`}><Users size={20} /> Supervisors</li></ul>
@@ -221,7 +436,6 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-gradient-to-br ${theme.gradient} transition-colors duration-500`}>{sup.name.charAt(0)}</div>
                     <div>
                       <p className="font-bold text-lg tracking-tight">{sup.name}</p>
-                      {/* Updated: Now displaying the email alongside the Roll No */}
                       <p className="text-sm font-medium opacity-60">ID: {sup.rollNo} • {sup.email || 'No Email Assigned'}</p>
                     </div>
                   </div>
@@ -231,7 +445,6 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                       <span className={`text-sm font-mono px-3 py-1.5 rounded-xl flex items-center gap-2 border transition-colors duration-500 ${theme.lightBg} ${theme.text} ${isDarkMode ? 'border-white/5' : 'border-black/5'}`}><Code size={14} /> {sup.migrationCode}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-4">
-                      {/* NEW: The Email Kill-Switch Toggle */}
                       <button 
                         onClick={() => handleToggleNotifications(sup._id, sup.notificationsEnabled !== false)} 
                         title={sup.notificationsEnabled !== false ? "Disable Emails" : "Enable Emails"}
@@ -248,6 +461,16 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
           </div>
         </GlassCard>
       </div>
+
+      {/* NEW: Floating Action Button for the Graph */}
+      <motion.button 
+        whileHover={{ scale: 1.05 }} 
+        whileTap={{ scale: 0.95 }} 
+        onClick={openGraphModal}
+        className={`fixed bottom-8 right-8 px-6 py-4 rounded-full font-extrabold shadow-2xl flex items-center gap-3 transition-colors ${theme.bg} text-white z-50`}
+      >
+        <Users size={20} /> Total Students
+      </motion.button>
     </motion.div>
   );
 };

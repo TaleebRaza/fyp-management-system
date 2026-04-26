@@ -11,24 +11,24 @@ const handler = NextAuth({
         rollNo: { label: "Roll No", type: "text" },
         password: { label: "Password", type: "password" }
       },
-      // This is the function that runs when someone clicks "Sign In"
       async authorize(credentials) {
         await connectToDatabase();
         
-        // 1. Find the user in our MongoDB database
         const user = await User.findOne({ rollNo: credentials?.rollNo });
         
         if (!user) {
           throw new Error("No user found with this Roll Number");
         }
         
-        // 2. Check the password
-        // Note: For this MVP we are comparing plain text. Later, we will use bcrypt!
+        // NEW: Security Lockout Check
+        if (user.isActive === false) {
+          throw new Error("Your account has been deactivated. Contact administration.");
+        }
+        
         if (user.password !== credentials?.password) {
           throw new Error("Incorrect password");
         }
         
-        // 3. If successful, return the user data to create the session
         return {
           id: user._id.toString(),
           name: user.name,
@@ -39,7 +39,6 @@ const handler = NextAuth({
     })
   ],
   callbacks: {
-    // This bakes the user's role and ID into their secure "wristband" (JWT Token)
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
@@ -48,7 +47,6 @@ const handler = NextAuth({
       }
       return token;
     },
-    // This makes the token data available to our frontend React components
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).id = token.id;
@@ -64,5 +62,4 @@ const handler = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
 });
 
-// Next.js App Router requires exporting the handler as both GET and POST
 export { handler as GET, handler as POST };
