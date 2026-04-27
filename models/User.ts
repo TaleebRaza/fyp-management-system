@@ -16,7 +16,11 @@ const UserSchema = new Schema({
   remarks: { type: String, required: false },
   pdfUrl: { type: String, required: false },
   notificationsEnabled: { type: Boolean, default: true },
-  isActive: { type: Boolean, default: true } // NEW: Soft-delete/Ban flag
+  isActive: { type: Boolean, default: true }, // NEW: Soft-delete/Ban flag
+  // NEW: Password Reset & Security Fields
+  resetCode: { type: String, required: false },
+  resetCodeExpiry: { type: Date, required: false },
+  lastPasswordChange: { type: Date, required: false }
 }, {
   timestamps: true
 });

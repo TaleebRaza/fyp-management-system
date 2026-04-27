@@ -81,22 +81,89 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
 
 // --- AUTH VIEWS ---
 const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => {
+  const [isResetMode, setIsResetMode] = useState(false);
+  const [resetStep, setResetStep] = useState(1); // 1 = Request Code, 2 = Verify Code
+  const [resetRollNo, setResetRollNo] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
   const handleLogin = async (e: any) => {
     e.preventDefault(); 
     const result = await signIn("credentials", { redirect: false, rollNo: e.target.rollNo.value, password: e.target.password.value });
     if (result?.error) showDialog({ title: "Login Failed", message: result.error });
   };
 
+  const handleRequestCode = async (e: any) => {
+    e.preventDefault();
+    setIsLoading(true);
+    const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rollNo: resetRollNo }) });
+    const data = await res.json();
+    setIsLoading(false);
+    if (res.ok) { setResetStep(2); showDialog({ title: "Check Inbox", message: data.message }); }
+    else showDialog({ title: "Error", message: data.error });
+  };
+
+  const handleResetPassword = async (e: any) => {
+    e.preventDefault();
+    setIsLoading(true);
+    const res = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rollNo: resetRollNo, code: resetCode, newPassword }) });
+    const data = await res.json();
+    setIsLoading(false);
+    if (res.ok) { setIsResetMode(false); setResetStep(1); showDialog({ title: "Success", message: data.message }); }
+    else showDialog({ title: "Error", message: data.error });
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="flex flex-col items-center justify-center min-h-[80vh]">
       <GlassCard isDarkMode={isDarkMode} className="w-full max-w-md">
-        <div className="flex justify-center mb-8"><div className={`${theme.bg} p-4 rounded-2xl shadow-lg shadow-${theme.text}/20 transition-colors duration-500`}><LogIn className="text-white" size={32} /></div></div>
-        <h2 className="text-3xl font-extrabold tracking-tight text-center mb-8">Portal Login</h2>
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div><label className="block text-sm font-medium mb-2 opacity-80 pl-1">Roll No / Username</label><StyledInput isDarkMode={isDarkMode} theme={theme} icon={User} name="rollNo" type="text" required placeholder="Enter your ID" /></div>
-          <div><label className="block text-sm font-medium mb-2 opacity-80 pl-1">Password</label><StyledInput isDarkMode={isDarkMode} theme={theme} icon={Lock} name="password" type="password" required placeholder="••••••••" /></div>
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" className={`w-full ${theme.bg} text-white font-bold py-4 rounded-2xl transition-colors duration-500 flex items-center justify-center gap-2 mt-4 shadow-lg`}>Sign In <ArrowRight size={20} /></motion.button>
-        </form>
+        <div className="flex justify-center mb-8">
+          <div className={`${theme.bg} p-4 rounded-2xl shadow-lg shadow-${theme.text}/20 transition-colors duration-500`}>
+            {isResetMode ? <Lock className="text-white" size={32} /> : <LogIn className="text-white" size={32} />}
+          </div>
+        </div>
+        <h2 className="text-3xl font-extrabold tracking-tight text-center mb-8">
+          {isResetMode ? "Reset Password" : "Portal Login"}
+        </h2>
+
+        {isResetMode ? (
+          resetStep === 1 ? (
+            <form onSubmit={handleRequestCode} className="flex flex-col gap-5 relative z-10">
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Roll No / ID</label>
+                <StyledInput isDarkMode={isDarkMode} theme={theme} value={resetRollNo} onChange={(e:any) => setResetRollNo(e.target.value)} required placeholder="e.g. FA20-BCS-001" />
+              </div>
+              <button disabled={isLoading} type="submit" className={`w-full py-4 mt-2 rounded-2xl font-bold text-white transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 ${theme.bg}`}>
+                {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Send Reset Code'}
+              </button>
+              <button type="button" onClick={() => setIsResetMode(false)} className="text-sm opacity-60 hover:opacity-100 font-medium">Back to Login</button>
+            </form>
+          ) : (
+            <form onSubmit={handleResetPassword} className="flex flex-col gap-5 relative z-10">
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80 pl-1">6-Digit Code</label>
+                <StyledInput isDarkMode={isDarkMode} theme={theme} value={resetCode} onChange={(e:any) => setResetCode(e.target.value)} required placeholder="123456" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80 pl-1">New Password</label>
+                <StyledInput isDarkMode={isDarkMode} theme={theme} type="password" value={newPassword} onChange={(e:any) => setNewPassword(e.target.value)} required placeholder="••••••••" />
+              </div>
+              <button disabled={isLoading} type="submit" className={`w-full py-4 mt-2 rounded-2xl font-bold text-white transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 ${theme.bg}`}>
+                {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Update Password'}
+              </button>
+            </form>
+          )
+        ) : (
+          <form onSubmit={handleLogin} className="flex flex-col gap-5 relative z-10">
+            <div><label className="block text-sm font-medium mb-2 opacity-80 pl-1">Roll No / Username</label><StyledInput isDarkMode={isDarkMode} theme={theme} icon={User} name="rollNo" type="text" required placeholder="Enter your ID" /></div>
+            <div><label className="block text-sm font-medium mb-2 opacity-80 pl-1">Password</label><StyledInput isDarkMode={isDarkMode} theme={theme} icon={Lock} name="password" type="password" required placeholder="••••••••" /></div>
+            <div className="text-right">
+              <button type="button" onClick={() => setIsResetMode(true)} className={`text-sm font-bold ${theme.text} hover:underline`}>Forgot Password?</button>
+            </div>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" className={`w-full ${theme.bg} text-white font-bold py-4 rounded-2xl transition-colors duration-500 flex items-center justify-center gap-2 mt-4 shadow-lg`}>Sign In <ArrowRight size={20} /></motion.button>
+          </form>
+        )}
+
         <p className="mt-8 text-center text-sm font-medium opacity-75">New Student? <button onClick={() => setIsRegistering(true)} className={`${theme.text} hover:underline transition-colors duration-300`}>Register Here</button></p>
       </GlassCard>
     </motion.div>
@@ -226,6 +293,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [newSupRollNo, setNewSupRollNo] = useState('');
   const [newSupPassword, setNewSupPassword] = useState('');
   const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
+  const [adminStudents, setAdminStudents] = useState<any[]>([]);
 
   // NEW: Graph Modal State & Data
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
@@ -260,7 +328,27 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   };
 
   const fetchSupervisors = () => fetch('/api/supervisors').then(res => res.json()).then(data => setAdminSupervisors(Array.isArray(data) ? data : [])).catch(console.error);
-  useEffect(() => { fetchSupervisors(); }, []);
+  const fetchStudents = () => fetch('/api/admin/students').then(res => res.json()).then(data => setAdminStudents(Array.isArray(data.students) ? data.students : [])).catch(console.error);
+
+  useEffect(() => { fetchSupervisors(); fetchStudents(); }, []);
+
+  const handleUpdateEmail = async (userId: string, currentEmail: string, name: string) => {
+    const newEmail = window.prompt(`Enter new email for ${name}:`, currentEmail || '');
+    if (!newEmail || newEmail === currentEmail) return;
+
+    const res = await fetch('/api/admin/update-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetUserId: userId, newEmail })
+    });
+    
+    if (res.ok) {
+      showDialog({ title: "Success", message: "Email updated!" });
+      fetchSupervisors();
+      fetchStudents();
+    } else {
+      showDialog({ title: "Error", message: "Failed to update email. It might already be in use." });
+    }
+  };
 
   const handleAddSupervisor = async (e: any) => {
     e.preventDefault();
@@ -277,7 +365,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       type: 'confirm', title: 'Delete Supervisor?', message: `Are you sure you want to permanently delete ${name}? All their assigned students will be marked as "Unassigned".`,
       onConfirm: async () => {
         const res = await fetch('/api/delete-supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-        if (res.ok) fetchSupervisors(); else showDialog({ title: "Error", message: "Failed to delete." });
+        if (res.ok) { fetchSupervisors(); fetchStudents(); } else showDialog({ title: "Error", message: "Failed to delete." });
       }
     });
   };
@@ -329,15 +417,11 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
                          return (
                            <div key={sup._id} className="flex justify-between items-center w-full z-10">
-                             
-                             {/* Left Column: The Supervisor Node */}
                              <div className="w-64 shrink-0">
                                <div id={`sup-${sup._id}`} className={`p-5 rounded-2xl border shadow-sm flex items-center justify-center text-center font-bold transition-all ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200'}`}>
                                  {sup.name}
                                </div>
                              </div>
-
-                             {/* Right Column: The Student Cluster */}
                              <div className="flex flex-col gap-4 w-80 shrink-0">
                                {myStudents.length === 0 ? (
                                   <div className="p-4 rounded-2xl border border-dashed opacity-40 text-center text-sm font-medium">No students assigned</div>
@@ -436,7 +520,9 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-gradient-to-br ${theme.gradient} transition-colors duration-500`}>{sup.name.charAt(0)}</div>
                     <div>
                       <p className="font-bold text-lg tracking-tight">{sup.name}</p>
-                      <p className="text-sm font-medium opacity-60">ID: {sup.rollNo} • {sup.email || 'No Email Assigned'}</p>
+                      <p onClick={() => handleUpdateEmail(sup._id, sup.email, sup.name)} className="text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">
+                        ID: {sup.rollNo} • {sup.email || 'Click to Assign Email'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4 text-right">
@@ -462,7 +548,41 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
         </GlassCard>
       </div>
 
-      {/* NEW: Floating Action Button for the Graph */}
+      {/* Students List for Admin */}
+      <div className="mt-6">
+        <GlassCard isDarkMode={isDarkMode} className="p-8">
+          <h4 className="text-lg font-extrabold tracking-tight mb-6">All Students <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{adminStudents.length}</span></h4>
+          <div className="space-y-3 overflow-y-auto pr-2 max-h-96">
+            {adminStudents.length === 0 ? (
+              <p className="text-center py-8 opacity-50">No students found.</p>
+            ) : (
+              adminStudents.map(student => (
+                <div key={student._id} className={`p-4 rounded-2xl flex justify-between items-center border transition-all duration-300 ${isDarkMode ? 'border-neutral-800 bg-neutral-800/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white bg-gradient-to-br ${theme.gradient}`}>
+                      {student.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-bold">{student.name}</p>
+                      <p onClick={() => handleUpdateEmail(student._id, student.email, student.name)} className="text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">
+                        ID: {student.rollNo} • {student.email || 'Click to Assign Email'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${student.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400' : student.status === 'Rejected' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                      {student.status || 'N/A'}
+                    </span>
+                    <span className="text-xs opacity-50">{student.isActive === false && '(Deactivated)'}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </GlassCard>
+      </div>
+
+      {/* Floating Action Button for the Graph */}
       <motion.button 
         whileHover={{ scale: 1.05 }} 
         whileTap={{ scale: 0.95 }} 
@@ -526,14 +646,12 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     });
   };
 
-  // ── UPDATED: opens report in new tab, browser print dialog saves as PDF ──
- const handleExportPDF = async () => {
+  const handleExportPDF = async () => {
     setIsExporting(true);
     try {
       const id   = (session?.user as any)?.id;
       const name = session?.user?.name || 'Supervisor';
       
-      // Keeps the exact same API route
       const response = await fetch(`/api/export-pdf?id=${id}&name=${encodeURIComponent(name)}`);
       
       if (!response.ok) {
@@ -542,7 +660,6 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
       
       const blob = await response.blob();
       
-      // Failsafe check
       if (blob.size === 0) {
         throw new Error('Received an empty file from the server.');
       }
@@ -551,13 +668,11 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
       const a = document.createElement('a');
       a.href = url;
       
-      // CHANGED HERE: We just save the incoming blob as an .xlsx file instead of .pdf
       a.download = `fyp-report-${name.replace(/\s+/g, '-')}.xlsx`; 
       
       document.body.appendChild(a);
       a.click();
       
-      // Cleanup
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
@@ -628,7 +743,6 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
         )}
       </AnimatePresence>
 
-{/* responsive */}
       <GlassCard isDarkMode={isDarkMode} className="w-full flex flex-col md:flex-row justify-between items-start md:items-center p-6 md:px-8 gap-5">
         <div className="w-full">
           <h2 className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
@@ -646,7 +760,6 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
           </div>
         </div>
 
-        {/* Action Buttons Container */}
         <div className="flex items-center gap-3 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 border-neutral-200 dark:border-neutral-800 transition-colors">
           <motion.button
             whileHover={{ scale: isExporting ? 1 : 1.05 }}
@@ -670,6 +783,7 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
           </motion.button>
         </div>
       </GlassCard>
+
       <GlassCard isDarkMode={isDarkMode} className="flex-1 p-8">
         <h3 className="text-xl font-extrabold tracking-tight mb-8">My Assigned Students <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{myStudents.length}</span></h3>
         {myStudents.length === 0 ? (
