@@ -197,7 +197,11 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
             <div className="relative group">
               <select name="supervisor" className={`w-full pl-4 pr-10 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100/70 text-black'} ${theme.ring} focus:bg-transparent`}>
                 <option value="">-- Optional (Choose Later) --</option>
-                {Array.isArray(supervisorsList) && supervisorsList.map((sup: any) => <option key={sup._id} value={sup._id}>{sup.name}</option>)}
+                {Array.isArray(supervisorsList) && supervisorsList.map((sup: any) => (
+                  <option key={sup._id} value={sup._id} disabled={sup.isFull}>
+                    {sup.name} {sup.isFull ? '(Capacity Reached)' : `(${sup.filledSlots}/${sup.maxSlots} Slots)`}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -837,6 +841,29 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   
   const [localSups, setLocalSups] = useState<any[]>([]);
 
+  // --- NEW TEAM STATE ---
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
+
+  const handleJoinTeam = async (e: any) => {
+    e.preventDefault();
+    if (!inviteCodeInput) return;
+    setIsSubmitting(true);
+    const res = await fetch('/api/project/join', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId: (session?.user as any)?.id, inviteCode: inviteCodeInput })
+    });
+    const json = await res.json();
+    if (res.ok) {
+      showDialog({ title: "Success", message: "Successfully joined the team!" });
+      setInviteCodeInput('');
+      fetchData(); // Refresh to show new team members
+    } else {
+      showDialog({ title: "Error", message: json.error });
+    }
+    setIsSubmitting(false);
+  };
+  // ----------------------
+
   const fetchData = async () => {
     try {
       const res = await fetch(`/api/dashboard/student?id=${(session?.user as any)?.id}`);
@@ -927,7 +954,11 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                 <div className="relative group">
                   <select name="newSup" required className={`w-full pl-4 pr-10 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100/70 text-black'} ${theme.ring} focus:bg-transparent`}>
                     <option value="">-- Choose a Supervisor --</option>
-                    {Array.isArray(localSups) && localSups.map(sup => <option key={sup._id} value={sup._id}>{sup.name}</option>)}
+                    {Array.isArray(localSups) && localSups.map(sup => (
+                      <option key={sup._id} value={sup._id} disabled={sup.isFull}>
+                        {sup.name} {sup.isFull ? '(Capacity Reached)' : `(${sup.filledSlots}/${sup.maxSlots} Slots)`}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" className={`w-full ${theme.bg} text-white font-bold py-4 rounded-2xl transition-colors duration-500 shadow-lg`}>Assign Supervisor</motion.button>
@@ -990,39 +1021,99 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
           )}
         </GlassCard>
 
-        <GlassCard isDarkMode={isDarkMode} className="col-span-1 p-8 flex flex-col">
-          <h3 className="text-xl font-extrabold tracking-tight mb-8">Live Status</h3>
-          <div className={`p-8 rounded-[2rem] flex flex-col items-center justify-center text-center flex-1 border transition-all duration-500 ${
-            isUnassigned ? (isDarkMode ? 'bg-red-500/10 border-red-500/20' : 'bg-red-100/50 border-red-200') :
-            me?.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-100/50 border-emerald-200') :
-            me?.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 border-red-500/20' : 'bg-red-100/50 border-red-200') :
-            me?.status === 'Submitted For Review' ? (isDarkMode ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-100/50 border-amber-200') :
-            (isDarkMode ? 'bg-neutral-800/50 border-neutral-700' : 'bg-neutral-100/50 border-neutral-200')
-          }`}>
-            <div className={`${isDarkMode ? 'bg-neutral-900' : 'bg-white'} p-4 rounded-3xl shadow-sm mb-6`}>
-              {isUnassigned ? <UserMinus size={40} className="text-red-500" /> :
-               me?.status === 'Approved' ? <CheckCircle size={40} className="text-emerald-500" /> :
-               me?.status === 'Rejected' ? <XCircle size={40} className="text-red-500" /> :
-               me?.status === 'Submitted For Review' ? <Send size={40} className="text-amber-500" /> :
-               <FileText size={40} className="text-neutral-400" />}
-            </div>
+        <div className="col-span-1 flex flex-col gap-6">
+          {/* --- NEW TEAM CARD --- */}
+          <GlassCard isDarkMode={isDarkMode} className="p-8 flex flex-col">
+            <h3 className="text-xl font-extrabold tracking-tight mb-6 flex items-center gap-3">
+              <div className={`p-2 rounded-xl ${theme.lightBg} ${theme.text}`}><Users size={20} /></div> 
+              My Team
+            </h3>
             
-            <h4 className="text-2xl font-black tracking-tight">{isUnassigned ? "Unassigned" : me?.status}</h4>
-            <p className="text-sm mt-3 font-medium opacity-60 px-4 leading-relaxed">
-              {isUnassigned ? "You are not assigned to any supervisor." :
-               me?.status === 'Pending' ? "You haven't submitted your FYP yet. Please fill the form to begin." : "Your supervisor has been automatically notified."}
-            </p>
-          </div>
+            {data?.project ? (
+              <div>
+                <p className="text-sm font-bold opacity-60 mb-2 uppercase tracking-wider">Team Invite Code</p>
+                <div className={`font-mono text-xl tracking-widest p-4 rounded-2xl mb-6 text-center border-2 border-dashed ${isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-neutral-100 border-neutral-300 text-black'}`}>
+                  {data.project.inviteCode}
+                </div>
+                
+                <p className="text-sm font-bold opacity-60 mb-3 uppercase tracking-wider flex justify-between">
+                  <span>Members</span>
+                  <span>{data.project.members.length} / 2</span>
+                </p>
+                
+                <ul className="space-y-3 mb-6">
+                  {data.project.members.map((member: any) => (
+                    <li key={member._id} className={`p-3 rounded-2xl flex items-center gap-3 border shadow-sm ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200'}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs text-white bg-gradient-to-br ${theme.gradient}`}>
+                        {member.name.charAt(0)}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-sm leading-none mb-1">{member.name}</span>
+                        <span className="text-[10px] opacity-60 font-mono leading-none">{member.rollNo}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
 
-          {me?.remarks && (
-            <div className="mt-8">
-              <p className="text-sm font-extrabold tracking-tight mb-3 opacity-80 flex items-center gap-2"><LayoutDashboard size={16}/> Supervisor Remarks</p>
-              <div className={`p-5 rounded-2xl text-sm font-medium leading-relaxed border shadow-inner ${isDarkMode ? 'bg-neutral-800/50 border-neutral-800' : 'bg-neutral-100 border-neutral-200'}`}>
-                "{me.remarks}"
+                {data.project.members.length < 2 && (
+                   <form onSubmit={handleJoinTeam} className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
+                     <p className="text-sm font-bold opacity-60 mb-3 uppercase tracking-wider">Join Existing Team</p>
+                     <div className="flex gap-2">
+                       <input
+                         type="text"
+                         required
+                         placeholder="Paste Code Here"
+                         value={inviteCodeInput}
+                         onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+                         className={`flex-1 px-4 py-3 rounded-xl border-2 border-transparent transition-all outline-none font-mono uppercase text-sm ${isDarkMode ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-black'} ${theme.ring}`}
+                       />
+                       <button type="submit" disabled={isSubmitting} className={`px-5 py-3 rounded-xl text-white font-bold transition-all shadow-md active:scale-95 ${theme.bg}`}>
+                          Join
+                       </button>
+                     </div>
+                   </form>
+                )}
               </div>
+            ) : (
+              <p className="opacity-50 text-sm italic">Loading team data...</p>
+            )}
+          </GlassCard>
+
+          {/* --- EXISTING LIVE STATUS CARD --- */}
+          <GlassCard isDarkMode={isDarkMode} className="p-8 flex flex-col h-full">
+            <h3 className="text-xl font-extrabold tracking-tight mb-8">Live Status</h3>
+            <div className={`p-8 rounded-[2rem] flex flex-col items-center justify-center text-center flex-1 border transition-all duration-500 ${
+              isUnassigned ? (isDarkMode ? 'bg-red-500/10 border-red-500/20' : 'bg-red-100/50 border-red-200') :
+              me?.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-100/50 border-emerald-200') :
+              me?.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 border-red-500/20' : 'bg-red-100/50 border-red-200') :
+              me?.status === 'Submitted For Review' ? (isDarkMode ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-100/50 border-amber-200') :
+              (isDarkMode ? 'bg-neutral-800/50 border-neutral-700' : 'bg-neutral-100/50 border-neutral-200')
+            }`}>
+              <div className={`${isDarkMode ? 'bg-neutral-900' : 'bg-white'} p-4 rounded-3xl shadow-sm mb-6`}>
+                {isUnassigned ? <UserMinus size={40} className="text-red-500" /> :
+                 me?.status === 'Approved' ? <CheckCircle size={40} className="text-emerald-500" /> :
+                 me?.status === 'Rejected' ? <XCircle size={40} className="text-red-500" /> :
+                 me?.status === 'Submitted For Review' ? <Send size={40} className="text-amber-500" /> :
+                 <FileText size={40} className="text-neutral-400" />}
+              </div>
+              
+              <h4 className="text-2xl font-black tracking-tight">{isUnassigned ? "Unassigned" : me?.status}</h4>
+              <p className="text-sm mt-3 font-medium opacity-60 px-4 leading-relaxed">
+                {isUnassigned ? "You are not assigned to any supervisor." :
+                 me?.status === 'Pending' ? "You haven't submitted your FYP yet. Please fill the form to begin." : "Your supervisor has been automatically notified."}
+              </p>
             </div>
-          )}
-        </GlassCard>
+
+            {me?.remarks && (
+              <div className="mt-8">
+                <p className="text-sm font-extrabold tracking-tight mb-3 opacity-80 flex items-center gap-2"><LayoutDashboard size={16}/> Supervisor Remarks</p>
+                <div className={`p-5 rounded-2xl text-sm font-medium leading-relaxed border shadow-inner ${isDarkMode ? 'bg-neutral-800/50 border-neutral-800' : 'bg-neutral-100 border-neutral-200'}`}>
+                  "{me.remarks}"
+                </div>
+              </div>
+            )}
+          </GlassCard>
+        </div>
       </div>
     </motion.div>
   );
