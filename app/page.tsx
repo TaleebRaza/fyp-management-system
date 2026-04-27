@@ -596,7 +596,14 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                   </div>
                   <p className="text-sm opacity-80 leading-relaxed mb-6">{selectedStudent.projectDesc}</p>
                   {selectedStudent.pdfUrl ? (
-                    <a href={selectedStudent.pdfUrl} target="_blank" rel="noreferrer" className={`text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold w-fit transition-colors duration-300 ${theme.bg} text-white shadow-md hover:scale-[1.02] active:scale-95`}><FileText size={16}/> View Complete PDF Document</a>
+                    <a 
+                      href={`/api/read-pdf?url=${encodeURIComponent(selectedStudent.pdfUrl)}`} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className={`text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold w-fit transition-colors duration-300 ${theme.bg} text-white shadow-md hover:scale-[1.02] active:scale-95`}
+                    >
+                      <FileText size={16}/> View Complete PDF Document
+                    </a>
                   ) : <span className={`text-sm px-4 py-2 rounded-xl flex items-center gap-2 font-bold w-fit opacity-70 ${isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'}`}>No PDF Attached</span>}
                 </div>
               ) : <div className={`mb-8 text-center p-8 rounded-2xl ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100'}`}><FileText size={40} className="mx-auto mb-3 opacity-20" /><p className="font-bold opacity-50">Project details have not been submitted yet.</p></div>}
