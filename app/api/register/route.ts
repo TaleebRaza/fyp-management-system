@@ -6,10 +6,10 @@ import { APP_SETTINGS } from '../../../config/appSettings';
 
 export async function POST(req: Request) {
   try {
-    const { name, email, rollNo, password, supervisorId } = await req.json();
+    // 1. Add 'program' to the destructured JSON payload
+    const { name, email, rollNo, password, supervisorId, program } = await req.json();
     await connectToDatabase();
     
-    // Check if either rollNo or email already exists
     const existingUser = await User.findOne({ 
       $or: [{ rollNo }, { email }] 
     });
@@ -18,7 +18,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
     }
 
-    // --- Capacity Enforcement ---
     if (supervisorId) {
       let filledSlots = 0;
       if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
@@ -34,21 +33,20 @@ export async function POST(req: Request) {
         );
       }
     }
-    // ----------------------------------------
     
-    // 1. Create the Student User
+    // 2. Pass 'program' into the new User schema
     const newStudent = new User({
       name,
       email,
       rollNo,
       password,
       role: 'student',
+      program: program || 'BSCS', // Fallback safety
       supervisorId: supervisorId || null,
       status: 'Pending'
     });
     await newStudent.save();
 
-    // 2. Automatically generate a default Project for this student
     const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newProject = new Project({
       supervisorId: supervisorId || null,
@@ -57,7 +55,6 @@ export async function POST(req: Request) {
     });
     await newProject.save();
 
-    // 3. Link the Project ID back to the Student document
     newStudent.projectId = newProject._id;
     await newStudent.save();
 

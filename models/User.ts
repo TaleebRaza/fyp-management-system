@@ -7,13 +7,15 @@ const UserSchema = new Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   
-  // --- RESTORED REQUIRED FIELDS ---
+  // --- NEW: Program Field for Students ---
+  program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE'], required: false },
+  // ---------------------------------------
+
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   status: { type: String, default: 'Unassigned' },
   remarks: { type: String, default: '' },
   projectTitle: { type: String, default: '' },
   pdfUrl: { type: String, default: '' },
-  // --------------------------------
   
   migrationCode: { type: String, required: false },
   projectDesc: { type: String, required: false },
