@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from 'next-auth/react';
 import { XCircle, Globe, Wrench, FileText, ArrowRightLeft, UserMinus, LayoutDashboard, Download, LogIn, Loader2, ChevronRight } from 'lucide-react';
 import { GlassCard } from '../ui/SharedUI';
+import { Timeline } from '../ui/Timeline';
 
 
 const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
@@ -103,6 +104,13 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                   <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${selectedProject.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : selectedProject.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{selectedProject.status}</span>
                 </div>
               </div>
+
+              <Timeline 
+                currentStage={selectedProject.stage || 'PROPOSAL'} 
+                isDarkMode={isDarkMode} 
+                theme={theme} 
+              />
+
               {selectedProject.projectTitle ? (
                 <div className={`p-6 rounded-2xl mb-8 ${isDarkMode ? 'bg-black/20' : 'bg-neutral-50'} shadow-inner`}>
                   <h3 className="text-xl font-bold mb-4">{selectedProject.projectTitle}</h3>

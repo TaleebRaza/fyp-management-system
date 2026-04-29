@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import { PROGRAM_MAP } from '../../config/appSettings';
+import { Timeline } from '../ui/Timeline';
 
 const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [data, setData] = useState<any>(null);
@@ -162,6 +163,16 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               <p className="font-semibold text-sm md:text-base leading-snug">{headline}</p>
             </div>
           </GlassCard>
+        </motion.div>
+      )}
+
+      {data?.student?.status !== 'Unassigned' && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <Timeline 
+            currentStage={data?.project?.stage || 'PROPOSAL'} 
+            isDarkMode={isDarkMode} 
+            theme={theme} 
+          />
         </motion.div>
       )}
 

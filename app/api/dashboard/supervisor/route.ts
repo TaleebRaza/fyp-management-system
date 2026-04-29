@@ -14,17 +14,24 @@ export async function GET(req: Request) {
     
     const students = await User.find({ role: 'student', supervisorId: id }).lean();
 
-    // --- NEW: Aggregation Layer - Group students by Project ID ---
+    // --- NEW: Fetch associated projects to get the Timeline Stage ---
+    const projectIds = students.map(s => s.projectId).filter(Boolean);
+    const projects = await Project.find({ _id: { $in: projectIds } }).lean();
+    const stageMap = projects.reduce((acc: any, p: any) => {
+      acc[p._id.toString()] = p.stage;
+      return acc;
+    }, {});
+    // --------------------------------------------------------------
+
     const projectMap = new Map();
 
     students.forEach((student: any) => {
-      // Use the projectId as the key. If legacy, use their own ID to keep them isolated.
       const pId = student.projectId ? student.projectId.toString() : `legacy-${student._id.toString()}`;
       
       if (!projectMap.has(pId)) {
         projectMap.set(pId, {
           _id: pId, 
-          triggerStudentId: student._id.toString(), // We keep one real student ID to trigger backend actions
+          triggerStudentId: student._id.toString(),
           projectTitle: student.projectTitle,
           projectDesc: student.projectDesc,
           domain: student.domain,
@@ -32,11 +39,11 @@ export async function GET(req: Request) {
           pdfUrl: student.pdfUrl,
           status: student.status,
           remarks: student.remarks,
-          members: [] // Array to hold multiple students
+          stage: stageMap[pId] || 'PROPOSAL', // <-- Inject the stage here
+          members: []
         });
       }
       
-      // Push this student's data into the shared project card
       projectMap.get(pId).members.push({
         _id: student._id,
         name: student.name,
@@ -45,7 +52,6 @@ export async function GET(req: Request) {
       });
     });
 
-    // Convert the Map back to an array for the frontend
     return NextResponse.json({ projects: Array.from(projectMap.values()) }, { status: 200 });
   } catch (error) {
     console.error('Supervisor Dashboard GET Error:', error);
@@ -66,25 +72,60 @@ export async function POST(req: Request) {
         ? await User.find({ projectId: triggerStudent.projectId }) 
         : [triggerStudent];
 
+      let finalStatus = status;
+      let newStage: string | undefined = undefined;
+      let notificationMessage = `Status: ${status}`;
+
+      // --- NEW: Timeline Progression Logic ---
+      if (status === 'Approved' && triggerStudent.projectId) {
+        const project = await Project.findById(triggerStudent.projectId);
+        
+        if (project.stage === 'PROPOSAL') {
+          newStage = 'THESIS_DRAFT';
+          finalStatus = 'Pending'; 
+          notificationMessage = 'Proposal Approved! Please begin uploading your Thesis Chapters.';
+        } else if (project.stage === 'THESIS_DRAFT') {
+          newStage = 'FINAL_DELIVERABLES';
+          finalStatus = 'Pending';
+          notificationMessage = 'Thesis Approved! Please submit your Final Deliverables.';
+        } else {
+          // If they are on FINAL_DELIVERABLES, they are completely done.
+          finalStatus = 'Approved';
+          notificationMessage = 'Congratulations! Your FYP is fully Approved and completed.';
+        }
+      }
+      // ---------------------------------------
+
+      // 1. Update the Users
       await User.updateMany(
         { _id: { $in: teamMembers.map(m => m._id) } },
-        { $set: { status, remarks } }
+        { $set: { 
+            status: finalStatus, 
+            remarks: remarks || notificationMessage,
+            // Reset the PDF URL if they advanced a stage, so the form expects a new file
+            ...(newStage ? { pdfUrl: '' } : {}) 
+          } 
+        }
       );
 
+      // 2. Update the Project Document
       if (triggerStudent.projectId) {
-        await Project.findByIdAndUpdate(triggerStudent.projectId, { $set: { status } });
+        await Project.findByIdAndUpdate(triggerStudent.projectId, { 
+          $set: { 
+            status: finalStatus,
+            ...(newStage ? { stage: newStage, pdfUrl: '' } : {})
+          } 
+        });
       }
       
-      // Email Notifications
+      // 3. Email Notifications
       for (const member of teamMembers) {
         if (member.supervisorId && member.email) {
           const supervisor = await User.findById(member.supervisorId);
           if (supervisor && supervisor.notificationsEnabled !== false) {
-            const subject = `FYP Project Status Update: ${status}`;
-            const isApproved = status === 'Approved';
-            const primaryColor = isApproved ? '#10b981' : '#ef4444'; 
-            const bgColor = isApproved ? '#ecfdf5' : '#fef2f2';
-            const borderColor = isApproved ? '#a7f3d0' : '#fecaca';
+            const subject = `FYP Project Update: ${newStage ? 'Stage Advanced!' : status}`;
+            const primaryColor = status === 'Approved' ? '#10b981' : status === 'Changes Requested' ? '#f59e0b' : '#ef4444'; 
+            const bgColor = status === 'Approved' ? '#ecfdf5' : status === 'Changes Requested' ? '#fffbeb' : '#fef2f2';
 
             const htmlContent = `
               <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
@@ -93,16 +134,16 @@ export async function POST(req: Request) {
                     <h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1>
                   </div>
                   <div style="padding: 32px;">
-                    <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">Project Status Updated</h2>
-                    <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${supervisor.name}</strong>, has reviewed your team's recent submission.</p>
+                    <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">Project Updated</h2>
+                    <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${supervisor.name}</strong>, has reviewed your submission.</p>
                     <div style="text-align: center; margin-bottom: 24px;">
-                      <span style="display: inline-block; background-color: ${bgColor}; color: ${primaryColor}; border: 1px solid ${borderColor}; padding: 8px 16px; border-radius: 999px; font-weight: bold;">
-                        Status: ${status}
+                      <span style="display: inline-block; background-color: ${bgColor}; color: ${primaryColor}; padding: 8px 16px; border-radius: 999px; font-weight: bold;">
+                        ${notificationMessage}
                       </span>
                     </div>
                     <div style="background-color: #f8fafc; border-left: 4px solid ${primaryColor}; padding: 20px;">
                       <p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Supervisor Remarks</p>
-                      <p style="margin: 0; font-size: 15px; color: #334155; font-style: italic;">"${remarks || 'No additional remarks provided.'}"</p>
+                      <p style="margin: 0; font-size: 15px; color: #334155; font-style: italic;">"${remarks || 'Proceed to the next stage.'}"</p>
                     </div>
                   </div>
                 </div>
@@ -112,7 +153,7 @@ export async function POST(req: Request) {
           }
         }
       }
-      return NextResponse.json({ message: 'Status updated for the entire team!' }, { status: 200 });
+      return NextResponse.json({ message: 'Status updated and timeline advanced!' }, { status: 200 });
     }
 
     if (action === 'migrate') {
