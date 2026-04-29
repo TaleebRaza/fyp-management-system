@@ -10,6 +10,8 @@ import StudentDashboard from '../components/dashboards/StudentDashboard';
 import SupervisorDashboard from '../components/dashboards/SupervisorDashboard';
 import AdminDashboard from '../components/dashboards/AdminDashboard';
 
+import { PROGRAM_MAP } from '../config/appSettings';
+
 
 type ThemeKey = 'ocean' | 'fiery' | 'zen';
 
@@ -211,31 +213,18 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
           </div>
 
           {/* --- Program Selection Radio Buttons --- */}
-          <div className="flex flex-col gap-2 mb-2">
-            <label className="text-sm font-bold opacity-70 ml-1">Select Program</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {['BSCS', 'BSAI', 'BSTN', 'BSSE'].map(prog => (
-                <label
-                  key={prog}
-                  className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${
-                    program === prog
-                      ? `${theme.border} ${theme.lightBg} ${theme.text}`
-                      : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`
-                  }`}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {Object.keys(PROGRAM_MAP).map(prog => (
+                <label 
+                  key={prog} 
+                  title={PROGRAM_MAP[prog]} // <-- This adds the hover/long-press detail
+                  className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${program === prog ? `${theme.border} ${theme.lightBg} ${theme.text}` : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`}`}
                 >
-                  <input
-                    type="radio"
-                    name="program"
-                    value={prog}
-                    checked={program === prog}
-                    onChange={(e) => setProgram(e.target.value)}
-                    className="hidden"
-                  />
+                  <input type="radio" name="program" value={prog} checked={program === prog} onChange={(e) => setProgram(e.target.value)} className="hidden" />
                   <span className="font-bold text-sm tracking-wide">{prog}</span>
                 </label>
               ))}
             </div>
-          </div>
           {/* ------------------------------------------- */}
 
           <div>

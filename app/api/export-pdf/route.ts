@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     worksheet.columns = [
       { header: 'Name', key: 'name', width: 25 },
       { header: 'Roll No', key: 'rollNo', width: 18 },
+      { header: 'Program', key: 'program', width: 15 },
       { header: 'Project Title', key: 'title', width: 40 },
       { header: 'Technologies', key: 'tools', width: 30 },
       { header: 'Description', key: 'desc', width: 70 }
@@ -45,6 +46,7 @@ export async function GET(req: NextRequest) {
         worksheet.addRow({
           name: student.name,
           rollNo: student.rollNo,
+          program: student.program || 'N/A',
           title: student.projectTitle || 'N/A',
           tools: student.tools || 'N/A',
           desc: student.projectDesc || 'N/A'

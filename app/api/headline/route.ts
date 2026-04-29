@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../../lib/mongodb';
-import Headline from '../../../../models/Headline';
+import connectToDatabase from '../../../lib/mongodb';
+import Headline from '../../../models/Headline';
 
 export const dynamic = 'force-dynamic';
 

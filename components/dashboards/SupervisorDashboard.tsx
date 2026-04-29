@@ -118,13 +118,42 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                   ) : <span className={`text-sm px-4 py-2 rounded-xl flex items-center gap-2 font-bold w-fit opacity-70 ${isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'}`}>No PDF Attached</span>}
                 </div>
               ) : <div className={`mb-8 text-center p-8 rounded-2xl ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100'}`}><FileText size={40} className="mx-auto mb-3 opacity-20" /><p className="font-bold opacity-50">Project details have not been submitted yet.</p></div>}
+              
               <div>
                 <h4 className="font-extrabold text-sm tracking-widest uppercase opacity-40 mb-4">Supervisor Actions</h4>
                 <div className="space-y-4">
-                  <div className="flex gap-3">
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved'} className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md">Approve Project</motion.button>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected'} className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md">Reject Project</motion.button>
+                  
+                  {/* --- UPDATED BUTTONS WRAPPER --- */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
+                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} 
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved'} 
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                    >
+                      Approve Project
+                    </motion.button>
+                    
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
+                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Changes Requested')} 
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested'} 
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                    >
+                      Make Suggestion
+                    </motion.button>
+
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
+                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} 
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected'} 
+                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                    >
+                      Reject Project
+                    </motion.button>
                   </div>
+                  {/* ------------------------------- */}
+
                   <div className="flex gap-3 items-center">
                     <div className={`flex-1 flex items-center p-2 rounded-xl border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
                       <input placeholder="Enter target Migration Code..." className="w-full bg-transparent px-3 text-sm focus:outline-none uppercase font-mono font-medium" onChange={(e) => setMigrationInput({...migrationInput, [selectedProject._id]: e.target.value.toUpperCase()})} />

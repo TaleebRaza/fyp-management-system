@@ -8,7 +8,7 @@ const UserSchema = new Schema({
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   
   // --- NEW: Program Field for Students ---
-  program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE'], required: false },
+  program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS'], required: false },
   // ---------------------------------------
 
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

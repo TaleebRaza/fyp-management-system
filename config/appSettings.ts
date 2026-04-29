@@ -7,3 +7,13 @@ export const APP_SETTINGS = {
   // 'PROJECT' = 1 slot per project group.
   SLOT_CALCULATION_MODE: 'PROJECT' as 'STUDENT' | 'PROJECT',
 };
+
+export const PROGRAM_MAP: Record<string, string> = {
+  'BSCS': 'BS Computer Science',
+  'BSAI': 'BS Artificial Intelligence',
+  'BSTN': 'BS Telecommunication & Networking', 
+  'BSSE': 'BS Software Engineering',
+  'BSCYS': 'BS Cyber Security',
+  'BSROB': 'BS Robotics',
+  'BSDS': 'BS Data Science'
+};

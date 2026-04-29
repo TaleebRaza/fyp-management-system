@@ -4,10 +4,11 @@ import { motion } from 'framer-motion';
 import { signOut } from 'next-auth/react';
 import { 
   Users, UserMinus, CheckCircle, XCircle, Send, FileText, 
-  Upload, Lock, Globe, Wrench, AlertTriangle, 
+  Upload, Lock, Globe, Wrench, AlertTriangle, Megaphone,
   LayoutDashboard, Loader2, LogIn 
 } from 'lucide-react';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
+import { PROGRAM_MAP } from '../../config/appSettings';
 
 const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [data, setData] = useState<any>(null);
@@ -20,9 +21,24 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [localSups, setLocalSups] = useState<any[]>([]);
-
-  // --- NEW TEAM STATE ---
   const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [headline, setHeadline] = useState('');
+
+  const fetchHeadline = async () => {
+    try {
+      const res = await fetch('/api/headline');
+      const json = await res.json();
+      if (json.headline && json.headline.text) {
+        setHeadline(json.headline.text);
+      }
+    } catch (err) {
+      console.error('Failed to fetch headline:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchHeadline();
+  }, []);
 
   const handleJoinTeam = async (e: any) => {
     e.preventDefault();
@@ -36,13 +52,12 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
     if (res.ok) {
       showDialog({ title: "Success", message: "Successfully joined the team!" });
       setInviteCodeInput('');
-      fetchData(); // Refresh to show new team members
+      fetchData(); 
     } else {
       showDialog({ title: "Error", message: json.error });
     }
     setIsSubmitting(false);
   };
-  // ----------------------
 
   const fetchData = async () => {
     try {
@@ -66,7 +81,9 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const me = data?.student;
   const supervisor = data?.supervisor;
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
-  const canSubmit = me?.status === 'Pending' || me?.status === 'Rejected';
+  
+  // UPDATED: Added 'Changes Requested' to allow editing/submission
+  const canSubmit = me?.status === 'Pending' || me?.status === 'Rejected' || me?.status === 'Changes Requested';
 
   const handleSubmitProject = async (e: any) => {
     e.preventDefault();
@@ -112,16 +129,41 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6 min-h-[80vh]">
+      {/* Header GlassCard */}
       <GlassCard isDarkMode={isDarkMode} className="w-full flex justify-between items-center px-8 py-6">
         <div>
           <h2 className="text-3xl font-extrabold tracking-tight">Hello, {me?.name}</h2>
           <p className="font-medium opacity-60 mt-1 flex items-center gap-2">
-            Roll No: <span className="font-mono">{me?.rollNo}</span> <span className="opacity-40 text-sm">|</span> 
-            Supervisor: <span className={`font-bold ${isUnassigned ? 'text-red-500' : theme.text} transition-colors duration-500`}>{isUnassigned ? "Not Assigned" : supervisor?.name}</span>
+            Roll No: <span className="font-mono">{me?.rollNo}</span> 
+            <span className="hidden sm:block opacity-40 text-sm">|</span>
+            <span 
+              title={PROGRAM_MAP[me?.program] || 'Unknown Program'} 
+              className={`cursor-help text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}
+            >
+              {me?.program || 'N/A'}
+            </span>
+            <span className="opacity-40 text-sm">|</span> 
+            Supervisor: <span className={`font-bold ${isUnassigned ? 'text-red-500' : theme.text} transition-colors duration-500`}>
+              {isUnassigned ? "Not Assigned" : supervisor?.name}
+            </span>
           </p>
         </div>
         <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-6 py-2.5 rounded-2xl transition-all font-bold flex items-center gap-2`}><LogIn size={20} className="rotate-180" /> Logout</motion.button>
       </GlassCard>
+
+      {headline && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="w-full">
+          <GlassCard isDarkMode={isDarkMode} className={`p-4 border-l-4 border-l-blue-500 flex items-center gap-4 ${isDarkMode ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
+            <div className="p-2 rounded-full bg-blue-500/20 text-blue-500 shrink-0">
+               <Megaphone size={20} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-0.5 text-blue-500">Official Announcement</p>
+              <p className="font-semibold text-sm md:text-base leading-snug">{headline}</p>
+            </div>
+          </GlassCard>
+        </motion.div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
         <GlassCard isDarkMode={isDarkMode} className="col-span-1 lg:col-span-2 p-8 flex flex-col justify-center">
@@ -151,7 +193,7 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               {canSubmit ? (
                 <div className={`p-5 mb-8 rounded-2xl flex gap-4 text-sm font-medium items-start ${isDarkMode ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>
                   <AlertTriangle size={24} className="shrink-0 mt-0.5" />
-                  <p className="leading-relaxed"><b>Important:</b> A PDF document is strictly required. Once submitted, your project will be locked for review. You can only resubmit if your supervisor rejects it.</p>
+                  <p className="leading-relaxed"><b>Important:</b> A PDF document is strictly required. Once submitted, your project will be locked for review. You can only resubmit if your supervisor requests changes or rejects it.</p>
                 </div>
               ) : (
                 <div className={`p-5 mb-8 rounded-2xl flex gap-4 text-sm font-medium items-start ${isDarkMode ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
@@ -161,6 +203,14 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               )}
 
               <form onSubmit={handleSubmitProject} className="space-y-6">
+                {/* NEW: Action Required Alert */}
+                {me?.status === 'Changes Requested' && (
+                  <div className="mb-6 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                    <h4 className="font-bold flex items-center gap-2 mb-2"><CheckCircle size={18}/> Revisions Required</h4>
+                    <p className="text-sm font-medium opacity-80 italic">"{me?.remarks}"</p>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium mb-2 opacity-80 pl-1">Project Title</label>
                   <StyledInput isDarkMode={isDarkMode} theme={theme} disabled={!canSubmit} value={title} onChange={(e:any) => setTitle(e.target.value)} required type="text" placeholder="e.g. AI Based Disease Predictor" />
@@ -202,7 +252,6 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
         </GlassCard>
 
         <div className="col-span-1 flex flex-col gap-6">
-          {/* --- NEW TEAM CARD --- */}
           <GlassCard isDarkMode={isDarkMode} className="p-8 flex flex-col">
             <h3 className="text-xl font-extrabold tracking-tight mb-6 flex items-center gap-3">
               <div className={`p-2 rounded-xl ${theme.lightBg} ${theme.text}`}><Users size={20} /></div> 
@@ -259,28 +308,34 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
             )}
           </GlassCard>
 
-          {/* --- EXISTING LIVE STATUS CARD --- */}
+          {/* Live Status Card */}
           <GlassCard isDarkMode={isDarkMode} className="p-8 flex flex-col h-full">
             <h3 className="text-xl font-extrabold tracking-tight mb-8">Live Status</h3>
+            
+            {/* UPDATED: Added logic for 'Changes Requested' background and border colors */}
             <div className={`p-8 rounded-[2rem] flex flex-col items-center justify-center text-center flex-1 border transition-all duration-500 ${
               isUnassigned ? (isDarkMode ? 'bg-red-500/10 border-red-500/20' : 'bg-red-100/50 border-red-200') :
               me?.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-100/50 border-emerald-200') :
               me?.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 border-red-500/20' : 'bg-red-100/50 border-red-200') :
-              me?.status === 'Submitted For Review' ? (isDarkMode ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-100/50 border-amber-200') :
+              me?.status === 'Changes Requested' ? (isDarkMode ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-100/50 border-amber-200') :
+              me?.status === 'Submitted For Review' ? (isDarkMode ? 'bg-blue-500/10 border-blue-500/20' : 'bg-blue-100/50 border-blue-200') :
               (isDarkMode ? 'bg-neutral-800/50 border-neutral-700' : 'bg-neutral-100/50 border-neutral-200')
             }`}>
               <div className={`${isDarkMode ? 'bg-neutral-900' : 'bg-white'} p-4 rounded-3xl shadow-sm mb-6`}>
                 {isUnassigned ? <UserMinus size={40} className="text-red-500" /> :
                  me?.status === 'Approved' ? <CheckCircle size={40} className="text-emerald-500" /> :
                  me?.status === 'Rejected' ? <XCircle size={40} className="text-red-500" /> :
-                 me?.status === 'Submitted For Review' ? <Send size={40} className="text-amber-500" /> :
+                 me?.status === 'Changes Requested' ? <AlertTriangle size={40} className="text-amber-500" /> :
+                 me?.status === 'Submitted For Review' ? <Send size={40} className="text-blue-500" /> :
                  <FileText size={40} className="text-neutral-400" />}
               </div>
               
               <h4 className="text-2xl font-black tracking-tight">{isUnassigned ? "Unassigned" : me?.status}</h4>
               <p className="text-sm mt-3 font-medium opacity-60 px-4 leading-relaxed">
                 {isUnassigned ? "You are not assigned to any supervisor." :
-                 me?.status === 'Pending' ? "You haven't submitted your FYP yet. Please fill the form to begin." : "Your supervisor has been automatically notified."}
+                 me?.status === 'Pending' ? "You haven't submitted your FYP yet. Please fill the form to begin." : 
+                 me?.status === 'Changes Requested' ? "Your supervisor has requested revisions. Check the remarks below." :
+                 "Your supervisor has been automatically notified."}
               </p>
             </div>
 

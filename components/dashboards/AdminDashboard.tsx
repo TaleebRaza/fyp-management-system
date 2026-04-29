@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from 'next-auth/react';
 import { Users, XCircle, Trash2, CheckCircle, User, LayoutDashboard, LogIn, PlusCircle, Code, Mail, MailX, Loader2, Megaphone, Filter } from 'lucide-react';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
+import { PROGRAM_MAP } from '../../config/appSettings';
 
 // --- COMPLEX ConnectionLines (with curved paths and arrow markers) ---
 const ConnectionLines = ({ students, isDarkMode, theme }: any) => {
@@ -94,7 +95,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [headlineInput, setHeadlineInput] = useState('');
   const [currentHeadline, setCurrentHeadline] = useState('');
   const [studentFilter, setStudentFilter] = useState('All');
-  const filterOptions = ['All', 'BSCS', 'BSAI', 'BSTN', 'BSSE', 'Approved', 'Pending', 'Unassigned'];
+  const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
 
   // Graph Modal
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
@@ -110,7 +111,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
   const fetchHeadline = async () => {
     try {
-      const res = await fetch('/api/admin/headline');
+      const res = await fetch('/api/headline');
       const data = await res.json();
       if (data.headline) setCurrentHeadline(data.headline.text);
     } catch (err) { console.error(err); }
@@ -118,7 +119,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
   const handleBroadcastHeadline = async (e: any) => {
     e.preventDefault();
-    const res = await fetch('/api/admin/headline', {
+    const res = await fetch('/api/headline', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: headlineInput })
@@ -193,6 +194,35 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
     });
     if (res.ok) { showDialog({ title: "Success", message: "Email updated!" }); fetchSupervisors(); fetchStudents(); }
     else { showDialog({ title: "Error", message: "Failed to update email." }); }
+  };
+
+  const handleUpdateProgram = async (userId: string, currentProgram: string, name: string) => {
+    const newProgram = window.prompt(`Enter new program for ${name} (BSCS, BSAI, BSTN, BSSE):`, currentProgram || 'BSCS');
+    if (!newProgram || newProgram === currentProgram) return;
+    
+    const uppercaseProgram = newProgram.toUpperCase();
+    if (!Object.keys(PROGRAM_MAP).includes(uppercaseProgram)) {
+      showDialog({ title: "Invalid Input", message: `Program must be one of: ${Object.keys(PROGRAM_MAP).join(', ')}` });
+      return;
+    }
+
+    showDialog({
+      type: 'confirm', 
+      title: 'Warning: Team Reset', 
+      message: `Changing ${name}'s program to ${uppercaseProgram} will remove them from their current team and unassign their supervisor. Proceed?`,
+      onConfirm: async () => {
+        const res = await fetch('/api/admin/update-program', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetUserId: userId, newProgram: uppercaseProgram })
+        });
+        if (res.ok) {
+          showDialog({ title: "Success", message: "Program updated and student reset!" });
+          fetchStudents();
+        } else {
+          showDialog({ title: "Error", message: "Failed to update program." });
+        }
+      }
+    });
   };
 
   const handleAddSupervisor = async (e: any) => {
@@ -462,7 +492,12 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                         <div>
                           <div className="flex items-center gap-2">
                             <p className={`font-bold ${student.isActive === false ? 'line-through opacity-70' : ''}`}>{student.name}</p>
-                            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}>
+                            {/* --- Clickable Program Tag with Hover Detail --- */}
+                            <span 
+                              onClick={() => handleUpdateProgram(student._id, student.program, student.name)}
+                              title={`${PROGRAM_MAP[student.program] || 'Unknown Program'} (Click to Edit)`}
+                              className={`cursor-pointer hover:scale-105 hover:shadow-md transition-all text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}
+                            >
                               {student.program || 'N/A'}
                             </span>
                           </div>
