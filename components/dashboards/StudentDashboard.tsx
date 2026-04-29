@@ -365,4 +365,4 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   );
 };
 
-export default StudentDashboard;
+export default StudentDashboard; 
