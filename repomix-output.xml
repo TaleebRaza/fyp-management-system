@@ -82,17 +82,12 @@ app/
       route.ts
     register/
       route.ts
-    sentry-example-api/
-      route.ts
     supervisors/
       toggle-notifications/
         route.ts
       route.ts
     upload/
       route.ts
-  sentry-example-page/
-    page.tsx
-  favicon.ico
   global-error.tsx
   globals.css
   layout.tsx
@@ -118,6 +113,7 @@ models/
 public/
   file.svg
   globe.svg
+  logo.png
   next.svg
   vercel.svg
   window.svg
@@ -238,63 +234,6 @@ export async function POST(req: Request) {
 }
 </file>
 
-<file path="app/api/admin/update-program/route.ts">
-import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../../lib/mongodb';
-import User from '../../../../models/User';
-import Project from '../../../../models/Project';
-
-export async function POST(req: Request) {
-  try {
-    await connectToDatabase();
-    const { targetUserId, newProgram } = await req.json();
-
-    const student = await User.findById(targetUserId);
-    if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-
-    // 1. Ghost Data Purge: Eject from current team
-    if (student.projectId) {
-      const oldProject = await Project.findById(student.projectId);
-      if (oldProject) {
-        // If they are the only member, delete the project entirely
-        if (oldProject.members.length === 1 && oldProject.members[0].toString() === targetUserId) {
-          await Project.findByIdAndDelete(student.projectId);
-        } else {
-          // Otherwise, just remove them from the array
-          await Project.findByIdAndUpdate(student.projectId, {
-            $pull: { members: targetUserId }
-          });
-        }
-      }
-    }
-
-    // 2. Generate a new, empty default project for this student
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newProject = new Project({
-      supervisorId: null,
-      members: [student._id],
-      inviteCode: inviteCode
-    });
-    await newProject.save();
-
-    // 3. Apply the hard reset
-    student.program = newProgram;
-    student.supervisorId = null;
-    student.projectId = newProject._id;
-    student.status = 'Unassigned';
-    student.projectTitle = '';
-    student.pdfUrl = '';
-    student.remarks = 'Your program was updated by an Admin. You have been unassigned from your team and supervisor.';
-    await student.save();
-
-    return NextResponse.json({ message: 'Program updated and student reset successfully!' }, { status: 200 });
-  } catch (error) {
-    console.error('Update Program Error:', error);
-    return NextResponse.json({ error: 'Failed to update program' }, { status: 500 });
-  }
-}
-</file>
-
 <file path="app/api/auth/forgot-password/route.ts">
 import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
@@ -343,102 +282,6 @@ export async function POST(req: Request) {
 }
 </file>
 
-<file path="app/api/auth/reset-password/route.ts">
-import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../../lib/mongodb';
-import User from '../../../../models/User';
-
-export async function POST(req: Request) {
-  try {
-    await connectToDatabase();
-    const { rollNo, code, newPassword } = await req.json();
-
-    const user = await User.findOne({ rollNo });
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-
-    // Verify Code and Expiration
-    if (user.resetCode !== code) return NextResponse.json({ error: 'Invalid reset code' }, { status: 400 });
-    if (new Date() > new Date(user.resetCodeExpiry)) return NextResponse.json({ error: 'Code has expired' }, { status: 400 });
-
-    // Update password, clear the code, and set the 5-hour cooldown timer
-    await User.findByIdAndUpdate(user._id, {
-      password: newPassword,
-      resetCode: null,
-      resetCodeExpiry: null,
-      lastPasswordChange: new Date()
-    });
-
-    return NextResponse.json({ message: 'Password successfully updated! You can now log in.' }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 });
-  }
-}
-</file>
-
-<file path="app/api/delete-supervisor/route.ts">
-import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
-import User from '../../../models/User';
-
-export async function POST(req: Request) {
-  try {
-    await connectToDatabase();
-    const { id } = await req.json();
-
-    // 1. Delete the supervisor
-    await User.findByIdAndDelete(id);
-
-    // 2. Safely unassign any students that belonged to this supervisor
-    await User.updateMany(
-      { supervisorId: id }, 
-      { $set: { supervisorId: null, status: 'Unassigned', remarks: 'Your supervisor was removed from the system. Please select a new one.' } }
-    );
-
-    return NextResponse.json({ message: 'Supervisor deleted successfully' }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete supervisor' }, { status: 500 });
-  }
-}
-</file>
-
-<file path="app/api/headline/route.ts">
-import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
-import Headline from '../../../models/Headline';
-
-export const dynamic = 'force-dynamic';
-
-export async function GET() {
-  try {
-    await connectToDatabase();
-    // Fetch the most recently created active headline
-    const latestHeadline = await Headline.findOne({ isActive: true }).sort({ createdAt: -1 });
-    return NextResponse.json({ headline: latestHeadline }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch headline' }, { status: 500 });
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    await connectToDatabase();
-    const { text } = await req.json();
-    
-    // Deactivate all previous headlines to keep the database clean
-    await Headline.updateMany({}, { $set: { isActive: false } });
-    
-    // Create the new headline
-    if (text && text.trim() !== '') {
-      await Headline.create({ text, isActive: true });
-    }
-    
-    return NextResponse.json({ message: 'Headline updated successfully!' }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to update headline' }, { status: 500 });
-  }
-}
-</file>
-
 <file path="app/api/init/route.ts">
 import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
@@ -478,26 +321,6 @@ export async function GET() {
 }
 </file>
 
-<file path="app/api/sentry-example-api/route.ts">
-import * as Sentry from "@sentry/nextjs";
-export const dynamic = "force-dynamic";
-
-class SentryExampleAPIError extends Error {
-  constructor(message: string | undefined) {
-    super(message);
-    this.name = "SentryExampleAPIError";
-  }
-}
-
-// A faulty API route to test Sentry's error monitoring
-export function GET() {
-  Sentry.logger.info("Sentry example API called");
-  throw new SentryExampleAPIError(
-    "This error is raised on the backend called by the example page.",
-  );
-}
-</file>
-
 <file path="app/api/supervisors/toggle-notifications/route.ts">
 import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
@@ -515,246 +338,6 @@ export async function POST(req: Request) {
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
   }
-}
-</file>
-
-<file path="app/sentry-example-page/page.tsx">
-"use client";
-
-import * as Sentry from "@sentry/nextjs";
-import Head from "next/head";
-import { useEffect, useState } from "react";
-
-class SentryExampleFrontendError extends Error {
-  constructor(message: string | undefined) {
-    super(message);
-    this.name = "SentryExampleFrontendError";
-  }
-}
-
-export default function Page() {
-  const [hasSentError, setHasSentError] = useState(false);
-  const [isConnected, setIsConnected] = useState(true);
-
-  useEffect(() => {
-    Sentry.logger.info("Sentry example page loaded");
-    async function checkConnectivity() {
-      const result = await Sentry.diagnoseSdkConnectivity();
-      setIsConnected(result !== "sentry-unreachable");
-    }
-    checkConnectivity();
-  }, []);
-
-  return (
-    <div>
-      <Head>
-        <title>sentry-example-page</title>
-        <meta name="description" content="Test Sentry for your Next.js app!" />
-      </Head>
-
-      <main>
-        <div className="flex-spacer" />
-        <svg
-          height="40"
-          width="40"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          role="img"
-          aria-label="Sentry logo"
-        >
-          <path
-            d="M21.85 2.995a3.698 3.698 0 0 1 1.353 1.354l16.303 28.278a3.703 3.703 0 0 1-1.354 5.053 3.694 3.694 0 0 1-1.848.496h-3.828a31.149 31.149 0 0 0 0-3.09h3.815a.61.61 0 0 0 .537-.917L20.523 5.893a.61.61 0 0 0-1.057 0l-3.739 6.494a28.948 28.948 0 0 1 9.63 10.453 28.988 28.988 0 0 1 3.499 13.78v1.542h-9.852v-1.544a19.106 19.106 0 0 0-2.182-8.85 19.08 19.08 0 0 0-6.032-6.829l-1.85 3.208a15.377 15.377 0 0 1 6.382 12.484v1.542H3.696A3.694 3.694 0 0 1 0 34.473c0-.648.17-1.286.494-1.849l2.33-4.074a8.562 8.562 0 0 1 2.689 1.536L3.158 34.17a.611.611 0 0 0 .538.917h8.448a12.481 12.481 0 0 0-6.037-9.09l-1.344-.772 4.908-8.545 1.344.77a22.16 22.16 0 0 1 7.705 7.444 22.193 22.193 0 0 1 3.316 10.193h3.699a25.892 25.892 0 0 0-3.811-12.033 25.856 25.856 0 0 0-9.046-8.796l-1.344-.772 5.269-9.136a3.698 3.698 0 0 1 3.2-1.849c.648 0 1.285.17 1.847.495Z"
-            fill="currentcolor"
-          />
-        </svg>
-        <h1>sentry-example-page</h1>
-
-        <p className="description">
-          Click the button below, and view the sample error on the Sentry{" "}
-          <a
-            target="_blank"
-            rel="noopener"
-            href="https://sen-cl.sentry.io/issues/?project=4511290601308160"
-          >
-            Issues Page
-          </a>
-          . For more details about setting up Sentry,{" "}
-          <a
-            target="_blank"
-            rel="noopener"
-            href="https://docs.sentry.io/platforms/javascript/guides/nextjs/"
-          >
-            read our docs
-          </a>
-          .
-        </p>
-
-        <button
-          type="button"
-          onClick={async () => {
-            Sentry.logger.info("User clicked the button, throwing a sample error");
-            await Sentry.startSpan(
-              {
-                name: "Example Frontend/Backend Span",
-                op: "test",
-              },
-              async () => {
-                const res = await fetch("/api/sentry-example-api");
-                if (!res.ok) {
-                  setHasSentError(true);
-                }
-              },
-            );
-            throw new SentryExampleFrontendError(
-              "This error is raised on the frontend of the example page.",
-            );
-          }}
-          disabled={!isConnected}
-        >
-          <span>Throw Sample Error</span>
-        </button>
-
-        {hasSentError ? (
-          <p className="success">Error sent to Sentry.</p>
-        ) : !isConnected ? (
-          <div className="connectivity-error">
-            <p>
-              It looks like network requests to Sentry are being blocked, which
-              will prevent errors from being captured. Try disabling your
-              ad-blocker to complete the test.
-            </p>
-          </div>
-        ) : (
-          <div className="success_placeholder" />
-        )}
-
-        <div className="flex-spacer" />
-      </main>
-
-      <style>{`
-        main {
-          display: flex;
-          min-height: 100vh;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          gap: 16px;
-          padding: 16px;
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-        }
-
-        h1 {
-          padding: 0px 4px;
-          border-radius: 4px;
-          background-color: rgba(24, 20, 35, 0.03);
-          font-family: monospace;
-          font-size: 20px;
-          line-height: 1.2;
-        }
-
-        p {
-          margin: 0;
-          font-size: 20px;
-        }
-
-        a {
-          color: #6341F0;
-          text-decoration: underline;
-          cursor: pointer;
-
-          @media (prefers-color-scheme: dark) {
-            color: #B3A1FF;
-          }
-        }
-
-        button {
-          border-radius: 8px;
-          color: white;
-          cursor: pointer;
-          background-color: #553DB8;
-          border: none;
-          padding: 0;
-          margin-top: 4px;
-
-          & > span {
-            display: inline-block;
-            padding: 12px 16px;
-            border-radius: inherit;
-            font-size: 20px;
-            font-weight: bold;
-            line-height: 1;
-            background-color: #7553FF;
-            border: 1px solid #553DB8;
-            transform: translateY(-4px);
-          }
-
-          &:hover > span {
-            transform: translateY(-8px);
-          }
-
-          &:active > span {
-            transform: translateY(0);
-          }
-
-          &:disabled {
-	            cursor: not-allowed;
-	            opacity: 0.6;
-
-	            & > span {
-	              transform: translateY(0);
-	              border: none
-	            }
-	          }
-        }
-
-        .description {
-          text-align: center;
-          color: #6E6C75;
-          max-width: 500px;
-          line-height: 1.5;
-          font-size: 20px;
-
-          @media (prefers-color-scheme: dark) {
-            color: #A49FB5;
-          }
-        }
-
-        .flex-spacer {
-          flex: 1;
-        }
-
-        .success {
-          padding: 12px 16px;
-          border-radius: 8px;
-          font-size: 20px;
-          line-height: 1;
-          background-color: #00F261;
-          border: 1px solid #00BF4D;
-          color: #181423;
-        }
-
-        .success_placeholder {
-          height: 46px;
-        }
-
-        .connectivity-error {
-          padding: 12px 16px;
-          background-color: #E50045;
-          border-radius: 8px;
-          width: 500px;
-          color: #FFFFFF;
-          border: 1px solid #A80033;
-          text-align: center;
-          margin: 0;
-        }
-
-        .connectivity-error a {
-          color: #FFFFFF;
-          text-decoration: underline;
-        }
-      `}</style>
-    </div>
-  );
 }
 </file>
 
@@ -814,34 +397,6 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-}
-</file>
-
-<file path="app/layout.tsx">
-import type { Metadata } from "next";
-import "./globals.css";
-import { AuthProvider } from "./Providers"; // 1. We import our new intercom system!
-
-export const metadata: Metadata = {
-  title: "FYP Management System",
-  description: "University Final Year Project Portal",
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en">
-      <body>
-        {/* 2. We wrap the entire application so every page has access to the login state */}
-        <AuthProvider>
-          {children}
-        </AuthProvider>
-      </body>
-    </html>
-  );
 }
 </file>
 
@@ -1056,29 +611,6 @@ const eslintConfig = defineConfig([
 export default eslintConfig;
 </file>
 
-<file path="instrumentation-client.ts">
-// This file configures the initialization of Sentry on the client.
-// The added config here will be used whenever a users loads a page in their browser.
-// https://docs.sentry.io/platforms/javascript/guides/nextjs/
-
-import * as Sentry from "@sentry/nextjs";
-
-Sentry.init({
-  dsn: "https://8e4a615a241749db21151e2bb2b6e9f7@o4511290592919552.ingest.us.sentry.io/4511290601308160",
-
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
-  // Enable logs to be sent to Sentry
-  enableLogs: true,
-
-  // Enable sending user PII (Personally Identifiable Information)
-  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
-});
-
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
-</file>
-
 <file path="instrumentation.ts">
 import * as Sentry from "@sentry/nextjs";
 
@@ -1093,68 +625,6 @@ export async function register() {
 }
 
 export const onRequestError = Sentry.captureRequestError;
-</file>
-
-<file path="middleware.ts">
-import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
-
-// ✅ Defined outside function = created once, not on every request
-const ADMIN_ROUTES = [
-  "/api/admin",
-  "/api/add-supervisor",
-  "/api/delete-supervisor",
-  "/api/supervisors/toggle-notifications",
-];
-
-const SUPERVISOR_ROUTES = [
-  "/api/dashboard/supervisor",
-  "/api/export-pdf",
-];
-
-export default withAuth(
-  function middleware(req) {
-    const token = req.nextauth.token;
-    const path = req.nextUrl.pathname;
-    const role = token?.role; // ✅ Read once, reuse
-
-    // 1. Protect Admin-Only Routes
-    const isAdminRoute = ADMIN_ROUTES.some(route => path.startsWith(route));
-    if (isAdminRoute && role !== "admin") {
-      return NextResponse.json(
-        { error: "Security Checkpoint: Access Denied. Admin privileges required." },
-        { status: 403 }
-      );
-    }
-
-    // 2. Protect Supervisor-Only Routes
-    const isSupervisorRoute = SUPERVISOR_ROUTES.some(route => path.startsWith(route));
-    if (isSupervisorRoute && role !== "supervisor" && role !== "admin") {
-      return NextResponse.json(
-        { error: "Security Checkpoint: Access Denied. Supervisor privileges required." },
-        { status: 403 }
-      );
-    }
-
-    return NextResponse.next();
-  },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-  }
-);
-
-export const config = {
-  matcher: [
-    "/api/admin/:path*",
-    "/api/add-supervisor",
-    "/api/delete-supervisor",
-    "/api/supervisors/toggle-notifications",
-    "/api/dashboard/supervisor",
-    "/api/export-pdf"
-  ],
-};
 </file>
 
 <file path="next-env.d.ts">
@@ -1238,28 +708,6 @@ Sentry.init({
 });
 </file>
 
-<file path="sentry.server.config.ts">
-// This file configures the initialization of Sentry on the server.
-// The config you add here will be used whenever the server handles a request.
-// https://docs.sentry.io/platforms/javascript/guides/nextjs/
-
-import * as Sentry from "@sentry/nextjs";
-
-Sentry.init({
-  dsn: "https://8e4a615a241749db21151e2bb2b6e9f7@o4511290592919552.ingest.us.sentry.io/4511290601308160",
-
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
-
-  // Enable logs to be sent to Sentry
-  enableLogs: true,
-
-  // Enable sending user PII (Personally Identifiable Information)
-  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
-});
-</file>
-
 <file path="tsconfig.json">
 {
   "compilerOptions": {
@@ -1297,119 +745,185 @@ Sentry.init({
 }
 </file>
 
-<file path="app/api/add-supervisor/route.ts">
+<file path="app/api/admin/update-program/route.ts">
 import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
-import User from '../../../models/User';
+import mongoose from 'mongoose';
+import connectToDatabase from '../../../../lib/mongodb';
+import User from '../../../../models/User';
+import Project from '../../../../models/Project';
 
 export async function POST(req: Request) {
   try {
-    const { name, email, rollNo, password, migrationCode } = await req.json();
-
-    // 1. Basic validation to prevent empty payloads reaching the database
-    if (!name || !email || !rollNo || !password) {
-      return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
-    }
-
     await connectToDatabase();
-    
-    // 2. We skip the slow `findOne` query to prevent race conditions and save DB reads.
-    // MongoDB will handle uniqueness atomically via indexes.
-    const newSupervisor = new User({
-      name,
-      email, 
-      rollNo,
-      password, // Note: We are currently saving in plaintext. 
-      role: 'supervisor',
-      migrationCode,
-      notificationsEnabled: true
-    });
-    
-    // 3. Attempt to save directly
-    await newSupervisor.save();
-    
-    return NextResponse.json({ message: 'Supervisor added successfully!' }, { status: 201 });
-    
-  } catch (error: any) {
-    // 4. Catch the atomic MongoDB Duplicate Key Error (E11000)
-    // This perfectly handles race conditions if two requests hit at the exact same time.
-    if (error.code === 11000) {
-      return NextResponse.json({ error: 'This Username/ID or Email already exists!' }, { status: 400 });
+    const { targetUserId, newProgram } = await req.json();
+
+    // Start Atomic Transaction Session to prevent ghost data during the reset
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const student = await User.findById(targetUserId).session(session);
+      if (!student) {
+        await session.abortTransaction();
+        session.endSession();
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      }
+
+      // 1. Ghost Data Purge: Eject from current team safely within the transaction
+      if (student.projectId) {
+        const oldProject = await Project.findById(student.projectId).session(session);
+        if (oldProject) {
+          // If they are the only member, delete the project entirely
+          if (oldProject.members.length === 1 && oldProject.members[0].toString() === targetUserId) {
+            await Project.findByIdAndDelete(student.projectId, { session });
+          } else {
+            // Otherwise, just remove them from the array atomically
+            await Project.findByIdAndUpdate(student.projectId, {
+              $pull: { members: targetUserId }
+            }, { session });
+          }
+        }
+      }
+
+      // 2. Generate a new, empty default project for this student
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const newProject = new Project({
+        supervisorId: null,
+        members: [student._id],
+        inviteCode: inviteCode
+      });
+      await newProject.save({ session });
+
+      // 3. Apply the hard reset to the User document
+      student.program = newProgram;
+      student.supervisorId = null;
+      student.projectId = newProject._id;
+      student.status = 'Unassigned';
+      student.projectTitle = '';
+      student.pdfUrl = '';
+      student.remarks = 'Your program was updated by an Admin. You have been unassigned from your team and supervisor.';
+      await student.save({ session });
+
+      // 4. Commit the transaction securely
+      await session.commitTransaction();
+      session.endSession();
+
+      return NextResponse.json({ message: 'Program updated and student reset successfully!' }, { status: 200 });
+
+    } catch (transactionError) {
+      // Emergency Rollback: Revert all changes if any step fails
+      await session.abortTransaction();
+      session.endSession();
+      throw transactionError; 
     }
-    
-    // Log the actual error for debugging, but hide it from the client
-    console.error("API Error [add-supervisor]:", error.message);
-    return NextResponse.json({ error: 'Failed to add supervisor.' }, { status: 500 });
+
+  } catch (error) {
+    console.error('Update Program Error:', error);
+    return NextResponse.json({ error: 'Failed to update program' }, { status: 500 });
   }
 }
 </file>
 
-<file path="app/api/auth/[...nextauth]/route.ts">
-import NextAuth from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import connectToDatabase from "../../../../lib/mongodb";
-import User from "../../../../models/User";
+<file path="app/api/auth/reset-password/route.ts">
+import { NextResponse } from 'next/server';
+import connectToDatabase from '../../../../lib/mongodb';
+import User from '../../../../models/User';
+import bcrypt from 'bcryptjs'; // NEW: Import secure hashing library
 
-const handler = NextAuth({
-  providers: [
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        rollNo: { label: "Roll No", type: "text" },
-        password: { label: "Password", type: "password" }
-      },
-      async authorize(credentials) {
-        await connectToDatabase();
-        
-        const user = await User.findOne({ rollNo: credentials?.rollNo });
-        
-        if (!user) {
-          throw new Error("No user found with this Roll Number");
-        }
-        
-        // NEW: Security Lockout Check
-        if (user.isActive === false) {
-          throw new Error("Your account has been deactivated. Contact administration.");
-        }
-        
-        if (user.password !== credentials?.password) {
-          throw new Error("Incorrect password");
-        }
-        
-        return {
-          id: user._id.toString(),
-          name: user.name,
-          rollNo: user.rollNo,
-          role: user.role
-        };
+export async function POST(req: Request) {
+  try {
+    await connectToDatabase();
+    const { rollNo, code, newPassword } = await req.json();
+
+    const user = await User.findOne({ rollNo });
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+    // Verify Code and Expiration
+    if (user.resetCode !== code) return NextResponse.json({ error: 'Invalid reset code' }, { status: 400 });
+    if (new Date() > new Date(user.resetCodeExpiry)) return NextResponse.json({ error: 'Code has expired' }, { status: 400 });
+
+    // NEW: Hash the new password before updating the database
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password securely, clear the code, and set the 5-hour cooldown timer
+    await User.findByIdAndUpdate(user._id, {
+      password: hashedPassword, // SECURE: Save the hashed password
+      resetCode: null,
+      resetCodeExpiry: null,
+      lastPasswordChange: new Date()
+    });
+
+    return NextResponse.json({ message: 'Password successfully updated! You can now log in.' }, { status: 200 });
+  } catch (error: any) {
+    console.error('Password reset error:', error.message);
+    return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/delete-supervisor/route.ts">
+import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
+import connectToDatabase from '../../../lib/mongodb';
+import User from '../../../models/User';
+import Project from '../../../models/Project'; // NEW: Imported to fix the ghost-project bug
+
+export async function POST(req: Request) {
+  try {
+    await connectToDatabase();
+    const { id } = await req.json();
+
+    // 1. Establish an Atomic Transaction Session
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // 2. Delete the supervisor
+      const deletedSupervisor = await User.findByIdAndDelete(id, { session });
+      
+      if (!deletedSupervisor) {
+        await session.abortTransaction();
+        session.endSession();
+        return NextResponse.json({ error: 'Supervisor not found' }, { status: 404 });
       }
-    })
-  ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.role = (user as any).role;
-        token.rollNo = (user as any).rollNo;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).role = token.role;
-        (session.user as any).rollNo = token.rollNo;
-      }
-      return session;
+
+      // 3. Safely unassign any STUDENTS that belonged to this supervisor
+      await User.updateMany(
+        { supervisorId: id }, 
+        { $set: { 
+            supervisorId: null, 
+            status: 'Unassigned', 
+            remarks: 'Your supervisor was removed from the system. Please select a new one.' 
+          } 
+        },
+        { session }
+      );
+
+      // 4. CRITICAL FIX: Unassign the supervisor from any active PROJECTS
+      // If we don't do this, projects will be tied to a deleted ID, crashing the portal.
+      await Project.updateMany(
+        { supervisorId: id },
+        { $set: { supervisorId: null } },
+        { session }
+      );
+
+      // 5. Commit Transaction
+      await session.commitTransaction();
+      session.endSession();
+
+      return NextResponse.json({ message: 'Supervisor deleted successfully' }, { status: 200 });
+
+    } catch (transactionError) {
+      // Emergency Rollback
+      await session.abortTransaction();
+      session.endSession();
+      throw transactionError;
     }
-  },
-  session: {
-    strategy: "jwt",
-  },
-  secret: process.env.NEXTAUTH_SECRET,
-});
-
-export { handler as GET, handler as POST };
+  } catch (error: any) {
+    console.error('Delete Supervisor Error:', error.message);
+    return NextResponse.json({ error: 'Failed to delete supervisor' }, { status: 500 });
+  }
+}
 </file>
 
 <file path="app/api/export-pdf/route.ts">
@@ -1492,209 +1006,87 @@ export async function GET(req: NextRequest) {
 }
 </file>
 
-<file path="app/api/project/join/route.ts">
-import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../../lib/mongodb';
-import User from '../../../../models/User';
-import Project from '../../../../models/Project';
-
-export async function POST(req: Request) {
-  try {
-    const { studentId, inviteCode } = await req.json();
-    await connectToDatabase();
-
-    // 1. Find the target project
-    const targetProject = await Project.findOne({ inviteCode: inviteCode.toUpperCase() });
-    if (!targetProject) {
-      return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
-    }
-
-    // 2. Limit and Redundancy Checks
-    if (targetProject.members.length >= 2) {
-      return NextResponse.json({ error: 'This team is already full (Max 2 members).' }, { status: 400 });
-    }
-    if (targetProject.members.includes(studentId)) {
-      return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
-    }
-
-    const student = await User.findById(studentId);
-    if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-
-    // 3. Program Matching & Fetching Teammate State
-    let firstMember = null;
-    if (targetProject.members.length > 0) {
-      firstMember = await User.findById(targetProject.members[0]);
-      if (firstMember && firstMember.program !== student.program) {
-        return NextResponse.json({ 
-          error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.` 
-        }, { status: 403 });
-      }
-    }
-
-    // 4. Ghost Data Purge
-    if (student.projectId) {
-      const oldProject = await Project.findById(student.projectId);
-      if (oldProject && oldProject.members.length === 1 && oldProject.members[0].toString() === studentId) {
-        await Project.findByIdAndDelete(student.projectId);
-      }
-    }
-
-    // 5. Add to project array
-    targetProject.members.push(studentId);
-    await targetProject.save();
-
-    // 6. Inherit EVERY piece of state from the existing teammate
-    student.projectId = targetProject._id;
-    
-    if (firstMember) {
-      student.supervisorId = firstMember.supervisorId;
-      student.status = firstMember.status;
-      student.remarks = firstMember.remarks;
-      student.projectTitle = firstMember.projectTitle;
-      student.projectDesc = firstMember.projectDesc;
-      student.domain = firstMember.domain;
-      student.tools = firstMember.tools;
-      student.pdfUrl = firstMember.pdfUrl;
-    } else {
-      // Fallback just in case the project was empty
-      student.supervisorId = targetProject.supervisorId;
-    }
-
-    await student.save();
-
-    return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
-
-  } catch (error) {
-    console.error('Join Team Error:', error);
-    return NextResponse.json({ error: 'Failed to join team' }, { status: 500 });
-  }
-}
-</file>
-
-<file path="app/api/read-pdf/route.ts">
-import { get } from '@vercel/blob';
-import { NextRequest } from 'next/server';
-
-export async function GET(req: NextRequest) {
-  try {
-    // Extract the private blob URL from the query parameter
-    const url = req.nextUrl.searchParams.get('url');
-    if (!url) return new Response('Missing Document URL', { status: 400 });
-
-    // Securely fetch the private stream using the Vercel SDK
-    const result = await get(url, {
-      access: 'private',
-    });
-
-    // FIX 1: Handle the 'null' case to satisfy TypeScript's strict compiler
-    if (!result) {
-      return new Response('File not found or access denied', { status: 404 });
-    }
-
-    // FIX 2: Bypass strict TS checks on the union type
-    const { stream, blob } = result as any;
-
-    // Stream the PDF directly to the browser viewer
-    return new Response(stream, {
-      headers: {
-        'Content-Type': blob?.contentType || 'application/pdf',
-        'Content-Disposition': `inline; filename="${(blob?.pathname || url).split('/').pop()}"`,
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching private blob:', error);
-    return new Response('File not found or access denied', { status: 404 });
-  }
-}
-</file>
-
-<file path="app/api/supervisors/route.ts">
-import { NextResponse } from 'next/server';
+<file path="app/api/headline/route.ts">
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
-import User from '../../../models/User';
-import Project from '../../../models/Project'; 
-import { APP_SETTINGS } from '../../../config/appSettings';
+import Headline from '../../../models/Headline';
+import { getToken } from 'next-auth/jwt'; // NEW: Secure token verification
 
+export const dynamic = 'force-dynamic';
+
+// GET remains public/open so the frontend can easily read the headline on page load
 export async function GET() {
   try {
     await connectToDatabase();
+    // Fetch the most recently created active headline
+    const latestHeadline = await Headline.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+    return NextResponse.json({ headline: latestHeadline }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to fetch headline' }, { status: 500 });
+  }
+}
+
+// POST is now heavily fortified against unauthorized actors
+export async function POST(req: NextRequest) {
+  try {
+    // 1. Strict Security Check: Extract the cryptographic JWT token
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     
-    // 1. Fetch all users with the role of supervisor (Query 1)
-    const supervisors = await User.find({ role: 'supervisor' }).lean();
-    
-    // If no supervisors exist, return early to save processing time
-    if (!supervisors.length) {
-      return NextResponse.json([], { status: 200 });
+    // 2. Enforce Admin-Only Privileges
+    if (!token || token.role !== 'admin') {
+      console.warn(`Unauthorized headline broadcast attempt by User ID: ${token?.id || 'Unknown IP'}`);
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators can broadcast headlines.' }, 
+        { status: 403 }
+      );
     }
 
-    // Extract supervisor IDs so we only count data for these specific users
-    const supervisorIds = supervisors.map(sup => sup._id);
-    const countsMap = new Map(); // Using a Map for O(1) lightning-fast lookups
-
-    // 2. Perform ONE bulk aggregation instead of N individual count queries (Query 2)
-    if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-      const studentCounts = await User.aggregate([
-        { $match: { role: 'student', supervisorId: { $in: supervisorIds } } },
-        { $group: { _id: '$supervisorId', count: { $sum: 1 } } }
-      ]);
-      
-      // Store the bulk results in our map
-      studentCounts.forEach(item => countsMap.set(item._id.toString(), item.count));
-      
-    } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-      const projectCounts = await Project.aggregate([
-        { $match: { supervisorId: { $in: supervisorIds } } },
-        { $group: { _id: '$supervisorId', count: { $sum: 1 } } }
-      ]);
-      
-      // Store the bulk results in our map
-      projectCounts.forEach(item => countsMap.set(item._id.toString(), item.count));
-    }
-
-    // 3. Attach the capacity metadata in memory (Zero database calls inside this loop)
-    const supervisorsWithSlots = supervisors.map(sup => {
-      // Pull the pre-calculated count from our map, default to 0 if not found
-      const filledSlots = countsMap.get(sup._id.toString()) || 0;
-      
-      return {
-        ...sup,
-        filledSlots,
-        isFull: filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR,
-        maxSlots: APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR
-      };
-    });
-
-    return NextResponse.json(supervisorsWithSlots, { status: 200 });
+    await connectToDatabase();
+    const { text } = await req.json();
     
+    // 3. Deactivate all previous headlines to keep the database clean
+    await Headline.updateMany({}, { $set: { isActive: false } });
+    
+    // 4. Create the new headline
+    if (text && text.trim() !== '') {
+      await Headline.create({ text, isActive: true });
+    }
+    
+    return NextResponse.json({ message: 'Headline updated successfully!' }, { status: 200 });
   } catch (error: any) {
-    console.error('API Error [supervisor-fetch]:', error.message);
-    return NextResponse.json({ error: 'Failed to fetch supervisors' }, { status: 500 });
+    console.error('Headline API Error:', error.message);
+    return NextResponse.json({ error: 'Failed to update headline' }, { status: 500 });
   }
 }
 </file>
 
-<file path="app/api/upload/route.ts">
-import { put } from '@vercel/blob';
-import { NextRequest, NextResponse } from 'next/server';
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import "./globals.css";
+import { AuthProvider } from "./Providers";
 
-export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-    
-    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+export const metadata: Metadata = {
+  title: "FYP Management System",
+  description: "University Final Year Project Portal",
+  icons: {
+    icon: '/logo.png',
+  },
+};
 
-    // FIX: Using 'private' access to securely lock the document
-    const blob = await put(`proposals/${Date.now()}-${file.name}`, file, {
-      access: 'private',
-    });
-
-    return NextResponse.json({ url: blob.url });
-    
-  } catch (err) {
-    console.error('Vercel Blob Upload error:', err);
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
-  }
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
+    </html>
+  );
 }
 </file>
 
@@ -2297,6 +1689,461 @@ node_modules
 .env.sentry-build-plugin
 </file>
 
+<file path="instrumentation-client.ts">
+// This file configures the initialization of Sentry on the client.
+// The added config here will be used whenever a users loads a page in their browser.
+// https://docs.sentry.io/platforms/javascript/guides/nextjs/
+
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: "https://8e4a615a241749db21151e2bb2b6e9f7@o4511290592919552.ingest.us.sentry.io/4511290601308160",
+
+  // SECURE: Lowered to 20% to prevent browser-side transactions from draining your free quota
+  tracesSampleRate: 0.2,
+  
+  // Enable logs to be sent to Sentry
+  enableLogs: true,
+
+  // SECURE: Disabled sending user PII from the browser (IP addresses, etc.)
+  sendDefaultPii: false,
+});
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+</file>
+
+<file path="middleware.ts">
+import { withAuth } from "next-auth/middleware";
+import { NextResponse } from "next/server";
+
+// ✅ Defined outside function = created once, saving memory on every request
+const ADMIN_ROUTES = [
+  "/api/admin",
+  "/api/add-supervisor",
+  "/api/delete-supervisor",
+  "/api/supervisors/toggle-notifications",
+];
+
+const SUPERVISOR_ROUTES = [
+  "/api/dashboard/supervisor",
+  "/api/export-pdf",
+];
+
+const STUDENT_ROUTES = [
+  "/api/dashboard/student",
+  "/api/project/join",
+  "/api/upload", // Secures the Vercel Blob from public abuse
+];
+
+export default withAuth(
+  function middleware(req) {
+    const token = req.nextauth.token;
+    const path = req.nextUrl.pathname;
+    const role = token?.role;
+
+    // 1. Protect Admin-Only Routes
+    const isAdminRoute = ADMIN_ROUTES.some(route => path.startsWith(route));
+    if (isAdminRoute && role !== "admin") {
+      return NextResponse.json(
+        { error: "Security Checkpoint: Access Denied. Admin privileges required." },
+        { status: 403 }
+      );
+    }
+
+    // 2. Protect Supervisor-Only Routes
+    const isSupervisorRoute = SUPERVISOR_ROUTES.some(route => path.startsWith(route));
+    if (isSupervisorRoute && role !== "supervisor" && role !== "admin") {
+      return NextResponse.json(
+        { error: "Security Checkpoint: Access Denied. Supervisor privileges required." },
+        { status: 403 }
+      );
+    }
+
+    // 3. Protect Student-Only Routes (Prevents public internet abuse)
+    const isStudentRoute = STUDENT_ROUTES.some(route => path.startsWith(route));
+    if (isStudentRoute && role !== "student" && role !== "admin") {
+      return NextResponse.json(
+        { error: "Security Checkpoint: Access Denied. Student privileges required." },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.next();
+  },
+  {
+    callbacks: {
+      // Require a valid token for any route that the middleware matcher catches
+      authorized: ({ token }) => !!token,
+    },
+  }
+);
+
+// The matcher tells Next.js exactly which routes should go through this firewall
+export const config = {
+  matcher: [
+    /* Admin Routes */
+    "/api/admin/:path*",
+    "/api/add-supervisor",
+    "/api/delete-supervisor",
+    "/api/supervisors/toggle-notifications",
+    
+    /* Supervisor Routes */
+    "/api/dashboard/supervisor",
+    "/api/export-pdf",
+
+    /* Student & File Routes (Newly Secured) */
+    "/api/dashboard/student",
+    "/api/project/join",
+    "/api/upload"
+  ],
+};
+</file>
+
+<file path="sentry.server.config.ts">
+// This file configures the initialization of Sentry on the server.
+// The config you add here will be used whenever the server handles a request.
+// https://docs.sentry.io/platforms/javascript/guides/nextjs/
+
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: "https://8e4a615a241749db21151e2bb2b6e9f7@o4511290592919552.ingest.us.sentry.io/4511290601308160",
+
+  // Define how likely traces are sampled. 
+  // In a free-tier/production app, 1.0 (100%) will quickly exhaust your Sentry quota.
+  // We are lowering this to 0.2 (20%) to save quota while still catching major trends.
+  tracesSampleRate: 0.2,
+
+  // Enable logs to be sent to Sentry
+  enableLogs: true,
+
+  // SECURE: Disable sending user PII (Personally Identifiable Information)
+  sendDefaultPii: false,
+
+  // SECURE: Actively scrub sensitive headers before the error report leaves your server
+  beforeSend(event) {
+    if (event.request?.headers) {
+      delete event.request.headers['cookie'];
+      delete event.request.headers['authorization'];
+    }
+    return event;
+  },
+});
+</file>
+
+<file path="app/api/add-supervisor/route.ts">
+import { NextResponse } from 'next/server';
+import connectToDatabase from '../../../lib/mongodb';
+import User from '../../../models/User';
+import bcrypt from 'bcryptjs'; // NEW: Import secure hashing library
+
+export async function POST(req: Request) {
+  try {
+    const { name, email, rollNo, password, migrationCode } = await req.json();
+
+    // 1. Basic validation to prevent empty payloads reaching the database
+    if (!name || !email || !rollNo || !password) {
+      return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    
+    // 2. Hash the password before it ever touches the database
+    // Using 10 salt rounds provides a strong balance between security and performance
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // 3. We skip the slow `findOne` query to prevent race conditions and save DB reads.
+    // MongoDB will handle uniqueness atomically via indexes.
+    const newSupervisor = new User({
+      name,
+      email, 
+      rollNo,
+      password: hashedPassword, // SECURE: Save the hashed version, not the plaintext
+      role: 'supervisor',
+      migrationCode,
+      notificationsEnabled: true
+    });
+    
+    // 4. Attempt to save directly
+    await newSupervisor.save();
+    
+    return NextResponse.json({ message: 'Supervisor added successfully!' }, { status: 201 });
+    
+  } catch (error: any) {
+    // 5. Catch the atomic MongoDB Duplicate Key Error (E11000)
+    // This perfectly handles race conditions if two requests hit at the exact same time.
+    if (error.code === 11000) {
+      return NextResponse.json({ error: 'This Username/ID or Email already exists!' }, { status: 400 });
+    }
+    
+    // Log the actual error for debugging, but hide it from the client
+    console.error("API Error [add-supervisor]:", error.message);
+    return NextResponse.json({ error: 'Failed to add supervisor.' }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/project/join/route.ts">
+import { NextResponse } from 'next/server';
+import connectToDatabase from '../../../../lib/mongodb';
+import User from '../../../../models/User';
+import Project from '../../../../models/Project';
+
+export async function POST(req: Request) {
+  try {
+    const { studentId, inviteCode } = await req.json();
+    await connectToDatabase();
+
+    const student = await User.findById(studentId);
+    if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+
+    // 1. Find the target project (The "Read" phase)
+    const targetProject = await Project.findOne({ inviteCode: inviteCode.toUpperCase() });
+    if (!targetProject) {
+      return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
+    }
+
+    // 2. Limit and Redundancy Checks in memory
+    if (targetProject.members.length >= 2) {
+      return NextResponse.json({ error: 'This team is already full (Max 2 members).' }, { status: 400 });
+    }
+    if (targetProject.members.includes(studentId)) {
+      return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
+    }
+
+    // 3. Program Matching & Fetching Teammate State
+    let firstMember = null;
+    if (targetProject.members.length > 0) {
+      firstMember = await User.findById(targetProject.members[0]);
+      if (firstMember && firstMember.program !== student.program) {
+        return NextResponse.json({ 
+          error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.` 
+        }, { status: 403 });
+      }
+    }
+
+    // 4. ATOMIC UPDATE (Optimistic Concurrency Control)
+    // We attempt to update the database ONLY if the members array hasn't changed since we checked it.
+    const atomicUpdate = await Project.findOneAndUpdate(
+      { 
+        _id: targetProject._id, 
+        members: targetProject.members // The "Lock": Ensures no one else joined in the last millisecond
+      },
+      { 
+        $addToSet: { members: studentId } // Atomically pushes only if student isn't already there
+      },
+      { new: true }
+    );
+
+    // If atomicUpdate is null, it means the members array changed mid-flight. A race condition was caught!
+    if (!atomicUpdate) {
+      return NextResponse.json({ error: 'Team state changed during join. The team might be full now. Please try again.' }, { status: 409 });
+    }
+
+    // 5. Ghost Data Purge (Optimized with atomic operations)
+    if (student.projectId && student.projectId.toString() !== targetProject._id.toString()) {
+      const oldProject = await Project.findById(student.projectId);
+      if (oldProject) {
+        if (oldProject.members.length === 1 && oldProject.members[0].toString() === studentId) {
+          // If they were the only member, destroy the old project
+          await Project.findByIdAndDelete(student.projectId);
+        } else {
+          // Atomically remove them from the old team's array
+          await Project.findByIdAndUpdate(student.projectId, {
+            $pull: { members: studentId }
+          });
+        }
+      }
+    }
+
+    // 6. Inherit EVERY piece of state from the existing teammate
+    student.projectId = targetProject._id;
+    
+    if (firstMember) {
+      student.supervisorId = firstMember.supervisorId;
+      student.status = firstMember.status;
+      student.remarks = firstMember.remarks;
+      student.projectTitle = firstMember.projectTitle;
+      student.projectDesc = firstMember.projectDesc;
+      student.domain = firstMember.domain;
+      student.tools = firstMember.tools;
+      student.pdfUrl = firstMember.pdfUrl;
+    } else {
+      // Fallback just in case the project was empty
+      student.supervisorId = targetProject.supervisorId;
+    }
+
+    await student.save();
+
+    return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
+
+  } catch (error) {
+    console.error('Join Team Error:', error);
+    return NextResponse.json({ error: 'Failed to join team' }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/read-pdf/route.ts">
+import { get } from '@vercel/blob';
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt'; // NEW: Cryptographic token verification
+
+export async function GET(req: NextRequest) {
+  try {
+    // 1. Strict Security Firewall: Verify the user is authenticated
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    
+    if (!token) {
+      console.warn('Unauthorized PDF access attempt blocked.');
+      return new NextResponse('Unauthorized: You must be logged in to view secure university documents.', { status: 401 });
+    }
+
+    // 2. Extract the private blob URL from the query parameter
+    const url = req.nextUrl.searchParams.get('url');
+    if (!url) return new NextResponse('Missing Document URL', { status: 400 });
+
+    // 3. Securely fetch the private stream using the Vercel SDK
+    const result = await get(url, {
+      access: 'private',
+    });
+
+    if (!result) {
+      return new NextResponse('File not found or access denied', { status: 404 });
+    }
+
+    const { stream, blob } = result as any;
+
+    // 4. Stream the PDF directly to the authenticated browser
+    return new NextResponse(stream as any, {
+      headers: {
+        'Content-Type': blob?.contentType || 'application/pdf',
+        // 'inline' tells the browser to display it rather than forcing a download
+        'Content-Disposition': `inline; filename="${(blob?.pathname || url).split('/').pop()}"`,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching private blob:', error.message);
+    return new NextResponse('File not found or access denied', { status: 404 });
+  }
+}
+</file>
+
+<file path="app/api/supervisors/route.ts">
+import { NextResponse } from 'next/server';
+import connectToDatabase from '../../../lib/mongodb';
+import User from '../../../models/User';
+import Project from '../../../models/Project'; 
+import { APP_SETTINGS } from '../../../config/appSettings';
+
+export async function GET() {
+  try {
+    await connectToDatabase();
+    
+    // 1. Fetch all users with the role of supervisor (Query 1)
+    const supervisors = await User.find({ role: 'supervisor' }).lean();
+    
+    // If no supervisors exist, return early to save processing time
+    if (!supervisors.length) {
+      return NextResponse.json([], { status: 200 });
+    }
+
+    // Extract supervisor IDs so we only count data for these specific users
+    const supervisorIds = supervisors.map(sup => sup._id);
+    const countsMap = new Map(); // Using a Map for O(1) lightning-fast lookups
+
+    // 2. Perform ONE bulk aggregation instead of N individual count queries (Query 2)
+    if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+      const studentCounts = await User.aggregate([
+        { $match: { role: 'student', supervisorId: { $in: supervisorIds } } },
+        { $group: { _id: '$supervisorId', count: { $sum: 1 } } }
+      ]);
+      
+      // Store the bulk results in our map
+      studentCounts.forEach(item => countsMap.set(item._id.toString(), item.count));
+      
+    } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+      const projectCounts = await Project.aggregate([
+        { $match: { supervisorId: { $in: supervisorIds } } },
+        { $group: { _id: '$supervisorId', count: { $sum: 1 } } }
+      ]);
+      
+      // Store the bulk results in our map
+      projectCounts.forEach(item => countsMap.set(item._id.toString(), item.count));
+    }
+
+    // 3. Attach the capacity metadata in memory (Zero database calls inside this loop)
+    const supervisorsWithSlots = supervisors.map(sup => {
+      // Pull the pre-calculated count from our map, default to 0 if not found
+      const filledSlots = countsMap.get(sup._id.toString()) || 0;
+      
+      return {
+        ...sup,
+        filledSlots,
+        isFull: filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR,
+        maxSlots: APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR
+      };
+    });
+
+    return NextResponse.json(supervisorsWithSlots, { status: 200 });
+    
+  } catch (error: any) {
+    console.error('API Error [supervisor-fetch]:', error.message);
+    return NextResponse.json({ error: 'Failed to fetch supervisors' }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/upload/route.ts">
+import { put } from '@vercel/blob';
+import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto'; // Built-in Node.js module for secure UUIDs
+
+// 1. Define Strict Limits (Crucial for Vercel Hobby Tier)
+// Next.js serverless functions have a ~4.5MB request body limit on free tiers.
+const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB maximum size
+
+export async function POST(req: NextRequest) {
+  try {
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
+    
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    // 2. Strict MIME-Type Validation
+    // Never trust the frontend extension. Check the actual file type payload.
+    if (file.type !== 'application/pdf') {
+      return NextResponse.json({ error: 'Security Check Failed: Only authentic PDF files are permitted.' }, { status: 400 });
+    }
+
+    // 3. Strict Size Validation
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: 'File is too large. Maximum size allowed is 4MB.' }, { status: 400 });
+    }
+
+    // 4. Collision-Proof File Naming & Sanitization
+    // Strip out weird characters, spaces, and potential path-traversal strings
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    // Use a cryptographic UUID instead of Date.now() to guarantee 100% uniqueness
+    const uniqueId = crypto.randomUUID();
+    const safeFilename = `proposals/${uniqueId}-${sanitizedName}`;
+
+    // 5. Secure Upload to Vercel Blob
+    const blob = await put(safeFilename, file, {
+      access: 'private', // Keeps the document locked from public internet
+    });
+
+    return NextResponse.json({ url: blob.url });
+    
+  } catch (err: any) {
+    console.error('Vercel Blob Upload error:', err.message);
+    return NextResponse.json({ error: 'Upload failed due to a server error.' }, { status: 500 });
+  }
+}
+</file>
+
 <file path="next.config.ts">
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
@@ -2325,313 +2172,121 @@ export default withSentryConfig(nextConfig, {
 });
 </file>
 
-<file path="components/dashboards/SupervisorDashboard.tsx">
-'use client';
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { signOut } from 'next-auth/react';
-import { XCircle, Globe, Wrench, FileText, ArrowRightLeft, UserMinus, LayoutDashboard, Download, LogIn, Loader2, ChevronRight } from 'lucide-react';
-import { GlassCard } from '../ui/SharedUI';
-import { Timeline } from '../ui/Timeline';
+<file path="app/api/auth/[...nextauth]/route.ts">
+import NextAuth from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import connectToDatabase from "../../../../lib/mongodb";
+import User from "../../../../models/User";
+import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
 
-
-const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
-  const [myProjects, setMyProjects] = useState<any[]>([]);
-  const [migrationInput, setMigrationInput] = useState<Record<string, string>>({});
-  const [myMigrationCode, setMyMigrationCode] = useState<string>("Loading...");
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedProject, setSelectedProject] = useState<any>(null);
-  const [isExporting, setIsExporting] = useState(false);
-
-  const fetchProjects = async () => {
-    const res = await fetch(`/api/dashboard/supervisor?id=${(session?.user as any)?.id}`);
-    const json = await res.json();
-    setMyProjects(Array.isArray(json.projects) ? json.projects : []);
-    try {
-      const supRes = await fetch('/api/supervisors');
-      const supData = await supRes.json();
-      const sups = Array.isArray(supData) ? supData : [];
-      const me = sups.find((s: any) => s.rollNo === (session?.user as any)?.rollNo);
-      if (me) setMyMigrationCode(me.migrationCode || "N/A");
-    } catch (err) { setMyMigrationCode("Error"); }
-    setIsLoading(false);
-  };
-  useEffect(() => { fetchProjects(); }, []);
-
-  const handleAction = async (triggerStudentId: string, newStatus: string) => {
-    showDialog({
-      type: 'prompt', title: `${newStatus} Project`, message: `Add optional remarks for marking this team's project as ${newStatus}:`,
-      onConfirm: async (remarks: string) => {
-        await fetch('/api/dashboard/supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: remarks || "No remarks provided." }) });
-        setSelectedProject(null); fetchProjects(); 
-      }
-    });
-  };
-
-  const handleMigrate = async (triggerStudentId: string, projectId: string) => {
-    const code = migrationInput[projectId];
-    if (!code) { showDialog({ title: "Input Required", message: "Please enter a Migration Code." }); return; }
-    const res = await fetch('/api/dashboard/supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'migrate', studentId: triggerStudentId, migrationCode: code }) });
-    if (res.ok) { showDialog({ title: "Success", message: "Team migrated!" }); setSelectedProject(null); fetchProjects(); } 
-    else { showDialog({ title: "Error", message: "Invalid Migration Code." }); }
-  };
-
-  const handleRemoveTeam = (triggerStudentId: string, teamNames: string) => {
-    showDialog({
-      type: 'confirm', title: 'Remove Team?', message: `Are you sure you want to remove ${teamNames} from your list? They will have to select a new supervisor.`,
-      onConfirm: async () => {
-        await fetch('/api/dashboard/supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'removeStudent', studentId: triggerStudentId }) });
-        setSelectedProject(null); fetchProjects();
-      }
-    });
-  };
-
-  const handleExportPDF = async () => {
-    setIsExporting(true);
-    try {
-      const id   = (session?.user as any)?.id;
-      const name = session?.user?.name || 'Supervisor';
-      const response = await fetch(`/api/export-pdf?id=${id}&name=${encodeURIComponent(name)}`);
-      if (!response.ok) throw new Error(`Export failed. Server responded with status: ${response.status}`);
-      const blob = await response.blob();
-      if (blob.size === 0) throw new Error('Received an empty file from the server.');
-      
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `fyp-report-${name.replace(/\s+/g, '-')}.xlsx`; 
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err: any) {
-      showDialog({ title: 'Export Failed', message: err.message || 'An unexpected error occurred.' });
-    } finally {
-      setTimeout(() => setIsExporting(false), 1000);
-    }
-  };
-
-  if (isLoading) return <div className="flex items-center justify-center min-h-[80vh]"><Loader2 className={`animate-spin ${theme.text}`} size={40}/></div>;
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6 min-h-[80vh] relative">
-      <AnimatePresence>
-        {selectedProject && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedProject(null)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 rounded-[2rem] border shadow-2xl backdrop-blur-3xl custom-scrollbar ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
-            >
-              <button onClick={() => setSelectedProject(null)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-neutral-500/20 transition-colors z-10"><XCircle size={24} className="opacity-60" /></button>
-              <div className="mb-6 border-b border-neutral-200 dark:border-neutral-800 pb-6 pr-12">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-3xl font-extrabold tracking-tight mb-1">{selectedProject.members.map((m:any) => m.name).join(' & ')}</h2>
-                    <p className="font-mono opacity-60 font-medium">{selectedProject.members.map((m:any) => m.rollNo).join(' | ')}</p>
-                  </div>
-                  <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${selectedProject.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : selectedProject.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{selectedProject.status}</span>
-                </div>
-              </div>
-
-              <Timeline 
-                currentStage={selectedProject.stage || 'PROPOSAL'} 
-                isDarkMode={isDarkMode} 
-                theme={theme} 
-              />
-
-              {selectedProject.projectTitle ? (
-                <div className={`p-6 rounded-2xl mb-8 ${isDarkMode ? 'bg-black/20' : 'bg-neutral-50'} shadow-inner`}>
-                  <h3 className="text-xl font-bold mb-4">{selectedProject.projectTitle}</h3>
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {selectedProject.domain && <span className={`text-xs px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider flex items-center gap-1.5 ${theme.lightBg} ${theme.text}`}><Globe size={14}/> {selectedProject.domain}</span>}
-                    {selectedProject.tools && <span className={`text-xs px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={14}/> {selectedProject.tools}</span>}
-                  </div>
-                  <p className="text-sm opacity-80 leading-relaxed mb-6">{selectedProject.projectDesc}</p>
-                  {selectedProject.pdfUrl ? (
-                    <a href={`/api/read-pdf?url=${encodeURIComponent(selectedProject.pdfUrl)}`} target="_blank" rel="noreferrer" className={`text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold w-fit transition-colors duration-300 ${theme.bg} text-white shadow-md hover:scale-[1.02] active:scale-95`}>
-                      <FileText size={16}/> View Complete PDF Document
-                    </a>
-                  ) : <span className={`text-sm px-4 py-2 rounded-xl flex items-center gap-2 font-bold w-fit opacity-70 ${isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'}`}>No PDF Attached</span>}
-                </div>
-              ) : <div className={`mb-8 text-center p-8 rounded-2xl ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100'}`}><FileText size={40} className="mx-auto mb-3 opacity-20" /><p className="font-bold opacity-50">Project details have not been submitted yet.</p></div>}
-              
-              <div>
-                <h4 className="font-extrabold text-sm tracking-widest uppercase opacity-40 mb-4">Supervisor Actions</h4>
-                <div className="space-y-4">
-                  
-                  {/* --- UPDATED BUTTONS WRAPPER --- */}
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <motion.button 
-                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
-                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved'} 
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
-                    >
-                      Approve Project
-                    </motion.button>
-                    
-                    <motion.button 
-                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
-                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Changes Requested')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested'} 
-                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
-                    >
-                      Make Suggestion
-                    </motion.button>
-
-                    <motion.button 
-                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
-                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected'} 
-                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
-                    >
-                      Reject Project
-                    </motion.button>
-                  </div>
-                  {/* ------------------------------- */}
-
-                  <div className="flex gap-3 items-center">
-                    <div className={`flex-1 flex items-center p-2 rounded-xl border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
-                      <input placeholder="Enter target Migration Code..." className="w-full bg-transparent px-3 text-sm focus:outline-none uppercase font-mono font-medium" onChange={(e) => setMigrationInput({...migrationInput, [selectedProject._id]: e.target.value.toUpperCase()})} />
-                      <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleMigrate(selectedProject.triggerStudentId, selectedProject._id)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${theme.bg} text-white`}><ArrowRightLeft size={14}/> Migrate</motion.button>
-                    </div>
-                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleRemoveTeam(selectedProject.triggerStudentId, selectedProject.members.map((m:any) => m.name).join(' & '))} title="Remove Team" className="p-3.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-transparent hover:border-red-500 flex items-center justify-center shadow-sm"><UserMinus size={20}/></motion.button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <GlassCard isDarkMode={isDarkMode} className="w-full flex flex-col md:flex-row justify-between items-start md:items-center p-6 md:px-8 gap-5">
-        <div className="w-full">
-          <h2 className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
-            <div className={`p-2 rounded-xl ${theme.lightBg} ${theme.text} transition-colors duration-500`}><LayoutDashboard size={20} /></div> Supervisor Panel
-          </h2>
-          <div className="font-medium opacity-60 mt-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-            <span>Welcome, {session?.user?.name}</span><span className="hidden sm:block opacity-40 text-sm">|</span>
-            <span>Your Code: <span className={`font-mono px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}>{myMigrationCode}</span></span>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 border-neutral-200 dark:border-neutral-800 transition-colors">
-          <motion.button whileHover={{ scale: isExporting ? 1 : 1.05 }} whileTap={{ scale: isExporting ? 1 : 0.95 }} onClick={handleExportPDF} disabled={isExporting} className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-3 sm:px-5 py-2.5 rounded-2xl font-bold text-sm sm:text-base transition-all ${isExporting ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-90'} ${theme.bg} text-white shadow-md`}>
-            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />} <span className="whitespace-nowrap">{isExporting ? 'Downloading...' : 'Export Excel'}</span>
-          </motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`flex-1 md:flex-none justify-center bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-3 sm:px-6 py-2.5 rounded-2xl transition-all font-bold text-sm sm:text-base flex items-center gap-2`}><LogIn size={20} className="rotate-180" /> <span className="whitespace-nowrap">Logout</span></motion.button>
-        </div>
-      </GlassCard>
-
-      <GlassCard isDarkMode={isDarkMode} className="flex-1 p-8">
-        <h3 className="text-xl font-extrabold tracking-tight mb-8">My Assigned Projects <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{myProjects.length}</span></h3>
-        {myProjects.length === 0 ? (
-           <div className="text-center py-20 opacity-40 border-2 border-dashed rounded-3xl dark:border-neutral-700 font-medium">No projects assigned to you yet.</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence>
-              {myProjects.map(project => (
-                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedProject(project)} key={project._id} className={`cursor-pointer p-6 rounded-[2rem] border flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${isDarkMode ? 'bg-neutral-800/50 border-neutral-700/50 hover:border-neutral-600' : 'bg-neutral-50/50 border-neutral-200/50 hover:border-neutral-300'}`}>
-                  <div>
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h4 className="font-extrabold text-lg tracking-tight line-clamp-1 pr-2">{project.members.map((m:any) => m.name).join(' & ')}</h4>
-                        <p className="text-xs font-mono font-medium opacity-50">{project.members.map((m:any) => m.rollNo).join(' | ')}</p>
-                      </div>
-                      <span className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-lg shrink-0 ${project.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : project.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{project.status}</span>
-                    </div>
-                    {project.projectTitle ? (
-                      <div className="mb-2">
-                        <p className="text-sm font-bold tracking-tight line-clamp-1">{project.projectTitle}</p>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {project.domain && <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${theme.lightBg} ${theme.text} line-clamp-1`}><Globe size={10} className="inline mr-1 mb-0.5"/>{project.domain}</span>}
-                          {project.tools && <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={10} className="inline mr-1 mb-0.5"/>{project.tools}</span>}
-                        </div>
-                      </div>
-                    ) : <div className={`text-xs opacity-50 font-medium italic mt-2`}>No project data</div>}
-                  </div>
-                  <div className={`mt-4 pt-4 border-t flex justify-between items-center text-xs font-bold transition-opacity ${theme.text} ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
-                    <span>Click to view full details</span><ChevronRight size={16} />
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </GlassCard>
-    </motion.div>
-  );
-};
-
-
-export default SupervisorDashboard;
-</file>
-
-<file path="app/api/register/route.ts">
-import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
-import User from '../../../models/User';
-import Project from '../../../models/Project';
-import { APP_SETTINGS } from '../../../config/appSettings';
-
-export async function POST(req: Request) {
-  try {
-    // 1. Add 'program' to the destructured JSON payload
-    const { name, email, rollNo, password, supervisorId, program } = await req.json();
-    await connectToDatabase();
-    
-    const existingUser = await User.findOne({ 
-      $or: [{ rollNo }, { email }] 
-    });
-    
-    if (existingUser) {
-      return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
-    }
-
-    if (supervisorId) {
-      let filledSlots = 0;
-      if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-        filledSlots = await User.countDocuments({ role: 'student', supervisorId });
-      } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-        filledSlots = await Project.countDocuments({ supervisorId });
-      }
-
-      if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
-        return NextResponse.json(
-          { error: 'Registration failed. The selected supervisor has reached maximum capacity.' }, 
-          { status: 403 }
-        );
-      }
-    }
-    
-    // 2. Pass 'program' into the new User schema
-    const newStudent = new User({
-      name,
-      email,
-      rollNo,
-      password,
-      role: 'student',
-      program: program || 'BSCS', // Fallback safety
-      supervisorId: supervisorId || null,
-      status: 'Pending'
-    });
-    await newStudent.save();
-
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newProject = new Project({
-      supervisorId: supervisorId || null,
-      members: [newStudent._id],
-      inviteCode: inviteCode
-    });
-    await newProject.save();
-
-    newStudent.projectId = newProject._id;
-    await newStudent.save();
-
-    return NextResponse.json({ message: 'Registration successful!' }, { status: 201 });
-  } catch (error) {
-    console.error('Registration error:', error);
-    return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
+// --- HELPER: Backward-Compatible Verification ---
+async function verifyPassword(inputPassword: string, storedPassword: string) {
+  // Standard bcrypt hashes always start with "$2a$", "$2b$", or "$2y$" and are 60 chars long.
+  const isHashed = storedPassword.startsWith('$2') && storedPassword.length === 60;
+  
+  if (isHashed) {
+    // If securely hashed, use cryptographic comparison
+    return await bcrypt.compare(inputPassword, storedPassword);
+  } else {
+    // Legacy Fallback: Allow existing plaintext users to still log in
+    return inputPassword === storedPassword;
   }
+}
+
+const handler = NextAuth({
+  providers: [
+    CredentialsProvider({
+      name: "Credentials",
+      credentials: {
+        rollNo: { label: "Roll No", type: "text" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        await connectToDatabase();
+        
+        const user = await User.findOne({ rollNo: credentials?.rollNo });
+        
+        if (!user) {
+          throw new Error("No user found with this Roll Number");
+        }
+        
+        // Security Lockout Check
+        if (user.isActive === false) {
+          throw new Error("Your account has been deactivated. Contact administration.");
+        }
+        
+        // NEW: Utilize our smart verifier instead of direct string comparison
+        const isPasswordMatch = await verifyPassword(credentials?.password || "", user.password);
+        
+        if (!isPasswordMatch) {
+          throw new Error("Incorrect password");
+        }
+        
+        return {
+          id: user._id.toString(),
+          name: user.name,
+          rollNo: user.rollNo,
+          role: user.role
+        };
+      }
+    })
+  ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.role = (user as any).role;
+        token.rollNo = (user as any).rollNo;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        (session.user as any).id = token.id;
+        (session.user as any).role = token.role;
+        (session.user as any).rollNo = token.rollNo;
+      }
+      return session;
+    }
+  },
+  session: {
+    strategy: "jwt",
+    // We can remove the hardcoded 2-hour maxAge, as the browser closure will now handle termination
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+});
+
+// --- ARCHITECT-AI: TRUE BROWSER SESSION OVERRIDE ---
+// Intercept the NextAuth response and strip the explicit expiration dates.
+// This forces the browser to treat the token as a RAM-only session cookie.
+function enforceBrowserSession(response: Response) {
+  // Create a mutable copy of the response
+  const modifiedResponse = new Response(response.body, response);
+  
+  // Extract all cookies NextAuth is trying to set
+  const cookies = modifiedResponse.headers.getSetCookie();
+  modifiedResponse.headers.delete('set-cookie');
+  
+  // Re-apply the cookies, but surgically remove the Max-Age and Expires attributes
+  cookies.forEach(cookie => {
+    const sessionOnlyCookie = cookie
+      .replace(/;\s*Max-Age=[0-9]+/i, '')
+      .replace(/;\s*Expires=[^;]+/i, '');
+    modifiedResponse.headers.append('set-cookie', sessionOnlyCookie);
+  });
+  
+  return modifiedResponse;
+}
+
+// We must pass the "context" object so NextAuth knows the exact route parameters
+export async function GET(req: Request, context: any) {
+  const response = await handler(req as any, context);
+  return enforceBrowserSession(response);
+}
+
+export async function POST(req: Request, context: any) {
+  const response = await handler(req as any, context);
+  return enforceBrowserSession(response);
 }
 </file>
 
@@ -3006,6 +2661,260 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 export default StudentDashboard;
 </file>
 
+<file path="components/dashboards/SupervisorDashboard.tsx">
+'use client';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { signOut } from 'next-auth/react';
+import { XCircle, Globe, Wrench, FileText, ArrowRightLeft, UserMinus, LayoutDashboard, Download, LogIn, Loader2, ChevronRight } from 'lucide-react';
+import { GlassCard } from '../ui/SharedUI';
+import { Timeline } from '../ui/Timeline';
+
+
+const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
+  const [myProjects, setMyProjects] = useState<any[]>([]);
+  const [migrationInput, setMigrationInput] = useState<Record<string, string>>({});
+  const [myMigrationCode, setMyMigrationCode] = useState<string>("Loading...");
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  const fetchProjects = async () => {
+    const res = await fetch(`/api/dashboard/supervisor?id=${(session?.user as any)?.id}`);
+    const json = await res.json();
+    setMyProjects(Array.isArray(json.projects) ? json.projects : []);
+    try {
+      const supRes = await fetch('/api/supervisors');
+      const supData = await supRes.json();
+      const sups = Array.isArray(supData) ? supData : [];
+      const me = sups.find((s: any) => s.rollNo === (session?.user as any)?.rollNo);
+      if (me) setMyMigrationCode(me.migrationCode || "N/A");
+    } catch (err) { setMyMigrationCode("Error"); }
+    setIsLoading(false);
+  };
+  useEffect(() => { fetchProjects(); }, []);
+
+  const handleAction = async (triggerStudentId: string, newStatus: string) => {
+    showDialog({
+      type: 'prompt', title: `${newStatus} Project`, message: `Add optional remarks for marking this team's project as ${newStatus}:`,
+      onConfirm: async (remarks: string) => {
+        setIsProcessingAction(true); // START SPINNER
+        try {
+          const res = await fetch('/api/dashboard/supervisor', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: remarks || "No remarks provided." }) 
+          });
+          
+          if (!res.ok) throw new Error("Server failed to process the request.");
+          
+          setSelectedProject(null); 
+          fetchProjects(); 
+        } catch (error) {
+          showDialog({ title: "Network Error", message: "Failed to send suggestions. Please ensure you have a stable connection and try again." });
+        } finally {
+          setIsProcessingAction(false); // STOP SPINNER
+        }
+      }
+    });
+  };
+  const handleMigrate = async (triggerStudentId: string, projectId: string) => {
+    const code = migrationInput[projectId];
+    if (!code) { showDialog({ title: "Input Required", message: "Please enter a Migration Code." }); return; }
+    const res = await fetch('/api/dashboard/supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'migrate', studentId: triggerStudentId, migrationCode: code }) });
+    if (res.ok) { showDialog({ title: "Success", message: "Team migrated!" }); setSelectedProject(null); fetchProjects(); } 
+    else { showDialog({ title: "Error", message: "Invalid Migration Code." }); }
+  };
+
+  const handleRemoveTeam = (triggerStudentId: string, teamNames: string) => {
+    showDialog({
+      type: 'confirm', title: 'Remove Team?', message: `Are you sure you want to remove ${teamNames} from your list? They will have to select a new supervisor.`,
+      onConfirm: async () => {
+        await fetch('/api/dashboard/supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'removeStudent', studentId: triggerStudentId }) });
+        setSelectedProject(null); fetchProjects();
+      }
+    });
+  };
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      const id   = (session?.user as any)?.id;
+      const name = session?.user?.name || 'Supervisor';
+      const response = await fetch(`/api/export-pdf?id=${id}&name=${encodeURIComponent(name)}`);
+      if (!response.ok) throw new Error(`Export failed. Server responded with status: ${response.status}`);
+      const blob = await response.blob();
+      if (blob.size === 0) throw new Error('Received an empty file from the server.');
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fyp-report-${name.replace(/\s+/g, '-')}.xlsx`; 
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      showDialog({ title: 'Export Failed', message: err.message || 'An unexpected error occurred.' });
+    } finally {
+      setTimeout(() => setIsExporting(false), 1000);
+    }
+  };
+
+  if (isLoading) return <div className="flex items-center justify-center min-h-[80vh]"><Loader2 className={`animate-spin ${theme.text}`} size={40}/></div>;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6 min-h-[80vh] relative">
+      <AnimatePresence>
+        {selectedProject && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedProject(null)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 rounded-[2rem] border shadow-2xl backdrop-blur-3xl custom-scrollbar ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+            >
+              <button onClick={() => setSelectedProject(null)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-neutral-500/20 transition-colors z-10"><XCircle size={24} className="opacity-60" /></button>
+              <div className="mb-6 border-b border-neutral-200 dark:border-neutral-800 pb-6 pr-12">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-3xl font-extrabold tracking-tight mb-1">{selectedProject.members.map((m:any) => m.name).join(' & ')}</h2>
+                    <p className="font-mono opacity-60 font-medium">{selectedProject.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                  </div>
+                  <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${selectedProject.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : selectedProject.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{selectedProject.status}</span>
+                </div>
+              </div>
+
+              <Timeline 
+                currentStage={selectedProject.stage || 'PROPOSAL'} 
+                isDarkMode={isDarkMode} 
+                theme={theme} 
+              />
+
+              {selectedProject.projectTitle ? (
+                <div className={`p-6 rounded-2xl mb-8 ${isDarkMode ? 'bg-black/20' : 'bg-neutral-50'} shadow-inner`}>
+                  <h3 className="text-xl font-bold mb-4">{selectedProject.projectTitle}</h3>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {selectedProject.domain && <span className={`text-xs px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider flex items-center gap-1.5 ${theme.lightBg} ${theme.text}`}><Globe size={14}/> {selectedProject.domain}</span>}
+                    {selectedProject.tools && <span className={`text-xs px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={14}/> {selectedProject.tools}</span>}
+                  </div>
+                  <p className="text-sm opacity-80 leading-relaxed mb-6">{selectedProject.projectDesc}</p>
+                  {selectedProject.pdfUrl ? (
+                    <a href={`/api/read-pdf?url=${encodeURIComponent(selectedProject.pdfUrl)}`} target="_blank" rel="noreferrer" className={`text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold w-fit transition-colors duration-300 ${theme.bg} text-white shadow-md hover:scale-[1.02] active:scale-95`}>
+                      <FileText size={16}/> View Complete PDF Document
+                    </a>
+                  ) : <span className={`text-sm px-4 py-2 rounded-xl flex items-center gap-2 font-bold w-fit opacity-70 ${isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'}`}>No PDF Attached</span>}
+                </div>
+              ) : <div className={`mb-8 text-center p-8 rounded-2xl ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100'}`}><FileText size={40} className="mx-auto mb-3 opacity-20" /><p className="font-bold opacity-50">Project details have not been submitted yet.</p></div>}
+              
+              <div>
+                <h4 className="font-extrabold text-sm tracking-widest uppercase opacity-40 mb-4">Supervisor Actions</h4>
+                <div className="space-y-4">
+                  
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
+                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} 
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved' || isProcessingAction} 
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
+                    >
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Approve Project"}
+                    </motion.button>
+                    
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
+                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Changes Requested')} 
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested' || isProcessingAction} 
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
+                    >
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Make Suggestion"}
+                    </motion.button>
+
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
+                      onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} 
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected' || isProcessingAction} 
+                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
+                    >
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Reject Project"}
+                    </motion.button>
+                  </div>
+
+                  <div className="flex gap-3 items-center">
+                    <div className={`flex-1 flex items-center p-2 rounded-xl border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
+                      <input placeholder="Enter target Migration Code..." className="w-full bg-transparent px-3 text-sm focus:outline-none uppercase font-mono font-medium" onChange={(e) => setMigrationInput({...migrationInput, [selectedProject._id]: e.target.value.toUpperCase()})} />
+                      <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleMigrate(selectedProject.triggerStudentId, selectedProject._id)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${theme.bg} text-white`}><ArrowRightLeft size={14}/> Migrate</motion.button>
+                    </div>
+                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleRemoveTeam(selectedProject.triggerStudentId, selectedProject.members.map((m:any) => m.name).join(' & '))} title="Remove Team" className="p-3.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-transparent hover:border-red-500 flex items-center justify-center shadow-sm"><UserMinus size={20}/></motion.button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <GlassCard isDarkMode={isDarkMode} className="w-full flex flex-col md:flex-row justify-between items-start md:items-center p-6 md:px-8 gap-5">
+        <div className="w-full">
+          <h2 className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
+            <div className={`p-2 rounded-xl ${theme.lightBg} ${theme.text} transition-colors duration-500`}><LayoutDashboard size={20} /></div> Supervisor Panel
+          </h2>
+          <div className="font-medium opacity-60 mt-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+            <span>Welcome, {session?.user?.name}</span><span className="hidden sm:block opacity-40 text-sm">|</span>
+            <span>Your Code: <span className={`font-mono px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}>{myMigrationCode}</span></span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 border-neutral-200 dark:border-neutral-800 transition-colors">
+          <motion.button whileHover={{ scale: isExporting ? 1 : 1.05 }} whileTap={{ scale: isExporting ? 1 : 0.95 }} onClick={handleExportPDF} disabled={isExporting} className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-3 sm:px-5 py-2.5 rounded-2xl font-bold text-sm sm:text-base transition-all ${isExporting ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-90'} ${theme.bg} text-white shadow-md`}>
+            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />} <span className="whitespace-nowrap">{isExporting ? 'Downloading...' : 'Export Excel'}</span>
+          </motion.button>
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`flex-1 md:flex-none justify-center bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-3 sm:px-6 py-2.5 rounded-2xl transition-all font-bold text-sm sm:text-base flex items-center gap-2`}><LogIn size={20} className="rotate-180" /> <span className="whitespace-nowrap">Logout</span></motion.button>
+        </div>
+      </GlassCard>
+
+      <GlassCard isDarkMode={isDarkMode} className="flex-1 p-8">
+        <h3 className="text-xl font-extrabold tracking-tight mb-8">My Assigned Projects <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{myProjects.length}</span></h3>
+        {myProjects.length === 0 ? (
+           <div className="text-center py-20 opacity-40 border-2 border-dashed rounded-3xl dark:border-neutral-700 font-medium">No projects assigned to you yet.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <AnimatePresence>
+              {myProjects.map(project => (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedProject(project)} key={project._id} className={`cursor-pointer p-6 rounded-[2rem] border flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${isDarkMode ? 'bg-neutral-800/50 border-neutral-700/50 hover:border-neutral-600' : 'bg-neutral-50/50 border-neutral-200/50 hover:border-neutral-300'}`}>
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h4 className="font-extrabold text-lg tracking-tight line-clamp-1 pr-2">{project.members.map((m:any) => m.name).join(' & ')}</h4>
+                        <p className="text-xs font-mono font-medium opacity-50">{project.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                      </div>
+                      <span className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-lg shrink-0 ${project.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : project.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{project.status}</span>
+                    </div>
+                    {project.projectTitle ? (
+                      <div className="mb-2">
+                        <p className="text-sm font-bold tracking-tight line-clamp-1">{project.projectTitle}</p>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {project.domain && <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${theme.lightBg} ${theme.text} line-clamp-1`}><Globe size={10} className="inline mr-1 mb-0.5"/>{project.domain}</span>}
+                          {project.tools && <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={10} className="inline mr-1 mb-0.5"/>{project.tools}</span>}
+                        </div>
+                      </div>
+                    ) : <div className={`text-xs opacity-50 font-medium italic mt-2`}>No project data</div>}
+                  </div>
+                  <div className={`mt-4 pt-4 border-t flex justify-between items-center text-xs font-bold transition-opacity ${theme.text} ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
+                    <span>Click to view full details</span><ChevronRight size={16} />
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </GlassCard>
+    </motion.div>
+  );
+};
+
+
+export default SupervisorDashboard;
+</file>
+
 <file path="package.json">
 {
   "name": "fyp-management-system",
@@ -3045,6 +2954,95 @@ export default StudentDashboard;
 }
 </file>
 
+<file path="app/api/register/route.ts">
+import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
+import connectToDatabase from '../../../lib/mongodb';
+import User from '../../../models/User';
+import Project from '../../../models/Project';
+import { APP_SETTINGS } from '../../../config/appSettings';
+import bcrypt from 'bcryptjs'; // NEW: Import the bcrypt library
+
+export async function POST(req: Request) {
+  try {
+    const { name, email, rollNo, password, supervisorId, program } = await req.json();
+    
+    if (!name || !rollNo || !password) {
+      return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      if (supervisorId) {
+        let filledSlots = 0;
+        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+          filledSlots = await User.countDocuments({ role: 'student', supervisorId }).session(session);
+        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+          filledSlots = await Project.countDocuments({ supervisorId }).session(session);
+        }
+
+        if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json(
+            { error: 'Registration failed. The selected supervisor has reached maximum capacity.' }, 
+            { status: 409 } 
+          );
+        }
+      }
+      
+      // NEW: Hash the password before saving it to the database.
+      // The '10' is the salt rounds, which determines how computationally heavy the encryption is.
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const newStudent = new User({
+        name,
+        email: email || undefined, 
+        rollNo,
+        password: hashedPassword, // Save the scrambled hash, NOT the plaintext string
+        role: 'student',
+        program: program || 'BSCS',
+        supervisorId: supervisorId || null,
+        status: 'Pending'
+      });
+      await newStudent.save({ session });
+
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const newProject = new Project({
+        supervisorId: supervisorId || null,
+        members: [newStudent._id],
+        inviteCode: inviteCode
+      });
+      await newProject.save({ session });
+
+      newStudent.projectId = newProject._id;
+      await newStudent.save({ session });
+
+      await session.commitTransaction();
+      session.endSession();
+
+      return NextResponse.json({ message: 'Registration successful!' }, { status: 201 });
+
+    } catch (transactionError: any) {
+      await session.abortTransaction();
+      session.endSession();
+      
+      if (transactionError.code === 11000) {
+        return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
+      }
+      throw transactionError; 
+    }
+  } catch (error: any) {
+    console.error('Registration error:', error.message);
+    return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
+  }
+}
+</file>
+
 <file path="app/api/dashboard/student/route.ts">
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
@@ -3061,13 +3059,16 @@ export async function GET(req: Request) {
     await connectToDatabase();
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
-    const student = await User.findById(id);
-    const supervisor = student?.supervisorId ? await User.findById(student.supervisorId) : null;
     
-    let project = null;
-    if (student?.projectId) {
-      project = await Project.findById(student.projectId).populate('members', 'name rollNo email');
-    }
+    // OPTIMIZATION: Use .lean() for faster read-only queries
+    const student = await User.findById(id).lean();
+    if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+
+    // OPTIMIZATION: Parallel execution. Fetch supervisor and project at the exact same time.
+    const [supervisor, project] = await Promise.all([
+      student.supervisorId ? User.findById(student.supervisorId).lean() : null,
+      student.projectId ? Project.findById(student.projectId).populate('members', 'name rollNo email').lean() : null
+    ]);
 
     return NextResponse.json({ student, supervisor, project }, { status: 200 });
   } catch (error) {
@@ -3081,55 +3082,79 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const body = await req.json();
 
+    // ==========================================
+    // ACTION: ASSIGN SUPERVISOR (Transaction Lock)
+    // ==========================================
     if (body.action === 'assignSupervisor') {
-      let filledSlots = 0;
-      if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-        filledSlots = await User.countDocuments({ role: 'student', supervisorId: body.supervisorId });
-      } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-        filledSlots = await Project.countDocuments({ supervisorId: body.supervisorId });
+      // 1. Start an Atomic Transaction Session to prevent race conditions
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        let filledSlots = 0;
+        // 2. Count current slots WITH the session lock
+        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+          filledSlots = await User.countDocuments({ role: 'student', supervisorId: body.supervisorId }).session(session);
+        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+          filledSlots = await Project.countDocuments({ supervisorId: body.supervisorId }).session(session);
+        }
+
+        // 3. Strict Capacity Enforcement
+        if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json(
+            { error: 'Cannot assign. The selected supervisor has reached maximum capacity.' }, 
+            { status: 409 } // 409 Conflict is the correct HTTP status for a race condition rejection
+          );
+        }
+
+        const triggeringStudent = await User.findById(body.id).session(session);
+        if (!triggeringStudent) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+        }
+
+        const supObjectId = new mongoose.Types.ObjectId(body.supervisorId);
+
+        // 4. Update Project and Team Members inside the locked session
+        if (triggeringStudent.projectId) {
+          await Project.findByIdAndUpdate(
+            triggeringStudent.projectId, 
+            { $set: { supervisorId: supObjectId } },
+            { session }
+          );
+
+          await User.updateMany(
+            { projectId: triggeringStudent.projectId },
+            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            { session }
+          );
+        } else {
+          await User.findByIdAndUpdate(
+            body.id, 
+            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            { session }
+          );
+        }
+
+        // 5. Commit the transaction ONLY if no other request modified the count during our process
+        await session.commitTransaction();
+        session.endSession();
+        return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
+
+      } catch (transactionError) {
+        // Safe Fallback: Abort all changes if anything fails
+        await session.abortTransaction();
+        session.endSession();
+        throw transactionError; 
       }
-
-      if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
-        return NextResponse.json(
-          { error: 'Cannot assign. The selected supervisor has reached maximum capacity.' }, 
-          { status: 403 }
-        );
-      }
-
-      const triggeringStudent = await User.findById(body.id);
-      if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-
-      const supObjectId = new mongoose.Types.ObjectId(body.supervisorId);
-
-      if (triggeringStudent.projectId) {
-        await Project.findByIdAndUpdate(triggeringStudent.projectId, {
-          $set: { supervisorId: supObjectId }
-        });
-
-        await User.updateMany(
-          { projectId: triggeringStudent.projectId },
-          {
-            $set: {
-              supervisorId: supObjectId,
-              status: 'Pending',
-              remarks: ''
-            }
-          }
-        );
-      } else {
-        await User.findByIdAndUpdate(body.id, {
-          $set: {
-            supervisorId: supObjectId,
-            status: 'Pending',
-            remarks: ''
-          }
-        });
-      }
-
-      return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
     }
 
-    // --- NEW: Team-Aware Project Submission Logic ---
+    // ==========================================
+    // ACTION: PROJECT SUBMISSION
+    // ==========================================
     const triggeringStudent = await User.findById(body.id);
     if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
@@ -3145,30 +3170,22 @@ export async function POST(req: Request) {
     let updatedStudent = null;
 
     if (triggeringStudent.projectId) {
-      // 1. Sync core details to the central Project container
-      await Project.findByIdAndUpdate(triggeringStudent.projectId, {
-        $set: {
-          title: body.title,
-          domain: body.domain,
-          pdfUrl: body.pdfUrl
-        }
-      });
-
-      // 2. Sync the submission data to ALL team members simultaneously
-      await User.updateMany(
-        { projectId: triggeringStudent.projectId },
-        { $set: submissionData }
-      );
-
-      // Re-fetch the student to grab the supervisorId for the email trigger
-      updatedStudent = await User.findById(body.id);
+      // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time
+      const [_, updatedUsers] = await Promise.all([
+        Project.findByIdAndUpdate(triggeringStudent.projectId, {
+          $set: { title: body.title, domain: body.domain, pdfUrl: body.pdfUrl }
+        }),
+        User.updateMany(
+          { projectId: triggeringStudent.projectId },
+          { $set: submissionData }
+        )
+      ]);
+      updatedStudent = await User.findById(body.id); // Re-fetch to get supervisor ID
     } else {
-      // Fallback for a solo student
       updatedStudent = await User.findByIdAndUpdate(body.id, { $set: submissionData }, { new: true });
     }
-    // ------------------------------------------------
 
-    // Trigger Supervisor Email Notification
+    // Trigger Supervisor Email Notification (Kept identical to prevent UI changes)
     if (updatedStudent && updatedStudent.supervisorId) {
       const supervisor = await User.findById(updatedStudent.supervisorId);
       if (supervisor && supervisor.email && supervisor.notificationsEnabled !== false) {
@@ -3324,8 +3341,8 @@ export async function POST(req: Request) {
         });
       }
       
-      // 3. Email Notifications
-      for (const member of teamMembers) {
+      // 3. Email Notifications (Parallelized for Speed)
+      const emailPromises = teamMembers.map(async (member) => {
         if (member.supervisorId && member.email) {
           const supervisor = await User.findById(member.supervisorId);
           if (supervisor && supervisor.notificationsEnabled !== false) {
@@ -3355,10 +3372,13 @@ export async function POST(req: Request) {
                 </div>
               </div>
             `;
-            await sendNotificationEmail(member.email, subject, htmlContent);
+            return sendNotificationEmail(member.email, subject, htmlContent);
           }
         }
-      }
+      });
+
+      // Execute all emails at the exact same time
+      await Promise.all(emailPromises);
       return NextResponse.json({ message: 'Status updated and timeline advanced!' }, { status: 200 });
     }
 
@@ -3423,9 +3443,7 @@ const UserSchema = new Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   
-  // --- NEW: Program Field for Students ---
   program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS'], required: false },
-  // ---------------------------------------
 
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   status: { type: String, default: 'Unassigned' },
@@ -3447,6 +3465,20 @@ const UserSchema = new Schema({
 }, {
   timestamps: true
 });
+
+// ==========================================
+// ENTERPRISE-GRADE DATABASE INDEXES
+// ==========================================
+
+// 1. Single Index on 'role': Speeds up `User.find({ role: 'supervisor' })` significantly.
+UserSchema.index({ role: 1 });
+
+// 2. Compound Index: Speeds up our capacity counting `User.countDocuments({ role: 'student', supervisorId: X })`
+UserSchema.index({ role: 1, supervisorId: 1 });
+
+// 3. Single Index on Foreign Keys: Speeds up fetching teams `User.find({ projectId: X })`
+UserSchema.index({ projectId: 1 });
+UserSchema.index({ supervisorId: 1 });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
@@ -3792,7 +3824,9 @@ export default function App() {
       <nav className={`sticky top-0 z-50 p-4 border-b ${enableTransition ? 'transition-colors duration-700' : ''} backdrop-blur-2xl shadow-sm ${isDarkMode ? 'bg-[#0a0a0a]/70 border-white/5' : 'bg-white/70 border-neutral-200/50'}`}>
         <div className="container mx-auto max-w-7xl flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shadow-lg shadow-${theme.text}/20 transition-all duration-500`}><LayoutDashboard className="text-white" size={20}/></div>
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white shadow-lg transition-all duration-500">
+              <img src="/logo.png" alt="University Logo" className="w-full h-full object-contain p-1" />
+            </div>
             <h1 className={`text-xl font-black tracking-tighter hidden sm:block ${isDarkMode ? 'text-white' : 'text-black'}`}>FYP <span className={`transition-colors duration-500 ${theme.text}`}>Portal</span></h1>
           </div>
           

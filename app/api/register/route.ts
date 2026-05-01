@@ -8,10 +8,10 @@ import bcrypt from 'bcryptjs'; // NEW: Import the bcrypt library
 
 export async function POST(req: Request) {
   try {
-    const { name, email, rollNo, password, supervisorId, program } = await req.json();
+    const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
     
-    if (!name || !rollNo || !password) {
-      return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
+    if (!name || !rollNo || !password || !batch) {
+      return NextResponse.json({ error: 'Missing required fields, including Batch.' }, { status: 400 });
     }
 
     await connectToDatabase();
@@ -49,6 +49,8 @@ export async function POST(req: Request) {
         password: hashedPassword, // Save the scrambled hash, NOT the plaintext string
         role: 'student',
         program: program || 'BSCS',
+        batch: batch,
+        semester: '7th Semester', // Automatically inject 7th semester for all new users
         supervisorId: supervisorId || null,
         status: 'Pending'
       });

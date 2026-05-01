@@ -40,6 +40,8 @@ export async function GET(req: Request) {
           status: student.status,
           remarks: student.remarks,
           stage: stageMap[pId] || 'PROPOSAL', // <-- Inject the stage here
+          batch: student.batch || 'N/A',
+          semester: student.semester || '7th Semester',
           members: []
         });
       }

@@ -144,6 +144,10 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               {me?.program || 'N/A'}
             </span>
             <span className="opacity-40 text-sm">|</span> 
+            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${isDarkMode ? 'border-neutral-700 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
+              {me?.batch || 'No Batch'} • {me?.semester || '7th Sem'}
+            </span>
+            <span className="opacity-40 text-sm">|</span> 
             Supervisor: <span className={`font-bold ${isUnassigned ? 'text-red-500' : theme.text} transition-colors duration-500`}>
               {isUnassigned ? "Not Assigned" : supervisor?.name}
             </span>

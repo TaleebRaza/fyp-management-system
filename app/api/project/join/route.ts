@@ -25,14 +25,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
     }
 
-    // 3. Program Matching & Fetching Teammate State
+    // 3. Program & Batch Matching & Fetching Teammate State
     let firstMember = null;
     if (targetProject.members.length > 0) {
       firstMember = await User.findById(targetProject.members[0]);
-      if (firstMember && firstMember.program !== student.program) {
-        return NextResponse.json({ 
-          error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.` 
-        }, { status: 403 });
+      if (firstMember) {
+        if (firstMember.program !== student.program) {
+          return NextResponse.json({ 
+            error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.` 
+          }, { status: 403 });
+        }
+        if (firstMember.batch !== student.batch) {
+          return NextResponse.json({ 
+            error: `Batch Mismatch! You are in ${student.batch || 'an unknown batch'}, but this team belongs to ${firstMember.batch || 'another batch'} students.` 
+          }, { status: 403 });
+        }
       }
     }
 

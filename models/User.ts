@@ -8,6 +8,9 @@ const UserSchema = new Schema({
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   
   program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS'], required: false },
+  
+  batch: { type: String, required: false }, // e.g., "Fall 2026"
+  semester: { type: String, default: '7th Semester' }, // Default for new signups
 
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   status: { type: String, default: 'Unassigned' },

@@ -165,6 +165,10 @@ const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => 
 
 const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, showDialog }: any) => {
   const [program, setProgram] = useState('BSCS');
+  
+  // Dynamically calculate valid batches based on the current year
+  const currentYear = new Date().getFullYear();
+  const batchOptions = [`Spring ${currentYear}`, `Fall ${currentYear}`, `Spring ${currentYear + 1}`, `Fall ${currentYear + 1}`];
 
   const handleRegister = async (e: any) => {
     e.preventDefault();
@@ -178,6 +182,7 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
         password: e.target.password.value,
         supervisorId: e.target.supervisor.value,
         program,
+        batch: e.target.batch.value, // Added batch payload
       })
     });
     const data = await res.json();
@@ -227,6 +232,24 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
                 <span className="font-bold text-sm tracking-wide">{prog}</span>
               </label>
             ))}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Batch</label>
+            <div className="relative group mb-4">
+              <select
+                name="batch"
+                required
+                className={`w-full pl-4 pr-10 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none ${
+                  isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100/70 text-black'
+                } ${theme.ring} focus:bg-transparent`}
+              >
+                <option value="">-- Choose your Batch --</option>
+                {batchOptions.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>
