@@ -76,8 +76,40 @@ const handler = NextAuth({
   },
   session: {
     strategy: "jwt",
+    // We can remove the hardcoded 2-hour maxAge, as the browser closure will now handle termination
   },
   secret: process.env.NEXTAUTH_SECRET,
 });
 
-export { handler as GET, handler as POST };
+// --- ARCHITECT-AI: TRUE BROWSER SESSION OVERRIDE ---
+// Intercept the NextAuth response and strip the explicit expiration dates.
+// This forces the browser to treat the token as a RAM-only session cookie.
+function enforceBrowserSession(response: Response) {
+  // Create a mutable copy of the response
+  const modifiedResponse = new Response(response.body, response);
+  
+  // Extract all cookies NextAuth is trying to set
+  const cookies = modifiedResponse.headers.getSetCookie();
+  modifiedResponse.headers.delete('set-cookie');
+  
+  // Re-apply the cookies, but surgically remove the Max-Age and Expires attributes
+  cookies.forEach(cookie => {
+    const sessionOnlyCookie = cookie
+      .replace(/;\s*Max-Age=[0-9]+/i, '')
+      .replace(/;\s*Expires=[^;]+/i, '');
+    modifiedResponse.headers.append('set-cookie', sessionOnlyCookie);
+  });
+  
+  return modifiedResponse;
+}
+
+// We must pass the "context" object so NextAuth knows the exact route parameters
+export async function GET(req: Request, context: any) {
+  const response = await handler(req as any, context);
+  return enforceBrowserSession(response);
+}
+
+export async function POST(req: Request, context: any) {
+  const response = await handler(req as any, context);
+  return enforceBrowserSession(response);
+}

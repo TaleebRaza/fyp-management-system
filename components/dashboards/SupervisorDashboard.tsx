@@ -14,6 +14,7 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   const fetchProjects = async () => {
     const res = await fetch(`/api/dashboard/supervisor?id=${(session?.user as any)?.id}`);
@@ -34,12 +35,26 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     showDialog({
       type: 'prompt', title: `${newStatus} Project`, message: `Add optional remarks for marking this team's project as ${newStatus}:`,
       onConfirm: async (remarks: string) => {
-        await fetch('/api/dashboard/supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: remarks || "No remarks provided." }) });
-        setSelectedProject(null); fetchProjects(); 
+        setIsProcessingAction(true); // START SPINNER
+        try {
+          const res = await fetch('/api/dashboard/supervisor', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: remarks || "No remarks provided." }) 
+          });
+          
+          if (!res.ok) throw new Error("Server failed to process the request.");
+          
+          setSelectedProject(null); 
+          fetchProjects(); 
+        } catch (error) {
+          showDialog({ title: "Network Error", message: "Failed to send suggestions. Please ensure you have a stable connection and try again." });
+        } finally {
+          setIsProcessingAction(false); // STOP SPINNER
+        }
       }
     });
   };
-
   const handleMigrate = async (triggerStudentId: string, projectId: string) => {
     const code = migrationInput[projectId];
     if (!code) { showDialog({ title: "Input Required", message: "Please enter a Migration Code." }); return; }
@@ -131,36 +146,34 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                 <h4 className="font-extrabold text-sm tracking-widest uppercase opacity-40 mb-4">Supervisor Actions</h4>
                 <div className="space-y-4">
                   
-                  {/* --- UPDATED BUTTONS WRAPPER --- */}
                   <div className="flex flex-col sm:flex-row gap-3">
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved'} 
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved' || isProcessingAction} 
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
                     >
-                      Approve Project
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Approve Project"}
                     </motion.button>
                     
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Changes Requested')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested'} 
-                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested' || isProcessingAction} 
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
                     >
-                      Make Suggestion
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Make Suggestion"}
                     </motion.button>
 
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected'} 
-                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected' || isProcessingAction} 
+                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
                     >
-                      Reject Project
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Reject Project"}
                     </motion.button>
                   </div>
-                  {/* ------------------------------- */}
 
                   <div className="flex gap-3 items-center">
                     <div className={`flex-1 flex items-center p-2 rounded-xl border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
