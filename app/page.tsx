@@ -1,17 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSession, signIn, signOut } from "next-auth/react";
+import dynamic from 'next/dynamic';
 import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, LayoutDashboard, Users, PlusCircle, Code, FileText, Upload, CheckCircle, XCircle, Send, ArrowRightLeft, Loader2, Palette, Trash2, UserMinus, Globe, Wrench, ChevronRight, AlertTriangle, Download, Mail, MailX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { GlassCard, StyledInput } from '../components/ui/SharedUI';
-import StudentDashboard from '../components/dashboards/StudentDashboard';
-import SupervisorDashboard from '../components/dashboards/SupervisorDashboard';
-import AdminDashboard from '../components/dashboards/AdminDashboard';
-
 import { PROGRAM_MAP } from '../config/appSettings';
 
+// ✅ Lazy load dashboards
+const StudentDashboard = dynamic(() => import('../components/dashboards/StudentDashboard'), {
+  loading: () => <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className="animate-spin" size={40}/></div>
+});
+const SupervisorDashboard = dynamic(() => import('../components/dashboards/SupervisorDashboard'), {
+  loading: () => <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className="animate-spin" size={40}/></div>
+});
+const AdminDashboard = dynamic(() => import('../components/dashboards/AdminDashboard'), {
+  loading: () => <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className="animate-spin" size={40}/></div>
+});
 
 type ThemeKey = 'ocean' | 'fiery' | 'zen';
 
@@ -24,7 +31,6 @@ const getTheme = (key: ThemeKey, isDark: boolean) => {
   };
   return themes[key];
 };
-
 
 const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
   const [inputValue, setInputValue] = useState(dialog.defaultValue);
@@ -69,7 +75,7 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
 // --- AUTH VIEWS ---
 const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => {
   const [isResetMode, setIsResetMode] = useState(false);
-  const [resetStep, setResetStep] = useState(1); // 1 = Request Code, 2 = Verify Code
+  const [resetStep, setResetStep] = useState(1);
   const [resetRollNo, setResetRollNo] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -158,12 +164,10 @@ const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => 
 };
 
 const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, showDialog }: any) => {
-  // Program selection state (default BSCS)
   const [program, setProgram] = useState('BSCS');
 
   const handleRegister = async (e: any) => {
     e.preventDefault();
-    // Include 'program' from state in the registration payload
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -173,7 +177,7 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
         rollNo: e.target.rollNo.value,
         password: e.target.password.value,
         supervisorId: e.target.supervisor.value,
-        program,   // new program field
+        program,
       })
     });
     const data = await res.json();
@@ -212,20 +216,18 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
             <StyledInput isDarkMode={isDarkMode} theme={theme} name="password" type="password" required placeholder="••••••••" />
           </div>
 
-          {/* --- Program Selection Radio Buttons --- */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {Object.keys(PROGRAM_MAP).map(prog => (
-                <label 
-                  key={prog} 
-                  title={PROGRAM_MAP[prog]} // <-- This adds the hover/long-press detail
-                  className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${program === prog ? `${theme.border} ${theme.lightBg} ${theme.text}` : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`}`}
-                >
-                  <input type="radio" name="program" value={prog} checked={program === prog} onChange={(e) => setProgram(e.target.value)} className="hidden" />
-                  <span className="font-bold text-sm tracking-wide">{prog}</span>
-                </label>
-              ))}
-            </div>
-          {/* ------------------------------------------- */}
+            {Object.keys(PROGRAM_MAP).map(prog => (
+              <label 
+                key={prog} 
+                title={PROGRAM_MAP[prog]}
+                className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${program === prog ? `${theme.border} ${theme.lightBg} ${theme.text}` : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`}`}
+              >
+                <input type="radio" name="program" value={prog} checked={program === prog} onChange={(e) => setProgram(e.target.value)} className="hidden" />
+                <span className="font-bold text-sm tracking-wide">{prog}</span>
+              </label>
+            ))}
+          </div>
 
           <div>
             <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Supervisor</label>
@@ -269,17 +271,18 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
 
 // --- MAIN APP ---
 export default function App() {
-  const [isDarkMode, setIsDarkMode] = useState(false);     
-  const [isRegistering, setIsRegistering] = useState(false); 
-  const [supervisorsList, setSupervisorsList] = useState<any[]>([]); 
-  const [activeAccent, setActiveAccent] = useState<ThemeKey>('ocean'); 
-  const [isMounted, setIsMounted] = useState(false); 
-  const [enableTransition, setEnableTransition] = useState(false); 
-
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [supervisorsList, setSupervisorsList] = useState<any[]>([]);
+  const [activeAccent, setActiveAccent] = useState<ThemeKey>('ocean');
+  const [isMounted, setIsMounted] = useState(false);
+  const [enableTransition, setEnableTransition] = useState(false);
   const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: (val?: string) => {}, defaultValue: '' });
 
   const { data: session, status } = useSession();
-  const theme = getTheme(activeAccent, isDarkMode);
+
+  // ✅ useMemo - only recalculates when accent or dark mode changes
+  const theme = useMemo(() => getTheme(activeAccent, isDarkMode), [activeAccent, isDarkMode]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -293,21 +296,24 @@ export default function App() {
   useEffect(() => { if (isMounted) localStorage.setItem('fyp_theme', isDarkMode ? 'dark' : 'light'); }, [isDarkMode, isMounted]);
   useEffect(() => { if (isMounted) localStorage.setItem('fyp_accent', activeAccent); }, [activeAccent, isMounted]);
 
-  const showDialog = ({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '' }: any) => {
+  // ✅ useCallback - stable function references
+  const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '' }: any) => {
     setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue });
-  };
-  const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
+  }, []);
 
-  const cycleTheme = () => {
+  const closeDialog = useCallback(() => setDialog(prev => ({ ...prev, isOpen: false })), []);
+
+  const cycleTheme = useCallback(() => {
     const keys: ThemeKey[] = ['ocean', 'fiery', 'zen'];
     setActiveAccent(keys[(keys.indexOf(activeAccent) + 1) % keys.length]);
-  };
+  }, [activeAccent]);
 
   useEffect(() => {
     if (isRegistering) fetch('/api/supervisors').then(res => res.json()).then(data => setSupervisorsList(Array.isArray(data) ? data : [])).catch(console.error);
   }, [isRegistering]);
 
-  const renderView = () => {
+  // ✅ useCallback - only recreated when dependencies change
+  const renderView = useCallback(() => {
     if (!isMounted) return <div className="min-h-screen"></div>;
     if (status === "loading") return <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className={`animate-spin ${theme.text}`} size={40}/></div>;
     
@@ -321,7 +327,7 @@ export default function App() {
     return isRegistering 
       ? <RegisterView isDarkMode={isDarkMode} theme={theme} setIsRegistering={setIsRegistering} supervisorsList={supervisorsList} showDialog={showDialog} /> 
       : <LoginView isDarkMode={isDarkMode} theme={theme} setIsRegistering={setIsRegistering} showDialog={showDialog} />;
-  };
+  }, [isMounted, status, session, isDarkMode, theme, isRegistering, supervisorsList, showDialog]);
 
   return (
     <div className={`min-h-screen ${enableTransition ? 'transition-colors duration-700' : ''} ${isDarkMode ? 'bg-[#0a0a0a] text-white' : 'bg-neutral-50 text-black'}`}>

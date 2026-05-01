@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { AuthProvider } from "./Providers"; // 1. We import our new intercom system!
+import { AuthProvider } from "./Providers";
 
 export const metadata: Metadata = {
   title: "FYP Management System",
   description: "University Final Year Project Portal",
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 export default function RootLayout({
@@ -13,9 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>
-        {/* 2. We wrap the entire application so every page has access to the login state */}
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <AuthProvider>
           {children}
         </AuthProvider>

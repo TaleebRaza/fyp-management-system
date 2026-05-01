@@ -7,9 +7,7 @@ const UserSchema = new Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   
-  // --- NEW: Program Field for Students ---
   program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS'], required: false },
-  // ---------------------------------------
 
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   status: { type: String, default: 'Unassigned' },
@@ -31,6 +29,20 @@ const UserSchema = new Schema({
 }, {
   timestamps: true
 });
+
+// ==========================================
+// ENTERPRISE-GRADE DATABASE INDEXES
+// ==========================================
+
+// 1. Single Index on 'role': Speeds up `User.find({ role: 'supervisor' })` significantly.
+UserSchema.index({ role: 1 });
+
+// 2. Compound Index: Speeds up our capacity counting `User.countDocuments({ role: 'student', supervisorId: X })`
+UserSchema.index({ role: 1, supervisorId: 1 });
+
+// 3. Single Index on Foreign Keys: Speeds up fetching teams `User.find({ projectId: X })`
+UserSchema.index({ projectId: 1 });
+UserSchema.index({ supervisorId: 1 });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 

@@ -1,34 +1,42 @@
 import { get } from '@vercel/blob';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt'; // NEW: Cryptographic token verification
 
 export async function GET(req: NextRequest) {
   try {
-    // Extract the private blob URL from the query parameter
-    const url = req.nextUrl.searchParams.get('url');
-    if (!url) return new Response('Missing Document URL', { status: 400 });
+    // 1. Strict Security Firewall: Verify the user is authenticated
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    
+    if (!token) {
+      console.warn('Unauthorized PDF access attempt blocked.');
+      return new NextResponse('Unauthorized: You must be logged in to view secure university documents.', { status: 401 });
+    }
 
-    // Securely fetch the private stream using the Vercel SDK
+    // 2. Extract the private blob URL from the query parameter
+    const url = req.nextUrl.searchParams.get('url');
+    if (!url) return new NextResponse('Missing Document URL', { status: 400 });
+
+    // 3. Securely fetch the private stream using the Vercel SDK
     const result = await get(url, {
       access: 'private',
     });
 
-    // FIX 1: Handle the 'null' case to satisfy TypeScript's strict compiler
     if (!result) {
-      return new Response('File not found or access denied', { status: 404 });
+      return new NextResponse('File not found or access denied', { status: 404 });
     }
 
-    // FIX 2: Bypass strict TS checks on the union type
     const { stream, blob } = result as any;
 
-    // Stream the PDF directly to the browser viewer
-    return new Response(stream, {
+    // 4. Stream the PDF directly to the authenticated browser
+    return new NextResponse(stream as any, {
       headers: {
         'Content-Type': blob?.contentType || 'application/pdf',
+        // 'inline' tells the browser to display it rather than forcing a download
         'Content-Disposition': `inline; filename="${(blob?.pathname || url).split('/').pop()}"`,
       },
     });
-  } catch (error) {
-    console.error('Error fetching private blob:', error);
-    return new Response('File not found or access denied', { status: 404 });
+  } catch (error: any) {
+    console.error('Error fetching private blob:', error.message);
+    return new NextResponse('File not found or access denied', { status: 404 });
   }
 }

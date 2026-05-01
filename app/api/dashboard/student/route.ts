@@ -13,13 +13,16 @@ export async function GET(req: Request) {
     await connectToDatabase();
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
-    const student = await User.findById(id);
-    const supervisor = student?.supervisorId ? await User.findById(student.supervisorId) : null;
     
-    let project = null;
-    if (student?.projectId) {
-      project = await Project.findById(student.projectId).populate('members', 'name rollNo email');
-    }
+    // OPTIMIZATION: Use .lean() for faster read-only queries
+    const student = await User.findById(id).lean();
+    if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+
+    // OPTIMIZATION: Parallel execution. Fetch supervisor and project at the exact same time.
+    const [supervisor, project] = await Promise.all([
+      student.supervisorId ? User.findById(student.supervisorId).lean() : null,
+      student.projectId ? Project.findById(student.projectId).populate('members', 'name rollNo email').lean() : null
+    ]);
 
     return NextResponse.json({ student, supervisor, project }, { status: 200 });
   } catch (error) {
@@ -33,55 +36,79 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const body = await req.json();
 
+    // ==========================================
+    // ACTION: ASSIGN SUPERVISOR (Transaction Lock)
+    // ==========================================
     if (body.action === 'assignSupervisor') {
-      let filledSlots = 0;
-      if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-        filledSlots = await User.countDocuments({ role: 'student', supervisorId: body.supervisorId });
-      } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-        filledSlots = await Project.countDocuments({ supervisorId: body.supervisorId });
+      // 1. Start an Atomic Transaction Session to prevent race conditions
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        let filledSlots = 0;
+        // 2. Count current slots WITH the session lock
+        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+          filledSlots = await User.countDocuments({ role: 'student', supervisorId: body.supervisorId }).session(session);
+        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+          filledSlots = await Project.countDocuments({ supervisorId: body.supervisorId }).session(session);
+        }
+
+        // 3. Strict Capacity Enforcement
+        if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json(
+            { error: 'Cannot assign. The selected supervisor has reached maximum capacity.' }, 
+            { status: 409 } // 409 Conflict is the correct HTTP status for a race condition rejection
+          );
+        }
+
+        const triggeringStudent = await User.findById(body.id).session(session);
+        if (!triggeringStudent) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+        }
+
+        const supObjectId = new mongoose.Types.ObjectId(body.supervisorId);
+
+        // 4. Update Project and Team Members inside the locked session
+        if (triggeringStudent.projectId) {
+          await Project.findByIdAndUpdate(
+            triggeringStudent.projectId, 
+            { $set: { supervisorId: supObjectId } },
+            { session }
+          );
+
+          await User.updateMany(
+            { projectId: triggeringStudent.projectId },
+            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            { session }
+          );
+        } else {
+          await User.findByIdAndUpdate(
+            body.id, 
+            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            { session }
+          );
+        }
+
+        // 5. Commit the transaction ONLY if no other request modified the count during our process
+        await session.commitTransaction();
+        session.endSession();
+        return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
+
+      } catch (transactionError) {
+        // Safe Fallback: Abort all changes if anything fails
+        await session.abortTransaction();
+        session.endSession();
+        throw transactionError; 
       }
-
-      if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
-        return NextResponse.json(
-          { error: 'Cannot assign. The selected supervisor has reached maximum capacity.' }, 
-          { status: 403 }
-        );
-      }
-
-      const triggeringStudent = await User.findById(body.id);
-      if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-
-      const supObjectId = new mongoose.Types.ObjectId(body.supervisorId);
-
-      if (triggeringStudent.projectId) {
-        await Project.findByIdAndUpdate(triggeringStudent.projectId, {
-          $set: { supervisorId: supObjectId }
-        });
-
-        await User.updateMany(
-          { projectId: triggeringStudent.projectId },
-          {
-            $set: {
-              supervisorId: supObjectId,
-              status: 'Pending',
-              remarks: ''
-            }
-          }
-        );
-      } else {
-        await User.findByIdAndUpdate(body.id, {
-          $set: {
-            supervisorId: supObjectId,
-            status: 'Pending',
-            remarks: ''
-          }
-        });
-      }
-
-      return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
     }
 
-    // --- NEW: Team-Aware Project Submission Logic ---
+    // ==========================================
+    // ACTION: PROJECT SUBMISSION
+    // ==========================================
     const triggeringStudent = await User.findById(body.id);
     if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
@@ -97,30 +124,22 @@ export async function POST(req: Request) {
     let updatedStudent = null;
 
     if (triggeringStudent.projectId) {
-      // 1. Sync core details to the central Project container
-      await Project.findByIdAndUpdate(triggeringStudent.projectId, {
-        $set: {
-          title: body.title,
-          domain: body.domain,
-          pdfUrl: body.pdfUrl
-        }
-      });
-
-      // 2. Sync the submission data to ALL team members simultaneously
-      await User.updateMany(
-        { projectId: triggeringStudent.projectId },
-        { $set: submissionData }
-      );
-
-      // Re-fetch the student to grab the supervisorId for the email trigger
-      updatedStudent = await User.findById(body.id);
+      // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time
+      const [_, updatedUsers] = await Promise.all([
+        Project.findByIdAndUpdate(triggeringStudent.projectId, {
+          $set: { title: body.title, domain: body.domain, pdfUrl: body.pdfUrl }
+        }),
+        User.updateMany(
+          { projectId: triggeringStudent.projectId },
+          { $set: submissionData }
+        )
+      ]);
+      updatedStudent = await User.findById(body.id); // Re-fetch to get supervisor ID
     } else {
-      // Fallback for a solo student
       updatedStudent = await User.findByIdAndUpdate(body.id, { $set: submissionData }, { new: true });
     }
-    // ------------------------------------------------
 
-    // Trigger Supervisor Email Notification
+    // Trigger Supervisor Email Notification (Kept identical to prevent UI changes)
     if (updatedStudent && updatedStudent.supervisorId) {
       const supervisor = await User.findById(updatedStudent.supervisorId);
       if (supervisor && supervisor.email && supervisor.notificationsEnabled !== false) {

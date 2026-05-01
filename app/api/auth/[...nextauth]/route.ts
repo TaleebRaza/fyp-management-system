@@ -2,6 +2,21 @@ import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import connectToDatabase from "../../../../lib/mongodb";
 import User from "../../../../models/User";
+import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
+
+// --- HELPER: Backward-Compatible Verification ---
+async function verifyPassword(inputPassword: string, storedPassword: string) {
+  // Standard bcrypt hashes always start with "$2a$", "$2b$", or "$2y$" and are 60 chars long.
+  const isHashed = storedPassword.startsWith('$2') && storedPassword.length === 60;
+  
+  if (isHashed) {
+    // If securely hashed, use cryptographic comparison
+    return await bcrypt.compare(inputPassword, storedPassword);
+  } else {
+    // Legacy Fallback: Allow existing plaintext users to still log in
+    return inputPassword === storedPassword;
+  }
+}
 
 const handler = NextAuth({
   providers: [
@@ -20,12 +35,15 @@ const handler = NextAuth({
           throw new Error("No user found with this Roll Number");
         }
         
-        // NEW: Security Lockout Check
+        // Security Lockout Check
         if (user.isActive === false) {
           throw new Error("Your account has been deactivated. Contact administration.");
         }
         
-        if (user.password !== credentials?.password) {
+        // NEW: Utilize our smart verifier instead of direct string comparison
+        const isPasswordMatch = await verifyPassword(credentials?.password || "", user.password);
+        
+        if (!isPasswordMatch) {
           throw new Error("Incorrect password");
         }
         
