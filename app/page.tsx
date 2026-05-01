@@ -336,7 +336,9 @@ export default function App() {
       <nav className={`sticky top-0 z-50 p-4 border-b ${enableTransition ? 'transition-colors duration-700' : ''} backdrop-blur-2xl shadow-sm ${isDarkMode ? 'bg-[#0a0a0a]/70 border-white/5' : 'bg-white/70 border-neutral-200/50'}`}>
         <div className="container mx-auto max-w-7xl flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shadow-lg shadow-${theme.text}/20 transition-all duration-500`}><LayoutDashboard className="text-white" size={20}/></div>
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white shadow-lg transition-all duration-500">
+              <img src="/logo.png" alt="University Logo" className="w-full h-full object-contain p-1" />
+            </div>
             <h1 className={`text-xl font-black tracking-tighter hidden sm:block ${isDarkMode ? 'text-white' : 'text-black'}`}>FYP <span className={`transition-colors duration-500 ${theme.text}`}>Portal</span></h1>
           </div>
           
