@@ -430,10 +430,26 @@ export default function App() {
   }, [isMounted, status, session, isDarkMode, theme, isRegistering, supervisorsList, showDialog]);
 
   return (
-    <div className={`min-h-screen ${enableTransition ? 'transition-colors duration-700' : ''} ${isDarkMode ? 'bg-[#0a0a0a] text-white' : 'bg-neutral-50 text-black'}`}>
-      <DialogModal dialog={dialog} closeDialog={closeDialog} isDarkMode={isDarkMode} theme={theme} />
+    <div className={`min-h-screen relative ${enableTransition ? 'transition-colors duration-700' : ''} ${isDarkMode ? 'bg-[#0a0a0a] text-white' : 'bg-neutral-50 text-black'}`}>
       
-      <nav className={`sticky top-0 z-50 p-4 border-b ${enableTransition ? 'transition-colors duration-700' : ''} backdrop-blur-2xl shadow-sm ${isDarkMode ? 'bg-[#0a0a0a]/70 border-white/5' : 'bg-white/70 border-neutral-200/50'}`}>
+      {/* --- LIGHTWEIGHT HARDWARE-ACCELERATED WATERMARK --- */}
+      <div 
+        className="fixed top-1/2 left-1/2 w-[200vw] h-[200vh] pointer-events-none z-0"
+        style={{
+          backgroundImage: 'url("/logo.png")',
+          backgroundRepeat: 'repeat',
+          backgroundPosition: 'center',
+          backgroundSize: '100px 100px', // Adjust this value to make logos larger/smaller
+          opacity: isDarkMode ? 0.015 : 0.03, // Extremely subtle so it isn't obstructive
+          transform: 'translate(-50%, -50%) rotate(-25deg)',
+        }}
+      />
+
+      <div className="relative z-50">
+        <DialogModal dialog={dialog} closeDialog={closeDialog} isDarkMode={isDarkMode} theme={theme} />
+      </div>
+      
+      <nav className={`relative z-50 sticky top-0 p-4 border-b ${enableTransition ? 'transition-colors duration-700' : ''} backdrop-blur-2xl shadow-sm ${isDarkMode ? 'bg-[#0a0a0a]/70 border-white/5' : 'bg-white/70 border-neutral-200/50'}`}>
         <div className="container mx-auto max-w-7xl flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white shadow-lg transition-all duration-500">
@@ -449,7 +465,11 @@ export default function App() {
           </div>
         </div>
       </nav>
-      <main className="container mx-auto p-4 md:p-8 max-w-7xl mt-4"><AnimatePresence mode="wait">{renderView()}</AnimatePresence></main>
+      
+      {/* z-10 ensures all cards and content hover above the watermark */}
+      <main className="relative z-10 container mx-auto p-4 md:p-8 max-w-7xl mt-4">
+        <AnimatePresence mode="wait">{renderView()}</AnimatePresence>
+      </main>
     </div>
   );
 }
