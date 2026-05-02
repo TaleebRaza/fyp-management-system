@@ -353,12 +353,12 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       <AnimatePresence>
         {isGraphModalOpen && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 md:p-8">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsGraphModalOpen(false)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-md" onClick={() => setIsGraphModalOpen(false)} />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className={`relative w-full h-full max-w-7xl flex flex-col rounded-[2rem] border shadow-2xl backdrop-blur-3xl overflow-hidden ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+              className={`relative w-full h-full max-w-7xl flex flex-col rounded-[2rem] border shadow-2xl md:backdrop-blur-3xl overflow-hidden ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
             >
               <div className="p-6 border-b flex justify-between items-center z-10 relative">
                 <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">

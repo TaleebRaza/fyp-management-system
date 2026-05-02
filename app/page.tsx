@@ -63,7 +63,7 @@ const CustomSelect = ({ name, options, value, onChange, placeholder, isDarkMode,
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className={`absolute z-50 w-full mt-2 p-2 rounded-2xl border shadow-2xl backdrop-blur-3xl overflow-hidden max-h-60 overflow-y-auto custom-scrollbar ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+            className={`absolute z-50 w-full mt-2 p-2 rounded-2xl border shadow-2xl overflow-hidden max-h-60 overflow-y-auto custom-scrollbar md:backdrop-blur-3xl ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
           >
             {options.map((opt: any) => (
               <div 
@@ -91,9 +91,11 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
     <AnimatePresence>
       {dialog.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={closeDialog} />
+          {/* Optimized Overlay: Solid dark on mobile, blurred on desktop */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-md" onClick={closeDialog} />
+          {/* Optimized Modal Body: Solid on mobile, frosted glass on desktop */}
           <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`relative w-full max-w-md p-8 rounded-[2rem] border shadow-2xl backdrop-blur-3xl ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+            className={`relative w-full max-w-md p-8 rounded-[2rem] border shadow-2xl md:backdrop-blur-3xl ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
           >
             <div className={`w-14 h-14 rounded-2xl mb-6 flex items-center justify-center ${dialog.type === 'confirm' ? 'bg-red-500/10 text-red-500' : `${theme.lightBg} ${theme.text}`} shadow-sm`}>
               {dialog.type === 'prompt' ? <FileText size={28} /> : (dialog.type === 'confirm' || dialog.title.includes("Error") || dialog.title.includes("Required") ? <XCircle size={28} className={dialog.title.includes("Required") ? "text-amber-500" : ""} /> : <CheckCircle size={28} />)}
