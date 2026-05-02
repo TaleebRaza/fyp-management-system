@@ -131,11 +131,11 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6 min-h-[80vh]">
       {/* Header GlassCard */}
-      <GlassCard isDarkMode={isDarkMode} className="w-full flex justify-between items-center px-8 py-6">
-        <div>
-          <h2 className="text-3xl font-extrabold tracking-tight">Hello, {me?.name}</h2>
-          <p className="font-medium opacity-60 mt-1 flex items-center gap-2">
-            Roll No: <span className="font-mono">{me?.rollNo}</span> 
+      <GlassCard isDarkMode={isDarkMode} className="w-full flex flex-col md:flex-row justify-between items-start md:items-center px-6 md:px-8 py-6 gap-5">
+        <div className="w-full overflow-hidden">
+          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight truncate">Hello, {me?.name}</h2>
+          <p className="font-medium opacity-60 mt-2 flex flex-wrap items-center gap-2 text-sm md:text-base">
+            Roll No: <span className="font-mono break-all">{me?.rollNo}</span> 
             <span className="hidden sm:block opacity-40 text-sm">|</span>
             <span 
               title={PROGRAM_MAP[me?.program] || 'Unknown Program'} 
@@ -147,13 +147,13 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
             <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${isDarkMode ? 'border-neutral-700 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
               {me?.batch || 'No Batch'} • {me?.semester || '7th Sem'}
             </span>
-            <span className="opacity-40 text-sm">|</span> 
-            Supervisor: <span className={`font-bold ${isUnassigned ? 'text-red-500' : theme.text} transition-colors duration-500`}>
+            <span className="opacity-40 text-sm hidden sm:block">|</span> 
+            <span className="w-full sm:w-auto mt-1 sm:mt-0">Supervisor: <span className={`font-bold ${isUnassigned ? 'text-red-500' : theme.text} transition-colors duration-500 truncate block sm:inline`}>
               {isUnassigned ? "Not Assigned" : supervisor?.name}
-            </span>
+            </span></span>
           </p>
         </div>
-        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-6 py-2.5 rounded-2xl transition-all font-bold flex items-center gap-2`}><LogIn size={20} className="rotate-180" /> Logout</motion.button>
+        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`w-full md:w-auto justify-center bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-6 py-2.5 rounded-2xl transition-all font-bold flex items-center gap-2 shrink-0`}><LogIn size={20} className="rotate-180" /> Logout</motion.button>
       </GlassCard>
 
       {headline && (

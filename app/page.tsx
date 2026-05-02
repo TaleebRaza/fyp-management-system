@@ -433,19 +433,20 @@ export default function App() {
     <div className={`min-h-screen relative ${enableTransition ? 'transition-colors duration-700' : ''} ${isDarkMode ? 'bg-[#0a0a0a] text-white' : 'bg-neutral-50 text-black'}`}>
       
       {/* --- LIGHTWEIGHT HARDWARE-ACCELERATED WATERMARK --- */}
+      {/* Restored to z-0 so it sits above the background color */}
       <div 
         className="fixed top-1/2 left-1/2 w-[200vw] h-[200vh] pointer-events-none z-0"
         style={{
           backgroundImage: 'url("/logo.png")',
           backgroundRepeat: 'repeat',
           backgroundPosition: 'center',
-          backgroundSize: '100px 100px', // Adjust this value to make logos larger/smaller
-          opacity: isDarkMode ? 0.015 : 0.03, // Extremely subtle so it isn't obstructive
+          backgroundSize: '100px 100px', 
+          opacity: isDarkMode ? 0.015 : 0.03, 
           transform: 'translate(-50%, -50%) rotate(-25deg)',
         }}
       />
 
-      <div className="relative z-50">
+      <div className="relative z-[100]">
         <DialogModal dialog={dialog} closeDialog={closeDialog} isDarkMode={isDarkMode} theme={theme} />
       </div>
       
@@ -466,8 +467,8 @@ export default function App() {
         </div>
       </nav>
       
-      {/* z-10 ensures all cards and content hover above the watermark */}
-      <main className="relative z-10 container mx-auto p-4 md:p-8 max-w-7xl mt-4">
+      {/* NEW: Added `relative` here. Because this comes after z-0 in the DOM, it naturally layers on top without trapping modals! */}
+      <main className="relative container mx-auto p-4 md:p-8 max-w-7xl mt-4">
         <AnimatePresence mode="wait">{renderView()}</AnimatePresence>
       </main>
     </div>
