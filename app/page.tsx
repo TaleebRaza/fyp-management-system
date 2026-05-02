@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSession, signIn, signOut } from "next-auth/react";
 import dynamic from 'next/dynamic';
-import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, LayoutDashboard, Users, PlusCircle, Code, FileText, Upload, CheckCircle, XCircle, Send, ArrowRightLeft, Loader2, Palette, Trash2, UserMinus, Globe, Wrench, ChevronRight, AlertTriangle, Download, Mail, MailX } from 'lucide-react';
+import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, LayoutDashboard, Users, PlusCircle, Code, FileText, Upload, CheckCircle, XCircle, Send, ArrowRightLeft, Loader2, Palette, Trash2, UserMinus, Globe, Wrench, ChevronRight, ChevronDown, AlertTriangle, Download, Mail, MailX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { GlassCard, StyledInput } from '../components/ui/SharedUI';
@@ -32,6 +32,57 @@ const getTheme = (key: ThemeKey, isDark: boolean) => {
   return themes[key];
 };
 
+const CustomSelect = ({ name, options, value, onChange, placeholder, isDarkMode, theme, required = false }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: any) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative group mb-4" ref={dropdownRef}>
+      <input type="hidden" name={name} value={value} required={required} />
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full px-5 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none flex justify-between items-center cursor-pointer shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white' : 'bg-neutral-100/70 text-black'} ${isOpen ? theme.border : `hover:border-neutral-300 dark:hover:border-neutral-700`}`}
+      >
+        <span className={value ? 'font-bold' : 'opacity-60 font-medium'}>
+          {value ? (options.find((o:any) => o.value === value)?.label || value) : placeholder}
+        </span>
+        <ChevronDown size={18} className={`opacity-50 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className={`absolute z-50 w-full mt-2 p-2 rounded-2xl border shadow-2xl backdrop-blur-3xl overflow-hidden max-h-60 overflow-y-auto custom-scrollbar ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+          >
+            {options.map((opt: any) => (
+              <div 
+                key={opt.value}
+                onClick={() => { if(!opt.disabled) { onChange(opt.value); setIsOpen(false); } }}
+                className={`px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 flex justify-between items-center ${value === opt.value ? `${theme.lightBg} ${theme.text} font-bold` : `hover:${theme.lightBg} hover:${theme.text} font-medium`}`}
+                style={opt.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+              >
+                {opt.label}
+                {value === opt.value && <CheckCircle size={16} />}
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
   const [inputValue, setInputValue] = useState(dialog.defaultValue);
   useEffect(() => { if (dialog.isOpen) setInputValue(dialog.defaultValue); }, [dialog.isOpen, dialog.defaultValue]);
@@ -51,17 +102,37 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
             <h3 className="text-2xl font-extrabold tracking-tight mb-2">{dialog.title}</h3>
             <p className="opacity-70 mb-6 font-medium leading-relaxed">{dialog.message}</p>
 
+            {/* --- NEW: Dynamic Input Rendering Engine --- */}
             {dialog.type === 'prompt' && (
-              <textarea autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)} placeholder="E.g., Great methodology, but needs more citations..." rows={4}
-                className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none resize-none mb-2 text-sm shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white placeholder-neutral-500' : 'bg-neutral-100/70 text-black placeholder-neutral-400'} ${theme.ring} focus:bg-transparent`} 
-              />
+              <div className="mb-2">
+                {dialog.inputType === 'select' && dialog.inputOptions ? (
+                  <div className="relative group">
+                    <select autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)}
+                      className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none font-bold shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white' : 'bg-neutral-100/70 text-black'} ${theme.ring} focus:bg-transparent`}
+                    >
+                      <option value="" disabled>-- Make a selection --</option>
+                      {dialog.inputOptions.map((opt: string) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : dialog.inputType === 'email' ? (
+                  <input type="email" autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)} placeholder="Enter new email..."
+                    className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white placeholder-neutral-500' : 'bg-neutral-100/70 text-black placeholder-neutral-400'} ${theme.ring} focus:bg-transparent`}
+                  />
+                ) : (
+                  <textarea autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)} placeholder={dialog.placeholder || "Enter details..."} rows={4}
+                    className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none resize-none text-sm shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white placeholder-neutral-500' : 'bg-neutral-100/70 text-black placeholder-neutral-400'} ${theme.ring} focus:bg-transparent`} 
+                  />
+                )}
+              </div>
             )}
 
             <div className="flex justify-end gap-3 mt-8">
               {(dialog.type === 'prompt' || dialog.type === 'confirm') && (
                 <button onClick={closeDialog} className={`px-6 py-3 rounded-xl font-bold transition-colors ${isDarkMode ? 'hover:bg-neutral-800 text-neutral-300' : 'hover:bg-neutral-200 text-neutral-600'}`}>Cancel</button>
               )}
-              <button onClick={() => { dialog.onConfirm(inputValue); closeDialog(); }} className={`px-8 py-3 rounded-xl text-white font-bold transition-transform active:scale-95 shadow-lg ${dialog.type === 'confirm' ? 'bg-red-500 hover:bg-red-600' : theme.bg}`}>
+              <button onClick={() => { dialog.onConfirm(inputValue); closeDialog(); }} disabled={dialog.type === 'prompt' && !inputValue} className={`px-8 py-3 rounded-xl text-white font-bold transition-transform active:scale-95 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${dialog.type === 'confirm' ? 'bg-red-500 hover:bg-red-600' : theme.bg}`}>
                 {dialog.type === 'prompt' ? 'Confirm' : (dialog.type === 'confirm' ? 'Yes, Proceed' : 'Okay')}
               </button>
             </div>
@@ -165,10 +236,26 @@ const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => 
 
 const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, showDialog }: any) => {
   const [program, setProgram] = useState('BSCS');
+  const [batch, setBatch] = useState('');
+  const [supervisor, setSupervisor] = useState('');
   
-  // Dynamically calculate valid batches based on the current year
+  // Format options for CustomSelect
   const currentYear = new Date().getFullYear();
-  const batchOptions = [`Spring ${currentYear}`, `Fall ${currentYear}`, `Spring ${currentYear + 1}`, `Fall ${currentYear + 1}`];
+  const batchOptions = [
+    { label: `Spring ${currentYear}`, value: `Spring ${currentYear}` },
+    { label: `Fall ${currentYear}`, value: `Fall ${currentYear}` },
+    { label: `Spring ${currentYear + 1}`, value: `Spring ${currentYear + 1}` },
+    { label: `Fall ${currentYear + 1}`, value: `Fall ${currentYear + 1}` }
+  ];
+
+  const formattedSupOptions = [
+    { label: '-- Optional (Choose Later) --', value: '' },
+    ...(Array.isArray(supervisorsList) ? supervisorsList.map((sup: any) => ({
+      label: `${sup.name} ${sup.isFull ? '(Capacity Reached)' : `(${sup.filledSlots}/${sup.maxSlots} Slots)`}`,
+      value: sup._id,
+      disabled: sup.isFull
+    })) : [])
+  ];
 
   const handleRegister = async (e: any) => {
     e.preventDefault();
@@ -236,40 +323,30 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
 
           <div>
             <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Batch</label>
-            <div className="relative group mb-4">
-              <select
-                name="batch"
-                required
-                className={`w-full pl-4 pr-10 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none ${
-                  isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100/70 text-black'
-                } ${theme.ring} focus:bg-transparent`}
-              >
-                <option value="">-- Choose your Batch --</option>
-                {batchOptions.map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-            </div>
+            <CustomSelect 
+              name="batch" 
+              options={batchOptions} 
+              value={batch} 
+              onChange={setBatch} 
+              placeholder="-- Choose your Batch --" 
+              isDarkMode={isDarkMode} 
+              theme={theme} 
+              required={true} 
+            />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Supervisor</label>
-            <div className="relative group">
-              <select
-                name="supervisor"
-                className={`w-full pl-4 pr-10 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none ${
-                  isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100/70 text-black'
-                } ${theme.ring} focus:bg-transparent`}
-              >
-                <option value="">-- Optional (Choose Later) --</option>
-                {Array.isArray(supervisorsList) &&
-                  supervisorsList.map((sup: any) => (
-                    <option key={sup._id} value={sup._id} disabled={sup.isFull}>
-                      {sup.name} {sup.isFull ? '(Capacity Reached)' : `(${sup.filledSlots}/${sup.maxSlots} Slots)`}
-                    </option>
-                  ))}
-              </select>
-            </div>
+            <CustomSelect 
+              name="supervisor" 
+              options={formattedSupOptions} 
+              value={supervisor} 
+              onChange={setSupervisor} 
+              placeholder="-- Optional (Choose Later) --" 
+              isDarkMode={isDarkMode} 
+              theme={theme} 
+              required={false} 
+            />
           </div>
 
           <motion.button
@@ -300,7 +377,7 @@ export default function App() {
   const [activeAccent, setActiveAccent] = useState<ThemeKey>('ocean');
   const [isMounted, setIsMounted] = useState(false);
   const [enableTransition, setEnableTransition] = useState(false);
-  const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: (val?: string) => {}, defaultValue: '' });
+  const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: (val?: string) => {}, defaultValue: '', inputType: 'text', inputOptions: [] as string[], placeholder: '' });
 
   const { data: session, status } = useSession();
 
@@ -320,8 +397,8 @@ export default function App() {
   useEffect(() => { if (isMounted) localStorage.setItem('fyp_accent', activeAccent); }, [activeAccent, isMounted]);
 
   // ✅ useCallback - stable function references
-  const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '' }: any) => {
-    setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue });
+  const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '', inputType = 'text', inputOptions = [], placeholder = '' }: any) => {
+    setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue, inputType, inputOptions, placeholder });
   }, []);
 
   const closeDialog = useCallback(() => setDialog(prev => ({ ...prev, isOpen: false })), []);

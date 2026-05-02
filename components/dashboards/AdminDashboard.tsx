@@ -110,13 +110,20 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const filteredStudents = adminStudents.filter(student => {
     let matchesStatus = true;
     let matchesBatch = true;
+    
     if (studentFilter !== 'All') {
-      if (['BSCS', 'BSAI', 'BSTN', 'BSSE'].includes(studentFilter)) matchesStatus = student.program === studentFilter;
-      else matchesStatus = student.status === studentFilter;
+      // Dynamically check against all programs defined in PROGRAM_MAP
+      if (Object.keys(PROGRAM_MAP).includes(studentFilter)) {
+        matchesStatus = student.program === studentFilter;
+      } else {
+        matchesStatus = student.status === studentFilter;
+      }
     }
+    
     if (batchFilter !== 'All') {
       matchesBatch = student.batch === batchFilter;
     }
+    
     return matchesStatus && matchesBatch;
   });
 
@@ -197,59 +204,87 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   }, []);
 
   const handleUpdateEmail = async (userId: string, currentEmail: string, name: string) => {
-    const newEmail = window.prompt(`Enter new email for ${name}:`, currentEmail || '');
-    if (!newEmail || newEmail === currentEmail) return;
-    const res = await fetch('/api/admin/update-email', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetUserId: userId, newEmail })
+    showDialog({
+      type: 'prompt',
+      inputType: 'email',
+      title: 'Update Email',
+      message: `Enter a new email address for ${name}:`,
+      defaultValue: currentEmail || '',
+      onConfirm: async (newEmail: string) => {
+        if (!newEmail || newEmail === currentEmail) return;
+        const res = await fetch('/api/admin/update-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetUserId: userId, newEmail })
+        });
+        if (res.ok) { showDialog({ title: "Success", message: "Email updated!" }); fetchSupervisors(); fetchStudents(); }
+        else { showDialog({ title: "Error", message: "Failed to update email." }); }
+      }
     });
-    if (res.ok) { showDialog({ title: "Success", message: "Email updated!" }); fetchSupervisors(); fetchStudents(); }
-    else { showDialog({ title: "Error", message: "Failed to update email." }); }
   };
 
   const handleUpdateProgram = async (userId: string, currentProgram: string, name: string) => {
-    const newProgram = window.prompt(`Enter new program for ${name} (BSCS, BSAI, BSTN, BSSE):`, currentProgram || 'BSCS');
-    if (!newProgram || newProgram === currentProgram) return;
-    
-    const uppercaseProgram = newProgram.toUpperCase();
-    if (!Object.keys(PROGRAM_MAP).includes(uppercaseProgram)) {
-      showDialog({ title: "Invalid Input", message: `Program must be one of: ${Object.keys(PROGRAM_MAP).join(', ')}` });
-      return;
-    }
-
     showDialog({
-      type: 'confirm', 
-      title: 'Warning: Team Reset', 
-      message: `Changing ${name}'s program to ${uppercaseProgram} will remove them from their current team and unassign their supervisor. Proceed?`,
-      onConfirm: async () => {
-        const res = await fetch('/api/admin/update-program', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetUserId: userId, newProgram: uppercaseProgram })
+      type: 'prompt',
+      inputType: 'select',
+      inputOptions: Object.keys(PROGRAM_MAP),
+      title: 'Update Program',
+      message: `Select a new program for ${name}. Note: This will trigger a team reset.`,
+      defaultValue: currentProgram || 'BSCS',
+      onConfirm: async (newProgram: string) => {
+        if (!newProgram || newProgram === currentProgram) return;
+
+        showDialog({
+          type: 'confirm', 
+          title: 'Warning: Team Reset', 
+          message: `Changing ${name}'s program to ${newProgram} will remove them from their current team and unassign their supervisor. Proceed?`,
+          onConfirm: async () => {
+            const res = await fetch('/api/admin/update-program', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUserId: userId, newProgram })
+            });
+            if (res.ok) {
+              showDialog({ title: "Success", message: "Program updated and student reset!" });
+              fetchStudents();
+            } else {
+              showDialog({ title: "Error", message: "Failed to update program." });
+            }
+          }
         });
-        if (res.ok) {
-          showDialog({ title: "Success", message: "Program updated and student reset!" });
-          fetchStudents();
-        } else {
-          showDialog({ title: "Error", message: "Failed to update program." });
-        }
       }
     });
   };
 
   const handleUpdateBatch = async (userId: string, currentBatch: string, name: string) => {
-    const newBatch = window.prompt(`Enter new batch for ${name} (e.g. Fall 2026):`, currentBatch || '');
-    if (!newBatch || newBatch === currentBatch) return;
+    const currentYear = new Date().getFullYear();
+    const batchOptions = [
+      `Spring ${currentYear - 1}`, `Fall ${currentYear - 1}`,
+      `Spring ${currentYear}`, `Fall ${currentYear}`,
+      `Spring ${currentYear + 1}`, `Fall ${currentYear + 1}`,
+      `Spring ${currentYear + 2}`, `Fall ${currentYear + 2}`
+    ];
 
     showDialog({
-      type: 'confirm', title: 'Warning: Team Reset',
-      message: `Changing ${name}'s batch to ${newBatch} will remove them from their current team and unassign their supervisor. Proceed?`,
-      onConfirm: async () => {
-        const res = await fetch('/api/admin/update-batch', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetUserId: userId, newBatch: newBatch })
+      type: 'prompt',
+      inputType: 'select',
+      inputOptions: batchOptions,
+      title: 'Update Batch',
+      message: `Select a new batch for ${name}. Note: This will trigger a team reset.`,
+      defaultValue: currentBatch || '',
+      onConfirm: async (newBatch: string) => {
+        if (!newBatch || newBatch === currentBatch) return;
+
+        showDialog({
+          type: 'confirm', title: 'Warning: Team Reset',
+          message: `Changing ${name}'s batch to ${newBatch} will remove them from their current team and unassign their supervisor. Proceed?`,
+          onConfirm: async () => {
+            const res = await fetch('/api/admin/update-batch', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUserId: userId, newBatch })
+            });
+            if (res.ok) { showDialog({ title: "Success", message: "Batch updated and student reset!" }); fetchStudents(); } 
+            else { showDialog({ title: "Error", message: "Failed to update batch." }); }
+          }
         });
-        if (res.ok) { showDialog({ title: "Success", message: "Batch updated and student reset!" }); fetchStudents(); } 
-        else { showDialog({ title: "Error", message: "Failed to update batch." }); }
       }
     });
   };
