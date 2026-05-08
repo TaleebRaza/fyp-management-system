@@ -163,13 +163,18 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
 
   const handleRegister = async (e: any) => {
     e.preventDefault();
+    const emailValue = e.target.email.value;
+    if (!/^[a-zA-Z0-9._%+-]+@uoh\.edu\.pk$/.test(emailValue)) {
+      showDialog({ title: "Invalid Email", message: "Only university emails are allowed (e.g. f23-0201@uoh.edu.pk)" });
+      return;
+    }
     // Include 'program' from state in the registration payload
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: e.target.name.value,
-        email: e.target.email.value,
+        email: emailValue,
         rollNo: e.target.rollNo.value,
         password: e.target.password.value,
         supervisorId: e.target.supervisor.value,
@@ -201,7 +206,7 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Email Address</label>
-            <StyledInput isDarkMode={isDarkMode} theme={theme} name="email" type="email" required placeholder="student@example.com" />
+            <StyledInput isDarkMode={isDarkMode} theme={theme} name="email" type="email" required placeholder="f23-0201@uoh.edu.pk" />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Roll Number</label>

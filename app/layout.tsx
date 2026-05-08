@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { AuthProvider } from "./Providers"; // 1. We import our new intercom system!
+import { AuthProvider } from "./Providers";
 
 export const metadata: Metadata = {
   title: "FYP Management System",
@@ -14,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         {/* 2. We wrap the entire application so every page has access to the login state */}
         <AuthProvider>
           {children}

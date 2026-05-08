@@ -8,6 +8,11 @@ export async function POST(req: Request) {
   try {
     // 1. Add 'program' to the destructured JSON payload
     const { name, email, rollNo, password, supervisorId, program } = await req.json();
+
+    if (email && !/^[a-zA-Z0-9._%+-]+@uoh\.edu\.pk$/.test(email)) {
+      return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@uoh.edu.pk)' }, { status: 400 });
+    }
+
     await connectToDatabase();
     
     const existingUser = await User.findOne({ 

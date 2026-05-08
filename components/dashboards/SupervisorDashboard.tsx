@@ -34,8 +34,38 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     showDialog({
       type: 'prompt', title: `${newStatus} Project`, message: `Add optional remarks for marking this team's project as ${newStatus}:`,
       onConfirm: async (remarks: string) => {
-        await fetch('/api/dashboard/supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: remarks || "No remarks provided." }) });
-        setSelectedProject(null); fetchProjects(); 
+        const finalRemarks = remarks || "No remarks provided.";
+
+        // Snapshot previous state for revert on failure
+        const prevProject = myProjects.find(p => p.triggerStudentId === triggerStudentId);
+        const prevStatus = prevProject?.status;
+        const prevRemarks = prevProject?.remarks;
+
+        // Optimistic update — instantly reflect in UI
+        setMyProjects(prev => prev.map(p =>
+          p.triggerStudentId === triggerStudentId
+            ? { ...p, status: newStatus, remarks: finalRemarks }
+            : p
+        ));
+        setSelectedProject(null);
+
+        // Sync with server in background
+        try {
+          const res = await fetch('/api/dashboard/supervisor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: finalRemarks })
+          });
+          if (!res.ok) throw new Error("Server error");
+        } catch (error) {
+          // Revert to exact previous state on failure
+          setMyProjects(prev => prev.map(p =>
+            p.triggerStudentId === triggerStudentId
+              ? { ...p, status: prevStatus, remarks: prevRemarks }
+              : p
+          ));
+          showDialog({ title: "Network Error", message: "Failed to update status. Please check your connection and try again." });
+        }
       }
     });
   };
