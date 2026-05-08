@@ -5,6 +5,9 @@ import { AuthProvider } from "./Providers";
 export const metadata: Metadata = {
   title: "FYP Management System",
   description: "University Final Year Project Portal",
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 export default function RootLayout({

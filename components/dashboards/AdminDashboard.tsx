@@ -95,7 +95,11 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [headlineInput, setHeadlineInput] = useState('');
   const [currentHeadline, setCurrentHeadline] = useState('');
   const [studentFilter, setStudentFilter] = useState('All');
+  const [batchFilter, setBatchFilter] = useState('All'); // NEW
   const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
+
+  // Extract unique batches dynamically
+  const uniqueBatches = Array.from(new Set(adminStudents.map(s => s.batch).filter(Boolean)));
 
   // Graph Modal
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
@@ -104,9 +108,23 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
   // Filtered students
   const filteredStudents = adminStudents.filter(student => {
-    if (studentFilter === 'All') return true;
-    if (['BSCS', 'BSAI', 'BSTN', 'BSSE'].includes(studentFilter)) return student.program === studentFilter;
-    return student.status === studentFilter;
+    let matchesStatus = true;
+    let matchesBatch = true;
+    
+    if (studentFilter !== 'All') {
+      // Dynamically check against all programs defined in PROGRAM_MAP
+      if (Object.keys(PROGRAM_MAP).includes(studentFilter)) {
+        matchesStatus = student.program === studentFilter;
+      } else {
+        matchesStatus = student.status === studentFilter;
+      }
+    }
+    
+    if (batchFilter !== 'All') {
+      matchesBatch = student.batch === batchFilter;
+    }
+    
+    return matchesStatus && matchesBatch;
   });
 
   const fetchHeadline = async () => {
@@ -186,41 +204,107 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   }, []);
 
   const handleUpdateEmail = async (userId: string, currentEmail: string, name: string) => {
-    const newEmail = window.prompt(`Enter new email for ${name}:`, currentEmail || '');
-    if (!newEmail || newEmail === currentEmail) return;
-    const res = await fetch('/api/admin/update-email', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetUserId: userId, newEmail })
+    showDialog({
+      type: 'prompt',
+      inputType: 'email',
+      title: 'Update Email',
+      message: `Enter a new email address for ${name}:`,
+      defaultValue: currentEmail || '',
+      onConfirm: async (newEmail: string) => {
+        if (!newEmail || newEmail === currentEmail) return;
+        const res = await fetch('/api/admin/update-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetUserId: userId, newEmail })
+        });
+        if (res.ok) { showDialog({ title: "Success", message: "Email updated!" }); fetchSupervisors(); fetchStudents(); }
+        else { showDialog({ title: "Error", message: "Failed to update email." }); }
+      }
     });
-    if (res.ok) { showDialog({ title: "Success", message: "Email updated!" }); fetchSupervisors(); fetchStudents(); }
-    else { showDialog({ title: "Error", message: "Failed to update email." }); }
   };
 
   const handleUpdateProgram = async (userId: string, currentProgram: string, name: string) => {
-    const newProgram = window.prompt(`Enter new program for ${name} (BSCS, BSAI, BSTN, BSSE):`, currentProgram || 'BSCS');
-    if (!newProgram || newProgram === currentProgram) return;
-    
-    const uppercaseProgram = newProgram.toUpperCase();
-    if (!Object.keys(PROGRAM_MAP).includes(uppercaseProgram)) {
-      showDialog({ title: "Invalid Input", message: `Program must be one of: ${Object.keys(PROGRAM_MAP).join(', ')}` });
-      return;
-    }
+    showDialog({
+      type: 'prompt',
+      inputType: 'select',
+      inputOptions: Object.keys(PROGRAM_MAP),
+      title: 'Update Program',
+      message: `Select a new program for ${name}. Note: This will trigger a team reset.`,
+      defaultValue: currentProgram || 'BSCS',
+      onConfirm: async (newProgram: string) => {
+        if (!newProgram || newProgram === currentProgram) return;
+
+        showDialog({
+          type: 'confirm', 
+          title: 'Warning: Team Reset', 
+          message: `Changing ${name}'s program to ${newProgram} will remove them from their current team and unassign their supervisor. Proceed?`,
+          onConfirm: async () => {
+            const res = await fetch('/api/admin/update-program', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUserId: userId, newProgram })
+            });
+            if (res.ok) {
+              showDialog({ title: "Success", message: "Program updated and student reset!" });
+              fetchStudents();
+            } else {
+              showDialog({ title: "Error", message: "Failed to update program." });
+            }
+          }
+        });
+      }
+    });
+  };
+
+  const handleUpdateBatch = async (userId: string, currentBatch: string, name: string) => {
+    const currentYear = new Date().getFullYear();
+    const batchOptions = [
+      `Spring ${currentYear - 1}`, `Fall ${currentYear - 1}`,
+      `Spring ${currentYear}`, `Fall ${currentYear}`,
+      `Spring ${currentYear + 1}`, `Fall ${currentYear + 1}`,
+      `Spring ${currentYear + 2}`, `Fall ${currentYear + 2}`
+    ];
 
     showDialog({
-      type: 'confirm', 
-      title: 'Warning: Team Reset', 
-      message: `Changing ${name}'s program to ${uppercaseProgram} will remove them from their current team and unassign their supervisor. Proceed?`,
-      onConfirm: async () => {
-        const res = await fetch('/api/admin/update-program', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetUserId: userId, newProgram: uppercaseProgram })
+      type: 'prompt',
+      inputType: 'select',
+      inputOptions: batchOptions,
+      title: 'Update Batch',
+      message: `Select a new batch for ${name}. Note: This will trigger a team reset.`,
+      defaultValue: currentBatch || '',
+      onConfirm: async (newBatch: string) => {
+        if (!newBatch || newBatch === currentBatch) return;
+
+        showDialog({
+          type: 'confirm', title: 'Warning: Team Reset',
+          message: `Changing ${name}'s batch to ${newBatch} will remove them from their current team and unassign their supervisor. Proceed?`,
+          onConfirm: async () => {
+            const res = await fetch('/api/admin/update-batch', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUserId: userId, newBatch })
+            });
+            if (res.ok) { showDialog({ title: "Success", message: "Batch updated and student reset!" }); fetchStudents(); } 
+            else { showDialog({ title: "Error", message: "Failed to update batch." }); }
+          }
         });
-        if (res.ok) {
-          showDialog({ title: "Success", message: "Program updated and student reset!" });
-          fetchStudents();
-        } else {
-          showDialog({ title: "Error", message: "Failed to update program." });
-        }
+      }
+    });
+  };
+
+  const handlePromoteBatch = () => {
+    if (batchFilter === 'All') {
+       showDialog({ title: 'Action Required', message: 'Please select a specific batch from the filters above to promote.' });
+       return;
+    }
+    showDialog({
+      type: 'confirm', title: `Promote ${batchFilter}?`,
+      message: `Are you sure you want to promote ALL students in ${batchFilter} to the 8th Semester?`,
+      onConfirm: async () => {
+        const res = await fetch('/api/admin/promote-batch', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetBatch: batchFilter })
+        });
+        const data = await res.json();
+        if (res.ok) { showDialog({ title: "Success", message: data.message }); fetchStudents(); }
+        else showDialog({ title: "Error", message: data.error });
       }
     });
   };
@@ -269,12 +353,12 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       <AnimatePresence>
         {isGraphModalOpen && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 md:p-8">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsGraphModalOpen(false)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-md" onClick={() => setIsGraphModalOpen(false)} />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className={`relative w-full h-full max-w-7xl flex flex-col rounded-[2rem] border shadow-2xl backdrop-blur-3xl overflow-hidden ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+              className={`relative w-full h-full max-w-7xl flex flex-col rounded-[2rem] border shadow-2xl md:backdrop-blur-3xl overflow-hidden ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
             >
               <div className="p-6 border-b flex justify-between items-center z-10 relative">
                 <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
@@ -466,13 +550,27 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                 <h4 className="text-lg font-extrabold tracking-tight">Registered Students <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{filteredStudents.length}</span></h4>
 
                 {/* Filter Pills */}
-                <div className="flex flex-wrap gap-2 items-center">
-                  <Filter size={16} className="opacity-40 mr-1 hidden md:block" />
-                  {filterOptions.map(opt => (
-                    <button key={opt} onClick={() => setStudentFilter(opt)} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${studentFilter === opt ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>
-                      {opt}
-                    </button>
-                  ))}
+                <div className="flex flex-col gap-3 items-end">
+                  <div className="flex flex-wrap gap-2 items-center justify-end">
+                    <Filter size={16} className="opacity-40 mr-1 hidden md:block" />
+                    {filterOptions.map(opt => (
+                      <button key={opt} onClick={() => setStudentFilter(opt)} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${studentFilter === opt ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center justify-end">
+                     <span className="text-xs font-bold opacity-40 uppercase tracking-widest mr-1">Batch:</span>
+                     <button onClick={() => setBatchFilter('All')} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${batchFilter === 'All' ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>All</button>
+                     {uniqueBatches.map((b: any) => (
+                       <button key={b} onClick={() => setBatchFilter(b)} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${batchFilter === b ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>{b}</button>
+                     ))}
+                     {batchFilter !== 'All' && (
+                       <button onClick={handlePromoteBatch} className={`ml-2 px-3 py-1.5 text-xs font-bold rounded-xl transition-all shadow-md bg-purple-500 hover:bg-purple-600 text-white flex items-center gap-1`}>
+                         Promote to 8th Sem
+                       </button>
+                     )}
+                  </div>
                 </div>
               </div>
 
@@ -499,6 +597,14 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                               className={`cursor-pointer hover:scale-105 hover:shadow-md transition-all text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}
                             >
                               {student.program || 'N/A'}
+                            </span>
+                            {/* --- Clickable Batch Tag --- */}
+                            <span 
+                              onClick={() => handleUpdateBatch(student._id, student.batch, student.name)}
+                              title="Click to Edit Batch"
+                              className={`cursor-pointer hover:scale-105 hover:shadow-md transition-all text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${isDarkMode ? 'border-neutral-700 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}
+                            >
+                              {student.batch || 'No Batch'} • {student.semester || '7th Sem'}
                             </span>
                           </div>
                           <p onClick={() => handleUpdateEmail(student._id, student.email, student.name)} className="text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">

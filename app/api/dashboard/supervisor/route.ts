@@ -40,6 +40,8 @@ export async function GET(req: Request) {
           status: student.status,
           remarks: student.remarks,
           stage: stageMap[pId] || 'PROPOSAL', // <-- Inject the stage here
+          batch: student.batch || 'N/A',
+          semester: student.semester || '7th Semester',
           members: []
         });
       }
@@ -118,8 +120,8 @@ export async function POST(req: Request) {
         });
       }
       
-      // 3. Email Notifications
-      for (const member of teamMembers) {
+      // 3. Email Notifications (Parallelized for Speed)
+      const emailPromises = teamMembers.map(async (member) => {
         if (member.supervisorId && member.email) {
           const supervisor = await User.findById(member.supervisorId);
           if (supervisor && supervisor.notificationsEnabled !== false) {
@@ -149,10 +151,13 @@ export async function POST(req: Request) {
                 </div>
               </div>
             `;
-            await sendNotificationEmail(member.email, subject, htmlContent);
+            return sendNotificationEmail(member.email, subject, htmlContent);
           }
         }
-      }
+      });
+
+      // Execute all emails at the exact same time
+      await Promise.all(emailPromises);
       return NextResponse.json({ message: 'Status updated and timeline advanced!' }, { status: 200 });
     }
 

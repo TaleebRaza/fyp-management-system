@@ -1,17 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSession, signIn, signOut } from "next-auth/react";
-import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, LayoutDashboard, Users, PlusCircle, Code, FileText, Upload, CheckCircle, XCircle, Send, ArrowRightLeft, Loader2, Palette, Trash2, UserMinus, Globe, Wrench, ChevronRight, AlertTriangle, Download, Mail, MailX } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, LayoutDashboard, Users, PlusCircle, Code, FileText, Upload, CheckCircle, XCircle, Send, ArrowRightLeft, Loader2, Palette, Trash2, UserMinus, Globe, Wrench, ChevronRight, ChevronDown, AlertTriangle, Download, Mail, MailX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { GlassCard, StyledInput } from '../components/ui/SharedUI';
-import StudentDashboard from '../components/dashboards/StudentDashboard';
-import SupervisorDashboard from '../components/dashboards/SupervisorDashboard';
-import AdminDashboard from '../components/dashboards/AdminDashboard';
-
 import { PROGRAM_MAP } from '../config/appSettings';
 
+// ✅ Lazy load dashboards
+const StudentDashboard = dynamic(() => import('../components/dashboards/StudentDashboard'), {
+  loading: () => <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className="animate-spin" size={40}/></div>
+});
+const SupervisorDashboard = dynamic(() => import('../components/dashboards/SupervisorDashboard'), {
+  loading: () => <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className="animate-spin" size={40}/></div>
+});
+const AdminDashboard = dynamic(() => import('../components/dashboards/AdminDashboard'), {
+  loading: () => <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className="animate-spin" size={40}/></div>
+});
 
 type ThemeKey = 'ocean' | 'fiery' | 'zen';
 
@@ -25,6 +32,56 @@ const getTheme = (key: ThemeKey, isDark: boolean) => {
   return themes[key];
 };
 
+const CustomSelect = ({ name, options, value, onChange, placeholder, isDarkMode, theme, required = false }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: any) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative group mb-4" ref={dropdownRef}>
+      <input type="hidden" name={name} value={value} required={required} />
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full px-5 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none flex justify-between items-center cursor-pointer shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white' : 'bg-neutral-100/70 text-black'} ${isOpen ? theme.border : `hover:border-neutral-300 dark:hover:border-neutral-700`}`}
+      >
+        <span className={value ? 'font-bold' : 'opacity-60 font-medium'}>
+          {value ? (options.find((o:any) => o.value === value)?.label || value) : placeholder}
+        </span>
+        <ChevronDown size={18} className={`opacity-50 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className={`absolute z-50 w-full mt-2 p-2 rounded-2xl border shadow-2xl overflow-hidden max-h-60 overflow-y-auto custom-scrollbar md:backdrop-blur-3xl ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
+          >
+            {options.map((opt: any) => (
+              <div 
+                key={opt.value}
+                onClick={() => { if(!opt.disabled) { onChange(opt.value); setIsOpen(false); } }}
+                className={`px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 flex justify-between items-center ${value === opt.value ? `${theme.lightBg} ${theme.text} font-bold` : `hover:${theme.lightBg} hover:${theme.text} font-medium`}`}
+                style={opt.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+              >
+                {opt.label}
+                {value === opt.value && <CheckCircle size={16} />}
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
   const [inputValue, setInputValue] = useState(dialog.defaultValue);
@@ -34,9 +91,11 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
     <AnimatePresence>
       {dialog.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={closeDialog} />
+          {/* Optimized Overlay: Solid dark on mobile, blurred on desktop */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-md" onClick={closeDialog} />
+          {/* Optimized Modal Body: Solid on mobile, frosted glass on desktop */}
           <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`relative w-full max-w-md p-8 rounded-[2rem] border shadow-2xl backdrop-blur-3xl ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+            className={`relative w-full max-w-md p-8 rounded-[2rem] border shadow-2xl md:backdrop-blur-3xl ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
           >
             <div className={`w-14 h-14 rounded-2xl mb-6 flex items-center justify-center ${dialog.type === 'confirm' ? 'bg-red-500/10 text-red-500' : `${theme.lightBg} ${theme.text}`} shadow-sm`}>
               {dialog.type === 'prompt' ? <FileText size={28} /> : (dialog.type === 'confirm' || dialog.title.includes("Error") || dialog.title.includes("Required") ? <XCircle size={28} className={dialog.title.includes("Required") ? "text-amber-500" : ""} /> : <CheckCircle size={28} />)}
@@ -45,17 +104,37 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
             <h3 className="text-2xl font-extrabold tracking-tight mb-2">{dialog.title}</h3>
             <p className="opacity-70 mb-6 font-medium leading-relaxed">{dialog.message}</p>
 
+            {/* --- NEW: Dynamic Input Rendering Engine --- */}
             {dialog.type === 'prompt' && (
-              <textarea autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)} placeholder="E.g., Great methodology, but needs more citations..." rows={4}
-                className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none resize-none mb-2 text-sm shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white placeholder-neutral-500' : 'bg-neutral-100/70 text-black placeholder-neutral-400'} ${theme.ring} focus:bg-transparent`} 
-              />
+              <div className="mb-2">
+                {dialog.inputType === 'select' && dialog.inputOptions ? (
+                  <div className="relative group">
+                    <select autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)}
+                      className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none font-bold shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white' : 'bg-neutral-100/70 text-black'} ${theme.ring} focus:bg-transparent`}
+                    >
+                      <option value="" disabled>-- Make a selection --</option>
+                      {dialog.inputOptions.map((opt: string) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : dialog.inputType === 'email' ? (
+                  <input type="email" autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)} placeholder="Enter new email..."
+                    className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white placeholder-neutral-500' : 'bg-neutral-100/70 text-black placeholder-neutral-400'} ${theme.ring} focus:bg-transparent`}
+                  />
+                ) : (
+                  <textarea autoFocus value={inputValue} onChange={(e: any) => setInputValue(e.target.value)} placeholder={dialog.placeholder || "Enter details..."} rows={4}
+                    className={`w-full px-5 py-4 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none resize-none text-sm shadow-inner ${isDarkMode ? 'bg-neutral-900 text-white placeholder-neutral-500' : 'bg-neutral-100/70 text-black placeholder-neutral-400'} ${theme.ring} focus:bg-transparent`} 
+                  />
+                )}
+              </div>
             )}
 
             <div className="flex justify-end gap-3 mt-8">
               {(dialog.type === 'prompt' || dialog.type === 'confirm') && (
                 <button onClick={closeDialog} className={`px-6 py-3 rounded-xl font-bold transition-colors ${isDarkMode ? 'hover:bg-neutral-800 text-neutral-300' : 'hover:bg-neutral-200 text-neutral-600'}`}>Cancel</button>
               )}
-              <button onClick={() => { dialog.onConfirm(inputValue); closeDialog(); }} className={`px-8 py-3 rounded-xl text-white font-bold transition-transform active:scale-95 shadow-lg ${dialog.type === 'confirm' ? 'bg-red-500 hover:bg-red-600' : theme.bg}`}>
+              <button onClick={() => { dialog.onConfirm(inputValue); closeDialog(); }} disabled={dialog.type === 'prompt' && !inputValue} className={`px-8 py-3 rounded-xl text-white font-bold transition-transform active:scale-95 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${dialog.type === 'confirm' ? 'bg-red-500 hover:bg-red-600' : theme.bg}`}>
                 {dialog.type === 'prompt' ? 'Confirm' : (dialog.type === 'confirm' ? 'Yes, Proceed' : 'Okay')}
               </button>
             </div>
@@ -69,7 +148,7 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
 // --- AUTH VIEWS ---
 const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => {
   const [isResetMode, setIsResetMode] = useState(false);
-  const [resetStep, setResetStep] = useState(1); // 1 = Request Code, 2 = Verify Code
+  const [resetStep, setResetStep] = useState(1);
   const [resetRollNo, setResetRollNo] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -158,8 +237,27 @@ const LoginView = ({ isDarkMode, theme, setIsRegistering, showDialog }: any) => 
 };
 
 const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, showDialog }: any) => {
-  // Program selection state (default BSCS)
   const [program, setProgram] = useState('BSCS');
+  const [batch, setBatch] = useState('');
+  const [supervisor, setSupervisor] = useState('');
+  
+  // Format options for CustomSelect
+  const currentYear = new Date().getFullYear();
+  const batchOptions = [
+    { label: `Spring ${currentYear}`, value: `Spring ${currentYear}` },
+    { label: `Fall ${currentYear}`, value: `Fall ${currentYear}` },
+    { label: `Spring ${currentYear + 1}`, value: `Spring ${currentYear + 1}` },
+    { label: `Fall ${currentYear + 1}`, value: `Fall ${currentYear + 1}` }
+  ];
+
+  const formattedSupOptions = [
+    { label: '-- Optional (Choose Later) --', value: '' },
+    ...(Array.isArray(supervisorsList) ? supervisorsList.map((sup: any) => ({
+      label: `${sup.name} ${sup.isFull ? '(Capacity Reached)' : `(${sup.filledSlots}/${sup.maxSlots} Slots)`}`,
+      value: sup._id,
+      disabled: sup.isFull
+    })) : [])
+  ];
 
   const handleRegister = async (e: any) => {
     e.preventDefault();
@@ -178,7 +276,8 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
         rollNo: e.target.rollNo.value,
         password: e.target.password.value,
         supervisorId: e.target.supervisor.value,
-        program,   // new program field
+        program,
+        batch: e.target.batch.value, // Added batch payload
       })
     });
     const data = await res.json();
@@ -217,39 +316,45 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
             <StyledInput isDarkMode={isDarkMode} theme={theme} name="password" type="password" required placeholder="••••••••" />
           </div>
 
-          {/* --- Program Selection Radio Buttons --- */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {Object.keys(PROGRAM_MAP).map(prog => (
-                <label 
-                  key={prog} 
-                  title={PROGRAM_MAP[prog]} // <-- This adds the hover/long-press detail
-                  className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${program === prog ? `${theme.border} ${theme.lightBg} ${theme.text}` : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`}`}
-                >
-                  <input type="radio" name="program" value={prog} checked={program === prog} onChange={(e) => setProgram(e.target.value)} className="hidden" />
-                  <span className="font-bold text-sm tracking-wide">{prog}</span>
-                </label>
-              ))}
-            </div>
-          {/* ------------------------------------------- */}
+            {Object.keys(PROGRAM_MAP).map(prog => (
+              <label 
+                key={prog} 
+                title={PROGRAM_MAP[prog]}
+                className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${program === prog ? `${theme.border} ${theme.lightBg} ${theme.text}` : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`}`}
+              >
+                <input type="radio" name="program" value={prog} checked={program === prog} onChange={(e) => setProgram(e.target.value)} className="hidden" />
+                <span className="font-bold text-sm tracking-wide">{prog}</span>
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Batch</label>
+            <CustomSelect 
+              name="batch" 
+              options={batchOptions} 
+              value={batch} 
+              onChange={setBatch} 
+              placeholder="-- Choose your Batch --" 
+              isDarkMode={isDarkMode} 
+              theme={theme} 
+              required={true} 
+            />
+          </div>
 
           <div>
             <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Supervisor</label>
-            <div className="relative group">
-              <select
-                name="supervisor"
-                className={`w-full pl-4 pr-10 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none appearance-none ${
-                  isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100/70 text-black'
-                } ${theme.ring} focus:bg-transparent`}
-              >
-                <option value="">-- Optional (Choose Later) --</option>
-                {Array.isArray(supervisorsList) &&
-                  supervisorsList.map((sup: any) => (
-                    <option key={sup._id} value={sup._id} disabled={sup.isFull}>
-                      {sup.name} {sup.isFull ? '(Capacity Reached)' : `(${sup.filledSlots}/${sup.maxSlots} Slots)`}
-                    </option>
-                  ))}
-              </select>
-            </div>
+            <CustomSelect 
+              name="supervisor" 
+              options={formattedSupOptions} 
+              value={supervisor} 
+              onChange={setSupervisor} 
+              placeholder="-- Optional (Choose Later) --" 
+              isDarkMode={isDarkMode} 
+              theme={theme} 
+              required={false} 
+            />
           </div>
 
           <motion.button
@@ -274,17 +379,18 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
 
 // --- MAIN APP ---
 export default function App() {
-  const [isDarkMode, setIsDarkMode] = useState(false);     
-  const [isRegistering, setIsRegistering] = useState(false); 
-  const [supervisorsList, setSupervisorsList] = useState<any[]>([]); 
-  const [activeAccent, setActiveAccent] = useState<ThemeKey>('ocean'); 
-  const [isMounted, setIsMounted] = useState(false); 
-  const [enableTransition, setEnableTransition] = useState(false); 
-
-  const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: (val?: string) => {}, defaultValue: '' });
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [supervisorsList, setSupervisorsList] = useState<any[]>([]);
+  const [activeAccent, setActiveAccent] = useState<ThemeKey>('ocean');
+  const [isMounted, setIsMounted] = useState(false);
+  const [enableTransition, setEnableTransition] = useState(false);
+  const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: (val?: string) => {}, defaultValue: '', inputType: 'text', inputOptions: [] as string[], placeholder: '' });
 
   const { data: session, status } = useSession();
-  const theme = getTheme(activeAccent, isDarkMode);
+
+  // ✅ useMemo - only recalculates when accent or dark mode changes
+  const theme = useMemo(() => getTheme(activeAccent, isDarkMode), [activeAccent, isDarkMode]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -298,21 +404,24 @@ export default function App() {
   useEffect(() => { if (isMounted) localStorage.setItem('fyp_theme', isDarkMode ? 'dark' : 'light'); }, [isDarkMode, isMounted]);
   useEffect(() => { if (isMounted) localStorage.setItem('fyp_accent', activeAccent); }, [activeAccent, isMounted]);
 
-  const showDialog = ({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '' }: any) => {
-    setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue });
-  };
-  const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
+  // ✅ useCallback - stable function references
+  const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '', inputType = 'text', inputOptions = [], placeholder = '' }: any) => {
+    setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue, inputType, inputOptions, placeholder });
+  }, []);
 
-  const cycleTheme = () => {
+  const closeDialog = useCallback(() => setDialog(prev => ({ ...prev, isOpen: false })), []);
+
+  const cycleTheme = useCallback(() => {
     const keys: ThemeKey[] = ['ocean', 'fiery', 'zen'];
     setActiveAccent(keys[(keys.indexOf(activeAccent) + 1) % keys.length]);
-  };
+  }, [activeAccent]);
 
   useEffect(() => {
     if (isRegistering) fetch('/api/supervisors').then(res => res.json()).then(data => setSupervisorsList(Array.isArray(data) ? data : [])).catch(console.error);
   }, [isRegistering]);
 
-  const renderView = () => {
+  // ✅ useCallback - only recreated when dependencies change
+  const renderView = useCallback(() => {
     if (!isMounted) return <div className="min-h-screen"></div>;
     if (status === "loading") return <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className={`animate-spin ${theme.text}`} size={40}/></div>;
     
@@ -326,16 +435,35 @@ export default function App() {
     return isRegistering 
       ? <RegisterView isDarkMode={isDarkMode} theme={theme} setIsRegistering={setIsRegistering} supervisorsList={supervisorsList} showDialog={showDialog} /> 
       : <LoginView isDarkMode={isDarkMode} theme={theme} setIsRegistering={setIsRegistering} showDialog={showDialog} />;
-  };
+  }, [isMounted, status, session, isDarkMode, theme, isRegistering, supervisorsList, showDialog]);
 
   return (
-    <div className={`min-h-screen ${enableTransition ? 'transition-colors duration-700' : ''} ${isDarkMode ? 'bg-[#0a0a0a] text-white' : 'bg-neutral-50 text-black'}`}>
-      <DialogModal dialog={dialog} closeDialog={closeDialog} isDarkMode={isDarkMode} theme={theme} />
+    <div className={`min-h-screen relative ${enableTransition ? 'transition-colors duration-700' : ''} ${isDarkMode ? 'bg-[#0a0a0a] text-white' : 'bg-neutral-50 text-black'}`}>
       
-      <nav className={`sticky top-0 z-50 p-4 border-b ${enableTransition ? 'transition-colors duration-700' : ''} backdrop-blur-2xl shadow-sm ${isDarkMode ? 'bg-[#0a0a0a]/70 border-white/5' : 'bg-white/70 border-neutral-200/50'}`}>
+      {/* --- LIGHTWEIGHT HARDWARE-ACCELERATED WATERMARK --- */}
+      {/* Restored to z-0 so it sits above the background color */}
+      <div 
+        className="fixed top-1/2 left-1/2 w-[200vw] h-[200vh] pointer-events-none z-0"
+        style={{
+          backgroundImage: 'url("/logo.png")',
+          backgroundRepeat: 'repeat',
+          backgroundPosition: 'center',
+          backgroundSize: '100px 100px', 
+          opacity: isDarkMode ? 0.015 : 0.03, 
+          transform: 'translate(-50%, -50%) rotate(-25deg)',
+        }}
+      />
+
+      <div className="relative z-[100]">
+        <DialogModal dialog={dialog} closeDialog={closeDialog} isDarkMode={isDarkMode} theme={theme} />
+      </div>
+      
+      <nav className={`relative z-50 sticky top-0 p-4 border-b ${enableTransition ? 'transition-colors duration-700' : ''} backdrop-blur-2xl shadow-sm ${isDarkMode ? 'bg-[#0a0a0a]/70 border-white/5' : 'bg-white/70 border-neutral-200/50'}`}>
         <div className="container mx-auto max-w-7xl flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shadow-lg shadow-${theme.text}/20 transition-all duration-500`}><LayoutDashboard className="text-white" size={20}/></div>
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white shadow-lg transition-all duration-500">
+              <img src="/logo.png" alt="University Logo" className="w-full h-full object-contain p-1" />
+            </div>
             <h1 className={`text-xl font-black tracking-tighter hidden sm:block ${isDarkMode ? 'text-white' : 'text-black'}`}>FYP <span className={`transition-colors duration-500 ${theme.text}`}>Portal</span></h1>
           </div>
           
@@ -346,7 +474,11 @@ export default function App() {
           </div>
         </div>
       </nav>
-      <main className="container mx-auto p-4 md:p-8 max-w-7xl mt-4"><AnimatePresence mode="wait">{renderView()}</AnimatePresence></main>
+      
+      {/* NEW: Added `relative` here. Because this comes after z-0 in the DOM, it naturally layers on top without trapping modals! */}
+      <main className="relative container mx-auto p-4 md:p-8 max-w-7xl mt-4">
+        <AnimatePresence mode="wait">{renderView()}</AnimatePresence>
+      </main>
     </div>
   );
 }

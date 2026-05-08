@@ -14,6 +14,11 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [batchFilter, setBatchFilter] = useState('All'); // NEW
+
+  const uniqueBatches = Array.from(new Set(myProjects.map((p: any) => p.batch).filter(Boolean)));
+  const filteredProjects = batchFilter === 'All' ? myProjects : myProjects.filter(p => p.batch === batchFilter);
 
   const fetchProjects = async () => {
     const res = await fetch(`/api/dashboard/supervisor?id=${(session?.user as any)?.id}`);
@@ -34,42 +39,26 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     showDialog({
       type: 'prompt', title: `${newStatus} Project`, message: `Add optional remarks for marking this team's project as ${newStatus}:`,
       onConfirm: async (remarks: string) => {
-        const finalRemarks = remarks || "No remarks provided.";
-
-        // Snapshot previous state for revert on failure
-        const prevProject = myProjects.find(p => p.triggerStudentId === triggerStudentId);
-        const prevStatus = prevProject?.status;
-        const prevRemarks = prevProject?.remarks;
-
-        // Optimistic update — instantly reflect in UI
-        setMyProjects(prev => prev.map(p =>
-          p.triggerStudentId === triggerStudentId
-            ? { ...p, status: newStatus, remarks: finalRemarks }
-            : p
-        ));
-        setSelectedProject(null);
-
-        // Sync with server in background
+        setIsProcessingAction(true); // START SPINNER
         try {
-          const res = await fetch('/api/dashboard/supervisor', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: finalRemarks })
+          const res = await fetch('/api/dashboard/supervisor', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ action: 'updateStatus', studentId: triggerStudentId, status: newStatus, remarks: remarks || "No remarks provided." }) 
           });
-          if (!res.ok) throw new Error("Server error");
+          
+          if (!res.ok) throw new Error("Server failed to process the request.");
+          
+          setSelectedProject(null); 
+          fetchProjects(); 
         } catch (error) {
-          // Revert to exact previous state on failure
-          setMyProjects(prev => prev.map(p =>
-            p.triggerStudentId === triggerStudentId
-              ? { ...p, status: prevStatus, remarks: prevRemarks }
-              : p
-          ));
-          showDialog({ title: "Network Error", message: "Failed to update status. Please check your connection and try again." });
+          showDialog({ title: "Network Error", message: "Failed to send suggestions. Please ensure you have a stable connection and try again." });
+        } finally {
+          setIsProcessingAction(false); // STOP SPINNER
         }
       }
     });
   };
-
   const handleMigrate = async (triggerStudentId: string, projectId: string) => {
     const code = migrationInput[projectId];
     if (!code) { showDialog({ title: "Input Required", message: "Please enter a Migration Code." }); return; }
@@ -93,7 +82,8 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     try {
       const id   = (session?.user as any)?.id;
       const name = session?.user?.name || 'Supervisor';
-      const response = await fetch(`/api/export-pdf?id=${id}&name=${encodeURIComponent(name)}`);
+      // Append the batchFilter to the query string so the server knows what to export
+      const response = await fetch(`/api/export-pdf?id=${id}&name=${encodeURIComponent(name)}&batch=${encodeURIComponent(batchFilter)}`);
       if (!response.ok) throw new Error(`Export failed. Server responded with status: ${response.status}`);
       const blob = await response.blob();
       if (blob.size === 0) throw new Error('Received an empty file from the server.');
@@ -120,16 +110,21 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
       <AnimatePresence>
         {selectedProject && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedProject(null)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-sm" onClick={() => setSelectedProject(null)} />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 rounded-[2rem] border shadow-2xl backdrop-blur-3xl custom-scrollbar ${isDarkMode ? 'bg-[#18181b]/95 border-white/10 text-white' : 'bg-white/95 border-neutral-200/50 text-black'}`}
+              className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 rounded-[2rem] border shadow-2xl md:backdrop-blur-3xl custom-scrollbar ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
             >
               <button onClick={() => setSelectedProject(null)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-neutral-500/20 transition-colors z-10"><XCircle size={24} className="opacity-60" /></button>
               <div className="mb-6 border-b border-neutral-200 dark:border-neutral-800 pb-6 pr-12">
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-3xl font-extrabold tracking-tight mb-1">{selectedProject.members.map((m:any) => m.name).join(' & ')}</h2>
-                    <p className="font-mono opacity-60 font-medium">{selectedProject.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                    <div className="flex items-center gap-3">
+                      <p className="font-mono opacity-60 font-medium">{selectedProject.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${isDarkMode ? 'border-neutral-700 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
+                        {selectedProject.batch} • {selectedProject.semester}
+                      </span>
+                    </div>
                   </div>
                   <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${selectedProject.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : selectedProject.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{selectedProject.status}</span>
                 </div>
@@ -161,36 +156,34 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                 <h4 className="font-extrabold text-sm tracking-widest uppercase opacity-40 mb-4">Supervisor Actions</h4>
                 <div className="space-y-4">
                   
-                  {/* --- UPDATED BUTTONS WRAPPER --- */}
                   <div className="flex flex-col sm:flex-row gap-3">
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved'} 
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved' || isProcessingAction} 
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
                     >
-                      Approve Project
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Approve Project"}
                     </motion.button>
                     
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Changes Requested')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested'} 
-                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested' || isProcessingAction} 
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
                     >
-                      Make Suggestion
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Make Suggestion"}
                     </motion.button>
 
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected'} 
-                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-30 text-white py-3.5 rounded-xl text-sm font-bold shadow-md"
+                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected' || isProcessingAction} 
+                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
                     >
-                      Reject Project
+                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Reject Project"}
                     </motion.button>
                   </div>
-                  {/* ------------------------------- */}
 
                   <div className="flex gap-3 items-center">
                     <div className={`flex-1 flex items-center p-2 rounded-xl border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
@@ -225,19 +218,34 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
       </GlassCard>
 
       <GlassCard isDarkMode={isDarkMode} className="flex-1 p-8">
-        <h3 className="text-xl font-extrabold tracking-tight mb-8">My Assigned Projects <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{myProjects.length}</span></h3>
-        {myProjects.length === 0 ? (
-           <div className="text-center py-20 opacity-40 border-2 border-dashed rounded-3xl dark:border-neutral-700 font-medium">No projects assigned to you yet.</div>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <h3 className="text-xl font-extrabold tracking-tight">My Assigned Projects <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{filteredProjects.length}</span></h3>
+          
+          {uniqueBatches.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs font-bold opacity-40 uppercase tracking-widest mr-1">Filter Batch:</span>
+              <button onClick={() => setBatchFilter('All')} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${batchFilter === 'All' ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>All</button>
+              {uniqueBatches.map((b: any) => (
+                <button key={b} onClick={() => setBatchFilter(b)} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${batchFilter === b ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>{b}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        {filteredProjects.length === 0 ? (
+           <div className="text-center py-20 opacity-40 border-2 border-dashed rounded-3xl dark:border-neutral-700 font-medium">No projects found.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <AnimatePresence>
-              {myProjects.map(project => (
+              {filteredProjects.map((project: any) => (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedProject(project)} key={project._id} className={`cursor-pointer p-6 rounded-[2rem] border flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${isDarkMode ? 'bg-neutral-800/50 border-neutral-700/50 hover:border-neutral-600' : 'bg-neutral-50/50 border-neutral-200/50 hover:border-neutral-300'}`}>
                   <div>
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <h4 className="font-extrabold text-lg tracking-tight line-clamp-1 pr-2">{project.members.map((m:any) => m.name).join(' & ')}</h4>
-                        <p className="text-xs font-mono font-medium opacity-50">{project.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                        <p className="text-xs font-mono font-medium opacity-50 mb-1.5">{project.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                        <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border opacity-70 ${isDarkMode ? 'border-neutral-600 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
+                          {project.batch} • {project.semester}
+                        </span>
                       </div>
                       <span className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-lg shrink-0 ${project.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : project.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{project.status}</span>
                     </div>

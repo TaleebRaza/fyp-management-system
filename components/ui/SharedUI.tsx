@@ -1,7 +1,12 @@
 import React from "react";
 
 export const GlassCard = ({ children, className = "", isDarkMode }: any) => (
-  <div className={`p-8 rounded-[2rem] border backdrop-blur-2xl transition-all duration-500 ${isDarkMode ? 'bg-neutral-900/80 border-white/5 shadow-[0_8px_30px_rgb(0,0,0,0.1)]' : 'bg-white/80 border-neutral-200/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'} ${className}`}>
+  <div className={`p-6 md:p-8 rounded-[2rem] border transition-all duration-500 
+    ${isDarkMode 
+      ? 'bg-neutral-900 md:bg-neutral-900/80 border-white/5 shadow-[0_8px_30px_rgb(0,0,0,0.1)]' 
+      : 'bg-white md:bg-white/80 border-neutral-200/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'} 
+    md:backdrop-blur-2xl ${className}`}
+  >
     {children}
   </div>
 );
