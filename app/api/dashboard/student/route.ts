@@ -136,7 +136,7 @@ export async function POST(req: Request) {
       ]);
       updatedStudent = await User.findById(body.id); // Re-fetch to get supervisor ID
     } else {
-      updatedStudent = await User.findByIdAndUpdate(body.id, { $set: submissionData }, { new: true });
+      updatedStudent = await User.findByIdAndUpdate(body.id, { $set: submissionData }, { returnDocument: 'after' });
     }
 
     // Trigger Supervisor Email Notification (Kept identical to prevent UI changes)
