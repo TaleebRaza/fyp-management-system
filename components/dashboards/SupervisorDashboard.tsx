@@ -39,7 +39,7 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     showDialog({
       type: 'prompt', title: `${newStatus} Project`, message: `Add optional remarks for marking this team's project as ${newStatus}:`,
       onConfirm: async (remarks: string) => {
-        setIsProcessingAction(true); // START SPINNER
+        setIsProcessingAction(true);
         try {
           const res = await fetch('/api/dashboard/supervisor', { 
             method: 'POST', 
@@ -54,7 +54,7 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
         } catch (error) {
           showDialog({ title: "Network Error", message: "Failed to send suggestions. Please ensure you have a stable connection and try again." });
         } finally {
-          setIsProcessingAction(false); // STOP SPINNER
+          setIsProcessingAction(false);
         }
       }
     });
@@ -82,7 +82,6 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     try {
       const id   = (session?.user as any)?.id;
       const name = session?.user?.name || 'Supervisor';
-      // Append the batchFilter to the query string so the server knows what to export
       const response = await fetch(`/api/export-pdf?id=${id}&name=${encodeURIComponent(name)}&batch=${encodeURIComponent(batchFilter)}`);
       if (!response.ok) throw new Error(`Export failed. Server responded with status: ${response.status}`);
       const blob = await response.blob();
@@ -103,30 +102,30 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     }
   };
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-[80vh]"><Loader2 className={`animate-spin ${theme.text}`} size={40}/></div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-[80vh]"><Loader2 className={`animate-spin ${theme.text}`} size={28}/></div>;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6 min-h-[80vh] relative">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-4 min-h-[80vh] relative">
       <AnimatePresence>
         {selectedProject && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-sm" onClick={() => setSelectedProject(null)} />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 rounded-[2rem] border shadow-2xl md:backdrop-blur-3xl custom-scrollbar ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
+              className={`relative w-full max-w-xl max-h-[90vh] overflow-y-auto p-5 rounded-2xl border shadow-2xl md:backdrop-blur-3xl custom-scrollbar ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
             >
-              <button onClick={() => setSelectedProject(null)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-neutral-500/20 transition-colors z-10"><XCircle size={24} className="opacity-60" /></button>
-              <div className="mb-6 border-b border-neutral-200 dark:border-neutral-800 pb-6 pr-12">
+              <button onClick={() => setSelectedProject(null)} className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-neutral-500/20 transition-colors z-10"><XCircle size={18} className="opacity-60" /></button>
+              <div className="mb-4 border-b border-neutral-200 dark:border-neutral-800 pb-4 pr-8">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h2 className="text-3xl font-extrabold tracking-tight mb-1">{selectedProject.members.map((m:any) => m.name).join(' & ')}</h2>
-                    <div className="flex items-center gap-3">
-                      <p className="font-mono opacity-60 font-medium">{selectedProject.members.map((m:any) => m.rollNo).join(' | ')}</p>
-                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${isDarkMode ? 'border-neutral-700 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
+                    <h2 className="text-xl font-extrabold tracking-tight mb-0.5">{selectedProject.members.map((m:any) => m.name).join(' & ')}</h2>
+                    <div className="flex items-center gap-2">
+                      <p className="font-mono opacity-60 font-medium text-xs">{selectedProject.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                      <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${isDarkMode ? 'border-neutral-700 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
                         {selectedProject.batch} • {selectedProject.semester}
                       </span>
                     </div>
                   </div>
-                  <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${selectedProject.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : selectedProject.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{selectedProject.status}</span>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${selectedProject.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : selectedProject.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{selectedProject.status}</span>
                 </div>
               </div>
 
@@ -137,60 +136,60 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
               />
 
               {selectedProject.projectTitle ? (
-                <div className={`p-6 rounded-2xl mb-8 ${isDarkMode ? 'bg-black/20' : 'bg-neutral-50'} shadow-inner`}>
-                  <h3 className="text-xl font-bold mb-4">{selectedProject.projectTitle}</h3>
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {selectedProject.domain && <span className={`text-xs px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider flex items-center gap-1.5 ${theme.lightBg} ${theme.text}`}><Globe size={14}/> {selectedProject.domain}</span>}
-                    {selectedProject.tools && <span className={`text-xs px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={14}/> {selectedProject.tools}</span>}
+                <div className={`p-4 rounded-xl mb-5 ${isDarkMode ? 'bg-black/20' : 'bg-neutral-50'} shadow-inner`}>
+                  <h3 className="text-base font-bold mb-3">{selectedProject.projectTitle}</h3>
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {selectedProject.domain && <span className={`text-[10px] px-2 py-1 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 ${theme.lightBg} ${theme.text}`}><Globe size={11}/> {selectedProject.domain}</span>}
+                    {selectedProject.tools && <span className={`text-[10px] px-2 py-1 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={11}/> {selectedProject.tools}</span>}
                   </div>
-                  <p className="text-sm opacity-80 leading-relaxed mb-6">{selectedProject.projectDesc}</p>
+                  <p className="text-xs opacity-80 leading-relaxed mb-4">{selectedProject.projectDesc}</p>
                   {selectedProject.pdfUrl ? (
-                    <a href={`/api/read-pdf?url=${encodeURIComponent(selectedProject.pdfUrl)}`} target="_blank" rel="noreferrer" className={`text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold w-fit transition-colors duration-300 ${theme.bg} text-white shadow-md hover:scale-[1.02] active:scale-95`}>
-                      <FileText size={16}/> View Complete PDF Document
+                    <a href={`/api/read-pdf?url=${encodeURIComponent(selectedProject.pdfUrl)}`} target="_blank" rel="noreferrer" className={`text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 font-bold w-fit transition-colors duration-300 ${theme.bg} text-white shadow-md hover:scale-[1.02] active:scale-95`}>
+                      <FileText size={13}/> View Complete PDF Document
                     </a>
-                  ) : <span className={`text-sm px-4 py-2 rounded-xl flex items-center gap-2 font-bold w-fit opacity-70 ${isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'}`}>No PDF Attached</span>}
+                  ) : <span className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold w-fit opacity-70 ${isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'}`}>No PDF Attached</span>}
                 </div>
-              ) : <div className={`mb-8 text-center p-8 rounded-2xl ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100'}`}><FileText size={40} className="mx-auto mb-3 opacity-20" /><p className="font-bold opacity-50">Project details have not been submitted yet.</p></div>}
+              ) : <div className={`mb-5 text-center p-6 rounded-xl ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100'}`}><FileText size={30} className="mx-auto mb-2 opacity-20" /><p className="font-bold opacity-50 text-xs">Project details have not been submitted yet.</p></div>}
               
               <div>
-                <h4 className="font-extrabold text-sm tracking-widest uppercase opacity-40 mb-4">Supervisor Actions</h4>
-                <div className="space-y-4">
+                <h4 className="font-extrabold text-[10px] tracking-widest uppercase opacity-40 mb-3">Supervisor Actions</h4>
+                <div className="space-y-3">
                   
-                  <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} 
                       disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved' || isProcessingAction} 
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
                     >
-                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Approve Project"}
+                      {isProcessingAction ? <><Loader2 size={14} className="animate-spin" /> Processing...</> : "Approve Project"}
                     </motion.button>
                     
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Changes Requested')} 
                       disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested' || isProcessingAction} 
-                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
                     >
-                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Make Suggestion"}
+                      {isProcessingAction ? <><Loader2 size={14} className="animate-spin" /> Processing...</> : "Make Suggestion"}
                     </motion.button>
 
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} 
                       disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected' || isProcessingAction} 
-                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2"
+                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
                     >
-                      {isProcessingAction ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : "Reject Project"}
+                      {isProcessingAction ? <><Loader2 size={14} className="animate-spin" /> Processing...</> : "Reject Project"}
                     </motion.button>
                   </div>
 
-                  <div className="flex gap-3 items-center">
-                    <div className={`flex-1 flex items-center p-2 rounded-xl border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
-                      <input placeholder="Enter target Migration Code..." className="w-full bg-transparent px-3 text-sm focus:outline-none uppercase font-mono font-medium" onChange={(e) => setMigrationInput({...migrationInput, [selectedProject._id]: e.target.value.toUpperCase()})} />
-                      <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleMigrate(selectedProject.triggerStudentId, selectedProject._id)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${theme.bg} text-white`}><ArrowRightLeft size={14}/> Migrate</motion.button>
+                  <div className="flex gap-2 items-center">
+                    <div className={`flex-1 flex items-center p-1.5 rounded-lg border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
+                      <input placeholder="Enter target Migration Code..." className="w-full bg-transparent px-2 text-xs focus:outline-none uppercase font-mono font-medium" onChange={(e) => setMigrationInput({...migrationInput, [selectedProject._id]: e.target.value.toUpperCase()})} />
+                      <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleMigrate(selectedProject.triggerStudentId, selectedProject._id)} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-colors flex items-center gap-1.5 ${theme.bg} text-white`}><ArrowRightLeft size={11}/> Migrate</motion.button>
                     </div>
-                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleRemoveTeam(selectedProject.triggerStudentId, selectedProject.members.map((m:any) => m.name).join(' & '))} title="Remove Team" className="p-3.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-transparent hover:border-red-500 flex items-center justify-center shadow-sm"><UserMinus size={20}/></motion.button>
+                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleRemoveTeam(selectedProject.triggerStudentId, selectedProject.members.map((m:any) => m.name).join(' & '))} title="Remove Team" className="p-2.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-transparent hover:border-red-500 flex items-center justify-center shadow-sm"><UserMinus size={16}/></motion.button>
                   </div>
                 </div>
               </div>
@@ -199,68 +198,68 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
         )}
       </AnimatePresence>
 
-      <GlassCard isDarkMode={isDarkMode} className="w-full flex flex-col md:flex-row justify-between items-start md:items-center p-6 md:px-8 gap-5">
+      <GlassCard isDarkMode={isDarkMode} className="w-full flex flex-col md:flex-row justify-between items-start md:items-center p-4 md:px-6 gap-3">
         <div className="w-full">
-          <h2 className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
-            <div className={`p-2 rounded-xl ${theme.lightBg} ${theme.text} transition-colors duration-500`}><LayoutDashboard size={20} /></div> Supervisor Panel
+          <h2 className="text-lg font-extrabold tracking-tight flex items-center gap-2">
+            <div className={`p-1.5 rounded-lg ${theme.lightBg} ${theme.text} transition-colors duration-500`}><LayoutDashboard size={15} /></div> Supervisor Panel
           </h2>
-          <div className="font-medium opacity-60 mt-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-            <span>Welcome, {session?.user?.name}</span><span className="hidden sm:block opacity-40 text-sm">|</span>
-            <span>Your Code: <span className={`font-mono px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}>{myMigrationCode}</span></span>
+          <div className="font-medium opacity-60 mt-1 text-xs flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+            <span>Welcome, {session?.user?.name}</span><span className="hidden sm:block opacity-40 text-xs">|</span>
+            <span>Your Code: <span className={`font-mono px-1.5 py-0.5 rounded-md text-xs ${theme.lightBg} ${theme.text}`}>{myMigrationCode}</span></span>
           </div>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 border-neutral-200 dark:border-neutral-800 transition-colors">
-          <motion.button whileHover={{ scale: isExporting ? 1 : 1.05 }} whileTap={{ scale: isExporting ? 1 : 0.95 }} onClick={handleExportPDF} disabled={isExporting} className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-3 sm:px-5 py-2.5 rounded-2xl font-bold text-sm sm:text-base transition-all ${isExporting ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-90'} ${theme.bg} text-white shadow-md`}>
-            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />} <span className="whitespace-nowrap">{isExporting ? 'Downloading...' : 'Export Excel'}</span>
+        <div className="flex items-center gap-2 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-neutral-200 dark:border-neutral-800 transition-colors">
+          <motion.button whileHover={{ scale: isExporting ? 1 : 1.05 }} whileTap={{ scale: isExporting ? 1 : 0.95 }} onClick={handleExportPDF} disabled={isExporting} className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all ${isExporting ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-90'} ${theme.bg} text-white shadow-md`}>
+            {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} <span className="whitespace-nowrap">{isExporting ? 'Downloading...' : 'Export Excel'}</span>
           </motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`flex-1 md:flex-none justify-center bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-3 sm:px-6 py-2.5 rounded-2xl transition-all font-bold text-sm sm:text-base flex items-center gap-2`}><LogIn size={20} className="rotate-180" /> <span className="whitespace-nowrap">Logout</span></motion.button>
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`flex-1 md:flex-none justify-center bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-3 py-2 rounded-xl transition-all font-bold text-xs flex items-center gap-1.5`}><LogIn size={14} className="rotate-180" /> <span className="whitespace-nowrap">Logout</span></motion.button>
         </div>
       </GlassCard>
 
-      <GlassCard isDarkMode={isDarkMode} className="flex-1 p-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <h3 className="text-xl font-extrabold tracking-tight">My Assigned Projects <span className={`text-sm font-medium px-2 py-1 rounded-lg ml-2 ${theme.lightBg} ${theme.text}`}>{filteredProjects.length}</span></h3>
+      <GlassCard isDarkMode={isDarkMode} className="flex-1 p-5">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-3">
+          <h3 className="text-base font-extrabold tracking-tight">My Assigned Projects <span className={`text-xs font-medium px-2 py-0.5 rounded-md ml-1.5 ${theme.lightBg} ${theme.text}`}>{filteredProjects.length}</span></h3>
           
           {uniqueBatches.length > 0 && (
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-xs font-bold opacity-40 uppercase tracking-widest mr-1">Filter Batch:</span>
-              <button onClick={() => setBatchFilter('All')} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${batchFilter === 'All' ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>All</button>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest mr-1">Filter Batch:</span>
+              <button onClick={() => setBatchFilter('All')} className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all duration-300 ${batchFilter === 'All' ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>All</button>
               {uniqueBatches.map((b: any) => (
-                <button key={b} onClick={() => setBatchFilter(b)} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-300 ${batchFilter === b ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>{b}</button>
+                <button key={b} onClick={() => setBatchFilter(b)} className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all duration-300 ${batchFilter === b ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>{b}</button>
               ))}
             </div>
           )}
         </div>
         {filteredProjects.length === 0 ? (
-           <div className="text-center py-20 opacity-40 border-2 border-dashed rounded-3xl dark:border-neutral-700 font-medium">No projects found.</div>
+           <div className="text-center py-16 opacity-40 border-2 border-dashed rounded-2xl dark:border-neutral-700 font-medium text-sm">No projects found.</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence>
               {filteredProjects.map((project: any) => (
-                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedProject(project)} key={project._id} className={`cursor-pointer p-6 rounded-[2rem] border flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${isDarkMode ? 'bg-neutral-800/50 border-neutral-700/50 hover:border-neutral-600' : 'bg-neutral-50/50 border-neutral-200/50 hover:border-neutral-300'}`}>
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02, y: -3 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedProject(project)} key={project._id} className={`cursor-pointer p-4 rounded-2xl border flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${isDarkMode ? 'bg-neutral-800/50 border-neutral-700/50 hover:border-neutral-600' : 'bg-neutral-50/50 border-neutral-200/50 hover:border-neutral-300'}`}>
                   <div>
-                    <div className="flex justify-between items-start mb-4">
+                    <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h4 className="font-extrabold text-lg tracking-tight line-clamp-1 pr-2">{project.members.map((m:any) => m.name).join(' & ')}</h4>
-                        <p className="text-xs font-mono font-medium opacity-50 mb-1.5">{project.members.map((m:any) => m.rollNo).join(' | ')}</p>
-                        <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border opacity-70 ${isDarkMode ? 'border-neutral-600 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
+                        <h4 className="font-extrabold text-sm tracking-tight line-clamp-1 pr-2">{project.members.map((m:any) => m.name).join(' & ')}</h4>
+                        <p className="text-[10px] font-mono font-medium opacity-50 mb-1">{project.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                        <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border opacity-70 ${isDarkMode ? 'border-neutral-600 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}>
                           {project.batch} • {project.semester}
                         </span>
                       </div>
-                      <span className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-lg shrink-0 ${project.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : project.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{project.status}</span>
+                      <span className={`text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md shrink-0 ${project.status === 'Approved' ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : project.status === 'Rejected' ? (isDarkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-700')}`}>{project.status}</span>
                     </div>
                     {project.projectTitle ? (
-                      <div className="mb-2">
-                        <p className="text-sm font-bold tracking-tight line-clamp-1">{project.projectTitle}</p>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {project.domain && <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${theme.lightBg} ${theme.text} line-clamp-1`}><Globe size={10} className="inline mr-1 mb-0.5"/>{project.domain}</span>}
-                          {project.tools && <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={10} className="inline mr-1 mb-0.5"/>{project.tools}</span>}
+                      <div className="mb-1.5">
+                        <p className="text-xs font-bold tracking-tight line-clamp-1">{project.projectTitle}</p>
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {project.domain && <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${theme.lightBg} ${theme.text} line-clamp-1`}><Globe size={8} className="inline mr-0.5 mb-0.5"/>{project.domain}</span>}
+                          {project.tools && <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'} line-clamp-1`}><Wrench size={8} className="inline mr-0.5 mb-0.5"/>{project.tools}</span>}
                         </div>
                       </div>
-                    ) : <div className={`text-xs opacity-50 font-medium italic mt-2`}>No project data</div>}
+                    ) : <div className={`text-[10px] opacity-50 font-medium italic mt-1.5`}>No project data</div>}
                   </div>
-                  <div className={`mt-4 pt-4 border-t flex justify-between items-center text-xs font-bold transition-opacity ${theme.text} ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
-                    <span>Click to view full details</span><ChevronRight size={16} />
+                  <div className={`mt-3 pt-3 border-t flex justify-between items-center text-[10px] font-bold transition-opacity ${theme.text} ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
+                    <span>Click to view full details</span><ChevronRight size={13} />
                   </div>
                 </motion.div>
               ))}

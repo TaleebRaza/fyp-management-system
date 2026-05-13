@@ -16,8 +16,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body suppressHydrationWarning>
+        {/* 2. We wrap the entire application so every page has access to the login state */}
         <AuthProvider>
           {children}
         </AuthProvider>

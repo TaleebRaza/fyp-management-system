@@ -4,18 +4,22 @@ import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Project from '../../../models/Project';
 import { APP_SETTINGS } from '../../../config/appSettings';
-import bcrypt from 'bcryptjs'; // NEW: Import the bcrypt library
+import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {
     const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
-    
+
     if (!name || !rollNo || !password || !batch) {
       return NextResponse.json({ error: 'Missing required fields, including Batch.' }, { status: 400 });
     }
 
+    if (email && !/^[a-zA-Z0-9._%+-]+@uoh\.edu\.pk$/.test(email)) {
+      return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@uoh.edu.pk)' }, { status: 400 });
+    }
+
     await connectToDatabase();
-    
+
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -32,25 +36,23 @@ export async function POST(req: Request) {
           await session.abortTransaction();
           session.endSession();
           return NextResponse.json(
-            { error: 'Registration failed. The selected supervisor has reached maximum capacity.' }, 
-            { status: 409 } 
+            { error: 'Registration failed. The selected supervisor has reached maximum capacity.' },
+            { status: 409 }
           );
         }
       }
-      
-      // NEW: Hash the password before saving it to the database.
-      // The '10' is the salt rounds, which determines how computationally heavy the encryption is.
+
       const hashedPassword = await bcrypt.hash(password, 10);
 
       const newStudent = new User({
         name,
-        email: email || undefined, 
+        email: email || undefined,
         rollNo,
-        password: hashedPassword, // Save the scrambled hash, NOT the plaintext string
+        password: hashedPassword,
         role: 'student',
         program: program || 'BSCS',
-        batch: batch,
-        semester: '7th Semester', // Automatically inject 7th semester for all new users
+        batch,
+        semester: '7th Semester',
         supervisorId: supervisorId || null,
         status: 'Pending'
       });
@@ -75,12 +77,13 @@ export async function POST(req: Request) {
     } catch (transactionError: any) {
       await session.abortTransaction();
       session.endSession();
-      
+
       if (transactionError.code === 11000) {
         return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
       }
-      throw transactionError; 
+      throw transactionError;
     }
+
   } catch (error: any) {
     console.error('Registration error:', error.message);
     return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
