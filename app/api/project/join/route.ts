@@ -47,7 +47,7 @@ export async function POST(req: Request) {
           const { APP_SETTINGS } = await import('../../../../config/appSettings');
           let currentFilledSlots = 0;
           
-          if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+          if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
             currentFilledSlots = await User.countDocuments({ 
               role: 'student', 
               supervisorId: firstMember.supervisorId 
