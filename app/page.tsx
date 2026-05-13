@@ -241,6 +241,13 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
   const [batch, setBatch] = useState('');
   const [supervisor, setSupervisor] = useState('');
   
+  // OTP Local Workflow States
+  const [isOtpMode, setIsOtpMode] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(900); // 15 mins verification window
+  const [formData, setFormData] = useState({ name: '', email: '', rollNo: '', password: '' });
+
   // Format options for CustomSelect
   const currentYear = new Date().getFullYear();
   const batchOptions = [
@@ -259,33 +266,96 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
     })) : [])
   ];
 
-  const handleRegister = async (e: any) => {
+  // Visual Countdown Engine
+  useEffect(() => {
+    let timer: any;
+    if (isOtpMode && timeLeft > 0) {
+      timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+    } else if (isOtpMode && timeLeft === 0) {
+      showDialog({ title: "Session Expired", message: "Verification timeframe completed. Please submit form parameters once more." });
+      setIsOtpMode(false);
+      setTimeLeft(900);
+    }
+    return () => clearInterval(timer);
+  }, [isOtpMode, timeLeft, showDialog]);
+
+  const formatCountdown = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const handleSendOtp = async (e: any) => {
     e.preventDefault();
     const emailValue = e.target.email.value;
-    if (!/^[a-zA-Z0-9._%+-]+@uoh\.edu\.pk$/.test(emailValue)) {
-      showDialog({ title: "Invalid Email", message: "Only university emails are allowed (e.g. f23-0201@uoh.edu.pk)" });
+    const rollNoValue = e.target.rollNo.value;
+    const nameValue = e.target.name.value;
+    const passwordValue = e.target.password.value;
+
+    if (!/^[a-zA-Z0-9._%+-]+@(student\.)?uoh\.edu\.pk$/.test(emailValue)) {
+      showDialog({ title: "Invalid Email Structure", message: "Only authentic university email prefixes are recognized (e.g. f23-0201@student.uoh.edu.pk)" });
       return;
     }
-    // Include 'program' from state in the registration payload
-    const res = await fetch('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: e.target.name.value,
-        email: emailValue,
-        rollNo: e.target.rollNo.value,
-        password: e.target.password.value,
-        supervisorId: e.target.supervisor.value,
-        program,
-        batch: e.target.batch.value, // Added batch payload
-      })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      showDialog({ title: "Welcome!", message: "Registration Successful! Please log in." });
-      setIsRegistering(false);
-    } else {
-      showDialog({ title: "Registration Error", message: data.error || "Registration failed" });
+
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/register/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailValue, rollNo: rollNoValue })
+      });
+      const data = await res.json();
+      setIsLoading(false);
+
+      if (res.ok) {
+        setFormData({ name: nameValue, email: emailValue, rollNo: rollNoValue, password: passwordValue });
+        setIsOtpMode(true);
+        setTimeLeft(900);
+        showDialog({ title: "Check Inbox", message: data.message });
+      } else {
+        showDialog({ title: "Validation Error", message: data.error || "Failed to trigger email validation process." });
+      }
+    } catch (err) {
+      setIsLoading(false);
+      showDialog({ title: "Network Status", message: "Failed to connect securely to email service routing." });
+    }
+  };
+
+  const handleVerifyRegistration = async (e: any) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.length !== 6) {
+      showDialog({ title: "Format Requirement", message: "Please enter your complete 6-digit verification sequence." });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          rollNo: formData.rollNo,
+          password: formData.password,
+          supervisorId: supervisor,
+          program,
+          batch,
+          otp: otpCode
+        })
+      });
+      const data = await res.json();
+      setIsLoading(false);
+
+      if (res.ok) {
+        showDialog({ title: "Welcome!", message: "Account explicitly verified and mapped! Sign in using credentials." });
+        setIsRegistering(false);
+      } else {
+        showDialog({ title: "Verification Rejection", message: data.error || "Token verification processing failed." });
+      }
+    } catch (err) {
+      setIsLoading(false);
+      showDialog({ title: "Transaction Aborted", message: "Network synchronization missing during atomic commit." });
     }
   };
 
@@ -297,75 +367,107 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
             <UserPlus className="text-white" size={32} />
           </div>
         </div>
-        <h2 className="text-3xl font-extrabold tracking-tight text-center mb-8">Create Account</h2>
-        <form onSubmit={handleRegister} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Full Name</label>
-            <StyledInput isDarkMode={isDarkMode} theme={theme} name="name" type="text" required placeholder="John Doe" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Email Address</label>
-            <StyledInput isDarkMode={isDarkMode} theme={theme} name="email" type="email" required placeholder="f23-0201@uoh.edu.pk" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Roll Number</label>
-            <StyledInput isDarkMode={isDarkMode} theme={theme} name="rollNo" type="text" required placeholder="e.g. FA20-BCS-001" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Password</label>
-            <StyledInput isDarkMode={isDarkMode} theme={theme} name="password" type="password" required placeholder="••••••••" />
-          </div>
+        <h2 className="text-3xl font-extrabold tracking-tight text-center mb-8">
+          {isOtpMode ? "Verify Email" : "Create Account"}
+        </h2>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {Object.keys(PROGRAM_MAP).map(prog => (
-              <label 
-                key={prog} 
-                title={PROGRAM_MAP[prog]}
-                className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${program === prog ? `${theme.border} ${theme.lightBg} ${theme.text}` : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`}`}
-              >
-                <input type="radio" name="program" value={prog} checked={program === prog} onChange={(e) => setProgram(e.target.value)} className="hidden" />
-                <span className="font-bold text-sm tracking-wide">{prog}</span>
-              </label>
-            ))}
-          </div>
+        {isOtpMode ? (
+          <form onSubmit={handleVerifyRegistration} className="flex flex-col gap-5 relative z-10">
+            <div className="text-center mb-2">
+              <p className="text-xs opacity-75">Verification sent securely to inbox:</p>
+              <p className="font-bold text-sm text-blue-500 tracking-wide mt-1">{formData.email}</p>
+              <p className="text-xs opacity-60 mt-3 font-mono font-semibold">Verification Expiry: {formatCountdown(timeLeft)}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 opacity-80 pl-1">6-Digit Access Token</label>
+              <StyledInput 
+                isDarkMode={isDarkMode} 
+                theme={theme} 
+                maxLength={6} 
+                value={otpCode} 
+                onChange={(e:any) => setOtpCode(e.target.value)} 
+                required 
+                placeholder="123456" 
+              />
+            </div>
+            <button disabled={isLoading} type="submit" className={`w-full py-4 mt-2 rounded-2xl font-bold text-white transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 ${theme.bg}`}>
+              {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Confirm Registration'}
+            </button>
+            <button type="button" onClick={() => { setIsOtpMode(false); setOtpCode(''); }} className="text-xs opacity-60 hover:opacity-100 font-medium text-center block w-full mt-1">
+              ← Return to initial registration inputs
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSendOtp} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Full Name</label>
+              <StyledInput isDarkMode={isDarkMode} theme={theme} name="name" type="text" required placeholder="John Doe" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Email Address</label>
+              <StyledInput isDarkMode={isDarkMode} theme={theme} name="email" type="email" required placeholder="f23-0201@student.uoh.edu.pk" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Roll Number</label>
+              <StyledInput isDarkMode={isDarkMode} theme={theme} name="rollNo" type="text" required placeholder="e.g. FA20-BCS-001" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Password</label>
+              <StyledInput isDarkMode={isDarkMode} theme={theme} name="password" type="password" required placeholder="••••••••" />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Batch</label>
-            <CustomSelect 
-              name="batch" 
-              options={batchOptions} 
-              value={batch} 
-              onChange={setBatch} 
-              placeholder="-- Choose your Batch --" 
-              isDarkMode={isDarkMode} 
-              theme={theme} 
-              required={true} 
-            />
-          </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {Object.keys(PROGRAM_MAP).map(prog => (
+                <label 
+                  key={prog} 
+                  title={PROGRAM_MAP[prog]}
+                  className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all duration-300 select-none ${program === prog ? `${theme.border} ${theme.lightBg} ${theme.text}` : `border-transparent ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100/70'} opacity-70 hover:opacity-100`}`}
+                >
+                  <input type="radio" name="program" value={prog} checked={program === prog} onChange={(e) => setProgram(e.target.value)} className="hidden" />
+                  <span className="font-bold text-sm tracking-wide">{prog}</span>
+                </label>
+              ))}
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Supervisor</label>
-            <CustomSelect 
-              name="supervisor" 
-              options={formattedSupOptions} 
-              value={supervisor} 
-              onChange={setSupervisor} 
-              placeholder="-- Optional (Choose Later) --" 
-              isDarkMode={isDarkMode} 
-              theme={theme} 
-              required={false} 
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Batch</label>
+              <CustomSelect 
+                name="batch" 
+                options={batchOptions} 
+                value={batch} 
+                onChange={setBatch} 
+                placeholder="-- Choose your Batch --" 
+                isDarkMode={isDarkMode} 
+                theme={theme} 
+                required={true} 
+              />
+            </div>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            type="submit"
-            className={`w-full ${theme.bg} text-white font-bold py-4 rounded-2xl transition-colors duration-500 mt-6 shadow-lg`}
-          >
-            Register Now
-          </motion.button>
-        </form>
+            <div>
+              <label className="block text-sm font-medium mb-1 opacity-80 pl-1">Select Supervisor</label>
+              <CustomSelect 
+                name="supervisor" 
+                options={formattedSupOptions} 
+                value={supervisor} 
+                onChange={setSupervisor} 
+                placeholder="-- Optional (Choose Later) --" 
+                isDarkMode={isDarkMode} 
+                theme={theme} 
+                required={false} 
+              />
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={isLoading}
+              type="submit"
+              className={`w-full ${theme.bg} text-white font-bold py-4 rounded-2xl transition-colors duration-500 mt-6 shadow-lg disabled:opacity-50`}
+            >
+              {isLoading ? <Loader2 className="animate-spin mx-auto" /> : "Register Now"}
+            </motion.button>
+          </form>
+        )}
         <p className="mt-8 text-center text-sm font-medium opacity-75">
           Already have an account?{' '}
           <button onClick={() => setIsRegistering(false)} className={`${theme.text} hover:underline transition-colors duration-300`}>

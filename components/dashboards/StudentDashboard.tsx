@@ -240,17 +240,18 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       
       {/* 1. COMPACT HEADER SECTION */}
       <GlassCard isDarkMode={isDarkMode} className="w-full p-3 md:px-8 md:py-6 relative overflow-hidden">
-        <div className={`absolute top-0 right-0 w-32 h-32 blur-[80px] rounded-full opacity-10 ${theme.bg}`} />
+        {/* Added pointer-events-none so the glow never steals pointer actions */}
+        <div className={`absolute top-0 right-0 w-32 h-32 md:w-48 md:h-48 blur-[80px] rounded-full opacity-10 ${theme.bg} pointer-events-none`} />
         
-        <div className="flex justify-between items-center mb-3">
+        <div className="relative z-10 flex justify-between items-center mb-3">
           <div className="flex flex-col">
             <h2 className="text-lg md:text-3xl font-black tracking-tight leading-none">
               Hi, {me?.name?.split(' ')[0]}
             </h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-[10px] font-mono font-bold opacity-40 uppercase">{me?.rollNo}</span>
+            <div className="flex items-center gap-2 mt-1 md:mt-1.5">
+              <span className="text-[10px] md:text-xs font-mono font-bold opacity-40 uppercase">{me?.rollNo}</span>
               <span className="w-1 h-1 rounded-full bg-neutral-500/30" />
-              <span className={`text-[9px] font-black uppercase ${theme.text}`}>{me?.program}</span>
+              <span className={`text-[9px] md:text-xs font-black uppercase ${theme.text}`}>{me?.program}</span>
             </div>
           </div>
 
@@ -258,28 +259,28 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }} 
             onClick={() => signOut({ redirect: false })} 
-            className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white p-2 md:px-5 md:py-2.5 rounded-xl transition-all text-xs font-bold"
+            className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white p-2 md:px-5 md:py-2.5 rounded-xl transition-all text-xs md:text-sm font-bold cursor-pointer"
           >
-            <LogIn size={16} className="rotate-180" /> 
-            <span className="hidden md:inline">Logout</span>
+            <LogIn size={16} className="rotate-180 shrink-0" /> 
+            <span className="hidden md:inline font-extrabold">Logout</span>
           </motion.button>
         </div>
 
-        <div className="flex items-center justify-between border-t border-neutral-500/10 pt-3">
-          <div className="flex items-center gap-4">
+        <div className="relative z-10 flex items-center justify-between border-t border-neutral-500/10 pt-3 md:pt-4">
+          <div className="flex items-center gap-4 md:gap-8">
             <div className="flex flex-col">
-              <span className="text-[8px] font-black opacity-30 uppercase tracking-widest">Batch</span>
-              <span className="text-[11px] font-bold">{me?.batch || '202X'}</span>
+              <span className="text-[8px] md:text-[10px] font-black opacity-30 uppercase tracking-widest">Batch</span>
+              <span className="text-[11px] md:text-sm font-bold">{me?.batch || '202X'}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[8px] font-black opacity-30 uppercase tracking-widest">Semester</span>
-              <span className="text-[11px] font-bold">{me?.semester || 'N/A'}</span>
+              <span className="text-[8px] md:text-[10px] font-black opacity-30 uppercase tracking-widest">Semester</span>
+              <span className="text-[11px] md:text-sm font-bold">{me?.semester || 'N/A'}</span>
             </div>
           </div>
           
           <div className="text-right">
-             <span className="text-[8px] font-black opacity-30 uppercase tracking-widest block">Supervisor</span>
-             <span className={`text-[11px] font-black ${isUnassigned ? 'text-red-500' : theme.text}`}>
+             <span className="text-[8px] md:text-[10px] font-black opacity-30 uppercase tracking-widest block">Supervisor</span>
+             <span className={`text-[11px] md:text-sm font-black ${isUnassigned ? 'text-red-500' : theme.text}`}>
                {isUnassigned ? 'NOT ASSIGNED' : supervisor?.name?.split(' ')[0]}
              </span>
           </div>
@@ -300,26 +301,18 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
         </div>
       )}
 
-      {/* 3. ANNOUNCEMENT BAR (MODIFIED) */}
+      {/* 3. ANNOUNCEMENT BAR */}
       <AnimatePresence>
         {headline && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-            <GlassCard isDarkMode={isDarkMode} className="p-3 border-l-4 border-l-blue-500 flex items-center gap-3 bg-blue-500/5 overflow-hidden">
-              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 shrink-0 flex items-center gap-2">
+            <GlassCard isDarkMode={isDarkMode} className="p-3 border-l-4 border-l-blue-500 flex items-start sm:items-center gap-3 bg-blue-500/5">
+              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 shrink-0 flex items-center gap-2 mt-0.5 sm:mt-0">
                 <Megaphone size={14} />
                 <span className="hidden md:inline text-[10px] font-black uppercase tracking-widest">Announcement</span>
               </div>
               
-              {/* Marquee for small screens only */}
-              <div className="block md:hidden flex-1 overflow-hidden">
-                <p className="text-xs font-bold text-blue-500 truncate">
-                  {headline}
-                </p>
-              </div>
-
-              {/* Static Text for big screens */}
-              <div className="hidden md:block flex-1">
-                <p className="text-xs font-bold text-blue-500">
+              <div className="flex-1 w-full">
+                <p className="text-xs font-bold text-blue-500 leading-relaxed break-words">
                   {headline}
                 </p>
               </div>

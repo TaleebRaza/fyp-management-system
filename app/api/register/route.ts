@@ -3,22 +3,35 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Project from '../../../models/Project';
+import Otp from '../../../models/Otp';
 import { APP_SETTINGS } from '../../../config/appSettings';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {
-    const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
+    const { name, email, rollNo, password, supervisorId, program, batch, otp } = await req.json();
 
-    if (!name || !rollNo || !password || !batch) {
-      return NextResponse.json({ error: 'Missing required fields, including Batch.' }, { status: 400 });
+    if (!name || !rollNo || !password || !batch || !email || !otp) {
+      return NextResponse.json({ error: 'Missing required fields, including verification code payload.' }, { status: 400 });
     }
 
-    if (email && !/^[a-zA-Z0-9._%+-]+@uoh\.edu\.pk$/.test(email)) {
-      return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@uoh.edu.pk)' }, { status: 400 });
+    if (!/^[a-zA-Z0-9._%+-]+@(student\.)?uoh\.edu\.pk$/.test(email)) {
+      return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@student.uoh.edu.pk)' }, { status: 400 });
     }
 
     await connectToDatabase();
+
+    // 1. Strictly validate OTP before executing heavy database tasks
+    const otpRecord = await Otp.findOne({ email });
+    if (!otpRecord || otpRecord.code !== otp) {
+      return NextResponse.json({ error: 'Invalid verification code provided.' }, { status: 400 });
+    }
+
+    // 2. Secondary program manual validation ensuring timestamp boundaries (15 mins = 900,000 ms)
+    if (Date.now() - new Date(otpRecord.createdAt).getTime() > 900000) {
+      await Otp.findOneAndDelete({ email });
+      return NextResponse.json({ error: 'Verification code has expired. Please request a fresh token.' }, { status: 400 });
+    }
 
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -71,6 +84,9 @@ export async function POST(req: Request) {
 
       await session.commitTransaction();
       session.endSession();
+
+      // Cleanly purge verified code to prevent replays
+      await Otp.findOneAndDelete({ email });
 
       return NextResponse.json({ message: 'Registration successful!' }, { status: 201 });
 
