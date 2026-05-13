@@ -9,12 +9,24 @@ export async function POST(req: Request) {
   try {
     const { email, rollNo } = await req.json();
 
-    if (!email || !rollNo) {
-      return NextResponse.json({ error: 'University email and Roll Number are required.' }, { status: 400 });
+    // Explicit Pre-Flight Check: Halt immediately if email is absent to save execution efficiency
+    if (!email) {
+      return NextResponse.json({ error: 'No email found. Please provide a valid university email address.' }, { status: 400 });
     }
 
-    if (!/^[a-zA-Z0-9._%+-]+@(student\.)?uoh\.edu\.pk$/.test(email)) {
-      return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@student.uoh.edu.pk)' }, { status: 400 });
+    if (!rollNo) {
+      return NextResponse.json({ error: 'Roll Number is required.' }, { status: 400 });
+    }
+
+    // Upgraded Regex Firewall: Enforces structured sequential mapping typical of student IDs
+    // Accepts Formats: 'f23-0201', 'sp24-001', 'fa20-bcs-001', or staff formats containing valid separators.
+    // Blocks unstructured continuous random strings like '123450agdfugeb'.
+    const universityEmailPattern = /^([a-zA-Z]{1,3}\d{2}[-.]\d{3,5}|[a-zA-Z]{2}\d{2}[-.][a-zA-Z]{3}[-.]\d{3}|[a-zA-Z0-9]+[-.][a-zA-Z0-9]+)@(student\.)?uoh\.edu\.pk$/i;
+
+    if (!universityEmailPattern.test(email.trim())) {
+      return NextResponse.json({ 
+        error: 'Invalid email structure. Please use your officially formatted university email prefix (e.g., f23-0201@student.uoh.edu.pk or fa20-bcs-001@student.uoh.edu.pk)' 
+      }, { status: 400 });
     }
 
     await connectToDatabase();
@@ -47,7 +59,9 @@ export async function POST(req: Request) {
 
     const emailSent = await sendNotificationEmail(email, 'Your FYP Portal Registration Code', htmlContent);
     if (!emailSent) {
-      return NextResponse.json({ error: 'Failed to dispatch email notification. Verify your inbox status.' }, { status: 500 });
+      // Clean up the pending OTP record immediately to ensure database integrity
+      await Otp.findOneAndDelete({ email });
+      return NextResponse.json({ error: 'No email found or mailer service failed to deliver. Please verify your address.' }, { status: 404 });
     }
 
     return NextResponse.json({ message: 'Verification code sent to your university email!' }, { status: 200 });

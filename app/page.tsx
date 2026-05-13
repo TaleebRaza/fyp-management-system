@@ -292,8 +292,13 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
     const nameValue = e.target.name.value;
     const passwordValue = e.target.password.value;
 
-    if (!/^[a-zA-Z0-9._%+-]+@(student\.)?uoh\.edu\.pk$/.test(emailValue)) {
-      showDialog({ title: "Invalid Email Structure", message: "Only authentic university email prefixes are recognized (e.g. f23-0201@student.uoh.edu.pk)" });
+    const universityEmailPattern = /^([a-zA-Z]{1,3}\d{2}[-.]\d{3,5}|[a-zA-Z]{2}\d{2}[-.][a-zA-Z]{3}[-.]\d{3}|[a-zA-Z0-9]+[-.][a-zA-Z0-9]+)@(student\.)?uoh\.edu\.pk$/i;
+
+    if (!universityEmailPattern.test(emailValue.trim())) {
+      showDialog({ 
+        title: "Invalid Email Syntax", 
+        message: "Please enter a properly formatted university address containing standard sequential delimiters (e.g., f23-0201@student.uoh.edu.pk)." 
+      });
       return;
     }
 
@@ -376,7 +381,19 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
             <div className="text-center mb-2">
               <p className="text-xs opacity-75">Verification sent securely to inbox:</p>
               <p className="font-bold text-sm text-blue-500 tracking-wide mt-1">{formData.email}</p>
-              <p className="text-xs opacity-60 mt-3 font-mono font-semibold">Verification Expiry: {formatCountdown(timeLeft)}</p>
+              
+              {/* --- NEW: Custom Outlook Visual Reminder Badge --- */}
+              <div className={`mt-4 p-3 rounded-xl border flex items-center gap-3 text-left ${isDarkMode ? 'bg-[#0078d4]/10 border-[#0078d4]/20 text-[#2b88d8]' : 'bg-[#0078d4]/5 border-[#0078d4]/15 text-[#0078d4]'}`}>
+                <div className="p-2 rounded-lg bg-[#0078d4] text-white shrink-0 shadow-sm">
+                  <Mail size={16} />
+                </div>
+                <div className="leading-tight">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#0078d4] dark:text-[#50a1ff]">Check Outlook</p>
+                  <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5 font-medium">University mail arrives in Microsoft Outlook, not Gmail.</p>
+                </div>
+              </div>
+
+              <p className="text-xs opacity-60 mt-4 font-mono font-semibold">Verification Expiry: {formatCountdown(timeLeft)}</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 opacity-80 pl-1">6-Digit Access Token</label>
