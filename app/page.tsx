@@ -249,14 +249,18 @@ const RegisterView = ({ isDarkMode, theme, setIsRegistering, supervisorsList, sh
   const [formData, setFormData] = useState({ name: '', email: '', rollNo: '', password: '' });
 
   // Format options for CustomSelect
+  // Format options for CustomSelect (Updated for Legacy Batches)
+  const START_YEAR = 2021;
   const currentYear = new Date().getFullYear();
-  const batchOptions = [
-    { label: `Spring ${currentYear}`, value: `Spring ${currentYear}` },
-    { label: `Fall ${currentYear}`, value: `Fall ${currentYear}` },
-    { label: `Spring ${currentYear + 1}`, value: `Spring ${currentYear + 1}` },
-    { label: `Fall ${currentYear + 1}`, value: `Fall ${currentYear + 1}` }
-  ];
+  const maxYear = currentYear + 1; // Generates up to 2027 when currentYear is 2026
+  
+  const batchOptions: { label: string; value: string }[] = [];
 
+  // Loop from 2021 up to 2027 to populate the array dynamically
+  for (let year = START_YEAR; year <= maxYear; year++) {
+    batchOptions.push({ label: `Spring ${year}`, value: `Spring ${year}` });
+    batchOptions.push({ label: `Fall ${year}`, value: `Fall ${year}` });
+  }
   const formattedSupOptions = [
     { label: '-- Optional (Choose Later) --', value: '' },
     ...(Array.isArray(supervisorsList) ? supervisorsList.map((sup: any) => ({
