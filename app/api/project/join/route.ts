@@ -40,6 +40,28 @@ export async function POST(req: Request) {
             error: `Batch Mismatch! You are in ${student.batch || 'an unknown batch'}, but this team belongs to ${firstMember.batch || 'another batch'} students.` 
           }, { status: 403 });
         }
+
+        // --- OPTIMIZATION: Absolute Capacity Firewall Check ---
+        // Verify if expanding this specific team breaches the shared supervisor's workload limits
+        if (firstMember.supervisorId) {
+          const { APP_SETTINGS } = await import('../../../../config/appSettings');
+          let currentFilledSlots = 0;
+          
+          if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+            currentFilledSlots = await User.countDocuments({ 
+              role: 'student', 
+              supervisorId: firstMember.supervisorId 
+            });
+            
+            // If adding this incoming student pushes them over the limit, abort the join
+            if (currentFilledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+              return NextResponse.json({ 
+                error: 'Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit. You cannot join this group unless they unassign their supervisor.' 
+              }, { status: 409 });
+            }
+          }
+          // Note: If mode is 'PROJECT', adding a member to an existing project doesn't consume a new slot.
+        }
       }
     }
 
