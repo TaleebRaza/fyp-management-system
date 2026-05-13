@@ -312,9 +312,9 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               
               {/* Marquee for small screens only */}
               <div className="block md:hidden flex-1 overflow-hidden">
-                <marquee className="text-xs font-bold text-blue-500" scrollamount="4">
+                <p className="text-xs font-bold text-blue-500 truncate">
                   {headline}
-                </marquee>
+                </p>
               </div>
 
               {/* Static Text for big screens */}
