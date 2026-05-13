@@ -7,7 +7,17 @@ const STAGES = [
   { id: 'FINAL_DELIVERABLES', label: 'Final Submission' }
 ];
 
-export const Timeline = ({ currentStage, isDarkMode, theme }: { currentStage: string, isDarkMode: boolean, theme: any }) => {
+export const Timeline = ({ 
+  currentStage, 
+  isDarkMode, 
+  theme, 
+  isMobile = false // Inject the optional prop with a safe default
+}: { 
+  currentStage: string, 
+  isDarkMode: boolean, 
+  theme: any, 
+  isMobile?: boolean // Formally declare it to satisfy the compiler
+}) => {
   const currentIndex = STAGES.findIndex(s => s.id === currentStage) || 0;
 
   return (
