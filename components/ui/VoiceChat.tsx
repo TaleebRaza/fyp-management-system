@@ -9,13 +9,12 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
   const [recordingTime, setRecordingTime] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  
-  // --- OPTIMIZATION: Hardware Security State Tracking ---
-  const [micStatus, setMicStatus] = useState<'idle' | 'requesting' | 'denied'>('idle');
+  const [playingId, setPlayingId] = useState<string | null>(null); // NEW: Track active playback
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const timerIntervalRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null); // NEW: Inline audio player
 
   // 1. Fetch History & Trigger Lazy Garbage Collection on the Backend
   const fetchMessages = async () => {
@@ -37,13 +36,13 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
 
   // 2. Hardware Microphone Initialization
   const startRecording = async () => {
-    setMicStatus('requesting');
     try {
-      // The browser's immutable security boundary intercepts here
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicStatus('idle'); // Permission granted, reset state
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      // --- OPTIMIZATION: Ultra-low bitrate for instant upload speeds ---
+      const mediaRecorder = new MediaRecorder(stream, { 
+        mimeType: 'audio/webm',
+        audioBitsPerSecond: 16000 
+      });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -69,8 +68,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       }, 1000);
 
     } catch (err) {
-      console.warn("Hardware access blocked by user or browser security policy.");
-      setMicStatus('denied');
+      alert('Microphone access denied or unavailable.');
     }
   };
 
@@ -83,56 +81,89 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
     }
   };
 
-  // 3. Client-Side Streaming Handshake
+  // 3. Optimistic UI & Background Streaming Handshake
   const handleUpload = async () => {
-    setIsUploading(true);
     const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
     const file = new File([audioBlob], `voicenote-${Date.now()}.webm`, { type: 'audio/webm' });
 
+    // --- OPTIMIZATION: The WhatsApp Illusion ---
+    // Instantly generate a local browser memory link and inject it into the UI
+    const localMemoryUrl = URL.createObjectURL(audioBlob);
+    const optimisticId = `temp-${Date.now()}`;
+    
+    const optimisticMessage = {
+      _id: optimisticId,
+      senderId: { _id: currentUserId, name: 'You' },
+      blobUrl: localMemoryUrl,
+      isPlayed: false,
+      isUploading: true // Flags the UI to show a background spinner
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+    
+    // Unblock the recording UI instantly
+    setIsUploading(false); 
+    setIsRecording(false);
+    setRecordingTime(0);
+
+    // --- BACKGROUND THREAD: Vercel Upload & MongoDB Ledger ---
     try {
       const { upload } = await import('@vercel/blob/client');
       
-      // Stream directly to Vercel via our strict audio gatekeeper
       const newBlob = await upload(file.name, file, {
         access: 'private',
         handleUploadUrl: '/api/voice/upload',
       });
 
-      // Save ledger to MongoDB
       await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, senderId: currentUserId, blobUrl: newBlob.url })
       });
 
+      // Silently sync the database to swap the local URL for the secure cloud URL
       fetchMessages();
     } catch (error) {
       console.error('Audio upload failed:', error);
-      alert('Failed to send voice note. Please try again.');
-    } finally {
-      setIsUploading(false);
-      setRecordingTime(0);
+      // If the background upload fails, remove the fake message
+      setMessages(prev => prev.filter(m => m._id !== optimisticId));
+      alert('Network interrupted. Voice note failed to send.');
     }
   };
 
   // 4. Mark as Played (Starts the 10-min doom timer)
   const handlePlay = async (noteId: string, blobUrl: string, isPlayed: boolean) => {
-    if (!isPlayed) {
-      await fetch('/api/voice', {
+    if (playingId === noteId && audioRef.current) {
+      audioRef.current.pause();
+      setPlayingId(null);
+      return;
+    }
+
+    // Only hit the database if it's a real note, not our temporary optimistic one
+    if (!isPlayed && !noteId.startsWith('temp-')) {
+      fetch('/api/voice', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ noteId })
       });
-      // Optimistically update UI
       setMessages(messages.map(m => m._id === noteId ? { ...m, isPlayed: true } : m));
     }
     
-    // Redirect to the secure streaming reader to bypass standard browser blocks on private blobs
-    window.open(`/api/read-pdf?url=${encodeURIComponent(blobUrl)}`, '_blank');
+    if (audioRef.current) {
+      // If playing the instant optimistic note, use the local blob URL. 
+      // Otherwise, securely stream it through our proxy.
+      audioRef.current.src = blobUrl.startsWith('blob:') 
+        ? blobUrl 
+        : `/api/read-pdf?url=${encodeURIComponent(blobUrl)}`;
+      
+      audioRef.current.play();
+      setPlayingId(noteId);
+    }
   };
 
   return (
     <div className={`p-4 rounded-2xl border flex flex-col gap-4 transition-colors duration-300 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>
+      <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
       <div className="flex justify-between items-center pb-2 border-b border-dashed border-neutral-500/20">
         <h4 className="text-xs font-black uppercase tracking-widest opacity-60 flex items-center gap-2">
           <Mic size={14} className={theme.text} /> Voice Chat
@@ -148,15 +179,19 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
           </div>
         ) : (
           messages.map((msg) => (
-            <div key={msg._id} className={`p-2.5 rounded-xl border flex items-center justify-between ${msg.senderId._id === currentUserId ? (isDarkMode ? 'bg-neutral-800 border-neutral-700 ml-6' : 'bg-neutral-50 border-neutral-200 ml-6') : (isDarkMode ? 'bg-black/20 border-neutral-800 mr-6' : 'bg-neutral-100 border-neutral-200 mr-6')}`}>
+            <div key={msg._id} className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${msg.isUploading ? 'opacity-70 grayscale' : ''} ${msg.senderId._id === currentUserId ? (isDarkMode ? 'bg-neutral-800 border-neutral-700 ml-6' : 'bg-neutral-50 border-neutral-200 ml-6') : (isDarkMode ? 'bg-black/20 border-neutral-800 mr-6' : 'bg-neutral-100 border-neutral-200 mr-6')}`}>
               <div className="flex items-center gap-3">
-                <button onClick={() => handlePlay(msg._id, msg.blobUrl, msg.isPlayed)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${theme.bg} text-white shadow-md`}>
-                  <Play size={14} className="ml-0.5" />
+                <button 
+                  disabled={msg.isUploading}
+                  onClick={() => handlePlay(msg._id, msg.blobUrl, msg.isPlayed)} 
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${theme.bg} text-white shadow-md ${msg.isUploading ? 'cursor-not-allowed' : ''}`}
+                >
+                  {msg.isUploading ? <Loader2 size={12} className="animate-spin" /> : (playingId === msg._id ? <Square size={12} fill="currentColor" /> : <Play size={14} className="ml-0.5" />)}
                 </button>
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black">{msg.senderId._id === currentUserId ? 'You' : msg.senderId.name}</span>
-                  <span className={`text-[8px] font-bold uppercase ${msg.isPlayed ? 'text-red-400' : 'text-emerald-500'}`}>
-                    {msg.isPlayed ? 'Played (Expiring)' : 'New'}
+                  <span className={`text-[8px] font-bold uppercase ${msg.isUploading ? 'text-neutral-500' : (msg.isPlayed ? 'text-red-400' : 'text-emerald-500')}`}>
+                    {msg.isUploading ? 'Sending...' : (msg.isPlayed ? 'Played (Expiring)' : 'New')}
                   </span>
                 </div>
               </div>
@@ -166,19 +201,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       </div>
 
       <div className="pt-3 flex items-center gap-3">
-        {micStatus === 'denied' ? (
-          <div className="w-full flex flex-col gap-2">
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
-              <Mic size={16} className="shrink-0" />
-              <p className="text-[10px] font-bold leading-tight">
-                Microphone access blocked. Click the lock icon in your browser's address bar to allow access and try again.
-              </p>
-            </div>
-            <motion.button whileTap={{ scale: 0.95 }} onClick={() => setMicStatus('idle')} className="w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-neutral-500/10 hover:bg-neutral-500/20 transition-colors">
-              Dismiss
-            </motion.button>
-          </div>
-        ) : isRecording ? (
+        {isRecording ? (
           <div className="flex-1 flex items-center gap-3">
             <div className={`flex-1 h-10 rounded-xl flex items-center px-4 gap-2 bg-red-500/10 text-red-500 border border-red-500/20`}>
               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -191,8 +214,8 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
             </motion.button>
           </div>
         ) : (
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} disabled={isUploading || micStatus === 'requesting'} onClick={startRecording} className={`w-full h-10 rounded-xl text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-colors ${isUploading || micStatus === 'requesting' ? 'bg-neutral-500 cursor-not-allowed' : theme.bg}`}>
-            {isUploading ? <><Loader2 size={16} className="animate-spin" /> Uploading...</> : micStatus === 'requesting' ? <><Loader2 size={16} className="animate-spin" /> Waiting for Permission...</> : <><Mic size={16} /> Record Note (Max 60s)</>}
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} disabled={isUploading} onClick={startRecording} className={`w-full h-10 rounded-xl text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-colors ${isUploading ? 'bg-neutral-500 cursor-not-allowed' : theme.bg}`}>
+            {isUploading ? <><Loader2 size={16} className="animate-spin" /> Uploading...</> : <><Mic size={16} /> Record Note (Max 60s)</>}
           </motion.button>
         )}
       </div>
