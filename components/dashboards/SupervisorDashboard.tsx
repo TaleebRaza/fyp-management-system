@@ -5,6 +5,7 @@ import { signOut } from 'next-auth/react';
 import { XCircle, Globe, Wrench, FileText, ArrowRightLeft, UserMinus, LayoutDashboard, Download, LogIn, Loader2, ChevronRight } from 'lucide-react';
 import { GlassCard } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
+import { VoiceChat } from '../ui/VoiceChat';
 
 
 const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
@@ -150,6 +151,16 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                   ) : <span className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold w-fit opacity-70 ${isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'}`}>No PDF Attached</span>}
                 </div>
               ) : <div className={`mb-5 text-center p-6 rounded-xl ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100'}`}><FileText size={30} className="mx-auto mb-2 opacity-20" /><p className="font-bold opacity-50 text-xs">Project details have not been submitted yet.</p></div>}
+              
+              {/* --- OPTIMIZATION: Voice Chat Module Integration --- */}
+              <div className="mb-5">
+                <VoiceChat 
+                  projectId={selectedProject._id} 
+                  currentUserId={(session?.user as any)?.id} 
+                  theme={theme} 
+                  isDarkMode={isDarkMode} 
+                />
+              </div>
               
               <div>
                 <h4 className="font-extrabold text-[10px] tracking-widest uppercase opacity-40 mb-3">Supervisor Actions</h4>

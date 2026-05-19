@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
+import { VoiceChat } from '../ui/VoiceChat';
 
 const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   // --- STATE MANAGEMENT ---
@@ -140,20 +141,24 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
     setIsSubmitting(true);
     
     if (file) {
-      const formData = new FormData();
-      formData.append('file', file);
       try {
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (uploadRes.ok) {
-          const uploadJson = await uploadRes.json();
-          pdfUrl = uploadJson.url;
-        } else {
-          showDialog({ title: "Upload Failed", message: "Could not upload the PDF file." });
-          setIsSubmitting(false);
-          return;
-        }
-      } catch (err) {
-        showDialog({ title: "Network Error", message: "File upload failed." });
+        // --- OPTIMIZATION: Client-Side Direct Blob Handshake ---
+        // Dynamically import to avoid SSR hydration issues
+        const { upload } = await import('@vercel/blob/client');
+        
+        // Stream bytes directly to Vercel Cloud storage
+        const newBlob = await upload(file.name, file, {
+          access: 'private',
+          handleUploadUrl: '/api/upload',
+        });
+        
+        pdfUrl = newBlob.url;
+      } catch (err: any) {
+        console.error("Direct bucket ingest stream failed:", err);
+        showDialog({ 
+          title: "Upload Interrupted", 
+          message: err.message || "Failed to resolve secure upload hand-off. Check file size limits." 
+        });
         setIsSubmitting(false);
         return;
       }
@@ -546,6 +551,17 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               </div>
             )}
           </GlassCard>
+
+          {/* --- OPTIMIZATION: Voice Chat Module Integration --- */}
+          {data?.project && (
+            <VoiceChat 
+              projectId={data.project._id} 
+              currentUserId={(session?.user as any)?.id} 
+              theme={theme} 
+              isDarkMode={isDarkMode} 
+            />
+          )}
+
         </div>
       </div>
     </motion.div>

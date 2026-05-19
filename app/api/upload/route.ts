@@ -1,47 +1,49 @@
-import { put } from '@vercel/blob';
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto'; // Built-in Node.js module for secure UUIDs
+import { getToken } from 'next-auth/jwt';
+import crypto from 'crypto';
 
-// 1. Define Strict Limits (Crucial for Vercel Hobby Tier)
-// Next.js serverless functions have a ~4.5MB request body limit on free tiers.
-const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB maximum size
+const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB strict ceiling
 
 export async function POST(req: NextRequest) {
+  const body = (await req.json()) as HandleUploadBody;
+
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-    
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-    }
+    const jsonResponse = await handleUpload({
+      body,
+      request: req,
+      onBeforeGenerateToken: async (pathname) => {
+        // --- OPTIMIZATION: Secure Token Generation Handshake ---
+        const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+        if (!token || !token.id) {
+          throw new Error('Unauthorized: Authentication token missing or invalid.');
+        }
 
-    // 2. Strict MIME-Type Validation
-    // Never trust the frontend extension. Check the actual file type payload.
-    if (file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Security Check Failed: Only authentic PDF files are permitted.' }, { status: 400 });
-    }
+        // We will expand this array in Milestone 2 to accept audio/webm
+        if (!pathname.endsWith('.pdf')) {
+          throw new Error('Security Violation: Invalid file type.');
+        }
 
-    // 3. Strict Size Validation
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'File is too large. Maximum size allowed is 4MB.' }, { status: 400 });
-    }
+        const sanitizedCleanName = pathname.split('/').pop()?.replace(/[^a-zA-Z0-9.-]/g, '_') || 'document.pdf';
+        const cryptographicUUID = crypto.randomUUID();
+        const absolutePathname = `proposals/${cryptographicUUID}-${sanitizedCleanName}`;
 
-    // 4. Collision-Proof File Naming & Sanitization
-    // Strip out weird characters, spaces, and potential path-traversal strings
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    // Use a cryptographic UUID instead of Date.now() to guarantee 100% uniqueness
-    const uniqueId = crypto.randomUUID();
-    const safeFilename = `proposals/${uniqueId}-${sanitizedName}`;
-
-    // 5. Secure Upload to Vercel Blob
-    const blob = await put(safeFilename, file, {
-      access: 'private', // Keeps the document locked from public internet
+        return {
+          allowedContentTypes: ['application/pdf'],
+          maximumSizeInBytes: MAX_FILE_SIZE,
+          tokenPayload: JSON.stringify({ userId: token.id }),
+          pathname: absolutePathname,
+          access: 'private', 
+        };
+      }
     });
 
-    return NextResponse.json({ url: blob.url });
-    
-  } catch (err: any) {
-    console.error('Vercel Blob Upload error:', err.message);
-    return NextResponse.json({ error: 'Upload failed due to a server error.' }, { status: 500 });
+    return NextResponse.json(jsonResponse);
+  } catch (error: any) {
+    console.error('Client Upload Token Generation Handshake Error:', error.message);
+    return NextResponse.json(
+      { error: error.message || 'Server token generation routing aborted.' },
+      { status: error.message?.includes('Unauthorized') ? 401 : 400 }
+    );
   }
 }
