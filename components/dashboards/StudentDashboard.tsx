@@ -9,7 +9,6 @@ import {
   CheckCircle, 
   XCircle, 
   Send, 
-  FileText, 
   Upload, 
   Lock, 
   Globe, 
@@ -20,12 +19,12 @@ import {
   Loader2, 
   LogIn,
   ClipboardCheck,
-  ExternalLink,
   Info
 } from 'lucide-react';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';
+import { ExternalLink, Copy, Check, Eye, X, FileText, Code } from 'lucide-react'; 
 
 const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   // --- STATE MANAGEMENT ---
@@ -41,6 +40,30 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [localSups, setLocalSups] = useState<any[]>([]);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [headline, setHeadline] = useState('');
+  
+  // --- OPTIMIZATION: Template Preview State ---
+  const [selectedTemplate, setSelectedTemplate] = useState<'proposal' | 'report' | null>(null);
+  const [previewMode, setPreviewMode] = useState<'rendered' | 'code'>('rendered');
+  const [isCopied, setIsCopied] = useState(false);
+
+  // Wrapper to ensure modal always opens in rendered mode
+  const handleOpenTemplate = (type: 'proposal' | 'report') => {
+    setPreviewMode('rendered');
+    setSelectedTemplate(type);
+  };
+
+  const LATEX_TEMPLATES = {
+    proposal: `\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\geometry{a4paper, margin=1in}\n\n\\title{FYP Project Proposal}\n\\author{Team Name \\\\ \\small{Student 1, Student 2}}\n\\date{\\today}\n\n\\begin{document}\n\n\\maketitle\n\n\\section{Introduction}\nState the background of your project here.\n\n\\section{Problem Statement}\nWhat exact problem are you solving?\n\n\\section{Proposed Methodology}\nHow are you going to build this? Mention tech stack.\n\n\\section{Timeline}\nBriefly outline your milestones.\n\n\\end{document}`,
+    
+    report: `\\documentclass{report}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\geometry{a4paper, margin=1in}\n\n\\title{Final Year Project Thesis}\n\\author{Team Name}\n\\date{\\today}\n\n\\begin{document}\n\n\\maketitle\n\\tableofcontents\n\n\\chapter{Introduction}\n\\section{Background}\n\n\\chapter{Literature Review}\n\\section{Existing Systems}\n\n\\chapter{System Architecture}\n\\section{Design}\n\n\\end{document}`
+  };
+
+  const handleCopyTemplate = () => {
+    if (!selectedTemplate) return;
+    navigator.clipboard.writeText(LATEX_TEMPLATES[selectedTemplate]);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   // --- DATA FETCHING ---
   const fetchHeadline = async () => {
@@ -418,6 +441,44 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                     />
                   </div>
 
+                  {/* --- OPTIMIZATION: External Tools & Templates (Zero-Cost Architecture) --- */}
+                  {canSubmit && (
+                    <div className={`mb-4 p-4 rounded-2xl border flex flex-col gap-3 ${isDarkMode ? 'bg-neutral-900/50 border-neutral-800' : 'bg-neutral-50 border-neutral-200'}`}>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[9px] font-black uppercase opacity-40 tracking-widest">Writing Resources</label>
+                        <a 
+                          href="https://www.overleaf.com/project" 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className={`text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${theme.bg} text-white`}
+                        >
+                          Open Overleaf <ExternalLink size={12} />
+                        </a>
+                      </div>
+                      
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button 
+                          type="button"
+                          onClick={() => handleOpenTemplate('proposal')}
+                          className={`flex-1 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all border ${isDarkMode ? 'bg-neutral-800 border-neutral-700 hover:border-neutral-500 text-neutral-300' : 'bg-white border-neutral-200 hover:border-neutral-400 text-neutral-700'}`}
+                        >
+                          <span>FYP Proposal Template</span>
+                          <Eye size={14} className="opacity-50" />
+                        </button>
+                        
+                        <button 
+                          type="button"
+                          onClick={() => handleOpenTemplate('report')}
+                          className={`flex-1 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all border ${isDarkMode ? 'bg-neutral-800 border-neutral-700 hover:border-neutral-500 text-neutral-300' : 'bg-white border-neutral-200 hover:border-neutral-400 text-neutral-700'}`}
+                        >
+                          <span>Final Thesis Template</span>
+                          <Eye size={14} className="opacity-50" />
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-center opacity-40 font-bold">Copy a template, paste into Overleaf, and export as PDF to upload below.</p>
+                    </div>
+                  )}
+
                   <div className={`group relative p-6 border-2 border-dashed rounded-3xl text-center transition-all ${isDarkMode ? 'border-neutral-700 hover:bg-neutral-800/40' : 'border-neutral-200 hover:bg-neutral-50'} ${!canSubmit ? 'opacity-40' : `hover:${theme.border}`}`}>
                     <div className="flex flex-col items-center gap-2">
                       <div className={`p-3 rounded-full ${file ? theme.lightBg : 'bg-neutral-500/5'}`}>
@@ -564,6 +625,139 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
         </div>
       </div>
+
+      {/* --- OPTIMIZATION: Template Preview Modal --- */}
+      <AnimatePresence>
+        {selectedTemplate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setSelectedTemplate(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={`relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-3xl border shadow-2xl overflow-hidden ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}
+            >
+              {/* Modal Header & Toggle */}
+              <div className="px-6 py-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 border-inherit">
+                <div>
+                  <h3 className="text-sm font-black tracking-tight">
+                    {selectedTemplate === 'proposal' ? 'FYP Proposal' : 'Final Thesis'} Template
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">LaTeX Boilerplate</p>
+                </div>
+                
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className={`flex p-1 rounded-xl w-full sm:w-auto ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                    <button 
+                      onClick={() => setPreviewMode('rendered')}
+                      className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${previewMode === 'rendered' ? 'bg-white text-black shadow-sm' : 'text-neutral-500 hover:text-inherit'}`}
+                    >
+                      <FileText size={14} /> Rendered
+                    </button>
+                    <button 
+                      onClick={() => setPreviewMode('code')}
+                      className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${previewMode === 'code' ? (isDarkMode ? 'bg-neutral-700 text-white shadow-sm' : 'bg-white text-black shadow-sm') : 'text-neutral-500 hover:text-inherit'}`}
+                    >
+                      <Code size={14} /> LaTeX Code
+                    </button>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedTemplate(null)} 
+                    className={`p-2 rounded-full transition-colors hidden sm:block ${isDarkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'}`}
+                  >
+                    <X size={18} className="opacity-50" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Viewport */}
+              <div className={`flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar ${isDarkMode ? 'bg-[#0d0d0d]' : 'bg-neutral-50'}`}>
+                {previewMode === 'code' ? (
+                  // RAW CODE VIEW
+                  <pre className={`text-xs font-mono leading-relaxed whitespace-pre-wrap ${isDarkMode ? 'text-neutral-300' : 'text-neutral-700'}`}>
+                    <code>{LATEX_TEMPLATES[selectedTemplate]}</code>
+                  </pre>
+                ) : (
+                  // SIMULATED COMPILED PAPER VIEW
+                  <div className="max-w-[21cm] mx-auto min-h-[29.7cm] bg-white p-8 sm:p-12 shadow-md border border-neutral-200 text-black font-serif leading-relaxed">
+                    {selectedTemplate === 'proposal' ? (
+                      <div className="text-center space-y-6">
+                        <div>
+                          <h1 className="text-2xl font-bold mb-2">FYP Project Proposal</h1>
+                          <p className="text-lg">Team Name</p>
+                          <p className="text-sm mt-1">Student 1, Student 2</p>
+                          <p className="text-sm mt-4">August 2026</p>
+                        </div>
+                        <div className="text-left mt-12 space-y-6">
+                          <div>
+                            <h2 className="text-xl font-bold mb-2">1 Introduction</h2>
+                            <p className="text-sm">State the background of your project here. This section provides the necessary context to understand the problem you are solving.</p>
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold mb-2">2 Problem Statement</h2>
+                            <p className="text-sm">What exact problem are you solving? Clearly define the gap in the current systems or research.</p>
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold mb-2">3 Proposed Methodology</h2>
+                            <p className="text-sm">How are you going to build this? Mention your technology stack, algorithms, and overall architecture.</p>
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold mb-2">4 Timeline</h2>
+                            <p className="text-sm">Briefly outline your milestones and expected deliverables for the semester.</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center space-y-6">
+                        <div className="mb-24">
+                          <h1 className="text-3xl font-bold mb-4 mt-12">Final Year Project Thesis</h1>
+                          <p className="text-xl">Team Name</p>
+                          <p className="text-md mt-8">August 2026</p>
+                        </div>
+                        <div className="text-left space-y-6">
+                          <h2 className="text-2xl font-bold border-b pb-2 mb-6">Contents</h2>
+                          <div className="space-y-2 text-sm font-bold">
+                            <div className="flex justify-between"><span>1 Introduction</span><span>1</span></div>
+                            <div className="flex justify-between pl-4 font-normal"><span>1.1 Background</span><span>1</span></div>
+                            <div className="flex justify-between"><span>2 Literature Review</span><span>4</span></div>
+                            <div className="flex justify-between pl-4 font-normal"><span>2.1 Existing Systems</span><span>4</span></div>
+                            <div className="flex justify-between"><span>3 System Architecture</span><span>12</span></div>
+                            <div className="flex justify-between pl-4 font-normal"><span>3.1 Design</span><span>12</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Animated Copy Footer */}
+              <div className="p-4 border-t border-inherit bg-inherit shrink-0">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleCopyTemplate}
+                  className={`w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white shadow-lg transition-colors duration-300 ${isCopied ? 'bg-emerald-500' : theme.bg}`}
+                >
+                  {isCopied ? (
+                    <><Check size={18} /> Copied to Clipboard!</>
+                  ) : (
+                    <><Copy size={18} /> Copy Template Code</>
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </motion.div>
   );
 };

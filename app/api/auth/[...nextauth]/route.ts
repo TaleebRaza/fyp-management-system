@@ -47,6 +47,19 @@ const handler = NextAuth({
           throw new Error("Incorrect password");
         }
         
+        // --- OPTIMIZATION: Lazy Login Counter ---
+        // Generates a strict "YYYY-MM" string (e.g., "2026-05")
+        const currentMonth = new Date().toISOString().slice(0, 7); 
+        
+        if (user.lastLoginMonth === currentMonth) {
+          // It is the same month: Increment the tally
+          await User.findByIdAndUpdate(user._id, { $inc: { monthlyLoginCount: 1 } });
+        } else {
+          // It is a new month (or their first login): Reset to 1 and stamp the new month
+          await User.findByIdAndUpdate(user._id, { $set: { monthlyLoginCount: 1, lastLoginMonth: currentMonth } });
+        }
+        // ----------------------------------------
+        
         return {
           id: user._id.toString(),
           name: user.name,

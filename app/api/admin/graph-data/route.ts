@@ -8,12 +8,12 @@ export async function GET() {
 
     // Fetch strictly necessary fields for Supervisors
     const supervisors = await User.find({ role: 'supervisor' })
-                                  .select('_id name')
+                                  .select('_id name monthlyLoginCount')
                                   .lean();
 
     // Fetch strictly necessary fields for Students
     const students = await User.find({ role: 'student' })
-                               .select('_id name supervisorId isActive')
+                               .select('_id name supervisorId isActive monthlyLoginCount')
                                .lean();
 
     return NextResponse.json({ supervisors, students }, { status: 200 });

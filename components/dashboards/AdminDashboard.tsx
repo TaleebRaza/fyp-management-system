@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from 'next-auth/react';
-import { Users, XCircle, Trash2, CheckCircle, User, LayoutDashboard, LogIn, PlusCircle, Code, Mail, MailX, Loader2, Megaphone, Filter } from 'lucide-react';
+import { Users, XCircle, Trash2, CheckCircle, User, LayoutDashboard, LogIn, PlusCircle, Code, Mail, MailX, Loader2, Megaphone, Filter, Flame } from 'lucide-react';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import { PROGRAM_MAP } from '../../config/appSettings';
 
@@ -373,8 +373,9 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                         return (
                           <div key={sup._id} className="flex justify-between items-center w-full z-10">
                             <div className="w-36 md:w-64 shrink-0">
-                              <div id={`sup-${sup._id}`} className={`p-3 md:p-5 rounded-xl md:rounded-2xl border shadow-sm flex items-center justify-center text-center font-bold text-xs md:text-base transition-all ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200'}`}>
+                              <div id={`sup-${sup._id}`} className={`p-3 md:p-5 rounded-xl md:rounded-2xl border shadow-sm flex flex-col items-center justify-center text-center font-bold text-xs md:text-base transition-all ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200'}`}>
                                 {sup.name}
+                                {sup.monthlyLoginCount > 0 && <span className={`mt-1 text-[9px] md:text-[10px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {sup.monthlyLoginCount}</span>}
                               </div>
                             </div>
                             <div className="flex flex-col gap-2 md:gap-4 w-40 md:w-80 shrink-0">
@@ -384,7 +385,10 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                                 myStudents.map((student: any) => (
                                   <div key={student._id} id={`stu-${student._id}`} className={`p-2.5 md:p-4 rounded-xl md:rounded-2xl border shadow-sm flex justify-between items-center transition-all ${student.isActive === false ? 'opacity-50 bg-red-500/5 border-red-500/20' : (isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200')}`}>
                                     <div className="flex flex-col truncate pr-1 md:pr-2">
-                                      <span className={`font-bold text-xs md:text-base truncate ${student.isActive === false ? 'line-through opacity-70' : ''}`}>{student.name}</span>
+                                      <span className={`font-bold text-xs md:text-base truncate flex items-center gap-2 ${student.isActive === false ? 'line-through opacity-70' : ''}`}>
+                                        {student.name}
+                                        {student.monthlyLoginCount > 0 && <span className={`text-[8px] font-black flex items-center gap-0.5 px-1 rounded border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={8} /> {student.monthlyLoginCount}</span>}
+                                      </span>
                                       {student.isActive === false && <span className="text-[9px] md:text-[10px] uppercase font-black tracking-wider text-red-500 mt-0.5">Deactivated</span>}
                                     </div>
                                     <button
@@ -416,7 +420,10 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                               {unassigned.map((student: any) => (
                                 <div key={student._id} id={`stu-${student._id}`} className={`p-2.5 md:p-4 rounded-xl md:rounded-2xl border shadow-sm flex justify-between items-center transition-all ${student.isActive === false ? 'opacity-50 bg-red-500/5 border-red-500/20' : (isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200')}`}>
                                   <div className="flex flex-col truncate pr-1 md:pr-2">
-                                    <span className={`font-bold text-xs md:text-base truncate ${student.isActive === false ? 'line-through opacity-70' : ''}`}>{student.name}</span>
+                                    <span className={`font-bold text-xs md:text-base truncate flex items-center gap-2 ${student.isActive === false ? 'line-through opacity-70' : ''}`}>
+                                      {student.name}
+                                      {student.monthlyLoginCount > 0 && <span className={`text-[8px] font-black flex items-center gap-0.5 px-1 rounded border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={8} /> {student.monthlyLoginCount}</span>}
+                                    </span>
                                     {student.isActive === false && <span className="text-[9px] md:text-[10px] uppercase font-black tracking-wider text-red-500 mt-0.5">Deactivated</span>}
                                   </div>
                                   <button
@@ -506,7 +513,10 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                       <div className="flex items-center gap-2.5 md:gap-4">
                         <div className={`w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-gradient-to-br ${theme.gradient} transition-colors duration-500 text-sm md:text-base`}>{sup.name.charAt(0)}</div>
                         <div>
-                          <p className="font-bold text-sm md:text-lg tracking-tight">{sup.name}</p>
+                          <p className="font-bold text-sm md:text-lg tracking-tight flex items-center gap-2">
+                            {sup.name}
+                            {sup.monthlyLoginCount > 0 && <span className={`text-[9px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {sup.monthlyLoginCount}</span>}
+                          </p>
                           <p onClick={() => handleUpdateEmail(sup._id, sup.email, sup.name)} className="text-xs md:text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">
                             ID: {sup.rollNo} • {sup.email || 'Click to Assign Email'}
                           </p>
@@ -580,7 +590,10 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
-                            <p className={`font-bold text-sm md:text-base ${student.isActive === false ? 'line-through opacity-70' : ''}`}>{student.name}</p>
+                            <p className={`font-bold text-sm md:text-base flex items-center gap-2 ${student.isActive === false ? 'line-through opacity-70' : ''}`}>
+                              {student.name}
+                              {student.monthlyLoginCount > 0 && <span className={`text-[9px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {student.monthlyLoginCount}</span>}
+                            </p>
                             <span 
                               onClick={() => handleUpdateProgram(student._id, student.program, student.name)}
                               title={`${PROGRAM_MAP[student.program] || 'Unknown Program'} (Click to Edit)`}

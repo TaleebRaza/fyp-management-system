@@ -24,6 +24,9 @@ const UserSchema = new Schema({
   notificationsEnabled: { type: Boolean, default: true },
   isActive: { type: Boolean, default: true }, 
   
+  monthlyLoginCount: { type: Number, default: 0 },
+  lastLoginMonth: { type: String, default: '' },
+  
   resetCode: { type: String, required: false },
   resetCodeExpiry: { type: Date, required: false },
   lastPasswordChange: { type: Date, required: false },
