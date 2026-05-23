@@ -18,8 +18,9 @@ export async function POST(req: Request) {
     }
 
     // 2. Limit and Redundancy Checks in memory
-    if (targetProject.members.length >= 2) {
-      return NextResponse.json({ error: 'This team is already full (Max 2 members).' }, { status: 400 });
+    const capacity = targetProject.maxTeamSize || 2;
+    if (targetProject.members.length >= capacity) {
+      return NextResponse.json({ error: `This team is already full (Max ${capacity} members).` }, { status: 400 });
     }
     if (targetProject.members.includes(studentId)) {
       return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });

@@ -78,6 +78,24 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
     });
   };
 
+  const handleExpandTeam = (projectId: string) => {
+    showDialog({
+      type: 'confirm', title: 'Expand Team Capacity?', message: `Are you sure you want to grant an exception to allow 3 members in this team?`,
+      onConfirm: async () => {
+        const res = await fetch('/api/dashboard/supervisor', { 
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ action: 'expandTeam', projectId }) 
+        });
+        if (res.ok) {
+          showDialog({ title: "Success", message: "Capacity expanded. The team can now share their invite code with a 3rd student." });
+          setSelectedProject(null); fetchProjects();
+        } else {
+          showDialog({ title: "Error", message: "Failed to expand team." });
+        }
+      }
+    });
+  };
+
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
@@ -194,6 +212,16 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                       {isProcessingAction ? <><Loader2 size={14} className="animate-spin" /> Processing...</> : "Reject Project"}
                     </motion.button>
                   </div>
+
+                  {(!selectedProject.maxTeamSize || selectedProject.maxTeamSize < 3) && (
+                    <motion.button 
+                      whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} 
+                      onClick={() => handleExpandTeam(selectedProject._id)} 
+                      className={`w-full py-2.5 rounded-lg text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-colors border ${isDarkMode ? 'border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-white' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-black'}`}
+                    >
+                      Grant 3-Member Exception
+                    </motion.button>
+                  )}
 
                   <div className="flex gap-2 items-center">
                     <div className={`flex-1 flex items-center p-1.5 rounded-lg border focus-within:border-blue-500 ${isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'}`}>

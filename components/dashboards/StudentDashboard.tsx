@@ -549,7 +549,7 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                   <h3 className="font-black text-[10px] uppercase">My Team</h3>
                 </div>
                 <div className="px-2 py-0.5 rounded-full bg-neutral-500/10 text-[9px] font-black">
-                 {projectMembers.length}/2
+                 {projectMembers.length}/{data?.project?.maxTeamSize || 2}
                 </div>
             </div>
 
@@ -574,7 +574,7 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                   ))}
                 </div>
 
-                {projectMembers.length < 2 && (
+                {projectMembers.length < (data?.project?.maxTeamSize || 2) && (
                   <div className="space-y-3 pt-2">
                     <form onSubmit={handleJoinTeam} className="flex gap-2">
                       <input 

@@ -14,11 +14,11 @@ export async function GET(req: Request) {
     
     const students = await User.find({ role: 'student', supervisorId: id }).lean();
 
-    // --- NEW: Fetch associated projects to get the Timeline Stage ---
+    // --- NEW: Fetch associated projects to get the Timeline Stage & Capacity ---
     const projectIds = students.map(s => s.projectId).filter(Boolean);
     const projects = await Project.find({ _id: { $in: projectIds } }).lean();
-    const stageMap = projects.reduce((acc: any, p: any) => {
-      acc[p._id.toString()] = p.stage;
+    const projectMetadata = projects.reduce((acc: any, p: any) => {
+      acc[p._id.toString()] = { stage: p.stage, maxTeamSize: p.maxTeamSize };
       return acc;
     }, {});
     // --------------------------------------------------------------
@@ -39,7 +39,8 @@ export async function GET(req: Request) {
           pdfUrl: student.pdfUrl,
           status: student.status,
           remarks: student.remarks,
-          stage: stageMap[pId] || 'PROPOSAL', // <-- Inject the stage here
+          stage: projectMetadata[pId]?.stage || 'PROPOSAL',
+          maxTeamSize: projectMetadata[pId]?.maxTeamSize || 2, // <-- Inject capacity here
           batch: student.batch || 'N/A',
           semester: student.semester || '7th Semester',
           members: []
@@ -64,7 +65,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     await connectToDatabase();
-    const { action, studentId, status, remarks, migrationCode } = await req.json();
+    
+    // --- CRITICAL FIX: Extract projectId during the first and ONLY read of the body stream ---
+    const { action, studentId, status, remarks, migrationCode, projectId } = await req.json();
 
     if (action === 'updateStatus') {
       const triggerStudent = await User.findById(studentId);
@@ -203,6 +206,14 @@ export async function POST(req: Request) {
         });
       }
       return NextResponse.json({ message: 'Team removed successfully!' }, { status: 200 });
+    }
+
+    if (action === 'expandTeam') {
+      // The projectId is now safely provided by the initial extraction at the top of the file
+      if (!projectId) return NextResponse.json({ error: 'Project ID required' }, { status: 400 });
+      
+      await Project.findByIdAndUpdate(projectId, { $set: { maxTeamSize: 3 } });
+      return NextResponse.json({ message: 'Team capacity successfully expanded to 3 members!' }, { status: 200 });
     }
 
   } catch (error) {

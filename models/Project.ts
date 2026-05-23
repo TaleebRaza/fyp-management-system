@@ -9,6 +9,9 @@ const ProjectSchema = new Schema({
   domain: { type: String, default: '' },
   pdfUrl: { type: String, default: '' },
   status: { type: String, default: 'Pending' },
+  
+  // --- OPTIMIZATION: Dynamic Team Capacity ---
+  maxTeamSize: { type: Number, default: 2 },
 
   // --- NEW: Timeline Stage Field ---
   stage: { 
