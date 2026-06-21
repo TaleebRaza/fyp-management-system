@@ -188,7 +188,7 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Approved')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Approved' || isProcessingAction} 
+                      disabled={!selectedProject.projectTitle || !selectedProject.pdfUrl || selectedProject.status === 'Approved' || isProcessingAction} 
                       className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
                     >
                       {isProcessingAction ? <><Loader2 size={14} className="animate-spin" /> Processing...</> : "Approve Project"}
@@ -197,7 +197,7 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Changes Requested')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Changes Requested' || isProcessingAction} 
+                      disabled={!selectedProject.projectTitle || !selectedProject.pdfUrl || selectedProject.status === 'Changes Requested' || isProcessingAction} 
                       className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
                     >
                       {isProcessingAction ? <><Loader2 size={14} className="animate-spin" /> Processing...</> : "Make Suggestion"}
@@ -206,7 +206,7 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
                     <motion.button 
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} 
                       onClick={() => handleAction(selectedProject.triggerStudentId, 'Rejected')} 
-                      disabled={!selectedProject.projectTitle || selectedProject.status === 'Rejected' || isProcessingAction} 
+                      disabled={!selectedProject.projectTitle || !selectedProject.pdfUrl || selectedProject.status === 'Rejected' || isProcessingAction} 
                       className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
                     >
                       {isProcessingAction ? <><Loader2 size={14} className="animate-spin" /> Processing...</> : "Reject Project"}

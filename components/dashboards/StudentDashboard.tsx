@@ -24,7 +24,7 @@ import {
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';
-import { ExternalLink, Copy, Check, Eye, X, FileText, Code } from 'lucide-react'; 
+import { ExternalLink, Copy, Check, Eye, X, FileText, Code, Download } from 'lucide-react'; 
 
 const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   // --- STATE MANAGEMENT ---
@@ -41,26 +41,42 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [headline, setHeadline] = useState('');
   
-  // --- OPTIMIZATION: Template Preview State ---
-  const [selectedTemplate, setSelectedTemplate] = useState<'proposal' | 'report' | null>(null);
+  // --- OPTIMIZATION: Dynamic Timeline Template State ---
+  const [cachedTemplates, setCachedTemplates] = useState<any[]>([]);
+  const [isFetchingTemplates, setIsFetchingTemplates] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
   const [previewMode, setPreviewMode] = useState<'rendered' | 'code'>('rendered');
   const [isCopied, setIsCopied] = useState(false);
 
   // Wrapper to ensure modal always opens in rendered mode
-  const handleOpenTemplate = (type: 'proposal' | 'report') => {
+  const handleOpenTemplate = (template: any) => {
     setPreviewMode('rendered');
-    setSelectedTemplate(type);
+    setSelectedTemplate(template);
   };
 
-  const LATEX_TEMPLATES = {
-    proposal: `\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\geometry{a4paper, margin=1in}\n\n\\title{FYP Project Proposal}\n\\author{Team Name \\\\ \\small{Student 1, Student 2}}\n\\date{\\today}\n\n\\begin{document}\n\n\\maketitle\n\n\\section{Introduction}\nState the background of your project here.\n\n\\section{Problem Statement}\nWhat exact problem are you solving?\n\n\\section{Proposed Methodology}\nHow are you going to build this? Mention tech stack.\n\n\\section{Timeline}\nBriefly outline your milestones.\n\n\\end{document}`,
-    
-    report: `\\documentclass{report}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\geometry{a4paper, margin=1in}\n\n\\title{Final Year Project Thesis}\n\\author{Team Name}\n\\date{\\today}\n\n\\begin{document}\n\n\\maketitle\n\\tableofcontents\n\n\\chapter{Introduction}\n\\section{Background}\n\n\\chapter{Literature Review}\n\\section{Existing Systems}\n\n\\chapter{System Architecture}\n\\section{Design}\n\n\\end{document}`
+  const fetchTemplatesByStage = async () => {
+    if (cachedTemplates.length > 0) return;
+    setIsFetchingTemplates(true);
+    try {
+      const stage = data?.project?.stage || 'PROPOSAL';
+      const res = await fetch(`/api/templates?stage=${stage}`);
+      if (res.ok) {
+        const json = await res.json();
+        setCachedTemplates(json.templates || []);
+      } else {
+        throw new Error("Failed to load timeline templates.");
+      }
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+      showDialog({ title: "Network Error", message: "Failed to download templates from the server." });
+    } finally {
+      setIsFetchingTemplates(false);
+    }
   };
 
   const handleCopyTemplate = () => {
     if (!selectedTemplate) return;
-    navigator.clipboard.writeText(LATEX_TEMPLATES[selectedTemplate]);
+    navigator.clipboard.writeText(selectedTemplate.content);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -177,14 +193,22 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
         
         pdfUrl = newBlob.url;
       } catch (err: any) {
-        console.error("Direct bucket ingest stream failed:", err);
-        showDialog({ 
-          title: "Upload Interrupted", 
-          message: err.message || "Failed to resolve secure upload hand-off. Check file size limits." 
-        });
-        setIsSubmitting(false);
-        return;
-      }
+          console.error("Direct bucket ingest stream failed:", err);
+          
+          let errorMessage = err.message || "Failed to resolve secure upload hand-off. Check file size limits.";
+          
+          // Intercept Vercel Blob's technical error and provide a student-friendly instruction
+          if (errorMessage.includes("already exists")) {
+            errorMessage = "A document with this exact name already exists on the server. Please rename your file slightly (e.g., 'proposal_v2.pdf') and try uploading it again.";
+          }
+
+          showDialog({ 
+            title: "Upload Interrupted", 
+            message: errorMessage 
+          });
+          setIsSubmitting(false);
+          return;
+        }
     }
 
     try {
@@ -456,24 +480,33 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                         </a>
                       </div>
                       
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button 
-                          type="button"
-                          onClick={() => handleOpenTemplate('proposal')}
-                          className={`flex-1 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all border ${isDarkMode ? 'bg-neutral-800 border-neutral-700 hover:border-neutral-500 text-neutral-300' : 'bg-white border-neutral-200 hover:border-neutral-400 text-neutral-700'}`}
-                        >
-                          <span>FYP Proposal Template</span>
-                          <Eye size={14} className="opacity-50" />
-                        </button>
-                        
-                        <button 
-                          type="button"
-                          onClick={() => handleOpenTemplate('report')}
-                          className={`flex-1 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all border ${isDarkMode ? 'bg-neutral-800 border-neutral-700 hover:border-neutral-500 text-neutral-300' : 'bg-white border-neutral-200 hover:border-neutral-400 text-neutral-700'}`}
-                        >
-                          <span>Final Thesis Template</span>
-                          <Eye size={14} className="opacity-50" />
-                        </button>
+                      <div className="w-full">
+                        {cachedTemplates.length === 0 ? (
+                          <button
+                            type="button"
+                            onClick={fetchTemplatesByStage}
+                            disabled={isFetchingTemplates}
+                            className={`w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition-all border ${isDarkMode ? 'bg-neutral-800 border-neutral-700 hover:border-neutral-500 text-neutral-300' : 'bg-white border-neutral-200 hover:border-neutral-400 text-neutral-700'}`}
+                          >
+                            {isFetchingTemplates ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            {isFetchingTemplates ? "Downloading Templates..." : `Load ${data?.project?.stage ? data.project.stage.replace('_', ' ') : 'PROPOSAL'} Templates`}
+                          </button>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 w-full max-h-48 overflow-y-auto custom-scrollbar p-1">
+                            {cachedTemplates.map((template) => (
+                              <button 
+                                key={template.id}
+                                type="button"
+                                onClick={() => handleOpenTemplate(template)}
+                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${isDarkMode ? 'bg-neutral-800 border-neutral-700 hover:border-neutral-500 text-neutral-300' : 'bg-white border-neutral-200 hover:border-neutral-400 text-neutral-700'}`}
+                                title={template.filename}
+                              >
+                                <span className="truncate pr-2">{template.title}</span>
+                                <Eye size={14} className="opacity-50 shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <p className="text-[9px] text-center opacity-40 font-bold">Copy a template, paste into Overleaf, and export as PDF to upload below.</p>
                     </div>
@@ -543,32 +576,32 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
           {/* TEAM SECTION */}
           <GlassCard isDarkMode={isDarkMode} className="p-4 md:p-6">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-neutral-500/10">
-                <div className="flex items-center gap-2">
-                  <Users size={16} className={theme.text} />
-                  <h3 className="font-black text-[10px] uppercase">My Team</h3>
+            <div className="flex items-center justify-between mb-5 pb-4 border-b border-neutral-500/10">
+                <div className="flex items-center gap-2.5">
+                  <Users size={20} className={theme.text} />
+                  <h3 className="font-black text-xs md:text-sm uppercase tracking-wider">My Team</h3>
                 </div>
-                <div className="px-2 py-0.5 rounded-full bg-neutral-500/10 text-[9px] font-black">
+                <div className="px-3 py-1 rounded-full bg-neutral-500/10 text-xs font-black">
                  {projectMembers.length}/{data?.project?.maxTeamSize || 2}
                 </div>
             </div>
 
             {data?.project ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
+              <div className="space-y-5">
+                <div className="space-y-3">
                   {projectMembers.map((member: any) => (
-                    <div key={member._id} className="flex items-center justify-between p-2 rounded-xl bg-neutral-500/5">
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black text-white bg-gradient-to-br ${theme.gradient} shrink-0`}>
+                    <div key={member._id} className="flex items-center justify-between p-3 md:p-4 rounded-2xl bg-neutral-500/5 border border-neutral-500/5">
+                      <div className="flex items-center gap-4 overflow-hidden">
+                        <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center text-xs md:text-sm font-black text-white bg-gradient-to-br ${theme.gradient} shrink-0 shadow-sm`}>
                           {member.name.charAt(0)}
                         </div>
-                        <div className="flex flex-col overflow-hidden">
-                          <span className="text-[10px] font-black truncate">{member.name}</span>
-                          <span className="text-[8px] opacity-40 font-mono">{member.rollNo}</span>
+                        <div className="flex flex-col overflow-hidden gap-0.5">
+                          <span className="text-sm md:text-base font-black truncate tracking-tight">{member.name}</span>
+                          <span className="text-xs md:text-sm opacity-60 font-mono font-medium">{member.rollNo}</span>
                         </div>
                       </div>
                       {member.rollNo === me.rollNo && (
-                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />
+                         <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2 shadow-[0_0_10px_rgba(16,185,129,0.5)]" title="You" />
                       )}
                     </div>
                   ))}
@@ -576,18 +609,18 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
                 {projectMembers.length < (data?.project?.maxTeamSize || 2) && (
                   <div className="space-y-3 pt-2">
-                    <form onSubmit={handleJoinTeam} className="flex gap-2">
+                    <form onSubmit={handleJoinTeam} className="flex gap-2.5">
                       <input 
                         type="text" 
                         placeholder="Invite Code" 
                         value={inviteCodeInput}
                         onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
-                        className={`flex-1 px-3 py-2.5 text-[10px] rounded-xl outline-none font-mono font-black ${isDarkMode ? 'bg-neutral-900' : 'bg-neutral-100'} border-2 border-transparent focus:border-blue-500/30 transition-all`}
+                        className={`flex-1 px-4 py-3 text-xs md:text-sm rounded-xl outline-none font-mono font-black ${isDarkMode ? 'bg-neutral-900' : 'bg-neutral-100'} border-2 border-transparent focus:border-blue-500/30 transition-all shadow-inner`}
                       />
                       <motion.button 
                         whileTap={{ scale: 0.95 }}
                         type="submit" 
-                        className={`px-4 py-2.5 rounded-xl text-[10px] font-black text-white shadow-lg ${theme.bg}`}
+                        className={`px-5 py-3 rounded-xl text-xs font-black text-white shadow-lg ${theme.bg}`}
                       >
                         JOIN
                       </motion.button>
@@ -595,20 +628,20 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                   </div>
                 )}
                 
-                <div className={`mt-2 p-3 rounded-2xl border-2 border-dotted ${isDarkMode ? 'border-neutral-800 bg-neutral-900/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
+                <div className={`mt-3 p-4 rounded-2xl border-2 border-dotted ${isDarkMode ? 'border-neutral-800 bg-neutral-900/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[8px] font-black opacity-30 uppercase tracking-tighter">Your Code</p>
-                      <p className="text-xs font-mono font-black tracking-widest text-blue-500">{data.project.inviteCode || '---'}</p>
+                      <p className="text-[10px] md:text-xs font-black opacity-40 uppercase tracking-widest mb-1">Your Code</p>
+                      <p className="text-sm md:text-base font-mono font-black tracking-widest text-blue-500">{data.project.inviteCode || '---'}</p>
                     </div>
-                    <ClipboardCheck size={14} className="opacity-20" />
+                    <ClipboardCheck size={20} className="opacity-20" />
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="py-6 text-center opacity-20">
-                <Users size={20} className="mx-auto mb-1" />
-                <p className="text-[9px] font-black uppercase">No Team</p>
+              <div className="py-8 text-center opacity-30">
+                <Users size={28} className="mx-auto mb-2" />
+                <p className="text-xs md:text-sm font-black uppercase tracking-widest">No Team</p>
               </div>
             )}
           </GlassCard>
@@ -648,9 +681,9 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               <div className="px-6 py-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 border-inherit">
                 <div>
                   <h3 className="text-sm font-black tracking-tight">
-                    {selectedTemplate === 'proposal' ? 'FYP Proposal' : 'Final Thesis'} Template
+                    {selectedTemplate?.title || 'Document'} Template
                   </h3>
-                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">LaTeX Boilerplate</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{selectedTemplate?.filename || 'LaTeX Boilerplate'}</p>
                 </div>
                 
                 <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -682,58 +715,24 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                 {previewMode === 'code' ? (
                   // RAW CODE VIEW
                   <pre className={`text-xs font-mono leading-relaxed whitespace-pre-wrap ${isDarkMode ? 'text-neutral-300' : 'text-neutral-700'}`}>
-                    <code>{LATEX_TEMPLATES[selectedTemplate]}</code>
+                    <code>{selectedTemplate?.content || '% No content available'}</code>
                   </pre>
                 ) : (
                   // SIMULATED COMPILED PAPER VIEW
                   <div className="max-w-[21cm] mx-auto min-h-[29.7cm] bg-white p-8 sm:p-12 shadow-md border border-neutral-200 text-black font-serif leading-relaxed">
-                    {selectedTemplate === 'proposal' ? (
-                      <div className="text-center space-y-6">
-                        <div>
-                          <h1 className="text-2xl font-bold mb-2">FYP Project Proposal</h1>
-                          <p className="text-lg">Team Name</p>
-                          <p className="text-sm mt-1">Student 1, Student 2</p>
-                          <p className="text-sm mt-4">August 2026</p>
-                        </div>
-                        <div className="text-left mt-12 space-y-6">
-                          <div>
-                            <h2 className="text-xl font-bold mb-2">1 Introduction</h2>
-                            <p className="text-sm">State the background of your project here. This section provides the necessary context to understand the problem you are solving.</p>
-                          </div>
-                          <div>
-                            <h2 className="text-xl font-bold mb-2">2 Problem Statement</h2>
-                            <p className="text-sm">What exact problem are you solving? Clearly define the gap in the current systems or research.</p>
-                          </div>
-                          <div>
-                            <h2 className="text-xl font-bold mb-2">3 Proposed Methodology</h2>
-                            <p className="text-sm">How are you going to build this? Mention your technology stack, algorithms, and overall architecture.</p>
-                          </div>
-                          <div>
-                            <h2 className="text-xl font-bold mb-2">4 Timeline</h2>
-                            <p className="text-sm">Briefly outline your milestones and expected deliverables for the semester.</p>
-                          </div>
-                        </div>
+                    <div className="text-center space-y-6">
+                      <div className="mb-12">
+                        <h1 className="text-3xl font-bold mb-4 mt-12">{selectedTemplate?.title || 'Document'}</h1>
+                        <p className="text-xl">{projectMembers.map((m: any) => m.name).join(', ') || 'Team Name'}</p>
+                        <p className="text-md mt-4 text-neutral-500">Auto-Generated Preview</p>
                       </div>
-                    ) : (
-                      <div className="text-center space-y-6">
-                        <div className="mb-24">
-                          <h1 className="text-3xl font-bold mb-4 mt-12">Final Year Project Thesis</h1>
-                          <p className="text-xl">Team Name</p>
-                          <p className="text-md mt-8">August 2026</p>
-                        </div>
-                        <div className="text-left space-y-6">
-                          <h2 className="text-2xl font-bold border-b pb-2 mb-6">Contents</h2>
-                          <div className="space-y-2 text-sm font-bold">
-                            <div className="flex justify-between"><span>1 Introduction</span><span>1</span></div>
-                            <div className="flex justify-between pl-4 font-normal"><span>1.1 Background</span><span>1</span></div>
-                            <div className="flex justify-between"><span>2 Literature Review</span><span>4</span></div>
-                            <div className="flex justify-between pl-4 font-normal"><span>2.1 Existing Systems</span><span>4</span></div>
-                            <div className="flex justify-between"><span>3 System Architecture</span><span>12</span></div>
-                            <div className="flex justify-between pl-4 font-normal"><span>3.1 Design</span><span>12</span></div>
-                          </div>
-                        </div>
+                      <div className="text-left space-y-6 bg-neutral-50 p-6 rounded-lg border border-neutral-200">
+                        <h2 className="text-xl font-bold border-b pb-2 mb-4 text-neutral-800">Preview Note</h2>
+                        <p className="text-sm text-neutral-600">
+                          This is a dynamic LaTeX file. Switch to the <strong>LaTeX Code</strong> tab to view and copy the raw <code>{selectedTemplate?.filename}</code> contents. Paste the copied code into your Overleaf project to compile the true document.
+                        </p>
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
               </div>

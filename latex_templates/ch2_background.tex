@@ -1,0 +1,84 @@
+%================================================================
+% CHAPTER 2: BACKGROUND AND EXISTING WORK
+%================================================================
+\chapter{BACKGROUND AND EXISTING WORK}
+
+\section{Introduction}
+
+In this chapter we describe background knowledge related to the project. We also describe the existing systems and specify those websites which exist, and also specify the features of the existing system. Further we describe the methodologies used for web mining, techniques of web mining and procedures. In this chapter we have also specified the libraries used for data extraction and the limitation of the project.
+
+\section{Background}
+
+Nowadays there are many universities in the cities of Rawalpindi and Islamabad where the strength of students is increasing day by day. Most of the students belong to other cities. Students do not have knowledge about universities (programs, ranking, faculty, eligibility criteria, fee structure, location etc.) which makes it difficult for students to search universities where they want to do their study. Usually students search universities by seeing the eligibility criteria based on their previous performance, because some have good results and some do not. There are also many students who face financial crises; before they choose a university, they first look at the fee structure of universities and then they take a decision to have an admission. Most of the students with outstanding academic performance look for a well-ranked university.
+
+Students also do not know about programs which are newly introduced by universities, such as PCS and IR, or which university offers these programs. For example, students who pass out from intermediate and want to get an admission to continue their study, but who have no more information about the universities because most of the students belong to rural areas --- such students cannot choose the right university. Before this system, students visited each university manually by visiting each university website individually. This web portal ensures that each and every piece of information about the universities within twin cities (Islamabad/Rawalpindi) is available at one platform for the students about their study.
+
+\section{Existing System}
+
+In this section we discuss all the existing systems which exist before, and also discuss their features and limitations. In Pakistan there is no educational type of website which is automated as compared to some other countries such as America. In America such type of many websites exist; some of them are discussed below.
+
+\subsection{Manual}
+
+Today different manual methods exist but there is no as such system that can provide all required information at one place. All universities have their own websites and students can search information about different modules like fee and programs manually by visiting all the university websites one by one. This manual method takes a lot of time for searching and also there is no functionality of comparison. There is no automated system or any website from where users can get all the information on one platform. In the existing system, if any website of any university goes down, then the user can never get the data or information about that university until the website goes up again.
+
+\subsection{Open Booking Table}
+
+Booking.com is a travel fare aggregator website and travel metasearch engine for accommodations reservations of restaurants. In 2005, it has been owned and operated by the `Priceline group'. The website lists about 1.2 million properties in 225 countries and books 1.2 million room nights per day. This existing project can extract facts or data of various restaurants of 225 countries and accumulate on one platform. In this existing system users are able to book any table or room anywhere in the world.
+
+\subsection{50States.com}
+
+50states.com is a website which provides quick access to specific facts and information about all 50 states of America. This existing system provides detailed information about all the states that exist in America, including a module which provides detailed information about different schools, colleges and universities in the different states of America. This existing system provides an option for users to search different universities and colleges on the basis of different programs, meaning which university is offering an entire or specific program. Users are also able to request information about different universities of different states and view the list of universities existing in different states or in one state by selecting the specific state.
+
+\section{Methodologies Used for Web Mining}
+
+In this section, we discuss all the methodologies of web mining and also describe their procedures and techniques which are used in our proposed system.
+
+\subsection{Web Mining}
+
+Web mining technique is used to extract data from websites and also used to find out valuable or required information from them.
+
+\subsubsection{Web Mining Procedures}
+
+There are three different steps or methods used for extracting data or web contents from different web pages by using the web mining technique, which are as below:
+
+\begin{itemize}
+    \item \textbf{Extraction} --- Extract the data from different web pages or sites.
+    \item \textbf{Parsing} --- It is used to parse information from all formatted or detailed data.
+    \item \textbf{Output} --- Display the output of the data which is extracted from the websites after parsing.
+\end{itemize}
+
+\subsubsection{Web Mining Techniques}
+
+There are three different types of techniques which are used for web mining:
+
+\paragraph{Web Content Mining}
+
+Web content mining is that type of technique which is used to extract specific kinds of meaningful data from a big set of data that is present on different web documents. Different kinds of techniques of data mining apply in web content mining. It basically deals with that type of data or record which is in unstructured form.
+
+\paragraph{Web Usage Mining}
+
+Web usage mining is the web mining method which is used for extracting information from different websites. This technique is also used to find the behavior of different users and what they want to search on the internet.
+
+\paragraph{Web Structure Mining}
+
+Web structure mining is one type of web mining technique. This technique uses different graph theory to analyze the connection structure and nodes of websites.
+
+\section{Document Object Model (DOM)}
+
+The Document Object Model (DOM) is a programming API for HTML and XML documents. It defines the logical structure of documents and the way a document is accessed and manipulated. XML presents this information as documents, and the DOM can be used to manipulate this data. The DOM library is also used to find tags of an HTML page with selectors and can also extract contents or data in one line from HTML.
+
+\section{Data Extraction from University Websites}
+
+A web crawler is used for extracting data or information using the DOM parsing library. In this process we used a crawler as well as a scraper for data extraction through a unique class or id, and also used the link of that page from where we want to extract information. By using a text mining algorithm, the textual information is extracted from web pages and this is free from tags. In this system, basically a scraper is used for extraction of data from different university websites. When we run the scraper it reads each website and finds the specific information that is required for the user through its unique id, and then extracts that information. When data is extracted from the website in different formats, it is filtered and then stored in the database in a desired or defined format.
+
+\section{Filtration}
+
+In PHP, filters are used to filter data in two forms. Basically, filtration is the process of refining or filtering the data in the desired context.
+
+\subsection{Validating Data}
+
+In this process data can be determined in proper form. This process of filtration is used to filter the data using different filtration functions to filter data coming from external sources and display it according to user output. In the proposed system we used this technique to filter different data of different universities in the same context in a smooth manner. We used different functions to filter different class data in user desired form.
+
+\subsection{Sanitizing Data}
+
+In this process, unused characters or data are removed from the extracted data. This process of filtration is also used to filter data using different filtration functions to filter such data coming from external sources and display according to the desired output. In the proposed system we used this technique to remove some kinds of unused data from the raw data coming from external resources by its class name. We have also hidden some kinds of data which is not used at that time but may possibly be used further in the system.

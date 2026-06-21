@@ -1,0 +1,113 @@
+%================================================================
+% CHAPTER 4: SYSTEM MODELING
+%================================================================
+\chapter{SYSTEM MODELING}
+
+\section{System Modeling}
+
+In this chapter we discuss the evaluation of the existing system in detail. We have discussed the existing systems and their features. We have also discussed the proposed system and its working. This chapter also provides detailed information about different models like the system use case diagram, sequence diagram, user diagram, and admin diagram, architecture diagram and data flow diagram. Basically, use case diagrams are used to define and explain the interaction and relation between user and system. Sequence diagrams show the sequence of the processes or operations to be executed by the user to achieve the end result. Data flow diagrams represent the flow of different elements.
+
+\section{Evaluation of Existing System}
+
+All universities have their own websites; users can search information about different modules (fee, programs) by visiting all the university websites one by one. This manual method takes a lot of time and also there is no functionality of comparison. Another issue is that users cannot visit all university websites manually.
+
+\section{Proposed System}
+
+This system is different from all other manual systems or existing systems. The proposed system extracts the data of different webpages of different websites by using different techniques of crawler or scraper in which data can be extracted through a unique id. By using the crawler, this proposed system extracts the data from those websites whose URLs are passed, then parses and filters the extracted information in a defined format and then integrates on a website. After the integration, the data is stored in the database. This proposed system extracts only the data in textual representation form.
+
+This proposed system also makes sure the availability of a backup system, which means if any university website goes down, the user cannot see the data of that university website. This system gives the data from the database. The database of the proposed system is SQL Server which stores only textual data and other details related to this system. Basic hardware requirements are needed to execute this application. Development of the proposed system is done in PHP. This application is only accessible on the availability of the internet and can also be accessed by any type of device which supports internet, like home PC, laptop and different mobile devices. The proposed system is able to search or extract data of only Pakistani university websites with domains \texttt{.com} and \texttt{.pk}.
+
+\section{Main Use Case Diagram}
+
+Figure~\ref{fig:usecase} shows the use case diagram that defines how users use the system and also defines how users of the system can interact with the system or adopt the system. The system can be used by the user accordingly to achieve the goal. The system has different main modules that can be executed to perform a specific task. First, the user can access the web portal on the internet through any browser. After access, the user should be able to perform different tasks like searching the list of universities in a specific city and searching the general information of all the universities, individually or collectively, as presented in Table~\ref{tab:usecase}.
+
+\begin{table}[H]
+\centering
+\caption{Use Case Scenarios}
+\label{tab:usecase}
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\textbf{Use Case ID} & UC1 \\
+\hline
+\textbf{User/Customer} & A person who uses this system accordingly to accomplish their desired work or need. \\
+\hline
+\textbf{Purpose} & The major purpose of this system is that users can extract data from different webpages or sites of different universities and compare. \\
+\hline
+\textbf{Overview} & This application is used by specific users. Through this, users can extract data from different web pages by clicking on the name of a website. This system saves users' time that would be consumed in visiting all sites individually and helps to provide the information of all universities at one place. \\
+\hline
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    % \includegraphics[width=0.85\textwidth]{figures/fig4_1_usecase}
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}[Figure 4.1: Use Case Diagram of Proposed System]\vspace{2cm}}}
+    \caption{Use Case Diagram of Proposed System}
+    \label{fig:usecase}
+\end{figure}
+
+\section{Architecture Diagram}
+
+The architecture of the proposed system is shown in Figure~\ref{fig:architecture}. An architecture diagram is a beginning-to-end illustration of the layout of a specific system. The proposed system is a web-based application, and the architecture diagram displays all the elements or components used in the system. The system uses different algorithms of web mining and data mining for extracting textual data from websites.
+
+In this architecture diagram we have discussed the whole architecture of the project. The user accesses the web user interface by its URL and performs any action; then the user query is forwarded to the controller of the system, which is basically the concept of Model-View-Controller (MVC). After that, the controller is responsible for checking the user request; it then extracts the specific data that the user wants using the web crawler, in which data is basically extracted through scraping technique using the Document Object Model library. After using the library, the accessed data is then filtered because the data is not in a specified format. The data is filtered to get the important information and then stored in the database in the specified format, which is then displayed as output.
+
+\begin{figure}[H]
+    \centering
+    % \includegraphics[width=0.85\textwidth]{figures/fig4_2_architecture}
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}[Figure 4.2: Architecture Diagram]\vspace{2cm}}}
+    \caption{Architecture Diagram}
+    \label{fig:architecture}
+\end{figure}
+
+\section{Sequence Diagrams}
+
+Basically, a sequence diagram shows the sequence of the processes or operations which are executed by the user to achieve the end result.
+
+\subsection{User Sequence Diagram}
+
+After accessing the website, users are able to search a university by inputting a city name, and also search through programs offered by selecting a specific program; then the system displays the list of universities. The user can also be able to compare universities on different criteria like fee structure and HEC ranking, and get the desired output as shown in Figure~\ref{fig:user_seq}.
+
+\begin{figure}[H]
+    \centering
+    % \includegraphics[width=0.85\textwidth]{figures/fig4_3_user_seq}
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}[Figure 4.3: User Sequence Diagram]\vspace{2cm}}}
+    \caption{User Sequence Diagram}
+    \label{fig:user_seq}
+\end{figure}
+
+\subsection{Admin Sequence Diagram}
+
+Figure~\ref{fig:admin_seq} shows the sequence diagram that describes the administration module. In this system, the role of admin is that the admin should be able to manage websites, meaning to add further university websites of different other cities and then at a province level in the future, to increase the area coverage of the project. The admin should also be able to add websites of different other countries for the further demand of user feedback.
+
+\begin{figure}[H]
+    \centering
+    % \includegraphics[width=0.85\textwidth]{figures/fig4_4_admin_seq}
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}[Figure 4.4: Admin Sequence Diagram]\vspace{2cm}}}
+    \caption{Admin Sequence Diagram}
+    \label{fig:admin_seq}
+\end{figure}
+
+\subsection{System Sequence Diagram}
+
+Figure~\ref{fig:sys_seq} shows the sequence diagram of the proposed system. In this diagram, the user performs some action on the web user interface after being accessed by its web URL; then the web app crawler is used to extract data from different university websites using the Document Object Model (DOM) parser library. After that, the data filtration process is used to filter the data according to the user's need, because the data that is extracted is not in a specified format or context, and then data is stored in the database.
+
+\begin{figure}[H]
+    \centering
+    % \includegraphics[width=0.85\textwidth]{figures/fig4_5_sys_seq}
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}[Figure 4.5: System Sequence Diagram]\vspace{2cm}}}
+    \caption{System Sequence Diagram}
+    \label{fig:sys_seq}
+\end{figure}
+
+\section{Flow Chart}
+
+The flow chart of the proposed system is shown in Figure~\ref{fig:flowchart}. After access to the proposed system's web user interface, the main page is shown to the user where there is a menu bar showing different services of the system. Users may have different options depending on what they want to search. Users can search universities by city, or by program offered by selecting a specific program, then the system tells the user which universities offer that program. Users can also visit different universities and view information about different modules or components like fee structure, faculty, eligibility criteria, and ranking. Users should also be able to compare different universities on different criteria like fee comparison and ranking comparison. After selection, the system will extract all the data from the sites input by the user, filter all the data, store it in the database in a defined context or format, and display the information or result to the user.
+
+\begin{figure}[H]
+    \centering
+    % \includegraphics[width=0.75\textwidth]{figures/fig4_6_flowchart}
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}[Figure 4.6: Flow Chart]\vspace{2cm}}}
+    \caption{Flow Chart}
+    \label{fig:flowchart}
+\end{figure}
