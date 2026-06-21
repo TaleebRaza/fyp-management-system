@@ -5,6 +5,7 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { sendNotificationEmail } from '../../../../lib/mailer';
 import { APP_SETTINGS } from '../../../../config/appSettings';
+import { del } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,7 +113,23 @@ export async function POST(req: Request) {
     const triggeringStudent = await User.findById(body.id);
     if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
-    const submissionData = {
+    // --- NEW: PDF Orphan Prevention ---
+    // If the student uploaded a new PDF, the incoming body.pdfUrl will be different from their stored URL.
+    // We must physically delete the old file from Vercel Blob before saving the new reference.
+    const oldPdfUrl = triggeringStudent.pdfUrl;
+    
+    if (oldPdfUrl && body.pdfUrl && oldPdfUrl !== body.pdfUrl) {
+      try {
+        await del(oldPdfUrl);
+        console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${oldPdfUrl}`);
+      } catch (blobError: any) {
+        // We log the error but do NOT throw it, so the student's submission still goes through
+        console.error('Failed to delete old PDF blob:', blobError.message);
+      }
+    }
+    // ----------------------------------
+
+    const submissionData = {  
       projectTitle: body.title,
       projectDesc: body.desc,
       domain: body.domain,

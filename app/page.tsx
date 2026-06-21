@@ -134,7 +134,7 @@ const DialogModal = ({ dialog, closeDialog, isDarkMode, theme }: any) => {
               {(dialog.type === 'prompt' || dialog.type === 'confirm') && (
                 <button onClick={closeDialog} className={`px-6 py-3 rounded-xl font-bold transition-colors ${isDarkMode ? 'hover:bg-neutral-800 text-neutral-300' : 'hover:bg-neutral-200 text-neutral-600'}`}>Cancel</button>
               )}
-              <button onClick={() => { dialog.onConfirm(inputValue); closeDialog(); }} disabled={dialog.type === 'prompt' && !inputValue} className={`px-8 py-3 rounded-xl text-white font-bold transition-transform active:scale-95 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${dialog.type === 'confirm' ? 'bg-red-500 hover:bg-red-600' : theme.bg}`}>
+              <button onClick={() => { closeDialog(); dialog.onConfirm(inputValue); }} disabled={dialog.type === 'prompt' && !inputValue} className={`px-8 py-3 rounded-xl text-white font-bold transition-transform active:scale-95 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${dialog.type === 'confirm' ? 'bg-red-500 hover:bg-red-600' : theme.bg}`}>
                 {dialog.type === 'prompt' ? 'Confirm' : (dialog.type === 'confirm' ? 'Yes, Proceed' : 'Okay')}
               </button>
             </div>

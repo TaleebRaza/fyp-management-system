@@ -1,128 +1,124 @@
+// app/api/project/join/route.ts
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
+import { withTransactionRetry } from '../../../../lib/transactionUtils';
 
 export async function POST(req: Request) {
   try {
     const { studentId, inviteCode } = await req.json();
     await connectToDatabase();
 
+    // Fetch the joining student OUTSIDE the transaction because their core identity doesn't change
     const student = await User.findById(studentId);
     if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
-    // 1. Find the target project (The "Read" phase)
-    const targetProject = await Project.findOne({ inviteCode: inviteCode.toUpperCase() });
-    if (!targetProject) {
-      return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
-    }
+    // Initialize the formal MongoDB Session
+    const session = await mongoose.startSession();
 
-    // 2. Limit and Redundancy Checks in memory
-    const capacity = targetProject.maxTeamSize || 2;
-    if (targetProject.members.length >= capacity) {
-      return NextResponse.json({ error: `This team is already full (Max ${capacity} members).` }, { status: 400 });
-    }
-    if (targetProject.members.includes(studentId)) {
-      return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
-    }
-
-    // 3. Program & Batch Matching & Fetching Teammate State
-    let firstMember = null;
-    if (targetProject.members.length > 0) {
-      firstMember = await User.findById(targetProject.members[0]);
-      if (firstMember) {
-        if (firstMember.program !== student.program) {
-          return NextResponse.json({ 
-            error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.` 
-          }, { status: 403 });
-        }
-        if (firstMember.batch !== student.batch) {
-          return NextResponse.json({ 
-            error: `Batch Mismatch! You are in ${student.batch || 'an unknown batch'}, but this team belongs to ${firstMember.batch || 'another batch'} students.` 
-          }, { status: 403 });
+    try {
+      // Execute the logic inside our robust retry wrapper
+      return await withTransactionRetry(session, async () => {
+        
+        // 1. Find the target project (Locking it inside the transaction)
+        const targetProject = await Project.findOne({ inviteCode: inviteCode.toUpperCase() }).session(session);
+        if (!targetProject) {
+          return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
         }
 
-        // --- OPTIMIZATION: Absolute Capacity Firewall Check ---
-        // Verify if expanding this specific team breaches the shared supervisor's workload limits
-        if (firstMember.supervisorId) {
-          const { APP_SETTINGS } = await import('../../../../config/appSettings');
-          let currentFilledSlots = 0;
-          
-          if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-            currentFilledSlots = await User.countDocuments({ 
-              role: 'student', 
-              supervisorId: firstMember.supervisorId 
-            });
-            
-            // If adding this incoming student pushes them over the limit, abort the join
-            if (currentFilledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+        // 2. Limit and Redundancy Checks
+        const capacity = targetProject.maxTeamSize || 2;
+        if (targetProject.members.length >= capacity) {
+          return NextResponse.json({ error: `This team is already full (Max ${capacity} members).` }, { status: 400 });
+        }
+        if (targetProject.members.includes(studentId)) {
+          return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
+        }
+
+        // 3. Program & Batch Matching & Fetching Teammate State
+        let firstMember = null;
+        if (targetProject.members.length > 0) {
+          firstMember = await User.findById(targetProject.members[0]).session(session);
+          if (firstMember) {
+            if (firstMember.program !== student.program) {
               return NextResponse.json({ 
-                error: 'Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit. You cannot join this group unless they unassign their supervisor.' 
-              }, { status: 409 });
+                error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.` 
+              }, { status: 403 });
+            }
+            if (firstMember.batch !== student.batch) {
+              return NextResponse.json({ 
+                error: `Batch Mismatch! You are in ${student.batch || 'an unknown batch'}, but this team belongs to ${firstMember.batch || 'another batch'} students.` 
+              }, { status: 403 });
+            }
+
+            // --- OPTIMIZATION: Absolute Capacity Firewall Check ---
+            if (firstMember.supervisorId) {
+              const { APP_SETTINGS } = await import('../../../../config/appSettings');
+              let currentFilledSlots = 0;
+              
+              if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+                currentFilledSlots = await User.countDocuments({ 
+                  role: 'student', 
+                  supervisorId: firstMember.supervisorId 
+                }).session(session);
+                
+                if (currentFilledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+                  return NextResponse.json({ 
+                    error: 'Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit. You cannot join this group unless they unassign their supervisor.' 
+                  }, { status: 409 });
+                }
+              }
             }
           }
-          // Note: If mode is 'PROJECT', adding a member to an existing project doesn't consume a new slot.
         }
-      }
-    }
 
-    // 4. ATOMIC UPDATE (Optimistic Concurrency Control)
-    // We attempt to update the database ONLY if the members array hasn't changed since we checked it.
-    const atomicUpdate = await Project.findOneAndUpdate(
-      { 
-        _id: targetProject._id, 
-        members: targetProject.members // The "Lock": Ensures no one else joined in the last millisecond
-      },
-      { 
-        $addToSet: { members: studentId } // Atomically pushes only if student isn't already there
-      },
-      { new: true }
-    );
+        // 4. ATOMIC UPDATE (Replaces the fragile optimistic concurrency logic)
+        targetProject.members.push(studentId);
+        await targetProject.save({ session });
 
-    // If atomicUpdate is null, it means the members array changed mid-flight. A race condition was caught!
-    if (!atomicUpdate) {
-      return NextResponse.json({ error: 'Team state changed during join. The team might be full now. Please try again.' }, { status: 409 });
-    }
+        // 5. Ghost Data Purge
+        if (student.projectId && student.projectId.toString() !== targetProject._id.toString()) {
+          const oldProject = await Project.findById(student.projectId).session(session);
+          if (oldProject) {
+            if (oldProject.members.length === 1 && oldProject.members[0].toString() === studentId) {
+              await Project.findByIdAndDelete(student.projectId, { session });
+            } else {
+              await Project.findByIdAndUpdate(student.projectId, {
+                $pull: { members: studentId }
+              }, { session });
+            }
+          }
+        }
 
-    // 5. Ghost Data Purge (Optimized with atomic operations)
-    if (student.projectId && student.projectId.toString() !== targetProject._id.toString()) {
-      const oldProject = await Project.findById(student.projectId);
-      if (oldProject) {
-        if (oldProject.members.length === 1 && oldProject.members[0].toString() === studentId) {
-          // If they were the only member, destroy the old project
-          await Project.findByIdAndDelete(student.projectId);
+        // 6. Inherit EVERY piece of state from the existing teammate
+        student.projectId = targetProject._id;
+        
+        if (firstMember) {
+          student.supervisorId = firstMember.supervisorId;
+          student.status = firstMember.status;
+          student.remarks = firstMember.remarks;
+          student.projectTitle = firstMember.projectTitle;
+          student.projectDesc = firstMember.projectDesc;
+          student.domain = firstMember.domain;
+          student.tools = firstMember.tools;
+          student.pdfUrl = firstMember.pdfUrl;
         } else {
-          // Atomically remove them from the old team's array
-          await Project.findByIdAndUpdate(student.projectId, {
-            $pull: { members: studentId }
-          });
+          student.supervisorId = targetProject.supervisorId;
         }
-      }
+
+        await student.save({ session });
+
+        return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
+      });
+    } finally {
+      // Ensure the session is always closed to prevent memory leaks
+      session.endSession();
     }
-
-    // 6. Inherit EVERY piece of state from the existing teammate
-    student.projectId = targetProject._id;
-    
-    if (firstMember) {
-      student.supervisorId = firstMember.supervisorId;
-      student.status = firstMember.status;
-      student.remarks = firstMember.remarks;
-      student.projectTitle = firstMember.projectTitle;
-      student.projectDesc = firstMember.projectDesc;
-      student.domain = firstMember.domain;
-      student.tools = firstMember.tools;
-      student.pdfUrl = firstMember.pdfUrl;
-    } else {
-      // Fallback just in case the project was empty
-      student.supervisorId = targetProject.supervisorId;
-    }
-
-    await student.save();
-
-    return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
 
   } catch (error) {
     console.error('Join Team Error:', error);
     return NextResponse.json({ error: 'Failed to join team' }, { status: 500 });
   }
-}
+} 

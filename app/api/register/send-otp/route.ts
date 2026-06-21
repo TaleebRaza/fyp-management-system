@@ -3,13 +3,14 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Otp from '../../../../models/Otp';
+import RateLimit from '../../../../models/RateLimit'; // NEW: Imported the RateLimit model
 import { sendNotificationEmail } from '../../../../lib/mailer';
 
 export async function POST(req: Request) {
   try {
     const { email, rollNo } = await req.json();
 
-    // Explicit Pre-Flight Check: Halt immediately if email is absent to save execution efficiency
+    // Explicit Pre-Flight Check: Halt immediately if email is absent
     if (!email) {
       return NextResponse.json({ error: 'No email found. Please provide a valid university email address.' }, { status: 400 });
     }
@@ -18,14 +19,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Roll Number is required.' }, { status: 400 });
     }
 
-    // Upgraded Regex Firewall: Enforces structured sequential mapping typical of student IDs
-    // Accepts Formats: 'f23-0201', 'sp24-001', 'fa20-bcs-001', or staff formats containing valid separators.
-    // Blocks unstructured continuous random strings like '123450agdfugeb'.
+    // Upgraded Regex Firewall
     const universityEmailPattern = /^([a-zA-Z]{1,3}\d{2}[-.]\d{3,5}|[a-zA-Z]{2}\d{2}[-.][a-zA-Z]{3}[-.]\d{3}|[a-zA-Z0-9]+[-.][a-zA-Z0-9]+)@(student\.)?uoh\.edu\.pk$/i;
 
     if (!universityEmailPattern.test(email.trim())) {
       return NextResponse.json({ 
-        error: 'Invalid email structure. Please use your officially formatted university email prefix (e.g., f23-0201@student.uoh.edu.pk or fa20-bcs-001@student.uoh.edu.pk)' 
+        error: 'Invalid email structure. Please use your officially formatted university email prefix (e.g., f23-0201@student.uoh.edu.pk)' 
       }, { status: 400 });
     }
 
@@ -37,17 +36,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
     }
 
-    // 2. Generate a secure 6-digit OTP code
+    // 2. Strict 60-Second Cooldown Check (Using existing OTP ledger)
+    const existingOtp = await Otp.findOne({ email });
+    if (existingOtp) {
+      const timeSinceLastOtp = Date.now() - new Date(existingOtp.createdAt).getTime();
+      if (timeSinceLastOtp < 60000) { // 60,000 ms = 60 seconds 
+        const secondsLeft = Math.ceil((180000 - timeSinceLastOtp) / 1000);
+        return NextResponse.json({ 
+          error: `Please wait ${secondsLeft} seconds before requesting a new code.` 
+        }, { status: 429 });
+      }
+    }
+
+    // 3. 1-Hour Quota Check (Max 5 requests per hour)
+    const rateLimit = await RateLimit.findOneAndUpdate(
+      { identifier: email },
+      { $inc: { count: 1 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    if (rateLimit.count > 5) {
+      return NextResponse.json({ 
+        error: 'Security limits reached. You have requested too many codes. Please try again in an hour.' 
+      }, { status: 429 });
+    }
+
+    // 4. Generate a secure 6-digit OTP code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 3. Atomically upsert the OTP document to overwrite previous unused codes requested by this email
+    // 5. Atomically upsert the OTP document
     await Otp.findOneAndUpdate(
       { email },
       { code, createdAt: new Date() },
       { upsert: true, new: true }
     );
 
-    // 4. Construct and dispatch email notification
+    // 6. Construct and dispatch email notification
     const htmlContent = `
       <div style="font-family: sans-serif; padding: 20px; text-align: center; background-color: #f8fafc; border-radius: 12px;">
         <h2 style="color: #0f172a;">University Account Verification</h2>
@@ -58,10 +82,15 @@ export async function POST(req: Request) {
     `;
 
     const emailSent = await sendNotificationEmail(email, 'Your FYP Portal Registration Code', htmlContent);
+    
     if (!emailSent) {
-      // Clean up the pending OTP record immediately to ensure database integrity
+      // EMERGENCY CLEANUP: If the mailer fails, we wipe the pending OTP and refund the user's rate limit quota
       await Otp.findOneAndDelete({ email });
-      return NextResponse.json({ error: 'No email found or mailer service failed to deliver. Please verify your address.' }, { status: 404 });
+      await RateLimit.updateOne({ identifier: email }, { $inc: { count: -1 } });
+      
+      return NextResponse.json({ 
+        error: 'No email found or mailer service failed to deliver. Please verify your address or try again later.' 
+      }, { status: 404 });
     }
 
     return NextResponse.json({ message: 'Verification code sent to your university email!' }, { status: 200 });
