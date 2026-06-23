@@ -6,6 +6,7 @@ const ProjectSchema = new Schema({
   inviteCode: { type: String, required: true, unique: true },
   
   title: { type: String, default: '' },
+  titleFingerprint: { type: String, default: '', index: true }, // NEW: Lexical fingerprint for deduplication
   domain: { type: String, default: '' },
   pdfUrl: { type: String, default: '' },
   status: { type: String, default: 'Pending' },

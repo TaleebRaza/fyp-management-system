@@ -83,13 +83,13 @@ export async function POST(req: Request) {
 
           await User.updateMany(
             { projectId: triggeringStudent.projectId },
-            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            { $set: { supervisorId: supObjectId, status: 'Supervisor Requested', remarks: 'Awaiting supervisor acceptance.' } },
             { session }
           );
         } else {
           await User.findByIdAndUpdate(
             body.id, 
-            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            { $set: { supervisorId: supObjectId, status: 'Supervisor Requested', remarks: 'Awaiting supervisor acceptance.' } },
             { session }
           );
         }
@@ -108,10 +108,45 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
+    // HELPER: LEXICAL FINGERPRINT GENERATOR
+    // ==========================================
+    const generateFingerprint = (title: string) => {
+      if (!title) return '';
+      const cleanTitle = title.toLowerCase().replace(/[^\w\s]/g, '');
+      const stopWords = new Set([
+        'a', 'an', 'the', 'for', 'and', 'nor', 'but', 'or', 'yet', 'so', 'of', 'at', 'by', 'from', 'in', 'into', 'on', 'to', 'with', 'using', 'based', 
+        'system', 'smart', 'advanced', 'iot', 'project', 'application', 'app', 'web', 'design', 'implementation', 'development'
+      ]);
+      return cleanTitle.split(/\s+/).filter(word => word.length > 0 && !stopWords.has(word)).sort().join('-');
+    };
+
+    // ==========================================
     // ACTION: PROJECT SUBMISSION
     // ==========================================
     const triggeringStudent = await User.findById(body.id);
     if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+
+    // --- NEW: Dynamic Title Deduplication Engine ---
+    const fingerprint = generateFingerprint(body.title);
+    
+    if (triggeringStudent.projectId) {
+      const duplicateProject = await Project.findOne({
+        titleFingerprint: fingerprint,
+        _id: { $ne: triggeringStudent.projectId }, // Ignore our own current team
+        $or: [
+          { status: 'Approved' }, // Fully finished projects
+          { stage: { $in: ['THESIS_DRAFT', 'FINAL_DELIVERABLES'] } } // Projects that have already passed the Proposal stage
+        ]
+      });
+
+      if (duplicateProject) {
+        return NextResponse.json(
+          { error: 'A project utilizing these core concepts has already been approved for another team. Please select a unique topic.' },
+          { status: 409 }
+        );
+      }
+    }
+    // -----------------------------------------------
 
     // --- NEW: PDF Orphan Prevention ---
     // If the student uploaded a new PDF, the incoming body.pdfUrl will be different from their stored URL.
@@ -144,7 +179,7 @@ export async function POST(req: Request) {
       // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time
       const [_, updatedUsers] = await Promise.all([
         Project.findByIdAndUpdate(triggeringStudent.projectId, {
-          $set: { title: body.title, domain: body.domain, pdfUrl: body.pdfUrl }
+          $set: { title: body.title, titleFingerprint: fingerprint, domain: body.domain, pdfUrl: body.pdfUrl }
         }),
         User.updateMany(
           { projectId: triggeringStudent.projectId },

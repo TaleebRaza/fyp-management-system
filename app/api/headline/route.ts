@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     const { text } = await req.json();
     
-    // 3. Deactivate all previous headlines to keep the database clean
-    await Headline.updateMany({}, { $set: { isActive: false } });
+    // 3. Hard-delete all previous headlines to permanently reclaim database storage space
+    await Headline.deleteMany({});
     
     // 4. Create the new headline
     if (text && text.trim() !== '') {

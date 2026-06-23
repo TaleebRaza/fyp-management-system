@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from 'next-auth/react';
-import { XCircle, Globe, Wrench, FileText, ArrowRightLeft, UserMinus, LayoutDashboard, Download, LogIn, Loader2, ChevronRight } from 'lucide-react';
+import { XCircle, Globe, Wrench, FileText, ArrowRightLeft, UserMinus, LayoutDashboard, Download, LogIn, Loader2, ChevronRight, UserPlus, CheckCircle } from 'lucide-react';
 import { GlassCard } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';
@@ -16,10 +16,35 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
-  const [batchFilter, setBatchFilter] = useState('All'); // NEW
+  const [batchFilter, setBatchFilter] = useState('All');
 
   const uniqueBatches = Array.from(new Set(myProjects.map((p: any) => p.batch).filter(Boolean)));
   const filteredProjects = batchFilter === 'All' ? myProjects : myProjects.filter(p => p.batch === batchFilter);
+  
+  const incomingRequests = filteredProjects.filter(p => p.status === 'Supervisor Requested');
+  const activeProjects = filteredProjects.filter(p => p.status !== 'Supervisor Requested');
+
+  const handleRequestResponse = async (triggerStudentId: string, actionType: 'acceptRequest' | 'declineRequest') => {
+    setIsProcessingAction(true);
+    try {
+      const res = await fetch('/api/dashboard/supervisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: actionType, studentId: triggerStudentId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showDialog({ title: "Success", message: data.message });
+        fetchProjects();
+      } else {
+        showDialog({ title: "Error", message: data.error || "Action failed." });
+      }
+    } catch (err) {
+      showDialog({ title: "Network Error", message: "Failed to connect to the server." });
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
 
   const fetchProjects = async () => {
     const res = await fetch(`/api/dashboard/supervisor?id=${(session?.user as any)?.id}`);
@@ -256,8 +281,38 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
       </GlassCard>
 
       <GlassCard isDarkMode={isDarkMode} className="flex-1 p-5">
+        {incomingRequests.length > 0 && (
+          <div className="mb-8">
+            <h3 className="text-base font-extrabold tracking-tight mb-4 flex items-center gap-2">
+              <UserPlus size={18} className="text-amber-500"/> Incoming Requests 
+              <span className="text-xs font-medium px-2 py-0.5 rounded-md ml-1 bg-amber-500/20 text-amber-600 dark:text-amber-400">{incomingRequests.length}</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {incomingRequests.map((req: any) => (
+                <div key={req._id} className={`p-4 rounded-2xl border flex flex-col justify-between shadow-sm ${isDarkMode ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
+                  <div>
+                    <h4 className="font-extrabold text-sm tracking-tight line-clamp-1 mb-1">{req.members.map((m:any) => m.name).join(' & ')}</h4>
+                    <p className="text-[10px] font-mono font-medium opacity-60 mb-3">{req.members.map((m:any) => m.rollNo).join(' | ')}</p>
+                    <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border opacity-70 ${isDarkMode ? 'border-amber-700/50 text-amber-300' : 'border-amber-300 text-amber-700'}`}>
+                      {req.batch} • {req.semester}
+                    </span>
+                  </div>
+                  <div className="mt-4 pt-3 border-t flex gap-2 border-inherit">
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} disabled={isProcessingAction} onClick={() => handleRequestResponse(req.triggerStudentId, 'acceptRequest')} className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50">
+                      <CheckCircle size={14}/> Accept
+                    </motion.button>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} disabled={isProcessingAction} onClick={() => handleRequestResponse(req.triggerStudentId, 'declineRequest')} className="flex-1 py-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50">
+                      <XCircle size={14}/> Decline
+                    </motion.button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-3">
-          <h3 className="text-base font-extrabold tracking-tight">My Assigned Projects <span className={`text-xs font-medium px-2 py-0.5 rounded-md ml-1.5 ${theme.lightBg} ${theme.text}`}>{filteredProjects.length}</span></h3>
+          <h3 className="text-base font-extrabold tracking-tight">My Assigned Projects <span className={`text-xs font-medium px-2 py-0.5 rounded-md ml-1.5 ${theme.lightBg} ${theme.text}`}>{activeProjects.length}</span></h3>
           
           {uniqueBatches.length > 0 && (
             <div className="flex flex-wrap gap-1.5 items-center">
@@ -269,12 +324,12 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
             </div>
           )}
         </div>
-        {filteredProjects.length === 0 ? (
-           <div className="text-center py-16 opacity-40 border-2 border-dashed rounded-2xl dark:border-neutral-700 font-medium text-sm">No projects found.</div>
+        {activeProjects.length === 0 ? (
+           <div className="text-center py-16 opacity-40 border-2 border-dashed rounded-2xl dark:border-neutral-700 font-medium text-sm">No active projects found.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence>
-              {filteredProjects.map((project: any) => (
+              {activeProjects.map((project: any) => (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02, y: -3 }} whileTap={{ scale: 0.98 }} onClick={() => setSelectedProject(project)} key={project._id} className={`cursor-pointer p-4 rounded-2xl border flex flex-col justify-between transition-all duration-300 hover:shadow-xl ${isDarkMode ? 'bg-neutral-800/50 border-neutral-700/50 hover:border-neutral-600' : 'bg-neutral-50/50 border-neutral-200/50 hover:border-neutral-300'}`}>
                   <div>
                     <div className="flex justify-between items-start mb-3">
