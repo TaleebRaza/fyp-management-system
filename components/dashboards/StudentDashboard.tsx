@@ -365,7 +365,22 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
               
               <div className="flex-1 w-full">
                 <p className="text-xs font-bold text-blue-500 leading-relaxed break-words">
-                  {headline}
+                  {headline.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => 
+                    part.match(/(https?:\/\/[^\s]+)/) ? (
+                      <a 
+                        key={i} 
+                        href={part} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="underline decoration-blue-500/40 hover:decoration-blue-500 hover:text-blue-600 transition-all cursor-pointer"
+                        title="Open external link"
+                      >
+                        {part}
+                      </a>
+                    ) : (
+                      <span key={i}>{part}</span>
+                    )
+                  )}
                 </p>
               </div>
             </GlassCard>
