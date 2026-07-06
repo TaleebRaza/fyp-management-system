@@ -5,7 +5,8 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { sendNotificationEmail } from '../../../../lib/mailer';
 import { APP_SETTINGS } from '../../../../config/appSettings';
-import { del } from '@vercel/blob';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,12 +151,12 @@ export async function POST(req: Request) {
 
     // --- NEW: PDF Orphan Prevention ---
     // If the student uploaded a new PDF, the incoming body.pdfUrl will be different from their stored URL.
-    // We must physically delete the old file from Vercel Blob before saving the new reference.
+    // We must physically delete the old file from Cloudflare R2 before saving the new reference.
     const oldPdfUrl = triggeringStudent.pdfUrl;
     
     if (oldPdfUrl && body.pdfUrl && oldPdfUrl !== body.pdfUrl) {
       try {
-        await del(oldPdfUrl);
+        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: oldPdfUrl }));
         console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${oldPdfUrl}`);
       } catch (blobError: any) {
         // We log the error but do NOT throw it, so the student's submission still goes through

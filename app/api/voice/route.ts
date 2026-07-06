@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import VoiceNote from '../../../models/VoiceNote';
-import { del } from '@vercel/blob';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,9 +27,11 @@ export async function GET(req: NextRequest) {
     });
 
     if (expiredNotes.length > 0) {
-      // 1. Delete physical files from Vercel Blob to save storage quota
+      // 1. Delete physical files from R2 to save storage quota
       const urlsToDelete = expiredNotes.map(note => note.blobUrl);
-      await del(urlsToDelete);
+      await Promise.all(urlsToDelete.map(key => 
+        s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
+      ));
 
       // 2. Wipe the database ledgers
       const idsToDelete = expiredNotes.map(note => note._id);
@@ -51,11 +54,13 @@ export async function GET(req: NextRequest) {
   }
 }
 
+import SystemConfig from '../../../models/SystemConfig';
+
 // 2. SAVE NEW NOTE LEDGER
 export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
-    const { projectId, senderId, blobUrl } = await req.json();
+    const { projectId, senderId, blobUrl, fileSize } = await req.json();
 
     if (!projectId || !senderId || !blobUrl) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -63,6 +68,15 @@ export async function POST(req: NextRequest) {
 
     const newNote = new VoiceNote({ projectId, senderId, blobUrl });
     await newNote.save();
+
+    // Increment our safety buffer ledger instantly
+    if (fileSize) {
+      await SystemConfig.findOneAndUpdate(
+        { configKey: 'storage' }, 
+        { $inc: { usedBytes: fileSize } }, 
+        { upsert: true }
+      );
+    }
 
     return NextResponse.json({ message: 'Voice note ledger saved', note: newNote }, { status: 201 });
   } catch (error) {

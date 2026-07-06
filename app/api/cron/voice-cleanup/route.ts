@@ -2,7 +2,8 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import VoiceNote from '../../../../models/VoiceNote';
-import { del } from '@vercel/blob';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 
 // Ensure Vercel never caches this route
 export const dynamic = 'force-dynamic';
@@ -32,11 +33,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ message: 'No expired voice notes to clean up.' }, { status: 200 });
     }
 
-    // 3. Extract the Vercel Blob URLs
+    // 4. Delete physical files from R2 first to protect the 10GB quota
     const urlsToDelete = expiredNotes.map(note => note.blobUrl);
-
-    // 4. Delete physical files from Vercel Blob first to protect the 1GB quota
-    await del(urlsToDelete);
+    await Promise.all(urlsToDelete.map(key => 
+      s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
+    ));
 
     // 5. Wipe the database ledgers only after files are confirmed deleted
     const idsToDelete = expiredNotes.map(note => note._id);

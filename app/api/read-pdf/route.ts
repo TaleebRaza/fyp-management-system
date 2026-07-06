@@ -1,10 +1,12 @@
-import { get } from '@vercel/blob';
+// Replace entire file with:
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt'; // NEW: Cryptographic token verification
+import { getToken } from 'next-auth/jwt';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Strict Security Firewall: Verify the user is authenticated
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     
     if (!token) {
@@ -12,29 +14,20 @@ export async function GET(req: NextRequest) {
       return new NextResponse('Unauthorized: You must be logged in to view secure university documents.', { status: 401 });
     }
 
-    // 2. Extract the private blob URL from the query parameter
-    const url = req.nextUrl.searchParams.get('url');
-    if (!url) return new NextResponse('Missing Document URL', { status: 400 });
+    const key = req.nextUrl.searchParams.get('url');
+    if (!key) return new NextResponse('Missing Document URL', { status: 400 });
 
-    // 3. Securely fetch the private stream using the Vercel SDK
-    const result = await get(url, {
-      access: 'private',
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      ResponseContentDisposition: `inline; filename="${key.split('/').pop()}"`,
+      // Removed ResponseContentType override so Cloudflare serves the native file type (audio/webm OR application/pdf)
     });
 
-    if (!result) {
-      return new NextResponse('File not found or access denied', { status: 404 });
-    }
+    // Redirect the browser directly to the secure R2 stream (valid for 5 minutes)
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+    return NextResponse.redirect(signedUrl);
 
-    const { stream, blob } = result as any;
-
-    // 4. Stream the PDF directly to the authenticated browser
-    return new NextResponse(stream as any, {
-      headers: {
-        'Content-Type': blob?.contentType || 'application/pdf',
-        // 'inline' tells the browser to display it rather than forcing a download
-        'Content-Disposition': `inline; filename="${(blob?.pathname || url).split('/').pop()}"`,
-      },
-    });
   } catch (error: any) {
     console.error('Error fetching private blob:', error.message);
     return new NextResponse('File not found or access denied', { status: 404 });

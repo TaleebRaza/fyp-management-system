@@ -181,17 +181,29 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
     
     if (file) {
       try {
-        // --- OPTIMIZATION: Client-Side Direct Blob Handshake ---
-        // Dynamically import to avoid SSR hydration issues
-        const { upload } = await import('@vercel/blob/client');
-        
-        // Stream bytes directly to Vercel Cloud storage
-        const newBlob = await upload(file.name, file, {
-          access: 'private',
-          handleUploadUrl: '/api/upload',
+        // --- OPTIMIZATION: Client-Side Direct R2 Handshake ---
+        const urlRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, contentType: file.type, fileSize: file.size })
         });
         
-        pdfUrl = newBlob.url;
+        if (!urlRes.ok) {
+          const errData = await urlRes.json();
+          throw new Error(errData.error || "Failed to resolve secure upload hand-off. Check file size limits.");
+        }
+        
+        const { uploadUrl, url } = await urlRes.json();
+        
+        // Stream bytes directly to Cloudflare R2
+        const r2Res = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file
+        });
+        
+        if (!r2Res.ok) throw new Error("Direct bucket ingest stream failed.");
+        pdfUrl = url;
       } catch (err: any) {
           console.error("Direct bucket ingest stream failed:", err);
           

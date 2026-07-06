@@ -106,19 +106,36 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
     setIsRecording(false);
     setRecordingTime(0);
 
-    // --- BACKGROUND THREAD: Vercel Upload & MongoDB Ledger ---
+    // --- BACKGROUND THREAD: Cloudflare R2 Upload & MongoDB Ledger ---
     try {
-      const { upload } = await import('@vercel/blob/client');
+      // 1. Ask the server for a secure upload URL and check the storage limit
+      const urlRes = await fetch('/api/voice/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentType: file.type, fileSize: file.size })
+      });
       
-      const newBlob = await upload(file.name, file, {
-        access: 'private',
-        handleUploadUrl: '/api/voice/upload',
+      if (!urlRes.ok) {
+        const errorData = await urlRes.json();
+        throw new Error(errorData.error || 'Failed to fetch upload URL');
+      }
+      
+      const { uploadUrl, key } = await urlRes.json();
+
+      // 2. Direct PUT request to Cloudflare R2 (Bypasses Vercel bandwidth limits)
+      const r2Res = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file
       });
 
+      if (!r2Res.ok) throw new Error('Cloudflare R2 Upload rejected the file');
+
+      // 3. Save the transaction and file size to the MongoDB Ledger
       await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, senderId: currentUserId, blobUrl: newBlob.url })
+        body: JSON.stringify({ projectId, senderId: currentUserId, blobUrl: key, fileSize: file.size })
       });
 
       // Silently sync the database to swap the local URL for the secure cloud URL

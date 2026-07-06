@@ -1,49 +1,49 @@
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+// Replace entire file with:
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
+import { s3Client, BUCKET_NAME, MAX_STORAGE_BYTES } from '../../../lib/s3-client';
+import connectToDatabase from '../../../lib/mongodb';
+import SystemConfig from '../../../models/SystemConfig';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB strict ceiling
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as HandleUploadBody;
-
   try {
-    const jsonResponse = await handleUpload({
-      body,
-      request: req,
-      onBeforeGenerateToken: async (pathname) => {
-        // --- OPTIMIZATION: Secure Token Generation Handshake ---
-        const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-        if (!token || !token.id) {
-          throw new Error('Unauthorized: Authentication token missing or invalid.');
-        }
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token || !token.id) {
+      return NextResponse.json({ error: 'Unauthorized: Authentication token missing or invalid.' }, { status: 401 });
+    }
 
-        // We will expand this array in Milestone 2 to accept audio/webm
-        if (!pathname.endsWith('.pdf')) {
-          throw new Error('Security Violation: Invalid file type.');
-        }
+    await connectToDatabase();
+    
+    // 1. Storage Capacity Firewall
+    const config = await SystemConfig.findOne({ configKey: 'storage' });
+    if (config && config.usedBytes >= MAX_STORAGE_BYTES) {
+      return NextResponse.json({ error: 'System storage capacity reached.' }, { status: 403 });
+    }
 
-        const sanitizedCleanName = pathname.split('/').pop()?.replace(/[^a-zA-Z0-9.-]/g, '_') || 'document.pdf';
-        const cryptographicUUID = crypto.randomUUID();
-        const absolutePathname = `proposals/${cryptographicUUID}-${sanitizedCleanName}`;
+    const { filename, contentType, fileSize } = await req.json();
 
-        return {
-          allowedContentTypes: ['application/pdf'],
-          maximumSizeInBytes: MAX_FILE_SIZE,
-          tokenPayload: JSON.stringify({ userId: token.id }),
-          pathname: absolutePathname,
-          access: 'private', 
-        };
-      }
+    if (fileSize > MAX_FILE_SIZE) return NextResponse.json({ error: 'File exceeds 4MB limit.' }, { status: 400 });
+    if (contentType !== 'application/pdf') return NextResponse.json({ error: 'Security Violation: Invalid file type.' }, { status: 400 });
+
+    const sanitizedCleanName = filename.replace(/[^a-zA-Z0-9.-]/g, '_') || 'document.pdf';
+    const key = `proposals/${crypto.randomUUID()}-${sanitizedCleanName}`;
+
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      ContentType: contentType,
     });
 
-    return NextResponse.json(jsonResponse);
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 });
+
+    return NextResponse.json({ uploadUrl, url: key });
   } catch (error: any) {
     console.error('Client Upload Token Generation Handshake Error:', error.message);
-    return NextResponse.json(
-      { error: error.message || 'Server token generation routing aborted.' },
-      { status: error.message?.includes('Unauthorized') ? 401 : 400 }
-    );
+    return NextResponse.json({ error: 'Server token generation routing aborted.' }, { status: 500 });
   }
 }
