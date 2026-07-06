@@ -233,7 +233,8 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
           desc, 
           domain, 
           tools, 
-          pdfUrl 
+          pdfUrl,
+          fileSize: file ? file.size : 0 // --- NEW: Pass exact byte count to backend ---
         })
       });
 

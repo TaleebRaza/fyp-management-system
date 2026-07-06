@@ -7,6 +7,7 @@ import { sendNotificationEmail } from '../../../../lib/mailer';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
+import SystemConfig from '../../../../models/SystemConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,22 +149,42 @@ export async function POST(req: Request) {
       }
     }
     
-    // --- NEW: PDF Orphan Prevention ---
+    // --- NEW: PDF Exact-Byte Ledger & Orphan Prevention ---
     const oldPdfUrl = triggeringStudent.pdfUrl;
+    let sizeDelta = 0;
+    
+    let targetProject = null;
+    if (triggeringStudent.projectId) {
+      targetProject = await Project.findById(triggeringStudent.projectId);
+    }
     
     if (oldPdfUrl && body.pdfUrl && oldPdfUrl !== body.pdfUrl) {
       try {
-        // Strip legacy domains if it's an old Vercel URL to ensure R2 accepts the Key
         let keyToDelete = oldPdfUrl;
-        if (keyToDelete.includes('.com/')) {
-          keyToDelete = keyToDelete.split('.com/')[1];
-        }
+        if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
         
         await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
+        
+        // Subtract the exact size of the old PDF being wiped
+        sizeDelta -= (targetProject?.pdfSize || 0);
         console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${keyToDelete}`);
       } catch (blobError: any) {
         console.error('Failed to delete old PDF blob:', blobError.message);
       }
+    }
+
+    // Add the exact size of the incoming PDF
+    if (body.fileSize && body.fileSize > 0) {
+      sizeDelta += body.fileSize;
+    }
+
+    // Atomically sync the global ledger
+    if (sizeDelta !== 0) {
+      await SystemConfig.findOneAndUpdate(
+        { configKey: 'storage' },
+        { $inc: { usedBytes: sizeDelta } },
+        { upsert: true }
+      );
     }
 
     const submissionData = {  
@@ -178,11 +199,13 @@ export async function POST(req: Request) {
     let updatedStudent = null;
 
     if (triggeringStudent.projectId) {
+      // Prepare dynamic payload: only update pdfSize if a new file was actually sent
+      const projectUpdates: any = { title: body.title, titleFingerprint: fingerprint, domain: body.domain, pdfUrl: body.pdfUrl };
+      if (body.fileSize && body.fileSize > 0) projectUpdates.pdfSize = body.fileSize;
+
       // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time
       const [_, updatedUsers] = await Promise.all([
-        Project.findByIdAndUpdate(triggeringStudent.projectId, {
-          $set: { title: body.title, titleFingerprint: fingerprint, domain: body.domain, pdfUrl: body.pdfUrl }
-        }),
+        Project.findByIdAndUpdate(triggeringStudent.projectId, { $set: projectUpdates }),
         User.updateMany(
           { projectId: triggeringStudent.projectId },
           { $set: submissionData }
