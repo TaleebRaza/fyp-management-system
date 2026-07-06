@@ -333,7 +333,7 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
           <div className="text-right">
              <span className="text-[8px] md:text-[10px] font-black opacity-30 uppercase tracking-widest block">Supervisor</span>
              <span className={`text-[11px] md:text-sm font-black ${isUnassigned ? 'text-red-500' : theme.text}`}>
-               {isUnassigned ? 'NOT ASSIGNED' : supervisor?.name?.split(' ')[0]}
+               {isUnassigned ? 'NOT ASSIGNED' : supervisor?.name}
              </span>
           </div>
         </div>
@@ -415,27 +415,14 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                       </option>
                     ))}
                   </select>
-                  <p className={`text-[10px] font-bold text-center leading-relaxed px-2 mt-3 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}>
-                    Note: Your supervisor must manually review and accept your request before you can proceed.
-                  </p>
                   <motion.button 
                     whileTap={{ scale: 0.95 }}
                     type="submit" 
                     className={`w-full ${theme.bg} text-white font-black py-3.5 rounded-2xl shadow-lg text-xs uppercase tracking-widest`}
                   >
-                    Send Request
+                    Confirm Assignment
                   </motion.button>
                 </form>
-              </div>
-            ) : me?.status === 'Supervisor Requested' ? (
-              <div className="text-center py-16 flex flex-col items-center justify-center">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-inner ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                  <Loader2 className={`animate-spin ${theme.text}`} size={32} />
-                </div>
-                <h3 className="text-xl font-black mb-3">Awaiting Acceptance</h3>
-                <p className="text-xs opacity-60 max-w-sm mx-auto leading-relaxed">
-                  Your request has been sent to <strong>{supervisor?.name}</strong>. You will be able to upload your project proposal once they formally accept your team.
-                </p>
               </div>
             ) : (
               <>

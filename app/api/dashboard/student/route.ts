@@ -83,13 +83,13 @@ export async function POST(req: Request) {
 
           await User.updateMany(
             { projectId: triggeringStudent.projectId },
-            { $set: { supervisorId: supObjectId, status: 'Supervisor Requested', remarks: 'Awaiting supervisor acceptance.' } },
+            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
             { session }
           );
         } else {
           await User.findByIdAndUpdate(
             body.id, 
-            { $set: { supervisorId: supObjectId, status: 'Supervisor Requested', remarks: 'Awaiting supervisor acceptance.' } },
+            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
             { session }
           );
         }

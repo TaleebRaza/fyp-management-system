@@ -1,6 +1,6 @@
 export const APP_SETTINGS = {
   // The maximum number of slots a supervisor can hold
-  MAX_SLOTS_PER_SUPERVISOR: 10,
+  MAX_SLOTS_PER_SUPERVISOR: 30,
   
   // This flexible flag determines how we count slots. 
   // 'STUDENT' = 1 slot per student user.
