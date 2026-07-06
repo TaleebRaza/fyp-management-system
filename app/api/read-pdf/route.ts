@@ -26,7 +26,16 @@ export async function GET(req: NextRequest) {
 
     // Redirect the browser directly to the secure R2 stream (valid for 5 minutes)
     const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
-    return NextResponse.redirect(signedUrl);
+    
+    // Strict Anti-Caching Headers to prevent the UI from displaying old PDFs
+    return NextResponse.redirect(signedUrl, {
+      status: 307,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
 
   } catch (error: any) {
     console.error('Error fetching private blob:', error.message);

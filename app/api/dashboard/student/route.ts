@@ -147,23 +147,24 @@ export async function POST(req: Request) {
         );
       }
     }
-    // -----------------------------------------------
-
+    
     // --- NEW: PDF Orphan Prevention ---
-    // If the student uploaded a new PDF, the incoming body.pdfUrl will be different from their stored URL.
-    // We must physically delete the old file from Cloudflare R2 before saving the new reference.
     const oldPdfUrl = triggeringStudent.pdfUrl;
     
     if (oldPdfUrl && body.pdfUrl && oldPdfUrl !== body.pdfUrl) {
       try {
-        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: oldPdfUrl }));
-        console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${oldPdfUrl}`);
+        // Strip legacy domains if it's an old Vercel URL to ensure R2 accepts the Key
+        let keyToDelete = oldPdfUrl;
+        if (keyToDelete.includes('.com/')) {
+          keyToDelete = keyToDelete.split('.com/')[1];
+        }
+        
+        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
+        console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${keyToDelete}`);
       } catch (blobError: any) {
-        // We log the error but do NOT throw it, so the student's submission still goes through
         console.error('Failed to delete old PDF blob:', blobError.message);
       }
     }
-    // ----------------------------------
 
     const submissionData = {  
       projectTitle: body.title,

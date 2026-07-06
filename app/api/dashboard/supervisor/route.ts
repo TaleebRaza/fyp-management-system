@@ -3,6 +3,8 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { sendNotificationEmail } from '../../../../lib/mailer';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,9 +134,21 @@ export async function POST(req: Request) {
           finalStatus = 'Pending';
           notificationMessage = 'Thesis Approved! Please submit your Final Deliverables.';
         } else {
-          // If they are on FINAL_DELIVERABLES, they are completely done.
           finalStatus = 'Approved';
           notificationMessage = 'Congratulations! Your FYP is fully Approved and completed.';
+        }
+
+        // --- NEW: Advance Stage Orphan Prevention ---
+        // Physically delete the old PDF from Cloudflare before we wipe the database link
+        if (newStage && project.pdfUrl) {
+          try {
+            let keyToDelete = project.pdfUrl;
+            if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
+            await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
+            console.log(`🧹 Timeline Advance: Wiped previous stage PDF -> ${keyToDelete}`);
+          } catch (e: any) {
+            console.error('Failed to wipe old stage PDF:', e.message);
+          }
         }
       }
       // ---------------------------------------
