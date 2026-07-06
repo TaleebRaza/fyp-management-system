@@ -86,6 +86,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [newSupRollNo, setNewSupRollNo] = useState('');
   const [newSupPassword, setNewSupPassword] = useState('');
   const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
+  const [supervisorSearch, setSupervisorSearch] = useState('');
   const [adminStudents, setAdminStudents] = useState<any[]>([]);
 
   const [headlineInput, setHeadlineInput] = useState('');
@@ -95,6 +96,23 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
 
   const uniqueBatches = Array.from(new Set(adminStudents.map(s => s.batch).filter(Boolean)));
+
+  const normalizedSupervisorSearch = supervisorSearch.trim().toLowerCase();
+
+  const filteredSupervisors = normalizedSupervisorSearch
+    ? adminSupervisors.filter((sup) => {
+        const searchableFields = [
+          sup.name,
+          sup.rollNo,
+          sup.email,
+          sup.migrationCode,
+        ];
+
+        return searchableFields.some((field) =>
+          String(field || '').toLowerCase().includes(normalizedSupervisorSearch)
+        );
+      })
+    : adminSupervisors;
 
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
   const [graphData, setGraphData] = useState({ supervisors: [], students: [] });
@@ -505,41 +523,70 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
             {/* Active Supervisors List */}
             <GlassCard isDarkMode={isDarkMode} className="col-span-1 lg:col-span-2 p-5 md:p-8 flex flex-col h-[calc(100vh-10rem)] max-h-[800px]">
-              <h4 className="text-sm md:text-lg font-extrabold tracking-tight mb-4 md:mb-6">Active Supervisors <span className={`text-xs md:text-sm font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md md:rounded-lg ml-1.5 md:ml-2 ${theme.lightBg} ${theme.text}`}>{adminSupervisors.length}</span></h4>
+              <div className="flex flex-col gap-3 md:gap-4 mb-4 md:mb-6">
+                <h4 className="text-sm md:text-lg font-extrabold tracking-tight">
+                  Active Supervisors
+                  <span className={`text-xs md:text-sm font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md md:rounded-lg ml-1.5 md:ml-2 ${theme.lightBg} ${theme.text}`}>
+                    {filteredSupervisors.length}{normalizedSupervisorSearch ? ` / ${adminSupervisors.length}` : ''}
+                  </span>
+                </h4>
+
+                <StyledInput
+                  isDarkMode={isDarkMode}
+                  theme={theme}
+                  value={supervisorSearch}
+                  onChange={(e: any) => setSupervisorSearch(e.target.value)}
+                  type="search"
+                  placeholder="Search by name, ID, email, or code..."
+                />
+              </div>
+
               <div className="space-y-2 md:space-y-3 overflow-y-auto pr-1 md:pr-2 flex-1 custom-scrollbar">
                 <AnimatePresence>
-                  {adminSupervisors.map(sup => (
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} key={sup._id} className={`p-3 md:p-4 rounded-xl md:rounded-2xl flex justify-between items-center border transition-all duration-300 hover:scale-[1.01] ${isDarkMode ? 'border-neutral-800 bg-neutral-800/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
-                      <div className="flex items-center gap-2.5 md:gap-4">
-                        <div className={`w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-gradient-to-br ${theme.gradient} transition-colors duration-500 text-sm md:text-base`}>{sup.name.charAt(0)}</div>
-                        <div>
-                          <p className="font-bold text-sm md:text-lg tracking-tight flex items-center gap-2">
-                            {sup.name}
-                            {sup.monthlyLoginCount > 0 && <span className={`text-[9px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {sup.monthlyLoginCount}</span>}
-                          </p>
-                          <p onClick={() => handleUpdateEmail(sup._id, sup.email, sup.name)} className="text-xs md:text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">
-                            ID: {sup.rollNo} • {sup.email || 'Click to Assign Email'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 md:gap-4 text-right">
-                        <div className="hidden sm:block">
-                          <p className="text-[9px] md:text-[10px] uppercase font-bold tracking-wider opacity-40 mb-1">Code</p>
-                          <span className={`text-xs md:text-sm font-mono px-2 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl flex items-center gap-1.5 md:gap-2 border transition-colors duration-500 ${theme.lightBg} ${theme.text} ${isDarkMode ? 'border-white/5' : 'border-black/5'}`}><Code size={12} /> {sup.migrationCode}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 md:gap-2 mt-0 md:mt-4">
-                          <button
-                            onClick={() => handleToggleNotifications(sup._id, sup.notificationsEnabled !== false)}
-                            title={sup.notificationsEnabled !== false ? "Disable Emails" : "Enable Emails"}
-                            className={`p-2 md:p-2.5 rounded-lg md:rounded-xl transition-colors ${sup.notificationsEnabled !== false ? 'bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white' : 'bg-neutral-500/10 text-neutral-500 hover:bg-neutral-500 hover:text-white'}`}
-                          >
-                            {sup.notificationsEnabled !== false ? <Mail size={15} /> : <MailX size={15} />}
-                          </button>
-                          <button onClick={() => handleDeleteSupervisor(sup._id, sup.name)} className="p-2 md:p-2.5 rounded-lg md:rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"><Trash2 size={15} /></button>
-                        </div>
-                      </div>
+                  {filteredSupervisors.length === 0 ? (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      key="no-supervisors-found"
+                      className="flex flex-col items-center justify-center h-full opacity-40 text-center"
+                    >
+                      <Users size={36} className="mb-3 md:mb-4" />
+                      <p className="font-bold text-sm md:text-base">No supervisors match this search.</p>
                     </motion.div>
-                  ))}
+                  ) : (
+                    filteredSupervisors.map(sup => (
+                      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} key={sup._id} className={`p-3 md:p-4 rounded-xl md:rounded-2xl flex justify-between items-center border transition-all duration-300 hover:scale-[1.01] ${isDarkMode ? 'border-neutral-800 bg-neutral-800/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
+                        <div className="flex items-center gap-2.5 md:gap-4">
+                          <div className={`w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-gradient-to-br ${theme.gradient} transition-colors duration-500 text-sm md:text-base`}>{sup.name.charAt(0)}</div>
+                          <div>
+                            <p className="font-bold text-sm md:text-lg tracking-tight flex items-center gap-2">
+                              {sup.name}
+                              {sup.monthlyLoginCount > 0 && <span className={`text-[9px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {sup.monthlyLoginCount}</span>}
+                            </p>
+                            <p onClick={() => handleUpdateEmail(sup._id, sup.email, sup.name)} className="text-xs md:text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">
+                              ID: {sup.rollNo} • {sup.email || 'Click to Assign Email'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 md:gap-4 text-right">
+                          <div className="hidden sm:block">
+                            <p className="text-[9px] md:text-[10px] uppercase font-bold tracking-wider opacity-40 mb-1">Code</p>
+                            <span className={`text-xs md:text-sm font-mono px-2 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl flex items-center gap-1.5 md:gap-2 border transition-colors duration-500 ${theme.lightBg} ${theme.text} ${isDarkMode ? 'border-white/5' : 'border-black/5'}`}><Code size={12} /> {sup.migrationCode}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 md:gap-2 mt-0 md:mt-4">
+                            <button
+                              onClick={() => handleToggleNotifications(sup._id, sup.notificationsEnabled !== false)}
+                              title={sup.notificationsEnabled !== false ? "Disable Emails" : "Enable Emails"}
+                              className={`p-2 md:p-2.5 rounded-lg md:rounded-xl transition-colors ${sup.notificationsEnabled !== false ? 'bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white' : 'bg-neutral-500/10 text-neutral-500 hover:bg-neutral-500 hover:text-white'}`}
+                            >
+                              {sup.notificationsEnabled !== false ? <Mail size={15} /> : <MailX size={15} />}
+                            </button>
+                            <button onClick={() => handleDeleteSupervisor(sup._id, sup.name)} className="p-2 md:p-2.5 rounded-lg md:rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"><Trash2 size={15} /></button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
                 </AnimatePresence>
               </div>
             </GlassCard>
