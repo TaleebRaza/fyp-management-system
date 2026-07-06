@@ -447,7 +447,14 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                     </div>
                   </div>
                   {me?.pdfUrl && (
-                    <a href={me.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[10px] font-black text-blue-500 hover:underline">
+                    <a 
+                      href={`/api/read-pdf?url=${encodeURIComponent(
+                        me.pdfUrl.includes('.com/') ? me.pdfUrl.split('.com/')[1] : me.pdfUrl.replace(/^\//, '')
+                      )}`} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="flex items-center gap-1 text-[10px] font-black text-blue-500 hover:underline"
+                    >
                       <ExternalLink size={12}/> View PDF
                     </a>
                   )}
