@@ -4,6 +4,7 @@ import connectToDatabase from '../../../../lib/mongodb';
 import VoiceNote from '../../../../models/VoiceNote';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
+import SystemConfig from '../../../../models/SystemConfig';
 
 // Ensure Vercel never caches this route
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ message: 'No expired voice notes to clean up.' }, { status: 200 });
     }
 
+    // 3.5. Calculate exact bytes being freed
+    const totalSize = expiredNotes.reduce((sum, note) => sum + (note.fileSize || 0), 0);
+
     // 4. Delete physical files from R2 first to protect the 10GB quota
     const urlsToDelete = expiredNotes.map(note => note.blobUrl);
     await Promise.all(urlsToDelete.map(key => 
@@ -43,7 +47,15 @@ export async function GET(req: Request) {
     const idsToDelete = expiredNotes.map(note => note._id);
     await VoiceNote.deleteMany({ _id: { $in: idsToDelete } });
 
-    console.log(`🧹 Scheduled Cron Cleanup: Purged ${expiredNotes.length} stale voice notes.`);
+    // 6. Decrement the master storage ledger
+    if (totalSize > 0) {
+      await SystemConfig.findOneAndUpdate(
+        { configKey: 'storage' },
+        { $inc: { usedBytes: -totalSize } }
+      );
+    }
+
+    console.log(`🧹 Scheduled Cron Cleanup: Purged ${expiredNotes.length} stale voice notes, freed ${totalSize} bytes.`);
     return NextResponse.json({ 
       message: `Successfully purged ${expiredNotes.length} stale voice notes.` 
     }, { status: 200 });
