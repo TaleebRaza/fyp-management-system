@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from 'next-auth/react';
 import { Users, XCircle, Trash2, CheckCircle, User, LayoutDashboard, LogIn, PlusCircle, Code, Mail, MailX, Loader2, Megaphone, Filter, Flame } from 'lucide-react';
@@ -88,6 +88,17 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
   const [supervisorSearch, setSupervisorSearch] = useState('');
   const [adminStudents, setAdminStudents] = useState<any[]>([]);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [debouncedStudentSearch, setDebouncedStudentSearch] = useState('');
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentPagination, setStudentPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
+  const [studentBatches, setStudentBatches] = useState<string[]>([]);
+  const [isStudentsLoading, setIsStudentsLoading] = useState(false);
 
   const [headlineInput, setHeadlineInput] = useState('');
   const [currentHeadline, setCurrentHeadline] = useState('');
@@ -95,7 +106,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [batchFilter, setBatchFilter] = useState('All');
   const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
 
-  const uniqueBatches = Array.from(new Set(adminStudents.map(s => s.batch).filter(Boolean)));
+  const uniqueBatches = studentBatches;
 
   const normalizedSupervisorSearch = supervisorSearch.trim().toLowerCase();
 
@@ -118,24 +129,32 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [graphData, setGraphData] = useState({ supervisors: [], students: [] });
   const [isGraphLoading, setIsGraphLoading] = useState(false);
 
-  const filteredStudents = adminStudents.filter(student => {
-    let matchesStatus = true;
-    let matchesBatch = true;
-    
-    if (studentFilter !== 'All') {
-      if (Object.keys(PROGRAM_MAP).includes(studentFilter)) {
-        matchesStatus = student.program === studentFilter;
-      } else {
-        matchesStatus = student.status === studentFilter;
+  const filteredStudents = adminStudents;
+    const graphStudentGroups = useMemo(() => {
+    const bySupervisor = new Map<string, any[]>();
+    const unassigned: any[] = [];
+    const students = Array.isArray(graphData.students) ? graphData.students : [];
+
+    students.forEach((student: any) => {
+      if (!student.supervisorId) {
+        unassigned.push(student);
+        return;
       }
-    }
-    
-    if (batchFilter !== 'All') {
-      matchesBatch = student.batch === batchFilter;
-    }
-    
-    return matchesStatus && matchesBatch;
-  });
+
+      const supervisorId = String(student.supervisorId);
+      const existingStudents = bySupervisor.get(supervisorId) || [];
+
+      existingStudents.push(student);
+      bySupervisor.set(supervisorId, existingStudents);
+    });
+
+    return {
+      bySupervisor,
+      unassigned,
+      totalStudents: students.length,
+      isLargeGraph: students.length > 500,
+    };
+  }, [graphData.students]);
 
   const fetchHeadline = async () => {
     try {
@@ -197,19 +216,84 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
 
   const fetchSupervisors = () => fetch('/api/supervisors').then(res => res.json()).then(data => setAdminSupervisors(Array.isArray(data) ? data : [])).catch(console.error);
   
-  const fetchStudents = async () => {
+  const fetchStudents = async (pageToFetch = studentPage) => {
     try {
-      const res = await fetch('/api/admin/students');
+      setIsStudentsLoading(true);
+
+      const params = new URLSearchParams({
+        page: String(pageToFetch),
+        limit: String(studentPagination.limit || 20),
+      });
+
+      if (Object.keys(PROGRAM_MAP).includes(studentFilter)) {
+        params.set('program', studentFilter);
+      } else if (studentFilter !== 'All') {
+        params.set('status', studentFilter);
+      }
+
+      if (batchFilter !== 'All') {
+        params.set('batch', batchFilter);
+      }
+
+      if (debouncedStudentSearch) {
+        params.set('search', debouncedStudentSearch);
+      }
+
+      const res = await fetch(`/api/admin/students?${params.toString()}`);
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch students');
+      }
+
       setAdminStudents(Array.isArray(data.students) ? data.students : []);
-    } catch (err) { console.error(err); }
+
+      if (data.pagination) {
+        setStudentPagination(data.pagination);
+      }
+
+      if (Array.isArray(data.filterMeta?.batches)) {
+        setStudentBatches(data.filterMeta.batches);
+      }
+    } catch (err) {
+      console.error('Student fetch error:', err);
+    } finally {
+      setIsStudentsLoading(false);
+    }
   };
 
-  useEffect(() => {
+  const handleStudentFilterChange = (value: string) => {
+    setStudentFilter(value);
+    setStudentPage(1);
+  };
+
+  const handleBatchFilterChange = (value: string) => {
+    setBatchFilter(value);
+    setStudentPage(1);
+  };
+
+  const handleStudentPageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > studentPagination.totalPages || nextPage === studentPage) return;
+    setStudentPage(nextPage);
+  };
+
+    useEffect(() => {
     fetchSupervisors();
-    fetchStudents();
     fetchHeadline();
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setStudentPage(1);
+      setDebouncedStudentSearch(studentSearch.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [studentSearch]);
+
+  useEffect(() => {
+    fetchStudents(studentPage);
+  }, [studentPage, studentFilter, batchFilter, debouncedStudentSearch]);
 
   const handleUpdateEmail = async (userId: string, currentEmail: string, name: string) => {
     showDialog({
@@ -386,8 +470,14 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                     <div className="relative w-full min-h-full px-2 md:px-20 max-w-5xl mx-auto flex flex-col gap-6 md:gap-12 py-6 md:py-12">
                       <ConnectionLines students={graphData.students} isDarkMode={isDarkMode} theme={theme} />
 
+                        {graphStudentGroups.isLargeGraph && (
+                          <div className={`z-20 w-full rounded-xl md:rounded-2xl border px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold text-center ${isDarkMode ? 'border-amber-500/20 bg-amber-500/10 text-amber-400' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                            Large graph detected. Rendering {graphStudentGroups.totalStudents} students may take a few seconds.
+                          </div>
+                                )}
+
                       {graphData.supervisors.map((sup: any) => {
-                        const myStudents = graphData.students.filter((s: any) => s.supervisorId === sup._id);
+                        const myStudents = graphStudentGroups.bySupervisor.get(String(sup._id)) || [];
                         return (
                           <div key={sup._id} className="flex justify-between items-center w-full z-10">
                             <div className="w-36 md:w-64 shrink-0">
@@ -425,7 +515,7 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                       })}
 
                       {(() => {
-                        const unassigned = graphData.students.filter((s: any) => !s.supervisorId);
+                        const unassigned = graphStudentGroups.unassigned;
                         if (unassigned.length === 0) return null;
                         return (
                           <div className="flex justify-between items-center w-full z-10 pt-4 md:pt-8 border-t border-dashed border-neutral-500/30">
@@ -595,35 +685,70 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
           <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full">
             <GlassCard isDarkMode={isDarkMode} className="p-4 md:p-8 flex flex-col h-[calc(100vh-10rem)] max-h-[800px]">
               <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 md:mb-6 gap-3 md:gap-4">
-                <h4 className="text-sm md:text-lg font-extrabold tracking-tight">Registered Students <span className={`text-xs md:text-sm font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md md:rounded-lg ml-1.5 md:ml-2 ${theme.lightBg} ${theme.text}`}>{filteredStudents.length}</span></h4>
+                <div className="flex flex-col gap-2 w-full md:max-w-xs">
+                  <h4 className="text-sm md:text-lg font-extrabold tracking-tight">
+                    Registered Students
+                    <span className={`text-xs md:text-sm font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md md:rounded-lg ml-1.5 md:ml-2 ${theme.lightBg} ${theme.text}`}>
+                      {studentPagination.total}
+                    </span>
+                  </h4>
+
+                  <StyledInput
+                    isDarkMode={isDarkMode}
+                    theme={theme}
+                    value={studentSearch}
+                    onChange={(e: any) => setStudentSearch(e.target.value)}
+                    type="search"
+                    placeholder="Search students by name, ID, or email..."
+                  />
+                </div>
 
                 {/* Filter Pills */}
                 <div className="flex flex-col gap-2 md:gap-3 items-start md:items-end">
                   <div className="flex flex-wrap gap-1.5 md:gap-2 items-center">
                     <Filter size={13} className="opacity-40 mr-0.5 hidden md:block" />
                     {filterOptions.map(opt => (
-                      <button key={opt} onClick={() => setStudentFilter(opt)} className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${studentFilter === opt ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>
+                      <button key={opt} onClick={() => handleStudentFilterChange(opt)} className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${studentFilter === opt ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>
                         {opt}
                       </button>
                     ))}
                   </div>
                   <div className="flex flex-wrap gap-1.5 md:gap-2 items-center">
-                     <span className="text-[9px] md:text-xs font-bold opacity-40 uppercase tracking-widest mr-0.5">Batch:</span>
-                     <button onClick={() => setBatchFilter('All')} className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${batchFilter === 'All' ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>All</button>
-                     {uniqueBatches.map((b: any) => (
-                       <button key={b} onClick={() => setBatchFilter(b)} className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${batchFilter === b ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>{b}</button>
-                     ))}
-                     {batchFilter !== 'All' && (
-                       <button onClick={handlePromoteBatch} className={`ml-1 md:ml-2 px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all shadow-md bg-purple-500 hover:bg-purple-600 text-white flex items-center gap-1`}>
-                         Promote to 8th Sem
-                       </button>
-                     )}
+                    <span className="text-[9px] md:text-xs font-bold opacity-40 uppercase tracking-widest mr-0.5">Batch:</span>
+
+                    <button
+                      onClick={() => handleBatchFilterChange('All')}
+                      className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${batchFilter === 'All' ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}
+                    >
+                      All
+                    </button>
+
+                    {uniqueBatches.map((b: any) => (
+                      <button
+                        key={b}
+                        onClick={() => handleBatchFilterChange(b)}
+                        className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${batchFilter === b ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}
+                      >
+                        {b}
+                      </button>
+                    ))}
+
+                    {batchFilter !== 'All' && (
+                      <button onClick={handlePromoteBatch} className={`ml-1 md:ml-2 px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all shadow-md bg-purple-500 hover:bg-purple-600 text-white flex items-center gap-1`}>
+                        Promote to 8th Sem
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className="space-y-2 md:space-y-3 overflow-y-auto pr-1 md:pr-2 flex-1 custom-scrollbar">
-                {filteredStudents.length === 0 ? (
+                {isStudentsLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full opacity-60">
+                    <Loader2 size={36} className={`animate-spin mb-3 md:mb-4 ${theme.text}`} />
+                    <p className="font-bold text-sm md:text-base">Loading students...</p>
+                  </div>
+                ) : filteredStudents.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full opacity-40">
                     <User size={36} className="mb-3 md:mb-4" />
                     <p className="font-bold text-sm md:text-base">No students match this filter.</p>
@@ -670,6 +795,36 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                     </div>
                   ))
                 )}
+              </div>
+
+              <div className={`mt-4 pt-3 border-t flex flex-col md:flex-row gap-3 md:items-center md:justify-between text-xs md:text-sm ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
+                <p className="font-bold opacity-60">
+                  Showing {filteredStudents.length} of {studentPagination.total} students
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isStudentsLoading || studentPage <= 1}
+                    onClick={() => handleStudentPageChange(studentPage - 1)}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isDarkMode ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-neutral-200 hover:bg-neutral-300'}`}
+                  >
+                    Previous
+                  </button>
+
+                  <span className="font-bold opacity-70">
+                    Page {studentPagination.total === 0 ? 0 : studentPage} of {studentPagination.totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={isStudentsLoading || studentPage >= studentPagination.totalPages}
+                    onClick={() => handleStudentPageChange(studentPage + 1)}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isDarkMode ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-neutral-200 hover:bg-neutral-300'}`}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             </GlassCard>
           </motion.div>

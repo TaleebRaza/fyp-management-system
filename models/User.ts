@@ -37,18 +37,29 @@ const UserSchema = new Schema({
 });
 
 // ==========================================
-// ENTERPRISE-GRADE DATABASE INDEXES
+// DATABASE INDEXES
 // ==========================================
 
-// 1. Single Index on 'role': Speeds up `User.find({ role: 'supervisor' })` significantly.
+// Speeds up role-based reads such as supervisor lists and student lists.
 UserSchema.index({ role: 1 });
 
-// 2. Compound Index: Speeds up our capacity counting `User.countDocuments({ role: 'student', supervisorId: X })`
+// Speeds up supervisor capacity checks and student lookups by supervisor.
 UserSchema.index({ role: 1, supervisorId: 1 });
 
-// 3. Single Index on Foreign Keys: Speeds up fetching teams `User.find({ projectId: X })`
+// Speeds up fetching project members and supervisor/team references.
 UserSchema.index({ projectId: 1 });
 UserSchema.index({ supervisorId: 1 });
+
+// Speeds up the default admin student list: newest students first.
+UserSchema.index({ role: 1, createdAt: -1 });
+
+// Speeds up admin student filters when filtering by program, batch, and status together.
+UserSchema.index({ role: 1, program: 1, batch: 1, status: 1, createdAt: -1 });
+
+// Speeds up common single-filter admin views without forcing MongoDB to scan all students.
+UserSchema.index({ role: 1, program: 1, createdAt: -1 });
+UserSchema.index({ role: 1, batch: 1, createdAt: -1 });
+UserSchema.index({ role: 1, status: 1, createdAt: -1 });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
