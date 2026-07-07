@@ -72,44 +72,6 @@ export async function POST(req: Request) {
     // --- CRITICAL FIX: Extract projectId during the first and ONLY read of the body stream ---
     const { action, studentId, status, remarks, migrationCode, projectId } = await req.json();
 
-    if (action === 'acceptRequest') {
-      const triggerStudent = await User.findById(studentId);
-      if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-      
-      if (triggerStudent.projectId) {
-        await Project.findByIdAndUpdate(triggerStudent.projectId, { $set: { status: 'Pending' } });
-        await User.updateMany(
-          { projectId: triggerStudent.projectId }, 
-          { $set: { status: 'Pending', remarks: 'Your supervisor accepted your request! You may now submit your proposal.' } }
-        );
-      } else {
-        await User.findByIdAndUpdate(
-          studentId, 
-          { $set: { status: 'Pending', remarks: 'Your supervisor accepted your request! You may now submit your proposal.' } }
-        );
-      }
-      return NextResponse.json({ message: 'Request accepted successfully!' }, { status: 200 });
-    }
-
-    if (action === 'declineRequest') {
-      const triggerStudent = await User.findById(studentId);
-      if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-      
-      if (triggerStudent.projectId) {
-        await Project.findByIdAndUpdate(triggerStudent.projectId, { $set: { supervisorId: null } });
-        await User.updateMany(
-          { projectId: triggerStudent.projectId }, 
-          { $set: { supervisorId: null, status: 'Unassigned', remarks: 'Your request was declined. Please choose a different supervisor.' } }
-        );
-      } else {
-        await User.findByIdAndUpdate(
-          studentId, 
-          { $set: { supervisorId: null, status: 'Unassigned', remarks: 'Your request was declined. Please choose a different supervisor.' } }
-        );
-      }
-      return NextResponse.json({ message: 'Request declined and slot freed!' }, { status: 200 });
-    }
-
     if (action === 'updateStatus') {
       const triggerStudent = await User.findById(studentId);
       if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });

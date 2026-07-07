@@ -71,9 +71,9 @@ export async function POST(req: Request) {
         batch,
         semester: '7th Semester',
         supervisorId: supervisorId || null,
-        // Sync with Two-Step Acceptance Workflow
-        status: supervisorId ? 'Supervisor Requested' : 'Unassigned',
-        remarks: supervisorId ? 'Awaiting supervisor acceptance.' : ''
+        // Direct assignment: supervisor selection is final when capacity is available.
+        status: supervisorId ? 'Pending' : 'Unassigned',
+        remarks: ''
       });
       await newStudent.save({ session });
 
