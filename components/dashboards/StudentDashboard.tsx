@@ -24,6 +24,7 @@ import {
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';
+import { PROGRAM_MAP } from '../../config/appSettings';
 import { ExternalLink, Copy, Check, Eye, X, FileText, Code, Download } from 'lucide-react'; 
 
 const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
@@ -47,6 +48,21 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
   const [previewMode, setPreviewMode] = useState<'rendered' | 'code'>('rendered');
   const [isCopied, setIsCopied] = useState(false);
+
+  const [isAcademicDialogOpen, setIsAcademicDialogOpen] = useState(false);
+  const [isAcademicWarningStep, setIsAcademicWarningStep] = useState(false);
+  const [isAcademicUpdating, setIsAcademicUpdating] = useState(false);
+  const [academicForm, setAcademicForm] = useState({ program: '', batch: '' });
+
+  const academicProgramOptions = Object.keys(PROGRAM_MAP);
+  const academicBatchOptions: string[] = [];
+  const academicStartYear = 2021;
+  const academicMaxYear = new Date().getFullYear() + 1;
+
+  for (let year = academicStartYear; year <= academicMaxYear; year++) {
+    academicBatchOptions.push(`Spring ${year}`);
+    academicBatchOptions.push(`Fall ${year}`);
+  }
 
   // Wrapper to ensure modal always opens in rendered mode
   const handleOpenTemplate = (template: any) => {
@@ -280,6 +296,81 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
     }
   };
 
+    const openAcademicEditor = () => {
+    setAcademicForm({
+      program: me?.program || 'BSCS',
+      batch: me?.batch || '',
+    });
+    setIsAcademicWarningStep(false);
+    setIsAcademicDialogOpen(true);
+  };
+
+  const closeAcademicEditor = () => {
+    if (isAcademicUpdating) return;
+
+    setIsAcademicDialogOpen(false);
+    setIsAcademicWarningStep(false);
+  };
+
+  const handleAcademicContinue = () => {
+    if (!academicForm.program || !academicForm.batch) {
+      showDialog({ title: "Selection Required", message: "Please select both Program and Batch." });
+      return;
+    }
+
+    if (academicForm.program === me?.program && academicForm.batch === me?.batch) {
+      showDialog({ title: "No Change", message: "Program and Batch are already set to these values." });
+      return;
+    }
+
+    setIsAcademicWarningStep(true);
+  };
+
+  const handleAcademicUpdate = async () => {
+    setIsAcademicUpdating(true);
+
+    try {
+      const res = await fetch('/api/dashboard/student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateProgramBatch',
+          id: (session?.user as any)?.id,
+          program: academicForm.program,
+          batch: academicForm.batch,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        showDialog({ title: "Update Blocked", message: json.error || "Failed to update Program/Batch." });
+        return;
+      }
+
+      setIsAcademicDialogOpen(false);
+      setIsAcademicWarningStep(false);
+      setTitle('');
+      setDesc('');
+      setDomain('');
+      setTools('');
+      setFile(null);
+      setCachedTemplates([]);
+
+      await fetchData();
+      await fetchSupervisors();
+
+      showDialog({
+        title: "Academic Info Updated",
+        message: json.message || "Program and Batch updated successfully.",
+      });
+    } catch (error) {
+      showDialog({ title: "Network Error", message: "Could not update Program/Batch. Please try again." });
+    } finally {
+      setIsAcademicUpdating(false);
+    }
+  };
+
   // --- HELPERS ---
   if (isLoading) {
     return (
@@ -302,6 +393,137 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       animate={{ opacity: 1, y: 0 }} 
       className="flex flex-col gap-3 md:gap-6 min-h-screen pb-12 px-1 md:px-0 max-w-7xl mx-auto"
     >
+
+          <AnimatePresence>
+        {isAcademicDialogOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeAcademicEditor}
+              className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={`relative w-full max-w-lg p-6 rounded-[2rem] border shadow-2xl ${isDarkMode ? 'bg-[#18181b] border-white/10 text-white' : 'bg-white border-neutral-200 text-black'}`}
+            >
+              <button
+                type="button"
+                onClick={closeAcademicEditor}
+                disabled={isAcademicUpdating}
+                className={`absolute top-4 right-4 p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'} disabled:opacity-40`}
+              >
+                <X size={18} />
+              </button>
+
+              {!isAcademicWarningStep ? (
+                <>
+                  <div className={`w-14 h-14 rounded-2xl mb-5 flex items-center justify-center ${theme.lightBg} ${theme.text}`}>
+                    <ClipboardCheck size={28} />
+                  </div>
+
+                  <h3 className="text-2xl font-extrabold tracking-tight mb-2">Edit Academic Info</h3>
+                  <p className="text-sm opacity-60 font-medium leading-relaxed mb-6">
+                    Select your correct Program and Batch. You will review a warning before the change is applied.
+                  </p>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase opacity-40 tracking-widest ml-1">Program</label>
+                      <select
+                        value={academicForm.program}
+                        onChange={(e) => setAcademicForm(prev => ({ ...prev, program: e.target.value }))}
+                        className={`mt-2 w-full px-5 py-4 rounded-2xl border-2 border-transparent outline-none font-bold ${isDarkMode ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-black'} ${theme.ring}`}
+                      >
+                        <option value="">Select Program</option>
+                        {academicProgramOptions.map(program => (
+                          <option key={program} value={program}>
+                            {program} - {PROGRAM_MAP[program]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase opacity-40 tracking-widest ml-1">Batch</label>
+                      <select
+                        value={academicForm.batch}
+                        onChange={(e) => setAcademicForm(prev => ({ ...prev, batch: e.target.value }))}
+                        className={`mt-2 w-full px-5 py-4 rounded-2xl border-2 border-transparent outline-none font-bold ${isDarkMode ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-black'} ${theme.ring}`}
+                      >
+                        <option value="">Select Batch</option>
+                        {academicBatchOptions.map(batch => (
+                          <option key={batch} value={batch}>{batch}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 mt-8">
+                    <button
+                      type="button"
+                      onClick={closeAcademicEditor}
+                      className={`px-5 py-3 rounded-xl font-bold text-sm ${isDarkMode ? 'hover:bg-neutral-800 text-neutral-300' : 'hover:bg-neutral-100 text-neutral-600'}`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAcademicContinue}
+                      className={`px-6 py-3 rounded-xl text-white font-black text-sm ${theme.bg}`}
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-14 h-14 rounded-2xl mb-5 flex items-center justify-center bg-red-500/10 text-red-500">
+                    <AlertTriangle size={28} />
+                  </div>
+
+                  <h3 className="text-2xl font-extrabold tracking-tight mb-2">Confirm Reset</h3>
+                  <p className="text-sm opacity-70 font-medium leading-relaxed mb-5">
+                    This will update your Program to <b>{academicForm.program}</b> and Batch to <b>{academicForm.batch}</b>.
+                  </p>
+
+                  <div className={`p-4 rounded-2xl border text-sm font-bold leading-relaxed ${isDarkMode ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                    Confirming will remove you from your current team, unassign your supervisor, reset your project back to the proposal step, and clear your uploaded project data. If you are the only member in the team, the uploaded files for that project will also be deleted.
+                  </div>
+
+                  <p className="text-xs opacity-50 font-bold mt-4">
+                    You can only change Program/Batch once per day.
+                  </p>
+
+                  <div className="flex justify-end gap-3 mt-8">
+                    <button
+                      type="button"
+                      onClick={() => setIsAcademicWarningStep(false)}
+                      disabled={isAcademicUpdating}
+                      className={`px-5 py-3 rounded-xl font-bold text-sm ${isDarkMode ? 'hover:bg-neutral-800 text-neutral-300' : 'hover:bg-neutral-100 text-neutral-600'} disabled:opacity-40`}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAcademicUpdate}
+                      disabled={isAcademicUpdating}
+                      className="px-6 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-black text-sm flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {isAcademicUpdating ? <Loader2 size={16} className="animate-spin" /> : <AlertTriangle size={16} />}
+                      {isAcademicUpdating ? 'Updating...' : 'Yes, Reset My Dashboard'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       
       {/* 1. COMPACT HEADER SECTION */}
       <GlassCard isDarkMode={isDarkMode} className="w-full p-3 md:px-8 md:py-6 relative overflow-hidden">
@@ -320,15 +542,27 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
             </div>
           </div>
 
-          <motion.button 
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }} 
-            onClick={() => signOut({ redirect: false })} 
-            className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white p-2 md:px-5 md:py-2.5 rounded-xl transition-all text-xs md:text-sm font-bold cursor-pointer"
-          >
-            <LogIn size={16} className="rotate-180 shrink-0" /> 
-            <span className="hidden md:inline font-extrabold">Logout</span>
-          </motion.button>
+          <div className="flex items-center gap-2">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={openAcademicEditor}
+              className={`flex items-center gap-2 p-2 md:px-4 md:py-2.5 rounded-xl transition-all text-xs md:text-sm font-bold cursor-pointer ${theme.lightBg} ${theme.text}`}
+            >
+              <ClipboardCheck size={16} className="shrink-0" />
+              <span className="hidden md:inline font-extrabold">Edit Info</span>
+            </motion.button>
+
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }} 
+              onClick={() => signOut({ redirect: false })} 
+              className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white p-2 md:px-5 md:py-2.5 rounded-xl transition-all text-xs md:text-sm font-bold cursor-pointer"
+            >
+              <LogIn size={16} className="rotate-180 shrink-0" /> 
+              <span className="hidden md:inline font-extrabold">Logout</span>
+            </motion.button>
+          </div>
         </div>
 
         <div className="relative z-10 flex items-center justify-between border-t border-neutral-500/10 pt-3 md:pt-4">

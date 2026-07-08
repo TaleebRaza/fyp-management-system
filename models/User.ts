@@ -30,6 +30,9 @@ const UserSchema = new Schema({
   resetCode: { type: String, required: false },
   resetCodeExpiry: { type: Date, required: false },
   lastPasswordChange: { type: Date, required: false },
+
+  // Limits student Program/Batch self-editing to once per 24 hours.
+  lastProgramBatchChangeAt: { type: Date, required: false },
   
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
 }, {

@@ -1,15 +1,112 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
+import { getToken } from 'next-auth/jwt';
+import mongoose, { ClientSession } from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
+import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
-import { APP_SETTINGS } from '../../../../config/appSettings';
+import { APP_SETTINGS, PROGRAM_MAP } from '../../../../config/appSettings';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
 
 export const dynamic = 'force-dynamic';
+
+const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const MIN_BATCH_YEAR = 2021;
+
+type DeletionTarget = {
+  key: string;
+  size: number;
+};
+
+function isValidProgram(program: string) {
+  return Object.prototype.hasOwnProperty.call(PROGRAM_MAP, program);
+}
+
+function isValidBatch(batch: string) {
+  const match = /^(Spring|Fall) (20\d{2})$/.exec(batch);
+  if (!match) return false;
+
+  const year = Number(match[2]);
+  const maxYear = new Date().getFullYear() + 1;
+
+  return year >= MIN_BATCH_YEAR && year <= maxYear;
+}
+
+function formatCooldown(ms: number) {
+  const hours = Math.floor(ms / 3600000);
+  const minutes = Math.ceil((ms % 3600000) / 60000);
+
+  if (hours > 0) {
+    return `${hours} hour${hours === 1 ? '' : 's'}${minutes > 0 ? ` and ${minutes} minute${minutes === 1 ? '' : 's'}` : ''}`;
+  }
+
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+}
+
+function getR2ObjectKey(value: string) {
+  const trimmedValue = String(value || '').trim();
+  if (!trimmedValue) return '';
+
+  try {
+    const parsedUrl = new URL(trimmedValue);
+    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
+  } catch {
+    return trimmedValue.replace(/^\/+/, '');
+  }
+}
+
+function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
+  const key = getR2ObjectKey(fileUrl || '');
+  if (!key) return null;
+
+  return {
+    key,
+    size: Math.max(Number(fileSize || 0), 0),
+  };
+}
+
+function mergeDeletionTargets(targets: DeletionTarget[]) {
+  const mergedTargets = new Map<string, DeletionTarget>();
+
+  targets.forEach((target) => {
+    const existingTarget = mergedTargets.get(target.key);
+
+    mergedTargets.set(target.key, {
+      key: target.key,
+      size: Math.max(existingTarget?.size || 0, target.size),
+    });
+  });
+
+  return Array.from(mergedTargets.values());
+}
+
+async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, session: ClientSession) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+      const newProject = new Project({
+        supervisorId: null,
+        members: [studentId],
+        inviteCode,
+        stage: 'PROPOSAL',
+        status: 'Pending',
+        pdfUrl: '',
+        pdfSize: 0,
+      });
+
+      await newProject.save({ session });
+      return newProject;
+    } catch (error: any) {
+      if (error?.code !== 11000) throw error;
+    }
+  }
+
+  throw new Error('Failed to generate a unique project invite code.');
+}
 
 export async function GET(req: Request) {
   try {
@@ -38,6 +135,166 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json();
+
+        // ==========================================
+    // ACTION: STUDENT PROGRAM/BATCH SELF UPDATE
+    // ==========================================
+    if (body.action === 'updateProgramBatch') {
+      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
+
+      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
+        return NextResponse.json({ error: 'Unauthorized Program/Batch update request.' }, { status: 401 });
+      }
+
+      const studentId = String(body.id || '').trim();
+      const newProgram = String(body.program || '').trim().toUpperCase();
+      const newBatch = String(body.batch || '').trim();
+
+      if (!mongoose.Types.ObjectId.isValid(studentId)) {
+        return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
+      }
+
+      if (!isValidProgram(newProgram)) {
+        return NextResponse.json({ error: 'Invalid program selected.' }, { status: 400 });
+      }
+
+      if (!isValidBatch(newBatch)) {
+        return NextResponse.json({ error: 'Invalid batch selected.' }, { status: 400 });
+      }
+
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        const student = await User.findById(studentId).session(session);
+
+        if (!student || student.role !== 'student') {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
+        }
+
+        if (student.program === newProgram && student.batch === newBatch) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'No changes selected. Program and Batch are already the same.' }, { status: 400 });
+        }
+
+        if (student.lastProgramBatchChangeAt) {
+          const lastChangeTime = new Date(student.lastProgramBatchChangeAt).getTime();
+          const timeSinceLastChange = Date.now() - lastChangeTime;
+
+          if (timeSinceLastChange < PROGRAM_BATCH_CHANGE_COOLDOWN_MS) {
+            const remainingTime = PROGRAM_BATCH_CHANGE_COOLDOWN_MS - timeSinceLastChange;
+
+            await session.abortTransaction();
+            session.endSession();
+
+            return NextResponse.json(
+              { error: `You can change Program/Batch once per day. Please try again in ${formatCooldown(remainingTime)}.` },
+              { status: 429 }
+            );
+          }
+        }
+
+        const oldProject = student.projectId
+          ? await Project.findById(student.projectId).session(session)
+          : null;
+
+        let freedBytes = 0;
+
+        if (oldProject) {
+          const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
+          const isOnlyMember =
+            oldProjectMembers.length <= 1 ||
+            oldProjectMembers.every((member: any) => String(member) === String(student._id));
+
+          if (isOnlyMember) {
+            const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
+
+            const deletionTargets = mergeDeletionTargets([
+              buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
+              buildDeletionTarget(student.pdfUrl, oldProject.pdfSize),
+              ...voiceNotes
+                .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
+                .filter(Boolean),
+            ].filter(Boolean) as DeletionTarget[]);
+
+            if (deletionTargets.length > 0) {
+              await Promise.all(
+                deletionTargets.map((target) =>
+                  s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
+                )
+              );
+
+              freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
+            }
+
+            if (voiceNotes.length > 0) {
+              await VoiceNote.deleteMany({
+                _id: { $in: voiceNotes.map((note: any) => note._id) },
+              }).session(session);
+            }
+
+            await Project.findByIdAndDelete(oldProject._id, { session });
+          } else {
+            await Project.findByIdAndUpdate(
+              oldProject._id,
+              { $pull: { members: student._id } },
+              { session }
+            );
+          }
+        }
+
+        if (freedBytes > 0) {
+          await SystemConfig.findOneAndUpdate(
+            { configKey: 'storage' },
+            { $inc: { usedBytes: -freedBytes } },
+            { upsert: true, session }
+          );
+
+          await SystemConfig.updateOne(
+            { configKey: 'storage', usedBytes: { $lt: 0 } },
+            { $set: { usedBytes: 0 } },
+            { session }
+          );
+        }
+
+        const newProject = await createFreshStudentProject(student._id, session);
+
+        student.program = newProgram;
+        student.batch = newBatch;
+        student.supervisorId = null;
+        student.projectId = newProject._id;
+        student.status = 'Unassigned';
+        student.remarks = 'Your Program/Batch was updated. You have been removed from your previous team and must select a supervisor again.';
+        student.projectTitle = '';
+        student.projectDesc = '';
+        student.domain = '';
+        student.tools = '';
+        student.pdfUrl = '';
+        student.lastProgramBatchChangeAt = new Date();
+
+        await student.save({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return NextResponse.json(
+          {
+            message: 'Program and Batch updated successfully. Your dashboard has been reset.',
+            freedBytes,
+          },
+          { status: 200 }
+        );
+      } catch (error: any) {
+        await session.abortTransaction();
+        session.endSession();
+
+        console.error('Program/Batch Update Error:', error.message);
+        return NextResponse.json({ error: 'Failed to update Program/Batch.' }, { status: 500 });
+      }
+    }
 
     // ==========================================
     // ACTION: ASSIGN SUPERVISOR (Transaction Lock)
