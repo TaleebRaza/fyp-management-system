@@ -35,6 +35,12 @@ const UserSchema = new Schema({
   lastProgramBatchChangeAt: { type: Date, required: false },
   
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
+
+  // --- NEW: Supervisor Broadcast Fields ---
+  broadcastType: { type: String, enum: ['text', 'audio', null], default: null },
+  broadcastContent: { type: String, default: null },
+  broadcastSize: { type: Number, default: 0 },
+  broadcastCreatedAt: { type: Date, default: null },
 }, {
   timestamps: true
 });

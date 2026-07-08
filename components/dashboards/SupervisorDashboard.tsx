@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from 'next-auth/react';
 import { XCircle, Globe, Wrench, FileText, ArrowRightLeft, UserMinus, LayoutDashboard, Download, LogIn, Loader2, ChevronRight } from 'lucide-react';
+import BroadcastWidget from './BroadcastWidget';
 import { GlassCard } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';
+
 
 
 const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
@@ -242,22 +244,25 @@ const SupervisorDashboard = ({ isDarkMode, theme, session, showDialog }: any) =>
       </AnimatePresence>
 
       <GlassCard isDarkMode={isDarkMode} className="w-full flex flex-col md:flex-row justify-between items-start md:items-center p-4 md:px-6 gap-3">
-        <div className="w-full">
+      <div className="w-full">
+        <div className="flex items-center gap-3">
           <h2 className="text-lg font-extrabold tracking-tight flex items-center gap-2">
             <div className={`p-1.5 rounded-lg ${theme.lightBg} ${theme.text} transition-colors duration-500`}><LayoutDashboard size={15} /></div> Supervisor Panel
           </h2>
-          <div className="font-medium opacity-60 mt-1 text-xs flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-            <span>Welcome, {session?.user?.name}</span><span className="hidden sm:block opacity-40 text-xs">|</span>
-            <span>Your Code: <span className={`font-mono px-1.5 py-0.5 rounded-md text-xs ${theme.lightBg} ${theme.text}`}>{myMigrationCode}</span></span>
-          </div>
+          <BroadcastWidget />
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-neutral-200 dark:border-neutral-800 transition-colors">
-          <motion.button whileHover={{ scale: isExporting ? 1 : 1.05 }} whileTap={{ scale: isExporting ? 1 : 0.95 }} onClick={handleExportPDF} disabled={isExporting} className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all ${isExporting ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-90'} ${theme.bg} text-white shadow-md`}>
-            {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} <span className="whitespace-nowrap">{isExporting ? 'Downloading...' : 'Export Excel'}</span>
-          </motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`flex-1 md:flex-none justify-center bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-3 py-2 rounded-xl transition-all font-bold text-xs flex items-center gap-1.5`}><LogIn size={14} className="rotate-180" /> <span className="whitespace-nowrap">Logout</span></motion.button>
+        <div className="font-medium opacity-60 mt-1 text-xs flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+          <span>Welcome, {session?.user?.name}</span><span className="hidden sm:block opacity-40 text-xs">|</span>
+          <span>Your Code: <span className={`font-mono px-1.5 py-0.5 rounded-md text-xs ${theme.lightBg} ${theme.text}`}>{myMigrationCode}</span></span>
         </div>
-      </GlassCard>
+      </div>
+      <div className="flex items-center gap-2 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-neutral-200 dark:border-neutral-800 transition-colors">
+        <motion.button whileHover={{ scale: isExporting ? 1 : 1.05 }} whileTap={{ scale: isExporting ? 1 : 0.95 }} onClick={handleExportPDF} disabled={isExporting} className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all ${isExporting ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-90'} ${theme.bg} text-white shadow-md`}>
+          {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} <span className="whitespace-nowrap">{isExporting ? 'Downloading...' : 'Export Excel'}</span>
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => signOut({ redirect: false })} className={`flex-1 md:flex-none justify-center bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white px-3 py-2 rounded-xl transition-all font-bold text-xs flex items-center gap-1.5`}><LogIn size={14} className="rotate-180" /> <span className="whitespace-nowrap">Logout</span></motion.button>
+      </div>
+    </GlassCard>
 
       <GlassCard isDarkMode={isDarkMode} className="flex-1 p-5">
 

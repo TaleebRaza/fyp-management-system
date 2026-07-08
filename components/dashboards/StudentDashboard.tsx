@@ -25,7 +25,7 @@ import { GlassCard, StyledInput } from '../ui/SharedUI';
 import { Timeline } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';
 import { PROGRAM_MAP } from '../../config/appSettings';
-import { ExternalLink, Copy, Check, Eye, X, FileText, Code, Download } from 'lucide-react'; 
+import { ExternalLink, Copy, Check, Eye, X, FileText, Code, Download, ChevronDown } from 'lucide-react'; 
 
 const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   // --- STATE MANAGEMENT ---
@@ -41,6 +41,7 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [localSups, setLocalSups] = useState<any[]>([]);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [headline, setHeadline] = useState('');
+  const [isUpdatesExpanded, setIsUpdatesExpanded] = useState(false);
   
   // --- OPTIMIZATION: Dynamic Timeline Template State ---
   const [cachedTemplates, setCachedTemplates] = useState<any[]>([]);
@@ -600,40 +601,110 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
         </div>
       )}
 
-      {/* 3. ANNOUNCEMENT BAR */}
-      <AnimatePresence>
-        {headline && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-            <GlassCard isDarkMode={isDarkMode} className="p-3 border-l-4 border-l-blue-500 flex items-start sm:items-center gap-3 bg-blue-500/5">
-              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 shrink-0 flex items-center gap-2 mt-0.5 sm:mt-0">
-                <Megaphone size={14} />
-                <span className="hidden md:inline text-[10px] font-black uppercase tracking-widest">Announcement</span>
-              </div>
-              
-              <div className="flex-1 w-full">
-                <p className="text-xs font-bold text-blue-500 leading-relaxed break-words">
-                  {headline.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => 
-                    part.match(/(https?:\/\/[^\s]+)/) ? (
-                      <a 
-                        key={i} 
-                        href={part} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="underline decoration-blue-500/40 hover:decoration-blue-500 hover:text-blue-600 transition-all cursor-pointer"
-                        title="Open external link"
-                      >
-                        {part}
-                      </a>
-                    ) : (
-                      <span key={i}>{part}</span>
-                    )
-                  )}
-                </p>
-              </div>
+      {/* 3. UNIFIED UPDATES BANNER */}
+      {(() => {
+        const hasAdminHeadline = !!headline;
+        const hasSupBroadcast = !!supervisor?.broadcastType;
+        const updateCount = (hasAdminHeadline ? 1 : 0) + (hasSupBroadcast ? 1 : 0);
+
+        if (updateCount === 0) return null;
+
+        return (
+          <div className="w-full px-1">
+            <GlassCard isDarkMode={isDarkMode} className={`p-0 overflow-hidden transition-all duration-300 ${isUpdatesExpanded ? 'ring-2 ring-indigo-500/50' : ''}`}>
+              {/* Banner Header (Always visible, Clickable) */}
+              <button 
+                onClick={() => setIsUpdatesExpanded(!isUpdatesExpanded)}
+                className={`w-full p-3 md:p-4 flex items-center justify-between transition-colors ${isDarkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-100/50'}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500">
+                      <Megaphone size={18} />
+                    </div>
+                    {/* Pulsing Indicator */}
+                    {!isUpdatesExpanded && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border-2 border-white dark:border-neutral-900"></span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <h4 className="text-sm font-black tracking-tight flex items-center gap-2">
+                      Updates 
+                      <span className="px-1.5 py-0.5 rounded-full bg-indigo-500 text-white text-[9px] font-bold">{updateCount}</span>
+                    </h4>
+                    <p className="text-[10px] opacity-60 font-medium mt-0.5 hidden sm:block">
+                      {isUpdatesExpanded ? 'Click to collapse' : 'Click to expand announcements'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown size={18} className={`opacity-50 transition-transform duration-300 ${isUpdatesExpanded ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Expandable Content */}
+              <AnimatePresence>
+                {isUpdatesExpanded && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }} 
+                    animate={{ height: 'auto', opacity: 1 }} 
+                    exit={{ height: 0, opacity: 0 }}
+                    className="border-t border-neutral-500/10 bg-neutral-500/5"
+                  >
+                    <div className="max-h-64 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4">
+                      
+                      {/* Admin Headline */}
+                      {hasAdminHeadline && (
+                        <div className="border-l-4 border-l-blue-500 pl-3">
+                          <h5 className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">From Administration</h5>
+                          <p className="text-xs font-bold leading-relaxed break-words">
+                            {headline.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => 
+                              part.match(/(https?:\/\/[^\s]+)/) ? (
+                                <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="underline decoration-blue-500/40 hover:decoration-blue-500 text-blue-600 transition-all">{part}</a>
+                              ) : (
+                                <span key={i}>{part}</span>
+                              )
+                            )}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Divider if both exist */}
+                      {hasAdminHeadline && hasSupBroadcast && <hr className="border-neutral-500/20" />}
+
+                      {/* Supervisor Broadcast */}
+                      {hasSupBroadcast && (
+                        <div className="border-l-4 border-l-indigo-500 pl-3">
+                          <h5 className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-1 flex items-center gap-1.5">
+                            From Supervisor: {supervisor.name}
+                          </h5>
+                          {supervisor.broadcastType === 'text' ? (
+                            <p className="text-xs font-bold leading-relaxed whitespace-pre-wrap">{supervisor.broadcastContent}</p>
+                          ) : (
+                            <div className="mt-2 w-full max-w-[280px]">
+                              <audio 
+                                src={`/api/read-pdf?url=${encodeURIComponent(
+                                  supervisor.broadcastContent.includes('.com/') 
+                                    ? supervisor.broadcastContent.split('.com/')[1] 
+                                    : supervisor.broadcastContent
+                                )}`} 
+                                controls 
+                                className="w-full h-8 outline-none"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </GlassCard>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        );
+      })()}
 
       {/* 4. MAIN DASHBOARD CONTENT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
