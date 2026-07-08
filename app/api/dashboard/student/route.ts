@@ -267,7 +267,7 @@ export async function POST(req: Request) {
         student.supervisorId = null;
         student.projectId = newProject._id;
         student.status = 'Unassigned';
-        student.remarks = 'Your Program/Batch was updated. You have been removed from your previous team and must select a supervisor again.';
+        student.remarks = 'You changed your academic information and accepted the progress reset. Please choose a supervisor again or join a team to begin.';
         student.projectTitle = '';
         student.projectDesc = '';
         student.domain = '';

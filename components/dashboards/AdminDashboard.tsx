@@ -315,71 +315,96 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   };
 
   const handleUpdateProgram = async (userId: string, currentProgram: string, name: string) => {
-    showDialog({
-      type: 'prompt',
-      inputType: 'select',
-      inputOptions: Object.keys(PROGRAM_MAP),
-      title: 'Update Program',
-      message: `Select a new program for ${name}. Note: This will trigger a team reset.`,
-      defaultValue: currentProgram || 'BSCS',
-      onConfirm: async (newProgram: string) => {
-        if (!newProgram || newProgram === currentProgram) return;
+  showDialog({
+    type: 'prompt',
+    inputType: 'select',
+    inputOptions: Object.keys(PROGRAM_MAP),
+    title: 'Update Program',
+    message: `Select a new program for ${name}. This will reset this student and remove them from their current team.`,
+    defaultValue: currentProgram || 'BSCS',
+    onConfirm: async (newProgram: string) => {
+      if (!newProgram || newProgram === currentProgram) return;
 
-        showDialog({
-          type: 'confirm', 
-          title: 'Warning: Team Reset', 
-          message: `Changing ${name}'s program to ${newProgram} will remove them from their current team and unassign their supervisor. Proceed?`,
-          onConfirm: async () => {
-            const res = await fetch('/api/admin/update-program', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ targetUserId: userId, newProgram })
+      showDialog({
+        type: 'confirm',
+        title: 'Warning: Student Reset',
+        message: `Changing ${name}'s program to ${newProgram} will remove them from their current team, unassign their supervisor, reset their dashboard to Proposal, and create a fresh project. If they are the only member, uploaded project files will also be deleted. Proceed?`,
+        onConfirm: async () => {
+          const res = await fetch('/api/admin/update-program', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetUserId: userId, newProgram }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            showDialog({
+              title: "Success",
+              message: data.message || "Program updated and student reset.",
             });
-            if (res.ok) {
-              showDialog({ title: "Success", message: "Program updated and student reset!" });
-              fetchStudents();
-            } else {
-              showDialog({ title: "Error", message: "Failed to update program." });
-            }
+            fetchStudents();
+          } else {
+            showDialog({
+              title: "Error",
+              message: data.error || "Failed to update program.",
+            });
           }
-        });
-      }
-    });
-  };
+        },
+      });
+    },
+  });
+};
 
   const handleUpdateBatch = async (userId: string, currentBatch: string, name: string) => {
-    const currentYear = new Date().getFullYear();
-    const batchOptions = [
-      `Spring ${currentYear - 1}`, `Fall ${currentYear - 1}`,
-      `Spring ${currentYear}`, `Fall ${currentYear}`,
-      `Spring ${currentYear + 1}`, `Fall ${currentYear + 1}`,
-      `Spring ${currentYear + 2}`, `Fall ${currentYear + 2}`
-    ];
+  const currentYear = new Date().getFullYear();
+  const batchOptions: string[] = [];
 
-    showDialog({
-      type: 'prompt',
-      inputType: 'select',
-      inputOptions: batchOptions,
-      title: 'Update Batch',
-      message: `Select a new batch for ${name}. Note: This will trigger a team reset.`,
-      defaultValue: currentBatch || '',
-      onConfirm: async (newBatch: string) => {
-        if (!newBatch || newBatch === currentBatch) return;
+  for (let year = 2021; year <= currentYear + 1; year++) {
+    batchOptions.push(`Spring ${year}`);
+    batchOptions.push(`Fall ${year}`);
+  }
 
-        showDialog({
-          type: 'confirm', title: 'Warning: Team Reset',
-          message: `Changing ${name}'s batch to ${newBatch} will remove them from their current team and unassign their supervisor. Proceed?`,
-          onConfirm: async () => {
-            const res = await fetch('/api/admin/update-batch', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ targetUserId: userId, newBatch })
+  showDialog({
+    type: 'prompt',
+    inputType: 'select',
+    inputOptions: batchOptions,
+    title: 'Update Batch',
+    message: `Select a new batch for ${name}. This will reset this student and remove them from their current team.`,
+    defaultValue: currentBatch || '',
+    onConfirm: async (newBatch: string) => {
+      if (!newBatch || newBatch === currentBatch) return;
+
+      showDialog({
+        type: 'confirm',
+        title: 'Warning: Student Reset',
+        message: `Changing ${name}'s batch to ${newBatch} will remove them from their current team, unassign their supervisor, reset their dashboard to Proposal, and create a fresh project. If they are the only member, uploaded project files will also be deleted. Proceed?`,
+        onConfirm: async () => {
+          const res = await fetch('/api/admin/update-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetUserId: userId, newBatch }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            showDialog({
+              title: "Success",
+              message: data.message || "Batch updated and student reset.",
             });
-            if (res.ok) { showDialog({ title: "Success", message: "Batch updated and student reset!" }); fetchStudents(); } 
-            else { showDialog({ title: "Error", message: "Failed to update batch." }); }
+            fetchStudents();
+          } else {
+            showDialog({
+              title: "Error",
+              message: data.error || "Failed to update batch.",
+            });
           }
-        });
-      }
-    });
-  };
+        },
+      });
+    },
+  });
+};
 
   const handlePromoteBatch = () => {
     if (batchFilter === 'All') {

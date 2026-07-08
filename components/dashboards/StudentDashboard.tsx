@@ -647,7 +647,9 @@ const StudentDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
                   <UserMinus size={30} className="opacity-20" />
                 </div>
                 <h3 className="text-lg font-black mb-2">Supervisor Required</h3>
-                <p className="text-xs opacity-50 mb-6 max-w-xs mx-auto">Please select an available supervisor to begin your Final Year Project journey.</p>
+                <p className="text-xs opacity-50 mb-6 max-w-xs mx-auto">
+                {me?.remarks || 'Please select an available supervisor or join a team to begin your Final Year Project journey.'}
+                </p>
                 
                 <form onSubmit={handleAssignSupervisor} className="max-w-xs mx-auto space-y-3">
                   <select 
