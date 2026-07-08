@@ -56,17 +56,19 @@ export async function POST(req: Request) {
             // --- OPTIMIZATION: Absolute Capacity Firewall Check ---
             if (firstMember.supervisorId) {
               const { APP_SETTINGS } = await import('../../../../config/appSettings');
-              let currentFilledSlots = 0;
               
-              if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-                currentFilledSlots = await User.countDocuments({ 
+              // Only block the join if we are counting by individual STUDENTS.
+              // If we are counting by PROJECT, this project already exists and is already counted.
+              // Adding a member to an existing project does not consume an extra project slot.
+              if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+                const currentFilledSlots = await User.countDocuments({ 
                   role: 'student', 
                   supervisorId: firstMember.supervisorId 
                 }).session(session);
                 
                 if (currentFilledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
                   return NextResponse.json({ 
-                    error: 'Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit. You cannot join this group unless they unassign their supervisor.' 
+                    error: 'Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit.' 
                   }, { status: 409 });
                 }
               }
