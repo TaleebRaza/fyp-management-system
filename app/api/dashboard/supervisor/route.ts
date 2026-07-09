@@ -44,6 +44,7 @@ export async function GET(req: Request) {
           remarks: student.remarks,
           stage: projectMetadata[pId]?.stage || 'PROPOSAL',
           maxTeamSize: projectMetadata[pId]?.maxTeamSize || 2, // <-- Inject capacity here
+          program: student.program || 'N/A',
           batch: student.batch || 'N/A',
           semester: student.semester || '7th Semester',
           members: []
@@ -54,7 +55,8 @@ export async function GET(req: Request) {
         _id: student._id,
         name: student.name,
         rollNo: student.rollNo,
-        email: student.email
+        email: student.email,
+        program: student.program || 'N/A'
       });
     });
 

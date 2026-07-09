@@ -5,11 +5,13 @@ import { signOut } from 'next-auth/react';
 import {
   ArrowRightLeft,
   CheckCircle,
+  ChevronDown,
   ChevronRight,
   Download,
   ExternalLink,
   FileText,
   Globe,
+  GraduationCap,
   LayoutDashboard,
   Loader2,
   LogIn,
@@ -22,6 +24,7 @@ import {
 
 import BroadcastWidget from './BroadcastWidget';
 import { VoiceChat } from '../ui/VoiceChat';
+import { PROGRAM_MAP } from '../../config/appSettings';
 
 import {
   AvatarBadge,
@@ -63,6 +66,15 @@ const getStatusVariant = (status?: string): BadgeVariant => {
   if (status === 'Changes Requested') return 'warning';
   if (status === 'Pending') return 'warning';
   return 'muted';
+};
+
+const getProgramName = (program?: string) => {
+  if (!program || program === 'N/A') return 'Unspecified Program';
+  return (PROGRAM_MAP as Record<string, string>)[program] || program;
+};
+
+const getProjectProgram = (project?: any) => {
+  return String(project?.program || project?.members?.[0]?.program || 'N/A').trim() || 'N/A';
 };
 
 const getMemberNames = (project?: any) => {
@@ -170,6 +182,8 @@ const SupervisorDashboard = ({
   const [isExporting, setIsExporting] = useState(false);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [batchFilter, setBatchFilter] = useState('All');
+  const [programFilter, setProgramFilter] = useState('');
+  const [isProjectMenuExpanded, setProjectMenuExpanded] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
 
   const supervisorName = session?.user?.name || 'Supervisor';
@@ -266,18 +280,35 @@ const SupervisorDashboard = ({
     return Array.from(new Set(myProjects.map((project: any) => project.batch).filter(Boolean))).sort();
   }, [myProjects]);
 
+  const uniquePrograms = useMemo(() => {
+    const projectPrograms = new Set(myProjects.map(getProjectProgram).filter(Boolean));
+    const configuredPrograms = Object.keys(PROGRAM_MAP).filter((program) => projectPrograms.has(program));
+    const extraPrograms = Array.from(projectPrograms).filter((program) => !configuredPrograms.includes(program));
+
+    return [...configuredPrograms, ...extraPrograms].sort((a, b) => getProgramName(a).localeCompare(getProgramName(b)));
+  }, [myProjects]);
+
+  useEffect(() => {
+    if (activeTab !== 'projects' || programFilter || uniquePrograms.length === 0) return;
+
+    setProgramFilter(uniquePrograms[0]);
+  }, [activeTab, programFilter, uniquePrograms]);
+
   const filteredProjects = useMemo(() => {
     const query = projectSearch.trim().toLowerCase();
 
     return myProjects.filter((project) => {
+      const matchesProgram = !programFilter || getProjectProgram(project) === programFilter;
       const matchesBatch = batchFilter === 'All' || project.batch === batchFilter;
 
-      if (!matchesBatch) return false;
+      if (!matchesProgram || !matchesBatch) return false;
       if (!query) return true;
 
       const searchableFields = [
         getMemberNames(project),
         getMemberRollNumbers(project),
+        getProgramName(getProjectProgram(project)),
+        getProjectProgram(project),
         project.projectTitle,
         project.domain,
         project.tools,
@@ -288,24 +319,25 @@ const SupervisorDashboard = ({
 
       return searchableFields.some((field) => String(field || '').toLowerCase().includes(query));
     });
-  }, [myProjects, batchFilter, projectSearch]);
+  }, [myProjects, batchFilter, programFilter, projectSearch]);
 
   const dashboardStats = useMemo(() => {
-    const submittedProjects = filteredProjects.filter(hasProjectSubmission);
-    const approvedProjects = filteredProjects.filter((project) => project.status === 'Approved');
-    const reviewQueue = filteredProjects.filter((project) => {
+    const statProjects = activeTab === 'projects' ? filteredProjects : myProjects;
+    const submittedProjects = statProjects.filter(hasProjectSubmission);
+    const approvedProjects = statProjects.filter((project) => project.status === 'Approved');
+    const reviewQueue = statProjects.filter((project) => {
       return hasProjectSubmission(project) && project.status !== 'Approved';
     });
 
     return {
-      assigned: filteredProjects.length,
+      assigned: statProjects.length,
       submitted: submittedProjects.length,
       approved: approvedProjects.length,
       reviewQueue: reviewQueue.length,
     };
-  }, [filteredProjects]);
+  }, [activeTab, filteredProjects, myProjects]);
 
-  const recentProjects = useMemo(() => filteredProjects.slice(0, 5), [filteredProjects]);
+  const recentProjects = useMemo(() => myProjects.slice(0, 5), [myProjects]);
 
   const handleAction = async (triggerStudentId: string, newStatus: string) => {
     requestRemarks(
@@ -467,7 +499,7 @@ const SupervisorDashboard = ({
 
     try {
       const response = await fetch(
-        `/api/export-pdf?id=${encodeURIComponent(supervisorId)}&name=${encodeURIComponent(supervisorName)}&batch=${encodeURIComponent(batchFilter)}`
+        `/api/export-pdf?id=${encodeURIComponent(supervisorId)}&name=${encodeURIComponent(supervisorName)}&batch=${encodeURIComponent(batchFilter)}&program=${encodeURIComponent(programFilter || 'All')}`
       );
 
       if (!response.ok) {
@@ -527,6 +559,7 @@ const SupervisorDashboard = ({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
+          <Badge variant="muted">{getProgramName(getProjectProgram(project))}</Badge>
           {project.batch && <Badge variant="muted">{project.batch}</Badge>}
           {project.semester && <Badge variant="muted">{project.semester}</Badge>}
           {project.domain && <Badge variant="accent">{project.domain}</Badge>}
@@ -575,7 +608,7 @@ const SupervisorDashboard = ({
         <StatCard
           label="Assigned Teams"
           value={dashboardStats.assigned}
-          hint={batchFilter === 'All' ? 'All assigned teams.' : `Filtered by ${batchFilter}.`}
+          hint={activeTab === 'projects' && programFilter ? `Filtered by ${getProgramName(programFilter)}.` : 'All assigned teams.'}
           icon={<Users size={20} />}
         />
 
@@ -685,10 +718,14 @@ const SupervisorDashboard = ({
   );
 
   const renderProjects = () => (
-    <DashboardPanel>
+    <DashboardPanel className="flex h-full min-h-0 flex-col overflow-hidden">
       <SectionHeader
         title="Assigned Projects"
-        description="Review submissions, manage capacity exceptions, migrate teams, and remove assignments."
+        description={
+          programFilter
+            ? `Showing ${getProgramName(programFilter)} projects only. Choose another program from the sidebar.`
+            : 'Choose a program from the sidebar to keep this workspace focused.'
+        }
         action={
           <Button variant="outline" onClick={handleExportPDF} disabled={isExporting}>
             {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
@@ -697,7 +734,7 @@ const SupervisorDashboard = ({
         }
       />
 
-      <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_14rem]">
+      <div className="mb-5 grid shrink-0 gap-3 lg:grid-cols-[1fr_14rem]">
         <StyledInput
           icon={Search}
           value={projectSearch}
@@ -715,16 +752,28 @@ const SupervisorDashboard = ({
         </Select>
       </div>
 
-      {filteredProjects.length === 0 ? (
-        <EmptyState
-          title="No matching projects"
-          description="Try clearing the search field or selecting a different batch filter."
-          icon={<FileText size={28} />}
-        />
+      {!programFilter ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <EmptyState
+            title="Select a program"
+            description="Open Assigned Projects in the sidebar and choose BSCS, BSAI, BSSE, or another program to view only that group."
+            icon={<GraduationCap size={28} />}
+          />
+        </div>
+      ) : filteredProjects.length === 0 ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <EmptyState
+            title="No matching projects"
+            description="Try clearing the search field or selecting a different batch filter."
+            icon={<FileText size={28} />}
+          />
+        </div>
       ) : (
-        <DashboardGrid columns="three">
-          {filteredProjects.map(renderProjectCard)}
-        </DashboardGrid>
+        <div className="portal-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+          <DashboardGrid columns="three" className="pb-1">
+            {filteredProjects.map(renderProjectCard)}
+          </DashboardGrid>
+        </div>
       )}
     </DashboardPanel>
   );
@@ -740,6 +789,20 @@ const SupervisorDashboard = ({
     );
   }
 
+  const programProjectCounts = uniquePrograms.reduce<Record<string, number>>((counts, program) => {
+    counts[program] = myProjects.filter((project) => getProjectProgram(project) === program).length;
+    return counts;
+  }, {});
+
+  const openProjectsFromSidebar = () => {
+    setActiveTab('projects');
+    setProjectMenuExpanded((previous) => (activeTab === 'projects' ? !previous : true));
+
+    if (!programFilter && uniquePrograms.length > 0) {
+      setProgramFilter(uniquePrograms[0]);
+    }
+  };
+
   const navItems = [
     {
       id: 'overview',
@@ -751,11 +814,25 @@ const SupervisorDashboard = ({
     {
       id: 'projects',
       label: 'Assigned Projects',
-      icon: <FileText size={18} />,
+      icon: isProjectMenuExpanded ? <ChevronDown size={18} /> : <FileText size={18} />,
       active: activeTab === 'projects',
-      badge: filteredProjects.length,
-      onClick: () => setActiveTab('projects'),
+      badge: myProjects.length,
+      onClick: openProjectsFromSidebar,
     },
+    ...(isProjectMenuExpanded
+      ? uniquePrograms.map((program) => ({
+          id: `program-${program}`,
+          label: getProgramName(program),
+          icon: <span className="ml-5 h-1.5 w-1.5 rounded-full bg-current" />,
+          active: activeTab === 'projects' && programFilter === program,
+          badge: programProjectCounts[program],
+          onClick: () => {
+            setActiveTab('projects');
+            setProgramFilter(program);
+            setProjectMenuExpanded(true);
+          },
+        }))
+      : []),
   ];
 
   const selectedPdfKey = getSafePdfKey(selectedProject?.pdfUrl);
@@ -766,6 +843,9 @@ const SupervisorDashboard = ({
         title="Supervisor Dashboard"
         description={`Manage FYP teams, reviews, broadcasts, and project decisions for ${supervisorName}.`}
         navItems={navItems}
+        className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${
+          activeTab === 'projects' ? '[&>div>div>main]:lg:overflow-hidden' : ''
+        }`}
         user={{
           name: supervisorName,
           role: `Supervisor · Code ${myMigrationCode}`,
@@ -787,14 +867,18 @@ const SupervisorDashboard = ({
         }
       >
         {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'projects' && renderProjects()}
+        {activeTab === 'projects' && (
+          <div className="min-h-0 lg:h-full">
+            {renderProjects()}
+          </div>
+        )}
       </DashboardShell>
 
       <Dialog
         open={!!selectedProject}
         onClose={() => setSelectedProject(null)}
         title={getMemberNames(selectedProject)}
-        description={selectedProject ? `${getMemberRollNumbers(selectedProject)} · ${selectedProject.batch || 'No batch'} · ${selectedProject.semester || 'No semester'}` : ''}
+        description={selectedProject ? `${getMemberRollNumbers(selectedProject)} · ${getProgramName(getProjectProgram(selectedProject))} · ${selectedProject.batch || 'No batch'} · ${selectedProject.semester || 'No semester'}` : ''}
         size="xl"
         footer={
           selectedProject ? (

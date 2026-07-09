@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     const supervisorId = url.searchParams.get('id');
     const supervisorName = url.searchParams.get('name') || 'Supervisor';
     const batchFilter = url.searchParams.get('batch') || 'All';
+    const programFilter = url.searchParams.get('program') || 'All';
 
     if (!supervisorId) {
       return new Response(JSON.stringify({ error: 'Supervisor ID is required' }), { status: 400 });
@@ -25,9 +26,13 @@ export async function GET(req: NextRequest) {
       ]
     };
 
-    // If the user didn't select "All", restrict the query to the specific batch
+    // If the user didn't select "All", restrict the query to the selected dashboard filters.
     if (batchFilter !== 'All') {
       query.batch = batchFilter;
+    }
+
+    if (programFilter !== 'All') {
+      query.program = programFilter;
     }
 
     const students = await User.find(query).lean();
@@ -35,7 +40,8 @@ export async function GET(req: NextRequest) {
     // 2. Create a new Excel Workbook and Worksheet
     const workbook = new ExcelJS.Workbook();
     // Name the sheet dynamically based on the batch
-    const sheetName = batchFilter === 'All' ? 'All Assigned Students' : `${batchFilter} Students`;
+    const selectedFilters = [programFilter, batchFilter].filter((value) => value !== 'All');
+    const sheetName = selectedFilters.length === 0 ? 'All Assigned Students' : `${selectedFilters.join(' ')} Students`;
     const worksheet = workbook.addWorksheet(sheetName.substring(0, 31)); // Excel limits sheet names to 31 chars
 
     // 3. Define the exact columns, now including Batch and Semester
@@ -75,7 +81,8 @@ export async function GET(req: NextRequest) {
     // 6. Return the file with proper Excel headers
     const safeFilenameName = supervisorName.replace(/\s+/g, '-');
     const safeBatchName = batchFilter.replace(/\s+/g, '-');
-    const finalFilename = `fyp-report-${safeFilenameName}-${safeBatchName}.xlsx`;
+    const safeProgramName = programFilter.replace(/\s+/g, '-');
+    const finalFilename = `fyp-report-${safeFilenameName}-${safeProgramName}-${safeBatchName}.xlsx`;
 
     return new Response(buffer as BlobPart, {
       status: 200,
