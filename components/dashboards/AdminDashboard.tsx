@@ -1,92 +1,68 @@
 'use client';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+
+import React, { useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { Users, XCircle, Trash2, CheckCircle, User, LayoutDashboard, LogIn, PlusCircle, Code, Mail, MailX, Loader2, Megaphone, Filter, Flame } from 'lucide-react';
-import { GlassCard, StyledInput } from '../ui/SharedUI';
+import {
+  AlertCircle,
+  CheckCircle,
+  Filter,
+  GraduationCap,
+  LayoutDashboard,
+  Loader2,
+  LogIn,
+  Mail,
+  MailX,
+  Megaphone,
+  Network,
+  PlusCircle,
+  Search,
+  ShieldCheck,
+  Trash2,
+  User,
+  UserCheck,
+  Users,
+} from 'lucide-react';
+
+import {
+  AvatarBadge,
+  Badge,
+  Button,
+  DashboardGrid,
+  DashboardPanel,
+  DashboardShell,
+  Dialog,
+  SectionHeader,
+  StatCard,
+  StyledInput,
+} from '../ui/SharedUI';
+
 import { PROGRAM_MAP } from '../../config/appSettings';
 
-// --- COMPLEX ConnectionLines (with curved paths and arrow markers) ---
-const ConnectionLines = ({ students, isDarkMode, theme }: any) => {
-  const [lines, setLines] = useState<any[]>([]);
-  const containerRef = useRef<SVGSVGElement>(null);
+type AdminTab = 'overview' | 'supervisors' | 'students';
 
-  useEffect(() => {
-    const updateLines = () => {
-      if (!containerRef.current) return;
-      const svgRect = containerRef.current.getBoundingClientRect();
-      const newLines: any[] = [];
-
-      students.forEach((student: any) => {
-        if (!student.supervisorId) return;
-
-        const stuEl = document.getElementById(`stu-${student._id}`);
-        const supEl = document.getElementById(`sup-${student.supervisorId}`);
-
-        if (stuEl && supEl) {
-          const stuRect = stuEl.getBoundingClientRect();
-          const supRect = supEl.getBoundingClientRect();
-
-          const startX = supRect.right - svgRect.left;
-          const startY = supRect.top - svgRect.top + supRect.height / 2;
-
-          const endX = stuRect.left - svgRect.left;
-          const endY = stuRect.top - svgRect.top + stuRect.height / 2;
-
-          const cp1X = startX + 60;
-          const cp1Y = startY;
-          const cp2X = endX - 60;
-          const cp2Y = endY;
-
-          newLines.push({
-            id: student._id,
-            d: `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`,
-            isActive: student.isActive
-          });
-        }
-      });
-      setLines(newLines);
-    };
-
-    const timer = setTimeout(updateLines, 50);
-    window.addEventListener('resize', updateLines);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateLines);
-    };
-  }, [students]);
-
-  return (
-    <svg ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible">
-      <defs>
-        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-          <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" opacity="0.6" />
-        </marker>
-      </defs>
-      {lines.map(line => (
-        <path
-          key={line.id}
-          d={line.d}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeDasharray="6 6"
-          className={`transition-all duration-700 ${line.isActive === false ? 'opacity-10 text-red-500' : `opacity-40 ${theme.text}`}`}
-          markerEnd="url(#arrowhead)"
-        />
-      ))}
-    </svg>
-  );
+const getStatusVariant = (status?: string) => {
+  if (status === 'Approved') return 'success';
+  if (status === 'Rejected') return 'danger';
+  if (status === 'Unassigned') return 'muted';
+  return 'warning';
 };
 
-const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
-  const [activeTab, setActiveTab] = useState<'supervisors' | 'students'>('supervisors');
+const getProgramName = (program?: string) => {
+  if (!program) return 'No program';
+  return PROGRAM_MAP[program as keyof typeof PROGRAM_MAP] || program;
+};
+
+const AdminDashboard = ({ session, showDialog }: any) => {
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+
   const [newSupName, setNewSupName] = useState('');
   const [newSupEmail, setNewSupEmail] = useState('');
   const [newSupRollNo, setNewSupRollNo] = useState('');
   const [newSupPassword, setNewSupPassword] = useState('');
+
   const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
   const [supervisorSearch, setSupervisorSearch] = useState('');
+
   const [adminStudents, setAdminStudents] = useState<any[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [debouncedStudentSearch, setDebouncedStudentSearch] = useState('');
@@ -104,33 +80,33 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
   const [currentHeadline, setCurrentHeadline] = useState('');
   const [studentFilter, setStudentFilter] = useState('All');
   const [batchFilter, setBatchFilter] = useState('All');
-  const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
-
-  const uniqueBatches = studentBatches;
-
-  const normalizedSupervisorSearch = supervisorSearch.trim().toLowerCase();
-
-  const filteredSupervisors = normalizedSupervisorSearch
-    ? adminSupervisors.filter((sup) => {
-        const searchableFields = [
-          sup.name,
-          sup.rollNo,
-          sup.email,
-          sup.migrationCode,
-        ];
-
-        return searchableFields.some((field) =>
-          String(field || '').toLowerCase().includes(normalizedSupervisorSearch)
-        );
-      })
-    : adminSupervisors;
 
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
-  const [graphData, setGraphData] = useState({ supervisors: [], students: [] });
+  const [graphData, setGraphData] = useState<any>({ supervisors: [], students: [] });
   const [isGraphLoading, setIsGraphLoading] = useState(false);
 
+  const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
+
   const filteredStudents = adminStudents;
-    const graphStudentGroups = useMemo(() => {
+
+  const filteredSupervisors = useMemo(() => {
+    const query = supervisorSearch.trim().toLowerCase();
+
+    if (!query) return adminSupervisors;
+
+    return adminSupervisors.filter((supervisor) => {
+      const fields = [
+        supervisor.name,
+        supervisor.rollNo,
+        supervisor.email,
+        supervisor.migrationCode,
+      ];
+
+      return fields.some((field) => String(field || '').toLowerCase().includes(query));
+    });
+  }, [adminSupervisors, supervisorSearch]);
+
+  const graphStudentGroups = useMemo(() => {
     const bySupervisor = new Map<string, any[]>();
     const unassigned: any[] = [];
     const students = Array.isArray(graphData.students) ? graphData.students : [];
@@ -142,80 +118,57 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       }
 
       const supervisorId = String(student.supervisorId);
-      const existingStudents = bySupervisor.get(supervisorId) || [];
+      const currentStudents = bySupervisor.get(supervisorId) || [];
 
-      existingStudents.push(student);
-      bySupervisor.set(supervisorId, existingStudents);
+      currentStudents.push(student);
+      bySupervisor.set(supervisorId, currentStudents);
     });
 
     return {
       bySupervisor,
       unassigned,
       totalStudents: students.length,
-      isLargeGraph: students.length > 500,
     };
   }, [graphData.students]);
 
+  const stats = useMemo(() => {
+    const loadedStudents = Array.isArray(adminStudents) ? adminStudents : [];
+    const activeStudents = loadedStudents.filter((student) => student.isActive !== false).length;
+    const pendingStudents = loadedStudents.filter(
+      (student) => student.status && student.status !== 'Approved'
+    ).length;
+
+    return {
+      totalStudents: studentPagination.total || loadedStudents.length,
+      loadedStudents: loadedStudents.length,
+      activeStudents,
+      pendingStudents,
+      supervisors: adminSupervisors.length,
+    };
+  }, [adminStudents, adminSupervisors.length, studentPagination.total]);
+
   const fetchHeadline = async () => {
     try {
-      const res = await fetch('/api/headline');
-      const data = await res.json();
-      if (data.headline) setCurrentHeadline(data.headline.text);
-    } catch (err) { console.error(err); }
-  };
+      const response = await fetch('/api/headline');
+      const data = await response.json();
 
-  const handleBroadcastHeadline = async (e: any) => {
-    e.preventDefault();
-    const res = await fetch('/api/headline', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: headlineInput })
-    });
-    if (res.ok) {
-      showDialog({ title: "Success", message: "Headline broadcasted to all students!" });
-      setHeadlineInput('');
-      fetchHeadline();
-    } else {
-      showDialog({ title: "Error", message: "Failed to update headline." });
+      setCurrentHeadline(data.headline?.text || '');
+    } catch (error) {
+      console.error('Headline fetch error:', error);
     }
   };
 
-  const clearHeadline = async () => {
-    const res = await fetch('/api/admin/headline', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: '' })
-    });
-    if (res.ok) {
-      showDialog({ title: "Cleared", message: "Headline removed." });
-      fetchHeadline();
-    } else {
-      showDialog({ title: "Error", message: "Failed to clear headline." });
-    }
-  };
-
-  const openGraphModal = async () => {
-    setIsGraphModalOpen(true);
-    setIsGraphLoading(true);
+  const fetchSupervisors = async () => {
     try {
-      const res = await fetch('/api/admin/graph-data');
-      const data = await res.json();
-      setGraphData(data);
-    } catch (err) { console.error("Failed to load graph data", err); }
-    finally { setIsGraphLoading(false); }
+      const response = await fetch('/api/supervisors');
+      const data = await response.json();
+
+      setAdminSupervisors(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Supervisor fetch error:', error);
+    }
   };
 
-  const handleToggleStudentStatus = async (studentId: string, currentStatus: boolean) => {
-    const res = await fetch('/api/admin/toggle-student', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId, isActive: !currentStatus })
-    });
-    if (res.ok) { openGraphModal(); fetchStudents(); }
-    else { showDialog({ title: "Error", message: "Failed to update student status." }); }
-  };
-
-  const fetchSupervisors = () => fetch('/api/supervisors').then(res => res.json()).then(data => setAdminSupervisors(Array.isArray(data) ? data : [])).catch(console.error);
-  
   const fetchStudents = async (pageToFetch = studentPage) => {
     try {
       setIsStudentsLoading(true);
@@ -239,10 +192,10 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
         params.set('search', debouncedStudentSearch);
       }
 
-      const res = await fetch(`/api/admin/students?${params.toString()}`);
-      const data = await res.json();
+      const response = await fetch(`/api/admin/students?${params.toString()}`);
+      const data = await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch students');
       }
 
@@ -255,10 +208,431 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
       if (Array.isArray(data.filterMeta?.batches)) {
         setStudentBatches(data.filterMeta.batches);
       }
-    } catch (err) {
-      console.error('Student fetch error:', err);
+    } catch (error) {
+      console.error('Student fetch error:', error);
+      showDialog({
+        title: 'Students could not load',
+        message: 'The student list could not be loaded. Please refresh or try again later.',
+      });
     } finally {
       setIsStudentsLoading(false);
+    }
+  };
+
+  const fetchGraphData = async () => {
+    setIsGraphLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/graph-data');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load assignment map');
+      }
+
+      setGraphData({
+        supervisors: Array.isArray(data.supervisors) ? data.supervisors : [],
+        students: Array.isArray(data.students) ? data.students : [],
+      });
+    } catch (error) {
+      console.error('Assignment map error:', error);
+      showDialog({
+        title: 'Assignment map unavailable',
+        message: 'Unable to load the supervisor-student assignment map right now.',
+      });
+    } finally {
+      setIsGraphLoading(false);
+    }
+  };
+
+  const openGraphModal = async () => {
+    setIsGraphModalOpen(true);
+    await fetchGraphData();
+  };
+
+  useEffect(() => {
+    fetchSupervisors();
+    fetchHeadline();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setStudentPage(1);
+      setDebouncedStudentSearch(studentSearch.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [studentSearch]);
+
+  useEffect(() => {
+    fetchStudents(studentPage);
+  }, [studentPage, studentFilter, batchFilter, debouncedStudentSearch]);
+
+  const handleBroadcastHeadline = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const text = headlineInput.trim();
+
+    if (!text) {
+      showDialog({
+        title: 'Announcement required',
+        message: 'Write an announcement before broadcasting it to students.',
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/headline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showDialog({
+          title: 'Announcement published',
+          message: data.message || 'The headline announcement has been published.',
+        });
+        setHeadlineInput('');
+        fetchHeadline();
+      } else {
+        showDialog({
+          title: 'Announcement failed',
+          message: data.error || 'Failed to update the headline announcement.',
+        });
+      }
+    } catch (error) {
+      showDialog({
+        title: 'Connection error',
+        message: 'Unable to publish the announcement right now.',
+      });
+    }
+  };
+
+  const clearHeadline = async () => {
+    try {
+      const response = await fetch('/api/headline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '' }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showDialog({
+          title: 'Announcement cleared',
+          message: data.message || 'The headline announcement has been removed.',
+        });
+        fetchHeadline();
+      } else {
+        showDialog({
+          title: 'Clear failed',
+          message: data.error || 'Failed to clear the headline announcement.',
+        });
+      }
+    } catch (error) {
+      showDialog({
+        title: 'Connection error',
+        message: 'Unable to clear the announcement right now.',
+      });
+    }
+  };
+
+  const handleAddSupervisor = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const name = newSupName.trim();
+    const email = newSupEmail.trim();
+    const rollNo = newSupRollNo.trim();
+
+    if (!name || !email || !rollNo || !newSupPassword) {
+      showDialog({
+        title: 'Missing supervisor details',
+        message: 'Enter name, email, username ID, and password before creating the account.',
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/add-supervisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email,
+          rollNo,
+          password: newSupPassword,
+          migrationCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        showDialog({
+          title: 'Supervisor created',
+          message: data.message || `Supervisor ${name} has been added successfully.`,
+        });
+        setNewSupName('');
+        setNewSupEmail('');
+        setNewSupRollNo('');
+        setNewSupPassword('');
+        fetchSupervisors();
+      } else {
+        showDialog({
+          title: 'Supervisor creation failed',
+          message: data.error || 'Failed to add the supervisor.',
+        });
+      }
+    } catch (error) {
+      showDialog({
+        title: 'Connection error',
+        message: 'Unable to create supervisor right now.',
+      });
+    }
+  };
+
+  const handleDeleteSupervisor = (id: string, name: string) => {
+    showDialog({
+      type: 'confirm',
+      title: 'Delete supervisor?',
+      message: `This will permanently delete ${name}. Their assigned students will be marked as unassigned.`,
+      onConfirm: async () => {
+        try {
+          const response = await fetch('/api/delete-supervisor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+          });
+
+          if (response.ok) {
+            fetchSupervisors();
+            fetchStudents();
+          } else {
+            showDialog({
+              title: 'Delete failed',
+              message: 'Failed to delete the supervisor.',
+            });
+          }
+        } catch (error) {
+          showDialog({
+            title: 'Connection error',
+            message: 'Unable to delete supervisor right now.',
+          });
+        }
+      },
+    });
+  };
+
+  const handleToggleNotifications = async (id: string, currentStatus: boolean) => {
+    try {
+      const response = await fetch('/api/supervisors/toggle-notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, enabled: !currentStatus }),
+      });
+
+      if (response.ok) {
+        fetchSupervisors();
+      } else {
+        showDialog({
+          title: 'Update failed',
+          message: 'Failed to update supervisor notification settings.',
+        });
+      }
+    } catch (error) {
+      showDialog({
+        title: 'Connection error',
+        message: 'Unable to update notification settings right now.',
+      });
+    }
+  };
+
+  const handleUpdateEmail = async (userId: string, currentEmail: string, name: string) => {
+    showDialog({
+      type: 'prompt',
+      inputType: 'email',
+      title: 'Update email',
+      message: `Enter a new email address for ${name}.`,
+      defaultValue: currentEmail || '',
+      onConfirm: async (newEmail: string) => {
+        if (!newEmail || newEmail === currentEmail) return;
+
+        const response = await fetch('/api/admin/update-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetUserId: userId, newEmail }),
+        });
+
+        if (response.ok) {
+          showDialog({ title: 'Email updated', message: 'The email address has been updated.' });
+          fetchSupervisors();
+          fetchStudents();
+        } else {
+          showDialog({ title: 'Update failed', message: 'Failed to update email.' });
+        }
+      },
+    });
+  };
+
+  const handleUpdateProgram = async (userId: string, currentProgram: string, name: string) => {
+    showDialog({
+      type: 'prompt',
+      inputType: 'select',
+      inputOptions: Object.keys(PROGRAM_MAP),
+      title: 'Update program',
+      message: `Select a new program for ${name}. This will reset this student and remove them from their current team.`,
+      defaultValue: currentProgram || 'BSCS',
+      onConfirm: async (newProgram: string) => {
+        if (!newProgram || newProgram === currentProgram) return;
+
+        showDialog({
+          type: 'confirm',
+          title: 'Confirm student reset',
+          message: `Changing ${name}'s program to ${newProgram} will remove them from their current team, unassign their supervisor, reset their dashboard to Proposal, and create a fresh project. Proceed?`,
+          onConfirm: async () => {
+            const response = await fetch('/api/admin/update-program', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUserId: userId, newProgram }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              showDialog({
+                title: 'Program updated',
+                message: data.message || 'Program updated and student reset.',
+              });
+              fetchStudents();
+            } else {
+              showDialog({
+                title: 'Update failed',
+                message: data.error || 'Failed to update program.',
+              });
+            }
+          },
+        });
+      },
+    });
+  };
+
+  const handleUpdateBatch = async (userId: string, currentBatch: string, name: string) => {
+    const currentYear = new Date().getFullYear();
+    const batchOptions: string[] = [];
+
+    for (let year = 2021; year <= currentYear + 1; year++) {
+      batchOptions.push(`Spring ${year}`);
+      batchOptions.push(`Fall ${year}`);
+    }
+
+    showDialog({
+      type: 'prompt',
+      inputType: 'select',
+      inputOptions: batchOptions,
+      title: 'Update batch',
+      message: `Select a new batch for ${name}. This will reset this student and remove them from their current team.`,
+      defaultValue: currentBatch || '',
+      onConfirm: async (newBatch: string) => {
+        if (!newBatch || newBatch === currentBatch) return;
+
+        showDialog({
+          type: 'confirm',
+          title: 'Confirm student reset',
+          message: `Changing ${name}'s batch to ${newBatch} will remove them from their current team, unassign their supervisor, reset their dashboard to Proposal, and create a fresh project. Proceed?`,
+          onConfirm: async () => {
+            const response = await fetch('/api/admin/update-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUserId: userId, newBatch }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              showDialog({
+                title: 'Batch updated',
+                message: data.message || 'Batch updated and student reset.',
+              });
+              fetchStudents();
+            } else {
+              showDialog({
+                title: 'Update failed',
+                message: data.error || 'Failed to update batch.',
+              });
+            }
+          },
+        });
+      },
+    });
+  };
+
+  const handlePromoteBatch = () => {
+    if (batchFilter === 'All') {
+      showDialog({
+        title: 'Select a batch',
+        message: 'Choose a specific batch before promoting students to 8th Semester.',
+      });
+      return;
+    }
+
+    showDialog({
+      type: 'confirm',
+      title: `Promote ${batchFilter}?`,
+      message: `This will promote all students in ${batchFilter} to 8th Semester.`,
+      onConfirm: async () => {
+        const response = await fetch('/api/admin/promote-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetBatch: batchFilter }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          showDialog({
+            title: 'Batch promoted',
+            message: data.message || 'Batch promoted successfully.',
+          });
+          fetchStudents();
+        } else {
+          showDialog({
+            title: 'Promotion failed',
+            message: data.error || 'Failed to promote batch.',
+          });
+        }
+      },
+    });
+  };
+
+  const handleToggleStudentStatus = async (studentId: string, currentStatus: boolean) => {
+    try {
+      const response = await fetch('/api/admin/toggle-student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, isActive: !currentStatus }),
+      });
+
+      if (response.ok) {
+        fetchStudents();
+
+        if (isGraphModalOpen) {
+          fetchGraphData();
+        }
+      } else {
+        showDialog({
+          title: 'Status update failed',
+          message: 'Failed to update student account status.',
+        });
+      }
+    } catch (error) {
+      showDialog({
+        title: 'Connection error',
+        message: 'Unable to update student status right now.',
+      });
     }
   };
 
@@ -277,595 +651,654 @@ const AdminDashboard = ({ isDarkMode, theme, session, showDialog }: any) => {
     setStudentPage(nextPage);
   };
 
-    useEffect(() => {
-    fetchSupervisors();
-    fetchHeadline();
-  }, []);
+  const renderOverview = () => (
+    <div className="space-y-6">
+      <DashboardGrid columns="four">
+        <StatCard
+          label="Total Students"
+          value={stats.totalStudents}
+          hint={`${stats.loadedStudents} visible in current view`}
+          icon={<Users size={18} />}
+        />
+        <StatCard
+          label="Supervisors"
+          value={stats.supervisors}
+          hint="Active supervisor accounts"
+          icon={<UserCheck size={18} />}
+        />
+        <StatCard
+          label="Active Students"
+          value={stats.activeStudents}
+          hint="Based on loaded student records"
+          icon={<ShieldCheck size={18} />}
+        />
+        <StatCard
+          label="Pending Items"
+          value={stats.pendingStudents}
+          hint="Students not marked approved"
+          icon={<AlertCircle size={18} />}
+        />
+      </DashboardGrid>
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setStudentPage(1);
-      setDebouncedStudentSearch(studentSearch.trim());
-    }, 300);
+      <section>
+        <SectionHeader
+          title="Management"
+          description="Core administration areas for accounts, students, and project assignments."
+        />
 
-    return () => window.clearTimeout(timer);
-  }, [studentSearch]);
-
-  useEffect(() => {
-    fetchStudents(studentPage);
-  }, [studentPage, studentFilter, batchFilter, debouncedStudentSearch]);
-
-  const handleUpdateEmail = async (userId: string, currentEmail: string, name: string) => {
-    showDialog({
-      type: 'prompt',
-      inputType: 'email',
-      title: 'Update Email',
-      message: `Enter a new email address for ${name}:`,
-      defaultValue: currentEmail || '',
-      onConfirm: async (newEmail: string) => {
-        if (!newEmail || newEmail === currentEmail) return;
-        const res = await fetch('/api/admin/update-email', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetUserId: userId, newEmail })
-        });
-        if (res.ok) { showDialog({ title: "Success", message: "Email updated!" }); fetchSupervisors(); fetchStudents(); }
-        else { showDialog({ title: "Error", message: "Failed to update email." }); }
-      }
-    });
-  };
-
-  const handleUpdateProgram = async (userId: string, currentProgram: string, name: string) => {
-  showDialog({
-    type: 'prompt',
-    inputType: 'select',
-    inputOptions: Object.keys(PROGRAM_MAP),
-    title: 'Update Program',
-    message: `Select a new program for ${name}. This will reset this student and remove them from their current team.`,
-    defaultValue: currentProgram || 'BSCS',
-    onConfirm: async (newProgram: string) => {
-      if (!newProgram || newProgram === currentProgram) return;
-
-      showDialog({
-        type: 'confirm',
-        title: 'Warning: Student Reset',
-        message: `Changing ${name}'s program to ${newProgram} will remove them from their current team, unassign their supervisor, reset their dashboard to Proposal, and create a fresh project. If they are the only member, uploaded project files will also be deleted. Proceed?`,
-        onConfirm: async () => {
-          const res = await fetch('/api/admin/update-program', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targetUserId: userId, newProgram }),
-          });
-
-          const data = await res.json();
-
-          if (res.ok) {
-            showDialog({
-              title: "Success",
-              message: data.message || "Program updated and student reset.",
-            });
-            fetchStudents();
-          } else {
-            showDialog({
-              title: "Error",
-              message: data.error || "Failed to update program.",
-            });
-          }
-        },
-      });
-    },
-  });
-};
-
-  const handleUpdateBatch = async (userId: string, currentBatch: string, name: string) => {
-  const currentYear = new Date().getFullYear();
-  const batchOptions: string[] = [];
-
-  for (let year = 2021; year <= currentYear + 1; year++) {
-    batchOptions.push(`Spring ${year}`);
-    batchOptions.push(`Fall ${year}`);
-  }
-
-  showDialog({
-    type: 'prompt',
-    inputType: 'select',
-    inputOptions: batchOptions,
-    title: 'Update Batch',
-    message: `Select a new batch for ${name}. This will reset this student and remove them from their current team.`,
-    defaultValue: currentBatch || '',
-    onConfirm: async (newBatch: string) => {
-      if (!newBatch || newBatch === currentBatch) return;
-
-      showDialog({
-        type: 'confirm',
-        title: 'Warning: Student Reset',
-        message: `Changing ${name}'s batch to ${newBatch} will remove them from their current team, unassign their supervisor, reset their dashboard to Proposal, and create a fresh project. If they are the only member, uploaded project files will also be deleted. Proceed?`,
-        onConfirm: async () => {
-          const res = await fetch('/api/admin/update-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targetUserId: userId, newBatch }),
-          });
-
-          const data = await res.json();
-
-          if (res.ok) {
-            showDialog({
-              title: "Success",
-              message: data.message || "Batch updated and student reset.",
-            });
-            fetchStudents();
-          } else {
-            showDialog({
-              title: "Error",
-              message: data.error || "Failed to update batch.",
-            });
-          }
-        },
-      });
-    },
-  });
-};
-
-  const handlePromoteBatch = () => {
-    if (batchFilter === 'All') {
-       showDialog({ title: 'Action Required', message: 'Please select a specific batch from the filters above to promote.' });
-       return;
-    }
-    showDialog({
-      type: 'confirm', title: `Promote ${batchFilter}?`,
-      message: `Are you sure you want to promote ALL students in ${batchFilter} to the 8th Semester?`,
-      onConfirm: async () => {
-        const res = await fetch('/api/admin/promote-batch', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetBatch: batchFilter })
-        });
-        const data = await res.json();
-        if (res.ok) { showDialog({ title: "Success", message: data.message }); fetchStudents(); }
-        else showDialog({ title: "Error", message: data.error });
-      }
-    });
-  };
-
-  const handleAddSupervisor = async (e: any) => {
-    e.preventDefault();
-    const res = await fetch('/api/add-supervisor', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newSupName, email: newSupEmail, rollNo: newSupRollNo,
-        password: newSupPassword,
-        migrationCode: Math.random().toString(36).substring(2, 8).toUpperCase()
-      })
-    });
-    if (res.ok) {
-      showDialog({ title: "Success", message: `Supervisor ${newSupName} added!` });
-      setNewSupName(''); setNewSupEmail(''); setNewSupRollNo(''); setNewSupPassword('');
-      fetchSupervisors();
-    } else showDialog({ title: "Error", message: "Failed to add supervisor" });
-  };
-
-  const handleDeleteSupervisor = (id: string, name: string) => {
-    showDialog({
-      type: 'confirm', title: 'Delete Supervisor?',
-      message: `Are you sure you want to permanently delete ${name}? All their assigned students will be marked as "Unassigned".`,
-      onConfirm: async () => {
-        const res = await fetch('/api/delete-supervisor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-        if (res.ok) { fetchSupervisors(); fetchStudents(); }
-        else showDialog({ title: "Error", message: "Failed to delete." });
-      }
-    });
-  };
-
-  const handleToggleNotifications = async (id: string, currentStatus: boolean) => {
-    const res = await fetch('/api/supervisors/toggle-notifications', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, enabled: !currentStatus })
-    });
-    if (res.ok) { fetchSupervisors(); }
-    else { showDialog({ title: "Error", message: "Failed to toggle notifications." }); }
-  };
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col md:flex-row gap-4 md:gap-6 min-h-[80vh] relative">
-      {/* ---------- GRAPH MODAL ---------- */}
-      <AnimatePresence>
-        {isGraphModalOpen && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 md:p-8">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-md" onClick={() => setIsGraphModalOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className={`relative w-full h-full max-w-7xl flex flex-col rounded-[1.25rem] md:rounded-[2rem] border shadow-2xl md:backdrop-blur-3xl overflow-hidden ${isDarkMode ? 'bg-[#18181b] md:bg-[#18181b]/95 border-white/10 text-white' : 'bg-white md:bg-white/95 border-neutral-200/50 text-black'}`}
-            >
-              {/* Modal header — smaller on mobile */}
-              <div className="p-3 md:p-6 border-b flex justify-between items-center z-10 relative">
-                <h2 className="text-base md:text-2xl font-black tracking-tight flex items-center gap-2 md:gap-3">
-                  <Users className={theme.text} size={20} /> Total Students Mapping
-                </h2>
-                <button onClick={() => setIsGraphModalOpen(false)} className="p-1.5 md:p-2 rounded-full hover:bg-neutral-500/20 transition-colors">
-                  <XCircle size={22} className="opacity-60" />
-                </button>
+        <DashboardGrid columns="three">
+          <DashboardPanel>
+            <div className="flex h-full flex-col">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
+                <Users size={20} />
               </div>
+              <h3 className="text-base font-bold text-[var(--color-text)]">Supervisor Management</h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
+                Create supervisor accounts, manage email, notification status, and access.
+              </p>
+              <Button className="mt-5 w-full" onClick={() => setActiveTab('supervisors')}>
+                Open Supervisors
+              </Button>
+            </div>
+          </DashboardPanel>
 
-              <div className="flex-1 p-3 md:p-8 relative overflow-y-auto flex flex-col items-center justify-center">
-                {isGraphLoading && graphData.students.length === 0 ? (
-                  <Loader2 size={48} className={`animate-spin ${theme.text}`} />
-                ) : (
-                  <div className="flex-1 w-full overflow-y-auto custom-scrollbar">
-                    <div className="relative w-full min-h-full px-2 md:px-20 max-w-5xl mx-auto flex flex-col gap-6 md:gap-12 py-6 md:py-12">
-                      <ConnectionLines students={graphData.students} isDarkMode={isDarkMode} theme={theme} />
+          <DashboardPanel>
+            <div className="flex h-full flex-col">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
+                <GraduationCap size={20} />
+              </div>
+              <h3 className="text-base font-bold text-[var(--color-text)]">Student Management</h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
+                Search students, update batch/program/email, and manage account status.
+              </p>
+              <Button className="mt-5 w-full" onClick={() => setActiveTab('students')}>
+                Open Students
+              </Button>
+            </div>
+          </DashboardPanel>
 
-                        {graphStudentGroups.isLargeGraph && (
-                          <div className={`z-20 w-full rounded-xl md:rounded-2xl border px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold text-center ${isDarkMode ? 'border-amber-500/20 bg-amber-500/10 text-amber-400' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                            Large graph detected. Rendering {graphStudentGroups.totalStudents} students may take a few seconds.
-                          </div>
-                                )}
+          <DashboardPanel>
+            <div className="flex h-full flex-col">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
+                <Network size={20} />
+              </div>
+              <h3 className="text-base font-bold text-[var(--color-text)]">Assignment Map</h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
+                Review supervisor-student assignments in a clean structured view.
+              </p>
+              <Button className="mt-5 w-full" onClick={openGraphModal}>
+                View Assignments
+              </Button>
+            </div>
+          </DashboardPanel>
+        </DashboardGrid>
+      </section>
 
-                      {graphData.supervisors.map((sup: any) => {
-                        const myStudents = graphStudentGroups.bySupervisor.get(String(sup._id)) || [];
-                        return (
-                          <div key={sup._id} className="flex justify-between items-center w-full z-10">
-                            <div className="w-36 md:w-64 shrink-0">
-                              <div id={`sup-${sup._id}`} className={`p-3 md:p-5 rounded-xl md:rounded-2xl border shadow-sm flex flex-col items-center justify-center text-center font-bold text-xs md:text-base transition-all ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200'}`}>
-                                {sup.name}
-                                {sup.monthlyLoginCount > 0 && <span className={`mt-1 text-[9px] md:text-[10px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {sup.monthlyLoginCount}</span>}
-                              </div>
-                            </div>
-                            <div className="flex flex-col gap-2 md:gap-4 w-40 md:w-80 shrink-0">
-                              {myStudents.length === 0 ? (
-                                <div className="p-2 md:p-4 rounded-xl md:rounded-2xl border border-dashed opacity-40 text-center text-xs font-medium">No students assigned</div>
-                              ) : (
-                                myStudents.map((student: any) => (
-                                  <div key={student._id} id={`stu-${student._id}`} className={`p-2.5 md:p-4 rounded-xl md:rounded-2xl border shadow-sm flex justify-between items-center transition-all ${student.isActive === false ? 'opacity-50 bg-red-500/5 border-red-500/20' : (isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200')}`}>
-                                    <div className="flex flex-col truncate pr-1 md:pr-2">
-                                      <span className={`font-bold text-xs md:text-base truncate flex items-center gap-2 ${student.isActive === false ? 'line-through opacity-70' : ''}`}>
-                                        {student.name}
-                                        {student.monthlyLoginCount > 0 && <span className={`text-[8px] font-black flex items-center gap-0.5 px-1 rounded border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={8} /> {student.monthlyLoginCount}</span>}
-                                      </span>
-                                      {student.isActive === false && <span className="text-[9px] md:text-[10px] uppercase font-black tracking-wider text-red-500 mt-0.5">Deactivated</span>}
-                                    </div>
-                                    <button
-                                      onClick={() => handleToggleStudentStatus(student._id, student.isActive !== false)}
-                                      title={student.isActive !== false ? "Deactivate Student" : "Restore Student"}
-                                      className={`p-1.5 md:p-2.5 rounded-lg md:rounded-xl transition-colors shrink-0 ${student.isActive !== false ? 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'}`}
-                                    >
-                                      {student.isActive !== false ? <Trash2 size={14} /> : <CheckCircle size={14} />}
-                                    </button>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+      <DashboardPanel>
+        <SectionHeader
+          title="Announcement Center"
+          description="Publish a headline announcement visible to students."
+        />
 
-                      {(() => {
-                        const unassigned = graphStudentGroups.unassigned;
-                        if (unassigned.length === 0) return null;
-                        return (
-                          <div className="flex justify-between items-center w-full z-10 pt-4 md:pt-8 border-t border-dashed border-neutral-500/30">
-                            <div className="w-36 md:w-64 shrink-0">
-                              <div className={`p-3 md:p-5 rounded-xl md:rounded-2xl border border-dashed opacity-50 flex items-center justify-center text-center font-bold text-xs md:text-base ${isDarkMode ? 'border-neutral-500' : 'border-neutral-400'}`}>
-                                Unassigned
-                              </div>
-                            </div>
-                            <div className="flex flex-col gap-2 md:gap-4 w-40 md:w-80 shrink-0">
-                              {unassigned.map((student: any) => (
-                                <div key={student._id} id={`stu-${student._id}`} className={`p-2.5 md:p-4 rounded-xl md:rounded-2xl border shadow-sm flex justify-between items-center transition-all ${student.isActive === false ? 'opacity-50 bg-red-500/5 border-red-500/20' : (isDarkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-neutral-200')}`}>
-                                  <div className="flex flex-col truncate pr-1 md:pr-2">
-                                    <span className={`font-bold text-xs md:text-base truncate flex items-center gap-2 ${student.isActive === false ? 'line-through opacity-70' : ''}`}>
-                                      {student.name}
-                                      {student.monthlyLoginCount > 0 && <span className={`text-[8px] font-black flex items-center gap-0.5 px-1 rounded border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={8} /> {student.monthlyLoginCount}</span>}
-                                    </span>
-                                    {student.isActive === false && <span className="text-[9px] md:text-[10px] uppercase font-black tracking-wider text-red-500 mt-0.5">Deactivated</span>}
-                                  </div>
-                                  <button
-                                    onClick={() => handleToggleStudentStatus(student._id, student.isActive !== false)}
-                                    className={`p-1.5 md:p-2.5 rounded-lg md:rounded-xl transition-colors shrink-0 ${student.isActive !== false ? 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'}`}
-                                  >
-                                    {student.isActive !== false ? <Trash2 size={14} /> : <CheckCircle size={14} />}
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })()}
+        <form onSubmit={handleBroadcastHeadline} className="grid gap-3 lg:grid-cols-[1fr_auto]">
+          <StyledInput
+            value={headlineInput}
+            onChange={(event: any) => setHeadlineInput(event.target.value)}
+            placeholder="Write a concise portal announcement..."
+          />
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:flex">
+            <Button type="submit">
+              <Megaphone size={16} />
+              Broadcast
+            </Button>
+            <Button type="button" variant="outline" onClick={clearHeadline}>
+              <Trash2 size={16} />
+              Clear
+            </Button>
+          </div>
+        </form>
+
+        {currentHeadline ? (
+          <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+              Current announcement
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">{currentHeadline}</p>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[var(--color-text-muted)]">
+            No active announcement is currently published.
+          </p>
+        )}
+      </DashboardPanel>
+    </div>
+  );
+
+  const renderSupervisors = () => (
+    <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+      <DashboardPanel>
+        <SectionHeader
+          title="Add Supervisor"
+          description="Create a supervisor account with login credentials."
+        />
+
+        <form onSubmit={handleAddSupervisor} className="space-y-4">
+          <StyledInput
+            value={newSupName}
+            onChange={(event: any) => setNewSupName(event.target.value)}
+            type="text"
+            required
+            placeholder="Full name"
+          />
+          <StyledInput
+            value={newSupRollNo}
+            onChange={(event: any) => setNewSupRollNo(event.target.value)}
+            type="text"
+            required
+            placeholder="Username ID"
+          />
+          <StyledInput
+            value={newSupEmail}
+            onChange={(event: any) => setNewSupEmail(event.target.value)}
+            type="email"
+            required
+            placeholder="Supervisor email"
+          />
+          <StyledInput
+            value={newSupPassword}
+            onChange={(event: any) => setNewSupPassword(event.target.value)}
+            type="text"
+            required
+            placeholder="Assign password"
+          />
+
+          <Button type="submit" className="w-full">
+            <PlusCircle size={16} />
+            Create Account
+          </Button>
+        </form>
+      </DashboardPanel>
+
+      <DashboardPanel>
+        <SectionHeader
+          title="Active Supervisors"
+          description={`${filteredSupervisors.length}${
+            supervisorSearch.trim() ? ` of ${adminSupervisors.length}` : ''
+          } supervisor accounts`}
+        />
+
+        <StyledInput
+          icon={Search}
+          value={supervisorSearch}
+          onChange={(event: any) => setSupervisorSearch(event.target.value)}
+          type="search"
+          placeholder="Search by name, ID, email, or migration code..."
+        />
+
+        <div className="mt-5 space-y-3">
+          {filteredSupervisors.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+              <Users className="mx-auto mb-3 text-[var(--color-text-muted)]" size={28} />
+              <p className="text-sm font-semibold text-[var(--color-text)]">
+                No supervisors found
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                Try another search term or create a new supervisor account.
+              </p>
+            </div>
+          ) : (
+            filteredSupervisors.map((supervisor) => (
+              <div
+                key={supervisor._id}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+              >
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <AvatarBadge name={supervisor.name} />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
+                        <Badge variant="muted">{supervisor.rollNo || 'No ID'}</Badge>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUpdateEmail(supervisor._id, supervisor.email, supervisor.name)
+                        }
+                        className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+                      >
+                        {supervisor.email || 'Assign email'}
+                      </button>
+
+                      <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
+                        Migration Code:{' '}
+                        <span className="font-mono text-[var(--color-text)]">
+                          {supervisor.migrationCode || 'N/A'}
+                        </span>
+                      </p>
                     </div>
                   </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {/* ---------- SIDEBAR ---------- */}
-      <GlassCard isDarkMode={isDarkMode} className="w-full md:w-72 flex flex-col p-4 md:p-6 shrink-0 h-fit">
-        <h3 className="text-base md:text-xl font-extrabold mb-5 md:mb-8 flex items-center gap-2 md:gap-3 tracking-tight">
-          <div className={`p-1.5 md:p-2 rounded-lg md:rounded-xl ${theme.lightBg} ${theme.text} transition-colors duration-500`}><LayoutDashboard size={16} /></div>
-          Admin Panel
-        </h3>
-        <ul className="space-y-2 md:space-y-3 flex-1">
-          <li onClick={() => setActiveTab('supervisors')} className={`flex items-center gap-2 md:gap-3 font-semibold p-3 md:p-4 rounded-xl md:rounded-2xl cursor-pointer transition-all duration-300 text-sm md:text-base ${activeTab === 'supervisors' ? `${theme.lightBg} ${theme.text}` : `opacity-70 hover:opacity-100 ${isDarkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'}`}`}>
-            <Users size={16} /> Supervisors
-          </li>
-          <li onClick={() => setActiveTab('students')} className={`flex items-center gap-2 md:gap-3 font-semibold p-3 md:p-4 rounded-xl md:rounded-2xl cursor-pointer transition-all duration-300 text-sm md:text-base ${activeTab === 'students' ? `${theme.lightBg} ${theme.text}` : `opacity-70 hover:opacity-100 ${isDarkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'}`}`}>
-            <User size={16} /> Total Students
-          </li>
-        </ul>
-
-        {/* --- Headline Broadcaster --- */}
-        <div className={`mt-5 md:mt-8 pt-4 md:pt-6 border-t ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
-          <h4 className="text-[10px] md:text-xs font-black uppercase tracking-widest opacity-50 mb-2 md:mb-3 flex items-center gap-1.5 md:gap-2"><Megaphone size={12}/> Broadcast</h4>
-          <form onSubmit={handleBroadcastHeadline} className="flex flex-col gap-1.5 md:gap-2">
-            <input
-              type="text"
-              placeholder="Enter headline announcement..."
-              value={headlineInput}
-              onChange={(e) => setHeadlineInput(e.target.value)}
-              className={`w-full text-xs md:text-sm px-2.5 md:px-3 py-2 md:py-2.5 rounded-lg md:rounded-xl border outline-none ${isDarkMode ? 'bg-neutral-900 border-neutral-700' : 'bg-white border-neutral-300'}`}
-            />
-            <div className="flex gap-1.5 md:gap-2">
-              <button type="submit" className={`flex-1 py-1.5 md:py-2 text-[11px] md:text-xs font-bold rounded-lg md:rounded-xl text-white shadow-md ${theme.bg}`}>Send</button>
-              <button type="button" onClick={clearHeadline} className="px-2.5 md:px-3 py-1.5 md:py-2 text-[11px] md:text-xs font-bold rounded-lg md:rounded-xl bg-red-500 text-white shadow-md" title="Clear Headline"><Trash2 size={12}/></button>
-            </div>
-          </form>
-          {currentHeadline && <p className="text-[9px] md:text-[10px] mt-1.5 md:mt-2 opacity-60 font-medium italic line-clamp-2">Current: "{currentHeadline}"</p>}
-        </div>
-
-        <div className={`mt-4 md:mt-6 pt-4 md:pt-6 border-t ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
-          <p className="text-xs md:text-sm font-bold opacity-60 mb-2 md:mb-3 ml-1">{session?.user?.name}</p>
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => signOut({ redirect: false })} className={`w-full bg-red-500/10 hover:bg-red-500 ${isDarkMode ? 'text-red-400' : 'text-red-600'} hover:text-white py-2.5 md:py-3 rounded-xl md:rounded-2xl transition-colors font-bold flex items-center justify-center gap-2 text-sm md:text-base`}><LogIn size={16} className="rotate-180" /> Logout</motion.button>
-        </div>
-      </GlassCard>
-
-      {/* ---------- MAIN CONTENT (TABS) ---------- */}
-      <div className="flex-1">
-        {activeTab === 'supervisors' ? (
-          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-            {/* Add Supervisor Card */}
-            <GlassCard isDarkMode={isDarkMode} className="col-span-1 flex flex-col p-5 md:p-8 h-fit">
-              <h4 className="text-sm md:text-lg font-extrabold tracking-tight mb-4 md:mb-6 flex items-center gap-2"><PlusCircle size={16} className={theme.text} /> Add Supervisor</h4>
-              <form onSubmit={handleAddSupervisor} className="space-y-3 md:space-y-5">
-                <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupName} onChange={(e:any) => setNewSupName(e.target.value)} type="text" required placeholder="Full Name" /></div>
-                <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupRollNo} onChange={(e:any) => setNewSupRollNo(e.target.value)} type="text" required placeholder="Username ID" /></div>
-                <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupEmail} onChange={(e:any) => setNewSupEmail(e.target.value)} type="email" required placeholder="Supervisor Email" /></div>
-                <div><StyledInput isDarkMode={isDarkMode} theme={theme} value={newSupPassword} onChange={(e:any) => setNewSupPassword(e.target.value)} type="text" required placeholder="Assign Password" /></div>
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" className={`w-full ${theme.bg} text-white font-bold py-2.5 md:py-3.5 rounded-xl md:rounded-2xl transition-colors duration-500 mt-1 md:mt-2 shadow-lg text-sm md:text-base`}>Create Account</motion.button>
-              </form>
-            </GlassCard>
-
-            {/* Active Supervisors List */}
-            <GlassCard isDarkMode={isDarkMode} className="col-span-1 lg:col-span-2 p-5 md:p-8 flex flex-col h-[calc(100vh-10rem)] max-h-[800px]">
-              <div className="flex flex-col gap-3 md:gap-4 mb-4 md:mb-6">
-                <h4 className="text-sm md:text-lg font-extrabold tracking-tight">
-                  Active Supervisors
-                  <span className={`text-xs md:text-sm font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md md:rounded-lg ml-1.5 md:ml-2 ${theme.lightBg} ${theme.text}`}>
-                    {filteredSupervisors.length}{normalizedSupervisorSearch ? ` / ${adminSupervisors.length}` : ''}
-                  </span>
-                </h4>
-
-                <StyledInput
-                  isDarkMode={isDarkMode}
-                  theme={theme}
-                  value={supervisorSearch}
-                  onChange={(e: any) => setSupervisorSearch(e.target.value)}
-                  type="search"
-                  placeholder="Search by name, ID, email, or code..."
-                />
-              </div>
-
-              <div className="space-y-2 md:space-y-3 overflow-y-auto pr-1 md:pr-2 flex-1 custom-scrollbar">
-                <AnimatePresence>
-                  {filteredSupervisors.length === 0 ? (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      key="no-supervisors-found"
-                      className="flex flex-col items-center justify-center h-full opacity-40 text-center"
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleToggleNotifications(supervisor._id, supervisor.notificationsEnabled)
+                      }
+                      title="Toggle notifications"
                     >
-                      <Users size={36} className="mb-3 md:mb-4" />
-                      <p className="font-bold text-sm md:text-base">No supervisors match this search.</p>
-                    </motion.div>
-                  ) : (
-                    filteredSupervisors.map(sup => (
-                      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} key={sup._id} className={`p-3 md:p-4 rounded-xl md:rounded-2xl flex justify-between items-center border transition-all duration-300 hover:scale-[1.01] ${isDarkMode ? 'border-neutral-800 bg-neutral-800/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
-                        <div className="flex items-center gap-2.5 md:gap-4">
-                          <div className={`w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-gradient-to-br ${theme.gradient} transition-colors duration-500 text-sm md:text-base`}>{sup.name.charAt(0)}</div>
-                          <div>
-                            <p className="font-bold text-sm md:text-lg tracking-tight flex items-center gap-2">
-                              {sup.name}
-                              {sup.monthlyLoginCount > 0 && <span className={`text-[9px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {sup.monthlyLoginCount}</span>}
-                            </p>
-                            <p onClick={() => handleUpdateEmail(sup._id, sup.email, sup.name)} className="text-xs md:text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">
-                              ID: {sup.rollNo} • {sup.email || 'Click to Assign Email'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 md:gap-4 text-right">
-                          <div className="hidden sm:block">
-                            <p className="text-[9px] md:text-[10px] uppercase font-bold tracking-wider opacity-40 mb-1">Code</p>
-                            <span className={`text-xs md:text-sm font-mono px-2 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl flex items-center gap-1.5 md:gap-2 border transition-colors duration-500 ${theme.lightBg} ${theme.text} ${isDarkMode ? 'border-white/5' : 'border-black/5'}`}><Code size={12} /> {sup.migrationCode}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 md:gap-2 mt-0 md:mt-4">
-                            <button
-                              onClick={() => handleToggleNotifications(sup._id, sup.notificationsEnabled !== false)}
-                              title={sup.notificationsEnabled !== false ? "Disable Emails" : "Enable Emails"}
-                              className={`p-2 md:p-2.5 rounded-lg md:rounded-xl transition-colors ${sup.notificationsEnabled !== false ? 'bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white' : 'bg-neutral-500/10 text-neutral-500 hover:bg-neutral-500 hover:text-white'}`}
-                            >
-                              {sup.notificationsEnabled !== false ? <Mail size={15} /> : <MailX size={15} />}
-                            </button>
-                            <button onClick={() => handleDeleteSupervisor(sup._id, sup.name)} className="p-2 md:p-2.5 rounded-lg md:rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"><Trash2 size={15} /></button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))
-                  )}
-                </AnimatePresence>
-              </div>
-            </GlassCard>
-          </motion.div>
-        ) : (
-          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full">
-            <GlassCard isDarkMode={isDarkMode} className="p-4 md:p-8 flex flex-col h-[calc(100vh-10rem)] max-h-[800px]">
-              <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 md:mb-6 gap-3 md:gap-4">
-                <div className="flex flex-col gap-2 w-full md:max-w-xs">
-                  <h4 className="text-sm md:text-lg font-extrabold tracking-tight">
-                    Registered Students
-                    <span className={`text-xs md:text-sm font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md md:rounded-lg ml-1.5 md:ml-2 ${theme.lightBg} ${theme.text}`}>
-                      {studentPagination.total}
-                    </span>
-                  </h4>
+                      {supervisor.notificationsEnabled ? <Mail size={16} /> : <MailX size={16} />}
+                      {supervisor.notificationsEnabled ? 'Notifications On' : 'Notifications Off'}
+                    </Button>
 
-                  <StyledInput
-                    isDarkMode={isDarkMode}
-                    theme={theme}
-                    value={studentSearch}
-                    onChange={(e: any) => setStudentSearch(e.target.value)}
-                    type="search"
-                    placeholder="Search students by name, ID, or email..."
-                  />
-                </div>
-
-                {/* Filter Pills */}
-                <div className="flex flex-col gap-2 md:gap-3 items-start md:items-end">
-                  <div className="flex flex-wrap gap-1.5 md:gap-2 items-center">
-                    <Filter size={13} className="opacity-40 mr-0.5 hidden md:block" />
-                    {filterOptions.map(opt => (
-                      <button key={opt} onClick={() => handleStudentFilterChange(opt)} className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${studentFilter === opt ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}>
-                        {opt}
-                      </button>
-                    ))}
+                    <Button
+                      variant="danger"
+                      onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name)}
+                    >
+                      <Trash2 size={16} />
+                      Delete
+                    </Button>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 md:gap-2 items-center">
-                    <span className="text-[9px] md:text-xs font-bold opacity-40 uppercase tracking-widest mr-0.5">Batch:</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </DashboardPanel>
+    </div>
+  );
+
+  const renderStudents = () => (
+    <DashboardPanel>
+      <SectionHeader
+        title="Students"
+        description="Search, filter, and manage student academic records."
+        action={
+          batchFilter !== 'All' ? (
+            <Button variant="accent" onClick={handlePromoteBatch}>
+              Promote {batchFilter}
+            </Button>
+          ) : null
+        }
+      />
+
+      <div className="grid gap-4">
+        <StyledInput
+          icon={Search}
+          value={studentSearch}
+          onChange={(event: any) => setStudentSearch(event.target.value)}
+          type="search"
+          placeholder="Search students by name, ID, or email..."
+        />
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+              <Filter size={13} />
+              Filter:
+            </span>
+
+            {filterOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => handleStudentFilterChange(option)}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                  studentFilter === option
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+              Batch:
+            </span>
+
+            <button
+              type="button"
+              onClick={() => handleBatchFilterChange('All')}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                batchFilter === 'All'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+              }`}
+            >
+              All
+            </button>
+
+            {studentBatches.map((batch) => (
+              <button
+                key={batch}
+                type="button"
+                onClick={() => handleBatchFilterChange(batch)}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                  batchFilter === batch
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                {batch}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {isStudentsLoading ? (
+          <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+            <Loader2 size={32} className="mb-3 animate-spin text-[var(--color-accent)]" />
+            <p className="text-sm font-bold text-[var(--color-text)]">Loading students...</p>
+          </div>
+        ) : filteredStudents.length === 0 ? (
+          <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+            <User size={32} className="mb-3 text-[var(--color-text-muted)]" />
+            <p className="text-sm font-bold text-[var(--color-text)]">No students found</p>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              Adjust your search or filters and try again.
+            </p>
+          </div>
+        ) : (
+          filteredStudents.map((student) => (
+            <div
+              key={student._id}
+              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+            >
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <AvatarBadge
+                    name={student.name}
+                    className={student.isActive === false ? 'opacity-50' : ''}
+                  />
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3
+                        className={`font-bold text-[var(--color-text)] ${
+                          student.isActive === false ? 'line-through opacity-60' : ''
+                        }`}
+                      >
+                        {student.name || 'Unnamed student'}
+                      </h3>
+
+                      <Badge variant={getStatusVariant(student.status) as any}>
+                        {student.status || 'N/A'}
+                      </Badge>
+
+                      {student.isActive === false && <Badge variant="danger">Deactivated</Badge>}
+                    </div>
 
                     <button
-                      onClick={() => handleBatchFilterChange('All')}
-                      className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${batchFilter === 'All' ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}
+                      type="button"
+                      onClick={() => handleUpdateEmail(student._id, student.email, student.name)}
+                      className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
                     >
-                      All
+                      ID: {student.rollNo || 'N/A'} · {student.email || 'Assign email'}
                     </button>
 
-                    {uniqueBatches.map((b: any) => (
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        key={b}
-                        onClick={() => handleBatchFilterChange(b)}
-                        className={`px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all duration-300 ${batchFilter === b ? `${theme.bg} text-white shadow-md` : `opacity-60 hover:opacity-100 ${isDarkMode ? 'bg-neutral-800' : 'bg-neutral-200'}`}`}
+                        type="button"
+                        onClick={() =>
+                          handleUpdateProgram(student._id, student.program, student.name)
+                        }
+                        className="rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--color-accent)]"
+                        title={`${getProgramName(student.program)} — click to edit`}
                       >
-                        {b}
+                        {student.program || 'No program'}
                       </button>
-                    ))}
 
-                    {batchFilter !== 'All' && (
-                      <button onClick={handlePromoteBatch} className={`ml-1 md:ml-2 px-2.5 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl transition-all shadow-md bg-purple-500 hover:bg-purple-600 text-white flex items-center gap-1`}>
-                        Promote to 8th Sem
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateBatch(student._id, student.batch, student.name)}
+                        className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        title="Click to edit batch"
+                      >
+                        {student.batch || 'No batch'} · {student.semester || '7th Sem'}
                       </button>
-                    )}
-                  </div>
-                </div>
-              </div>
 
-              <div className="space-y-2 md:space-y-3 overflow-y-auto pr-1 md:pr-2 flex-1 custom-scrollbar">
-                {isStudentsLoading ? (
-                  <div className="flex flex-col items-center justify-center h-full opacity-60">
-                    <Loader2 size={36} className={`animate-spin mb-3 md:mb-4 ${theme.text}`} />
-                    <p className="font-bold text-sm md:text-base">Loading students...</p>
-                  </div>
-                ) : filteredStudents.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full opacity-40">
-                    <User size={36} className="mb-3 md:mb-4" />
-                    <p className="font-bold text-sm md:text-base">No students match this filter.</p>
-                  </div>
-                ) : (
-                  filteredStudents.map(student => (
-                    <div key={student._id} className={`p-3 md:p-4 rounded-xl md:rounded-2xl flex justify-between items-center border transition-all duration-300 ${isDarkMode ? 'border-neutral-800 bg-neutral-800/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
-                      <div className="flex items-center gap-2.5 md:gap-4">
-                        <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center font-bold text-white bg-gradient-to-br ${theme.gradient} text-sm md:text-base`}>
-                          {student.name.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
-                            <p className={`font-bold text-sm md:text-base flex items-center gap-2 ${student.isActive === false ? 'line-through opacity-70' : ''}`}>
-                              {student.name}
-                              {student.monthlyLoginCount > 0 && <span className={`text-[9px] font-black flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${isDarkMode ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200'}`} title="Logins this month"><Flame size={10} /> {student.monthlyLoginCount}</span>}
-                            </p>
-                            <span 
-                              onClick={() => handleUpdateProgram(student._id, student.program, student.name)}
-                              title={`${PROGRAM_MAP[student.program] || 'Unknown Program'} (Click to Edit)`}
-                              className={`cursor-pointer hover:scale-105 hover:shadow-md transition-all text-[9px] md:text-[10px] font-black uppercase tracking-wider px-1.5 md:px-2 py-0.5 rounded-md ${theme.lightBg} ${theme.text}`}
-                            >
-                              {student.program || 'N/A'}
-                            </span>
-                            <span 
-                              onClick={() => handleUpdateBatch(student._id, student.batch, student.name)}
-                              title="Click to Edit Batch"
-                              className={`cursor-pointer hover:scale-105 hover:shadow-md transition-all text-[9px] md:text-[10px] font-black uppercase tracking-wider px-1.5 md:px-2 py-0.5 rounded-md border ${isDarkMode ? 'border-neutral-700 text-neutral-300' : 'border-neutral-300 text-neutral-600'}`}
-                            >
-                              {student.batch || 'No Batch'} • {student.semester || '7th Sem'}
-                            </span>
-                          </div>
-                          <p onClick={() => handleUpdateEmail(student._id, student.email, student.name)} className="text-[11px] md:text-sm font-medium opacity-60 cursor-pointer hover:underline hover:text-blue-500">
-                            ID: {student.rollNo} • {student.email || 'Click to Assign Email'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 md:gap-3">
-                        <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl ${student.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400' : student.status === 'Rejected' ? 'bg-red-500/10 text-red-400' : student.status === 'Unassigned' ? 'bg-neutral-500/10 text-neutral-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                          {student.status || 'N/A'}
-                        </span>
-                        {student.isActive === false && <span className="text-[9px] md:text-[10px] uppercase font-black tracking-wider text-red-500">Deactivated</span>}
-                      </div>
+                      {student.monthlyLoginCount > 0 && (
+                        <Badge variant="accent">{student.monthlyLoginCount} logins this month</Badge>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
+                  </div>
+                </div>
 
-              <div className={`mt-4 pt-3 border-t flex flex-col md:flex-row gap-3 md:items-center md:justify-between text-xs md:text-sm ${isDarkMode ? 'border-neutral-800' : 'border-neutral-200'}`}>
-                <p className="font-bold opacity-60">
-                  Showing {filteredStudents.length} of {studentPagination.total} students
-                </p>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={isStudentsLoading || studentPage <= 1}
-                    onClick={() => handleStudentPageChange(studentPage - 1)}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isDarkMode ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-neutral-200 hover:bg-neutral-300'}`}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={student.isActive !== false ? 'danger' : 'success'}
+                    onClick={() =>
+                      handleToggleStudentStatus(student._id, student.isActive !== false)
+                    }
                   >
-                    Previous
-                  </button>
-
-                  <span className="font-bold opacity-70">
-                    Page {studentPagination.total === 0 ? 0 : studentPage} of {studentPagination.totalPages}
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={isStudentsLoading || studentPage >= studentPagination.totalPages}
-                    onClick={() => handleStudentPageChange(studentPage + 1)}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isDarkMode ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-neutral-200 hover:bg-neutral-300'}`}
-                  >
-                    Next
-                  </button>
+                    {student.isActive !== false ? <Trash2 size={16} /> : <CheckCircle size={16} />}
+                    {student.isActive !== false ? 'Deactivate' : 'Restore'}
+                  </Button>
                 </div>
               </div>
-            </GlassCard>
-          </motion.div>
+            </div>
+          ))
         )}
       </div>
 
-      {/* Floating Graph Button — smaller on mobile */}
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={openGraphModal}
-        className={`fixed bottom-5 md:bottom-8 right-4 md:right-8 px-4 md:px-6 py-3 md:py-4 rounded-full font-extrabold shadow-2xl flex items-center gap-2 md:gap-3 transition-colors ${theme.bg} text-white z-50 text-xs md:text-base`}
+      <div className="mt-5 flex flex-col gap-3 border-t border-[var(--color-border)] pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-semibold text-[var(--color-text-muted)]">
+          Showing {filteredStudents.length} of {studentPagination.total} students
+        </p>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={isStudentsLoading || studentPage <= 1}
+            onClick={() => handleStudentPageChange(studentPage - 1)}
+          >
+            Previous
+          </Button>
+
+          <span className="text-sm font-bold text-[var(--color-text-muted)]">
+            Page {studentPagination.total === 0 ? 0 : studentPage} of {studentPagination.totalPages}
+          </span>
+
+          <Button
+            variant="outline"
+            disabled={isStudentsLoading || studentPage >= studentPagination.totalPages}
+            onClick={() => handleStudentPageChange(studentPage + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    </DashboardPanel>
+  );
+
+  const navItems = [
+    {
+      id: 'overview',
+      label: 'Overview',
+      icon: <LayoutDashboard size={18} />,
+      active: activeTab === 'overview',
+      onClick: () => setActiveTab('overview'),
+    },
+    {
+      id: 'supervisors',
+      label: 'Supervisors',
+      icon: <Users size={18} />,
+      active: activeTab === 'supervisors',
+      badge: adminSupervisors.length,
+      onClick: () => setActiveTab('supervisors'),
+    },
+    {
+      id: 'students',
+      label: 'Students',
+      icon: <GraduationCap size={18} />,
+      active: activeTab === 'students',
+      badge: studentPagination.total || adminStudents.length,
+      onClick: () => setActiveTab('students'),
+    },
+    {
+      id: 'assignments',
+      label: 'Assignment Map',
+      icon: <Network size={18} />,
+      onClick: openGraphModal,
+    },
+  ];
+
+  return (
+    <>
+      <DashboardShell
+        title="Admin Dashboard"
+        description="Manage the complete FYP portal ecosystem."
+        navItems={navItems}
+        user={{
+          name: session?.user?.name || 'Administrator',
+          role: 'Admin',
+        }}
+        actions={
+          <div className="grid gap-2 sm:flex">
+            <Button variant="outline" onClick={openGraphModal}>
+              <Network size={16} />
+              Assignment Map
+            </Button>
+
+            <Button variant="danger" onClick={() => signOut({ redirect: false })}>
+              <LogIn size={16} className="rotate-180" />
+              Logout
+            </Button>
+          </div>
+        }
       >
-        <Users size={16} /> View Visual Graph
-      </motion.button>
-    </motion.div>
+        {activeTab === 'overview' && renderOverview()}
+        {activeTab === 'supervisors' && renderSupervisors()}
+        {activeTab === 'students' && renderStudents()}
+      </DashboardShell>
+
+      <Dialog
+        open={isGraphModalOpen}
+        onClose={() => setIsGraphModalOpen(false)}
+        title="Supervisor Assignment Map"
+        description="A structured overview of supervisor-student assignments."
+        size="xl"
+        footer={
+          <Button variant="outline" onClick={() => setIsGraphModalOpen(false)}>
+            Close
+          </Button>
+        }
+      >
+        {isGraphLoading ? (
+          <div className="flex min-h-80 flex-col items-center justify-center">
+            <Loader2 className="mb-3 animate-spin text-[var(--color-accent)]" size={36} />
+            <p className="text-sm font-bold text-[var(--color-text)]">Loading assignment map...</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {graphData.supervisors.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+                <Network className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
+                <p className="text-sm font-bold text-[var(--color-text)]">No assignment data found</p>
+              </div>
+            ) : (
+              graphData.supervisors.map((supervisor: any) => {
+                const assignedStudents =
+                  graphStudentGroups.bySupervisor.get(String(supervisor._id)) || [];
+
+                return (
+                  <div
+                    key={supervisor._id}
+                    className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <AvatarBadge name={supervisor.name} />
+                        <div>
+                          <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
+                          <p className="text-sm text-[var(--color-text-muted)]">
+                            {assignedStudents.length} assigned student
+                            {assignedStudents.length === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-2 md:grid-cols-2">
+                      {assignedStudents.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm font-semibold text-[var(--color-text-muted)]">
+                          No students assigned
+                        </div>
+                      ) : (
+                        assignedStudents.map((student: any) => (
+                          <div
+                            key={student._id}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
+                          >
+                            <div className="min-w-0">
+                              <p
+                                className={`truncate text-sm font-bold text-[var(--color-text)] ${
+                                  student.isActive === false ? 'line-through opacity-60' : ''
+                                }`}
+                              >
+                                {student.name}
+                              </p>
+                              <p className="truncate text-xs text-[var(--color-text-muted)]">
+                                {student.rollNo || 'No roll number'}
+                              </p>
+                            </div>
+
+                            <Button
+                              variant={student.isActive !== false ? 'danger' : 'success'}
+                              className="min-h-9 px-3 text-xs"
+                              onClick={() =>
+                                handleToggleStudentStatus(
+                                  student._id,
+                                  student.isActive !== false
+                                )
+                              }
+                            >
+                              {student.isActive !== false ? 'Deactivate' : 'Restore'}
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {graphStudentGroups.unassigned.length > 0 && (
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                <h3 className="font-bold text-[var(--color-text)]">Unassigned Students</h3>
+                <div className="mt-4 grid gap-2 md:grid-cols-2">
+                  {graphStudentGroups.unassigned.map((student: any) => (
+                    <div
+                      key={student._id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-[var(--color-text)]">
+                          {student.name}
+                        </p>
+                        <p className="truncate text-xs text-[var(--color-text-muted)]">
+                          {student.rollNo || 'No roll number'}
+                        </p>
+                      </div>
+
+                      <Badge variant="muted">Unassigned</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Dialog>
+    </>
   );
 };
 

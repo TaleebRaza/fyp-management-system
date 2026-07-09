@@ -1,31 +1,877 @@
+// components/ui/SharedUI.tsx
+"use client";
+
 import React from "react";
 
-export const GlassCard = ({ children, className = "", isDarkMode }: any) => (
-  <div className={`p-6 md:p-8 rounded-[2rem] border transition-all duration-500 
-    ${isDarkMode 
-      ? 'bg-neutral-900 md:bg-neutral-900/80 border-white/5 shadow-[0_8px_30px_rgb(0,0,0,0.1)]' 
-      : 'bg-white md:bg-white/80 border-neutral-200/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'} 
-    md:backdrop-blur-2xl ${className}`}
+type IconComponent = React.ComponentType<{
+  size?: number;
+  className?: string;
+  "aria-hidden"?: boolean;
+}>;
+
+type CommonProps = {
+  className?: string;
+  children?: React.ReactNode;
+};
+
+const cn = (...classes: Array<string | false | null | undefined>) =>
+  classes.filter(Boolean).join(" ");
+
+export const Card = ({
+  children,
+  className = "",
+}: CommonProps) => (
+  <div
+    className={cn(
+      "portal-card p-5 sm:p-6 md:p-8 transition-colors duration-200",
+      className
+    )}
   >
     {children}
   </div>
 );
 
-export const StyledInput = ({ icon: Icon, isDarkMode, theme, disabled, value, ...props }: any) => {
-  // Directly infer if the component is intended to be controlled throughout its lifecycle
+// Compatibility export: existing dashboards still import GlassCard.
+// Ponytail: keep the name for now to avoid a risky multi-file rename.
+export const GlassCard = ({
+  children,
+  className = "",
+}: CommonProps & { isDarkMode?: boolean }) => (
+  <Card className={className}>{children}</Card>
+);
+
+type StyledInputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  icon?: IconComponent;
+  isDarkMode?: boolean;
+  theme?: unknown;
+  wrapperClassName?: string;
+};
+
+export const StyledInput = ({
+  icon: Icon,
+  disabled,
+  value,
+  className = "",
+  wrapperClassName = "",
+  ...props
+}: StyledInputProps) => {
   const isControlled = value !== undefined || props.onChange !== undefined;
 
   return (
-    <div className="relative group">
-      {Icon && <Icon className={`absolute left-4 top-3.5 transition-colors duration-300 ${disabled ? 'opacity-30' : (isDarkMode ? 'text-neutral-500 group-focus-within:text-white' : 'text-neutral-400 group-focus-within:text-black')}`} size={20} />}
-      <input 
+    <div className={cn("relative", wrapperClassName)}>
+      {Icon && (
+        <Icon
+          aria-hidden
+          size={18}
+          className={cn(
+            "pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-soft)] transition-colors",
+            disabled ? "opacity-40" : "peer-focus:text-[var(--color-primary)]"
+          )}
+        />
+      )}
+
+      <input
         disabled={disabled}
-        className={`w-full ${Icon ? 'pl-12' : 'pl-4'} pr-4 py-3.5 rounded-2xl border-2 border-transparent transition-all duration-300 outline-none 
-        ${isDarkMode ? 'bg-neutral-800 text-white placeholder-neutral-500' : 'bg-neutral-100/70 text-black placeholder-neutral-400'} 
-        ${disabled ? 'opacity-50 cursor-not-allowed' : `${theme.ring} focus:bg-transparent`}`} 
-        {...props} 
-        {...(isControlled ? { value: value ?? '' } : {})}
+        className={cn(
+          "peer h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-text)] outline-none transition-colors placeholder:text-[var(--color-text-soft)]",
+          "focus:border-[var(--color-accent)] focus:bg-[var(--color-surface)]",
+          "disabled:cursor-not-allowed disabled:bg-[var(--color-surface-muted)] disabled:opacity-60",
+          Icon ? "pl-10" : "",
+          className
+        )}
+        {...props}
+        {...(isControlled ? { value: value ?? "" } : {})}
       />
     </div>
   );
 };
+
+export const Input = StyledInput;
+
+type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  wrapperClassName?: string;
+};
+
+export const TextArea = ({
+  className = "",
+  wrapperClassName = "",
+  ...props
+}: TextAreaProps) => (
+  <div className={wrapperClassName}>
+    <textarea
+      className={cn(
+        "min-h-28 w-full resize-y rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] outline-none transition-colors placeholder:text-[var(--color-text-soft)]",
+        "focus:border-[var(--color-accent)] focus:bg-[var(--color-surface)]",
+        "disabled:cursor-not-allowed disabled:bg-[var(--color-surface-muted)] disabled:opacity-60",
+        className
+      )}
+      {...props}
+    />
+  </div>
+);
+
+type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement> & {
+  wrapperClassName?: string;
+};
+
+export const Select = ({
+  className = "",
+  wrapperClassName = "",
+  children,
+  ...props
+}: SelectProps) => (
+  <div className={wrapperClassName}>
+    <select
+      className={cn(
+        "h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-text)] outline-none transition-colors",
+        "focus:border-[var(--color-accent)] focus:bg-[var(--color-surface)]",
+        "disabled:cursor-not-allowed disabled:bg-[var(--color-surface-muted)] disabled:opacity-60",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </select>
+  </div>
+);
+
+type ButtonVariant =
+  | "primary"
+  | "accent"
+  | "secondary"
+  | "outline"
+  | "ghost"
+  | "danger"
+  | "success";
+
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+};
+
+const buttonVariants: Record<ButtonVariant, string> = {
+  primary:
+    "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)]",
+  accent:
+    "bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent-hover)]",
+  secondary:
+    "bg-[var(--color-surface-muted)] text-[var(--color-text)] hover:bg-[var(--color-bg-soft)]",
+  outline:
+    "border border-[var(--color-border)] bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]",
+  ghost:
+    "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]",
+  danger:
+    "bg-[var(--color-danger)] text-white hover:opacity-90",
+  success:
+    "bg-[var(--color-success)] text-white hover:opacity-90",
+};
+
+export const Button = ({
+  children,
+  className = "",
+  variant = "primary",
+  type,
+  ...props
+}: ButtonProps) => (
+  <button
+    type={type ?? "button"}
+    className={cn(
+      "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+      "disabled:cursor-not-allowed disabled:opacity-55",
+      buttonVariants[variant],
+      className
+    )}
+    {...props}
+  >
+    {children}
+  </button>
+);
+
+type BadgeVariant =
+  | "default"
+  | "accent"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted";
+
+type BadgeProps = CommonProps & {
+  variant?: BadgeVariant;
+};
+
+const badgeVariants: Record<BadgeVariant, string> = {
+  default:
+    "bg-[var(--color-primary-soft)] text-[var(--color-primary)] dark:text-white",
+  accent:
+    "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
+  success:
+    "bg-[var(--color-success-soft)] text-[var(--color-success)]",
+  warning:
+    "bg-[var(--color-warning-soft)] text-[var(--color-warning)]",
+  danger:
+    "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  muted:
+    "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
+};
+
+export const Badge = ({
+  children,
+  className = "",
+  variant = "default",
+}: BadgeProps) => (
+  <span
+    className={cn(
+      "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
+      badgeVariants[variant],
+      className
+    )}
+  >
+    {children}
+  </span>
+);
+
+type SectionHeaderProps = {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+};
+
+export const SectionHeader = ({
+  title,
+  description,
+  action,
+  className = "",
+}: SectionHeaderProps) => (
+  <div
+    className={cn(
+      "mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between",
+      className
+    )}
+  >
+    <div>
+      <h2 className="text-lg font-bold tracking-tight text-[var(--color-text)]">
+        {title}
+      </h2>
+      {description && (
+        <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+          {description}
+        </p>
+      )}
+    </div>
+    {action && <div className="shrink-0">{action}</div>}
+  </div>
+);
+
+type StatCardProps = {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  hint?: React.ReactNode;
+  icon?: React.ReactNode;
+  className?: string;
+};
+
+export const StatCard = ({
+  label,
+  value,
+  hint,
+  icon,
+  className = "",
+}: StatCardProps) => (
+  <Card className={cn("p-5", className)}>
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium text-[var(--color-text-muted)]">
+          {label}
+        </p>
+        <div className="mt-2 text-2xl font-bold tracking-tight text-[var(--color-text)]">
+          {value}
+        </div>
+      </div>
+      {icon && (
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-2 text-[var(--color-primary)]">
+          {icon}
+        </div>
+      )}
+    </div>
+    {hint && (
+      <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
+        {hint}
+      </p>
+    )}
+  </Card>
+);
+
+type TableShellProps = CommonProps & {
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+};
+
+export const TableShell = ({
+  title,
+  description,
+  action,
+  children,
+  className = "",
+}: TableShellProps) => (
+  <Card className={cn("overflow-hidden p-0", className)}>
+    {(title || description || action) && (
+      <div className="flex flex-col gap-3 border-b border-[var(--color-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          {title && (
+            <h3 className="text-base font-bold text-[var(--color-text)]">
+              {title}
+            </h3>
+          )}
+          {description && (
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              {description}
+            </p>
+          )}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+    )}
+
+    <div className="portal-scrollbar overflow-x-auto">{children}</div>
+  </Card>
+);
+
+type EmptyStateProps = {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+  icon?: React.ReactNode;
+  className?: string;
+};
+
+export const EmptyState = ({
+  title,
+  description,
+  action,
+  icon,
+  className = "",
+}: EmptyStateProps) => (
+  <div
+    className={cn(
+      "rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-8 text-center",
+      className
+    )}
+  >
+    {icon && (
+      <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-surface)] text-[var(--color-text-muted)]">
+        {icon}
+      </div>
+    )}
+    <h3 className="text-sm font-bold text-[var(--color-text)]">{title}</h3>
+    {description && (
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--color-text-muted)]">
+        {description}
+      </p>
+    )}
+    {action && <div className="mt-4">{action}</div>}
+  </div>
+);
+
+type DialogSize = "sm" | "md" | "lg" | "xl";
+
+type DialogProps = {
+  open: boolean;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  children?: React.ReactNode;
+  footer?: React.ReactNode;
+  onClose: () => void;
+  size?: DialogSize;
+  closeLabel?: string;
+};
+
+const dialogSizes: Record<DialogSize, string> = {
+  sm: "sm:max-w-sm",
+  md: "sm:max-w-md",
+  lg: "sm:max-w-2xl",
+  xl: "sm:max-w-4xl",
+};
+
+export const Dialog = ({
+  open,
+  title,
+  description,
+  children,
+  footer,
+  onClose,
+  size = "md",
+  closeLabel = "Close dialog",
+}: DialogProps) => {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center px-3 py-3 sm:items-center sm:px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="portal-dialog-title"
+    >
+      <button
+        type="button"
+        aria-label={closeLabel}
+        className="absolute inset-0 cursor-default bg-black/60"
+        onClick={onClose}
+      />
+
+      <div
+        className={cn(
+          "portal-dialog relative z-10 flex max-h-[calc(100vh-1.5rem)] w-full flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl",
+          dialogSizes[size]
+        )}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
+          <div>
+            <h2
+              id="portal-dialog-title"
+              className="text-lg font-bold tracking-tight text-[var(--color-text)]"
+            >
+              {title}
+            </h2>
+            {description && (
+              <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+                {description}
+              </p>
+            )}
+          </div>
+
+          <Button
+            variant="ghost"
+            className="min-h-9 rounded-lg px-3"
+            onClick={onClose}
+            aria-label={closeLabel}
+          >
+            ×
+          </Button>
+        </div>
+
+        {children && (
+          <div className="portal-scrollbar overflow-y-auto px-5 py-5">
+            {children}
+          </div>
+        )}
+
+        {footer && (
+          <div className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4 sm:flex-row sm:justify-end">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export type DashboardNavItem = {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  active?: boolean;
+  badge?: React.ReactNode;
+  onClick?: () => void;
+};
+
+type DashboardUser = {
+  name?: string;
+  role?: string;
+  initials?: string;
+};
+
+type DashboardShellProps = {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  navItems: DashboardNavItem[];
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+  user?: DashboardUser;
+  portalName?: React.ReactNode;
+  logoSrc?: string;
+  className?: string;
+};
+
+const getInitials = (name?: string) => {
+  if (!name) return "FP";
+
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase())
+    .join("");
+
+  return initials || "FP";
+};
+
+export const AvatarBadge = ({
+  name,
+  initials,
+  className = "",
+}: {
+  name?: string;
+  initials?: string;
+  className?: string;
+}) => (
+  <div
+    className={cn(
+      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-sm font-bold text-white",
+      className
+    )}
+    aria-hidden="true"
+  >
+    {initials || getInitials(name)}
+  </div>
+);
+
+export const DashboardShell = ({
+  title,
+  description,
+  navItems,
+  children,
+  actions,
+  user,
+  portalName = (
+    <>
+      FYP <span className="text-[var(--color-accent)]">Portal</span>
+    </>
+  ),
+  logoSrc = "/logo.png",
+  className = "",
+}: DashboardShellProps) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+const mobileMenuId = React.useId();
+
+React.useEffect(() => {
+  if (!mobileMenuOpen) return;
+
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setMobileMenuOpen(false);
+    }
+  };
+
+  const handleResize = () => {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setMobileMenuOpen(false);
+    }
+  };
+
+  document.addEventListener("keydown", handleKeyDown);
+  window.addEventListener("resize", handleResize);
+
+  return () => {
+    document.body.style.overflow = previousOverflow;
+    document.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("resize", handleResize);
+  };
+}, [mobileMenuOpen]);
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
+  const renderNavItem = (item: DashboardNavItem) => (
+    <button
+      key={item.id}
+      type="button"
+      onClick={() => {
+        item.onClick?.();
+        closeMobileMenu();
+      }}
+      className={cn(
+        "flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors",
+        item.active
+          ? "bg-[var(--color-accent-soft)] text-[var(--color-text)]"
+          : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]"
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        {item.icon && (
+          <span
+            className={cn(
+              "shrink-0",
+              item.active
+                ? "text-[var(--color-accent)]"
+                : "text-[var(--color-text-soft)]"
+            )}
+          >
+            {item.icon}
+          </span>
+        )}
+        <span className="truncate">{item.label}</span>
+      </span>
+
+      {item.badge && (
+        <span className="ml-2 shrink-0 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs font-bold text-[var(--color-text-muted)]">
+          {item.badge}
+        </span>
+      )}
+    </button>
+  );
+
+  const sidebarContent = (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--color-border)] bg-white">
+          <img src={logoSrc} alt="University Logo" className="h-full w-full object-contain p-1" />
+        </div>
+
+        <div className="min-w-0">
+          <div className="truncate text-lg font-bold tracking-tight text-[var(--color-text)]">
+            {portalName}
+          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+            Management System
+          </p>
+        </div>
+      </div>
+
+      <nav className="mt-8 flex flex-col gap-1.5" aria-label="Dashboard navigation">
+        {navItems.map(renderNavItem)}
+      </nav>
+
+      {user && (
+        <div className="mt-auto pt-6">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+            <div className="flex items-center gap-3">
+              <AvatarBadge name={user.name} initials={user.initials} />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-[var(--color-text)]">
+                  {user.name || "Portal User"}
+                </p>
+                {user.role && (
+                  <p className="truncate text-xs font-semibold text-[var(--color-text-muted)]">
+                    {user.role}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      className={cn(
+        "min-h-[calc(100vh-6rem)] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)]",
+        className
+      )}
+    >
+      <div className="flex min-h-[calc(100vh-6rem)]">
+        <aside className="hidden w-68 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] p-5 lg:flex lg:flex-col">
+          {sidebarContent}
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-[65px] z-30 border-b border-[var(--color-border)] bg-[var(--color-surface)] lg:static">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[var(--color-border)] px-3 text-sm font-bold text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-muted)]"
+                aria-label="Open dashboard menu"
+                aria-controls={mobileMenuId}
+                aria-expanded={mobileMenuOpen}
+              >
+                Menu
+              </button>
+
+              <div className="min-w-0 text-center">
+                <p className="truncate text-sm font-bold text-[var(--color-text)]">
+                  {title}
+                </p>
+                {description && (
+                  <p className="truncate text-xs text-[var(--color-text-muted)]">
+                    {description}
+                  </p>
+                )}
+              </div>
+
+              <div className="h-10 w-[62px]" aria-hidden="true" />
+            </div>
+
+            <div className="hidden px-6 py-5 lg:flex lg:items-center lg:justify-between lg:gap-6">
+              <div className="min-w-0">
+                <h1 className="truncate text-2xl font-bold tracking-tight text-[var(--color-text)]">
+                  {title}
+                </h1>
+                {description && (
+                  <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+                    {description}
+                  </p>
+                )}
+              </div>
+
+              {actions && <div className="shrink-0">{actions}</div>}
+            </div>
+
+            {actions && (
+              <div className="border-t border-[var(--color-border)] px-4 py-3 sm:px-6 lg:hidden">
+                {actions}
+              </div>
+            )}
+          </header>
+
+          <main className="portal-scrollbar min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            {children}
+          </main>
+        </div>
+      </div>
+
+      {mobileMenuOpen && (
+      <div className="fixed inset-0 z-[120] lg:hidden">
+        <button
+          type="button"
+          aria-label="Close dashboard menu"
+          className="absolute inset-0 cursor-default bg-black/60"
+          onClick={closeMobileMenu}
+        />
+
+        <aside
+          id={mobileMenuId}
+          className="absolute left-0 top-0 flex h-full w-[min(22rem,86vw)] flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-dialog)]"
+          aria-label="Mobile dashboard navigation"
+        >
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+                Navigation
+              </p>
+
+              <button
+                type="button"
+                onClick={closeMobileMenu}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-border)] text-lg font-bold text-[var(--color-text)]"
+                aria-label="Close dashboard menu"
+              >
+                ×
+              </button>
+            </div>
+
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+};
+
+type DashboardGridProps = {
+  children: React.ReactNode;
+  className?: string;
+  columns?: "auto" | "two" | "three" | "four";
+};
+
+const dashboardGridColumns: Record<NonNullable<DashboardGridProps["columns"]>, string> = {
+  auto: "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
+  two: "grid-cols-1 lg:grid-cols-2",
+  three: "grid-cols-1 md:grid-cols-2 xl:grid-cols-3",
+  four: "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
+};
+
+export const DashboardGrid = ({
+  children,
+  className = "",
+  columns = "auto",
+}: DashboardGridProps) => (
+  <div className={cn("grid gap-4", dashboardGridColumns[columns], className)}>
+    {children}
+  </div>
+);
+
+export const DashboardPanel = ({
+  children,
+  className = "",
+}: CommonProps) => (
+  <Card className={cn("p-5 sm:p-6", className)}>
+    {children}
+  </Card>
+);
+
+export const DetailRow = ({
+  label,
+  value,
+  className = "",
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  className?: string;
+}) => (
+  <div
+    className={cn(
+      "flex flex-col gap-1 border-t border-[var(--color-border)] py-3 text-sm sm:flex-row sm:items-center sm:justify-between",
+      className
+    )}
+  >
+    <span className="text-[var(--color-text-muted)]">{label}</span>
+    <span className="font-semibold text-[var(--color-text)]">{value}</span>
+  </div>
+);
+
+export const TagList = ({
+  items,
+  className = "",
+}: {
+  items: React.ReactNode[];
+  className?: string;
+}) => (
+  <div className={cn("flex flex-wrap gap-2", className)}>
+    {items.map((item, index) => (
+      <span
+        key={`${String(item)}-${index}`}
+        className="rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--color-accent)]"
+      >
+        {item}
+      </span>
+    ))}
+  </div>
+);
+
+export const MobileSafeTable = ({
+  children,
+  className = "",
+}: CommonProps) => (
+  <div
+    className={cn(
+      "portal-scrollbar overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]",
+      className
+    )}
+  >
+    <table className="min-w-[720px] w-full text-left text-sm">
+      {children}
+    </table>
+  </div>
+);
+
+export const TableHeadCell = ({
+  children,
+  className = "",
+}: CommonProps) => (
+  <th
+    className={cn(
+      "bg-[var(--color-surface-muted)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]",
+      className
+    )}
+  >
+    {children}
+  </th>
+);
+
+export const TableCell = ({
+  children,
+  className = "",
+}: CommonProps) => (
+  <td
+    className={cn(
+      "border-t border-[var(--color-border)] px-4 py-4 text-sm text-[var(--color-text)]",
+      className
+    )}
+  >
+    {children}
+  </td>
+);
