@@ -68,9 +68,18 @@ const getStatusVariant = (status?: string): BadgeVariant => {
   return 'muted';
 };
 
+const PROGRAM_ACRONYM_BY_NAME = Object.entries(PROGRAM_MAP).reduce<Record<string, string>>(
+  (acronyms, [acronym, fullName]) => ({ ...acronyms, [fullName]: acronym }),
+  {}
+);
+
 const getProgramName = (program?: string) => {
-  if (!program || program === 'N/A') return 'Unspecified Program';
-  return (PROGRAM_MAP as Record<string, string>)[program] || program;
+  const normalizedProgram = String(program || '').trim();
+
+  if (!normalizedProgram || normalizedProgram === 'N/A') return 'N/A';
+  if ((PROGRAM_MAP as Record<string, string>)[normalizedProgram]) return normalizedProgram;
+
+  return PROGRAM_ACRONYM_BY_NAME[normalizedProgram] || normalizedProgram.toUpperCase();
 };
 
 const getProjectProgram = (project?: any) => {
@@ -603,7 +612,7 @@ const SupervisorDashboard = ({
   };
 
   const renderOverview = () => (
-    <div className="space-y-6">
+    <div className="space-y-7 sm:space-y-6">
       <DashboardGrid>
         <StatCard
           label="Assigned Teams"
@@ -634,7 +643,7 @@ const SupervisorDashboard = ({
         />
       </DashboardGrid>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
+      <div className="grid gap-7 sm:gap-6 xl:grid-cols-[1fr_22rem]">
         <DashboardPanel>
           <SectionHeader
             title="Supervisor Work Queue"
@@ -718,7 +727,7 @@ const SupervisorDashboard = ({
   );
 
   const renderProjects = () => (
-    <DashboardPanel className="flex h-full min-h-0 flex-col overflow-hidden">
+    <DashboardPanel className="flex flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
       <SectionHeader
         title="Assigned Projects"
         description={
@@ -769,7 +778,7 @@ const SupervisorDashboard = ({
           />
         </div>
       ) : (
-        <div className="portal-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="portal-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <DashboardGrid columns="three" className="pb-1">
             {filteredProjects.map(renderProjectCard)}
           </DashboardGrid>

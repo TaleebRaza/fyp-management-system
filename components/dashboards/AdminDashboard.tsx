@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -31,7 +32,9 @@ import {
   DashboardPanel,
   DashboardShell,
   Dialog,
+  LinkifiedText,
   SectionHeader,
+  Select,
   StatCard,
   StyledInput,
 } from '../ui/SharedUI';
@@ -652,7 +655,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   };
 
   const renderOverview = () => (
-    <div className="space-y-6">
+    <div className="space-y-7 sm:space-y-6">
       <DashboardGrid columns="four">
         <StatCard
           label="Total Students"
@@ -764,7 +767,9 @@ const AdminDashboard = ({ session, showDialog }: any) => {
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
               Current announcement
             </p>
-            <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">{currentHeadline}</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
+              <LinkifiedText text={currentHeadline} />
+            </p>
           </div>
         ) : (
           <p className="mt-4 text-sm text-[var(--color-text-muted)]">
@@ -776,8 +781,8 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   );
 
   const renderSupervisors = () => (
-    <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-      <DashboardPanel>
+    <div className="grid gap-7 sm:gap-6 xl:h-full xl:min-h-0 xl:grid-cols-[0.8fr_1.2fr]">
+      <DashboardPanel className="h-fit xl:sticky xl:top-0">
         <SectionHeader
           title="Add Supervisor"
           description="Create a supervisor account with login credentials."
@@ -820,26 +825,28 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         </form>
       </DashboardPanel>
 
-      <DashboardPanel>
-        <SectionHeader
-          title="Active Supervisors"
-          description={`${filteredSupervisors.length}${
-            supervisorSearch.trim() ? ` of ${adminSupervisors.length}` : ''
-          } supervisor accounts`}
-        />
+      <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
+        <div className="shrink-0">
+          <SectionHeader
+            title="Active Supervisors"
+            description={`${filteredSupervisors.length}${
+              supervisorSearch.trim() ? ` of ${adminSupervisors.length}` : ''
+            } supervisor accounts`}
+          />
 
-        <StyledInput
-          icon={Search}
-          value={supervisorSearch}
-          onChange={(event: any) => setSupervisorSearch(event.target.value)}
-          type="search"
-          placeholder="Search by name, ID, email, or migration code..."
-        />
+          <StyledInput
+            icon={Search}
+            value={supervisorSearch}
+            onChange={(event: any) => setSupervisorSearch(event.target.value)}
+            type="search"
+            placeholder="Search by name, ID, email, or migration code..."
+          />
+        </div>
 
-        <div className="mt-5 space-y-3">
+        <div className="portal-scrollbar mt-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
           {filteredSupervisors.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-              <Users className="mx-auto mb-3 text-[var(--color-text-muted)]" size={28} />
+            <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+              <Users className="mb-3 text-[var(--color-text-muted)]" size={28} />
               <p className="text-sm font-semibold text-[var(--color-text)]">
                 No supervisors found
               </p>
@@ -848,62 +855,64 @@ const AdminDashboard = ({ session, showDialog }: any) => {
               </p>
             </div>
           ) : (
-            filteredSupervisors.map((supervisor) => (
-              <div
-                key={supervisor._id}
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-              >
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <AvatarBadge name={supervisor.name} />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
-                        <Badge variant="muted">{supervisor.rollNo || 'No ID'}</Badge>
+            <div className="space-y-3">
+              {filteredSupervisors.map((supervisor) => (
+                <div
+                  key={supervisor._id}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <AvatarBadge name={supervisor.name} />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
+                          <Badge variant="muted">{supervisor.rollNo || 'No ID'}</Badge>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateEmail(supervisor._id, supervisor.email, supervisor.name)
+                          }
+                          className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+                        >
+                          {supervisor.email || 'Assign email'}
+                        </button>
+
+                        <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
+                          Migration Code:{' '}
+                          <span className="font-mono text-[var(--color-text)]">
+                            {supervisor.migrationCode || 'N/A'}
+                          </span>
+                        </p>
                       </div>
+                    </div>
 
-                      <button
-                        type="button"
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
                         onClick={() =>
-                          handleUpdateEmail(supervisor._id, supervisor.email, supervisor.name)
+                          handleToggleNotifications(supervisor._id, supervisor.notificationsEnabled)
                         }
-                        className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+                        title="Toggle notifications"
                       >
-                        {supervisor.email || 'Assign email'}
-                      </button>
+                        {supervisor.notificationsEnabled ? <Mail size={16} /> : <MailX size={16} />}
+                        {supervisor.notificationsEnabled ? 'Notifications On' : 'Notifications Off'}
+                      </Button>
 
-                      <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
-                        Migration Code:{' '}
-                        <span className="font-mono text-[var(--color-text)]">
-                          {supervisor.migrationCode || 'N/A'}
-                        </span>
-                      </p>
+                      <Button
+                        variant="danger"
+                        onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name)}
+                      >
+                        <Trash2 size={16} />
+                        Delete
+                      </Button>
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        handleToggleNotifications(supervisor._id, supervisor.notificationsEnabled)
-                      }
-                      title="Toggle notifications"
-                    >
-                      {supervisor.notificationsEnabled ? <Mail size={16} /> : <MailX size={16} />}
-                      {supervisor.notificationsEnabled ? 'Notifications On' : 'Notifications Off'}
-                    </Button>
-
-                    <Button
-                      variant="danger"
-                      onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name)}
-                    >
-                      <Trash2 size={16} />
-                      Delete
-                    </Button>
-                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       </DashboardPanel>
@@ -911,87 +920,72 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   );
 
   const renderStudents = () => (
-    <DashboardPanel>
-      <SectionHeader
-        title="Students"
-        description="Search, filter, and manage student academic records."
-        action={
-          batchFilter !== 'All' ? (
-            <Button variant="accent" onClick={handlePromoteBatch}>
-              Promote {batchFilter}
-            </Button>
-          ) : null
-        }
-      />
-
-      <div className="grid gap-4">
-        <StyledInput
-          icon={Search}
-          value={studentSearch}
-          onChange={(event: any) => setStudentSearch(event.target.value)}
-          type="search"
-          placeholder="Search students by name, ID, or email..."
+    <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
+      <div className="shrink-0">
+        <SectionHeader
+          title="Students"
+          description="Search, filter, and manage student academic records."
+          action={
+            batchFilter !== 'All' ? (
+              <Button variant="accent" onClick={handlePromoteBatch}>
+                Promote {batchFilter}
+              </Button>
+            ) : null
+          }
         />
 
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-              <Filter size={13} />
-              Filter:
-            </span>
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+          <div className="grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_12rem_12rem]">
+            <StyledInput
+              icon={Search}
+              value={studentSearch}
+              onChange={(event: any) => setStudentSearch(event.target.value)}
+              type="search"
+              placeholder="Search students by name, ID, or email..."
+            />
 
-            {filterOptions.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => handleStudentFilterChange(option)}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
-                  studentFilter === option
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-                }`}
-              >
-                {option}
-              </button>
-            ))}
+            <Select
+              value={studentFilter}
+              onChange={(event) => handleStudentFilterChange(event.target.value)}
+              aria-label="Filter students by program or status"
+            >
+              {filterOptions.map((option) => (
+                <option key={option} value={option}>
+                  {Object.keys(PROGRAM_MAP).includes(option) ? option : option}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              value={batchFilter}
+              onChange={(event) => handleBatchFilterChange(event.target.value)}
+              aria-label="Filter students by batch"
+            >
+              <option value="All">All Batches</option>
+              {studentBatches.map((batch) => (
+                <option key={batch} value={batch}>
+                  {batch}
+                </option>
+              ))}
+            </Select>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-              Batch:
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--color-text-muted)]">
+            <span className="inline-flex items-center gap-1 uppercase tracking-wide">
+              <Filter size={13} />
+              Active filters
             </span>
-
-            <button
-              type="button"
-              onClick={() => handleBatchFilterChange('All')}
-              className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
-                batchFilter === 'All'
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-              }`}
-            >
-              All
-            </button>
-
-            {studentBatches.map((batch) => (
-              <button
-                key={batch}
-                type="button"
-                onClick={() => handleBatchFilterChange(batch)}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
-                  batchFilter === batch
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-                }`}
-              >
-                {batch}
-              </button>
-            ))}
+            <Badge variant={studentFilter === 'All' ? 'muted' : 'accent'}>
+              {studentFilter === 'All' ? 'All Programs & Statuses' : studentFilter}
+            </Badge>
+            <Badge variant={batchFilter === 'All' ? 'muted' : 'accent'}>
+              {batchFilter === 'All' ? 'All Batches' : batchFilter}
+            </Badge>
           </div>
         </div>
       </div>
 
-      <div className="mt-5 space-y-3">
+      <div className="portal-scrollbar mt-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
         {isStudentsLoading ? (
           <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
             <Loader2 size={32} className="mb-3 animate-spin text-[var(--color-accent)]" />
@@ -1006,89 +1000,91 @@ const AdminDashboard = ({ session, showDialog }: any) => {
             </p>
           </div>
         ) : (
-          filteredStudents.map((student) => (
-            <div
-              key={student._id}
-              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-            >
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <AvatarBadge
-                    name={student.name}
-                    className={student.isActive === false ? 'opacity-50' : ''}
-                  />
+          <div className="space-y-3">
+            {filteredStudents.map((student) => (
+              <div
+                key={student._id}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+              >
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <AvatarBadge
+                      name={student.name}
+                      className={student.isActive === false ? 'opacity-50' : ''}
+                    />
 
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3
-                        className={`font-bold text-[var(--color-text)] ${
-                          student.isActive === false ? 'line-through opacity-60' : ''
-                        }`}
-                      >
-                        {student.name || 'Unnamed student'}
-                      </h3>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3
+                          className={`font-bold text-[var(--color-text)] ${
+                            student.isActive === false ? 'line-through opacity-60' : ''
+                          }`}
+                        >
+                          {student.name || 'Unnamed student'}
+                        </h3>
 
-                      <Badge variant={getStatusVariant(student.status) as any}>
-                        {student.status || 'N/A'}
-                      </Badge>
+                        <Badge variant={getStatusVariant(student.status) as any}>
+                          {student.status || 'N/A'}
+                        </Badge>
 
-                      {student.isActive === false && <Badge variant="danger">Deactivated</Badge>}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateEmail(student._id, student.email, student.name)}
-                      className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-                    >
-                      ID: {student.rollNo || 'N/A'} · {student.email || 'Assign email'}
-                    </button>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleUpdateProgram(student._id, student.program, student.name)
-                        }
-                        className="rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--color-accent)]"
-                        title={`${getProgramName(student.program)} — click to edit`}
-                      >
-                        {student.program || 'No program'}
-                      </button>
+                        {student.isActive === false && <Badge variant="danger">Deactivated</Badge>}
+                      </div>
 
                       <button
                         type="button"
-                        onClick={() => handleUpdateBatch(student._id, student.batch, student.name)}
-                        className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                        title="Click to edit batch"
+                        onClick={() => handleUpdateEmail(student._id, student.email, student.name)}
+                        className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
                       >
-                        {student.batch || 'No batch'} · {student.semester || '7th Sem'}
+                        ID: {student.rollNo || 'N/A'} · {student.email || 'Assign email'}
                       </button>
 
-                      {student.monthlyLoginCount > 0 && (
-                        <Badge variant="accent">{student.monthlyLoginCount} logins this month</Badge>
-                      )}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateProgram(student._id, student.program, student.name)
+                          }
+                          className="rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--color-accent)]"
+                          title={`${getProgramName(student.program)} — click to edit`}
+                        >
+                          {student.program || 'No program'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateBatch(student._id, student.batch, student.name)}
+                          className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                          title="Click to edit batch"
+                        >
+                          {student.batch || 'No batch'} · {student.semester || '7th Sem'}
+                        </button>
+
+                        {student.monthlyLoginCount > 0 && (
+                          <Badge variant="accent">{student.monthlyLoginCount} logins this month</Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={student.isActive !== false ? 'danger' : 'success'}
-                    onClick={() =>
-                      handleToggleStudentStatus(student._id, student.isActive !== false)
-                    }
-                  >
-                    {student.isActive !== false ? <Trash2 size={16} /> : <CheckCircle size={16} />}
-                    {student.isActive !== false ? 'Deactivate' : 'Restore'}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant={student.isActive !== false ? 'danger' : 'success'}
+                      onClick={() =>
+                        handleToggleStudentStatus(student._id, student.isActive !== false)
+                      }
+                    >
+                      {student.isActive !== false ? <Trash2 size={16} /> : <CheckCircle size={16} />}
+                      {student.isActive !== false ? 'Deactivate' : 'Restore'}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
 
-      <div className="mt-5 flex flex-col gap-3 border-t border-[var(--color-border)] pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-5 flex shrink-0 flex-col gap-3 border-t border-[var(--color-border)] pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="font-semibold text-[var(--color-text-muted)]">
           Showing {filteredStudents.length} of {studentPagination.total} students
         </p>
@@ -1156,6 +1152,11 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         title="Admin Dashboard"
         description="Manage the complete FYP portal ecosystem."
         navItems={navItems}
+        className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${
+          activeTab === 'supervisors' || activeTab === 'students'
+            ? '[&>div>div>main]:lg:overflow-hidden'
+            : ''
+        }`}
         user={{
           name: session?.user?.name || 'Administrator',
           role: 'Admin',
@@ -1175,8 +1176,12 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         }
       >
         {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'supervisors' && renderSupervisors()}
-        {activeTab === 'students' && renderStudents()}
+        {activeTab === 'supervisors' && (
+          <div className="min-h-0 lg:h-full">{renderSupervisors()}</div>
+        )}
+        {activeTab === 'students' && (
+          <div className="min-h-0 lg:h-full">{renderStudents()}</div>
+        )}
       </DashboardShell>
 
       <Dialog

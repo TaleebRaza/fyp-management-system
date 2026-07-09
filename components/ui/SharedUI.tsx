@@ -23,7 +23,7 @@ export const Card = ({
 }: CommonProps) => (
   <div
     className={cn(
-      "portal-card p-5 sm:p-6 md:p-8 transition-colors duration-200",
+      "portal-card portal-motion-card p-5 sm:p-6 md:p-8 transition-colors duration-200",
       className
     )}
   >
@@ -73,7 +73,7 @@ export const StyledInput = ({
       <input
         disabled={disabled}
         className={cn(
-          "peer h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-text)] outline-none transition-colors placeholder:text-[var(--color-text-soft)]",
+          "peer portal-focus-lift h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-text)] outline-none transition-colors placeholder:text-[var(--color-text-soft)]",
           "focus:border-[var(--color-accent)] focus:bg-[var(--color-surface)]",
           "disabled:cursor-not-allowed disabled:bg-[var(--color-surface-muted)] disabled:opacity-60",
           Icon ? "pl-10" : "",
@@ -100,7 +100,7 @@ export const TextArea = ({
   <div className={wrapperClassName}>
     <textarea
       className={cn(
-        "min-h-28 w-full resize-y rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] outline-none transition-colors placeholder:text-[var(--color-text-soft)]",
+        "portal-focus-lift min-h-28 w-full resize-y rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] outline-none transition-colors placeholder:text-[var(--color-text-soft)]",
         "focus:border-[var(--color-accent)] focus:bg-[var(--color-surface)]",
         "disabled:cursor-not-allowed disabled:bg-[var(--color-surface-muted)] disabled:opacity-60",
         className
@@ -123,7 +123,7 @@ export const Select = ({
   <div className={wrapperClassName}>
     <select
       className={cn(
-        "h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-text)] outline-none transition-colors",
+        "portal-focus-lift h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-text)] outline-none transition-colors",
         "focus:border-[var(--color-accent)] focus:bg-[var(--color-surface)]",
         "disabled:cursor-not-allowed disabled:bg-[var(--color-surface-muted)] disabled:opacity-60",
         className
@@ -175,7 +175,7 @@ export const Button = ({
   <button
     type={type ?? "button"}
     className={cn(
-      "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+      "portal-button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
       "disabled:cursor-not-allowed disabled:opacity-55",
       buttonVariants[variant],
       className
@@ -220,7 +220,7 @@ export const Badge = ({
 }: BadgeProps) => (
   <span
     className={cn(
-      "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
+      "portal-badge inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
       badgeVariants[variant],
       className
     )}
@@ -244,7 +244,7 @@ export const SectionHeader = ({
 }: SectionHeaderProps) => (
   <div
     className={cn(
-      "mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between",
+      "mb-5 flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-end sm:justify-between",
       className
     )}
   >
@@ -288,7 +288,7 @@ export const StatCard = ({
         </div>
       </div>
       {icon && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-2 text-[var(--color-primary)]">
+        <div className="portal-stat-icon rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-2 text-[var(--color-primary)]">
           {icon}
         </div>
       )}
@@ -354,7 +354,7 @@ export const EmptyState = ({
 }: EmptyStateProps) => (
   <div
     className={cn(
-      "rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-8 text-center",
+      "portal-empty-state rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-8 text-center",
       className
     )}
   >
@@ -415,13 +415,13 @@ export const Dialog = ({
       <button
         type="button"
         aria-label={closeLabel}
-        className="absolute inset-0 cursor-default bg-black/60"
+        className="portal-dialog-backdrop absolute inset-0 cursor-default bg-black/60"
         onClick={onClose}
       />
 
       <div
         className={cn(
-          "portal-dialog relative z-10 flex max-h-[calc(100vh-1.5rem)] w-full flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl",
+          "portal-dialog portal-dialog-motion relative z-10 flex max-h-[calc(100vh-1.5rem)] w-full flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl",
           dialogSizes[size]
         )}
       >
@@ -517,7 +517,7 @@ export const AvatarBadge = ({
 }) => (
   <div
     className={cn(
-      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-sm font-bold text-white",
+      "portal-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-sm font-bold text-white",
       className
     )}
     aria-hidden="true"
@@ -583,9 +583,9 @@ React.useEffect(() => {
         closeMobileMenu();
       }}
       className={cn(
-        "flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors",
+        "portal-nav-item flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors",
         item.active
-          ? "bg-[var(--color-accent-soft)] text-[var(--color-text)]"
+          ? "portal-nav-item-active bg-[var(--color-accent-soft)] text-[var(--color-text)]"
           : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]"
       )}
     >
@@ -659,18 +659,18 @@ React.useEffect(() => {
   return (
     <div
       className={cn(
-        "min-h-[calc(100vh-6rem)] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)]",
+        "min-h-[calc(100vh-6.5rem)] rounded-none border-0 bg-transparent sm:rounded-2xl sm:border sm:border-[var(--color-border)] sm:bg-[var(--color-bg)] lg:min-h-[calc(100vh-6rem)] lg:overflow-hidden",
         className
       )}
     >
-      <div className="flex min-h-[calc(100vh-6rem)]">
+      <div className="flex min-h-[calc(100vh-6.5rem)] lg:min-h-[calc(100vh-6rem)]">
         <aside className="hidden w-68 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] p-5 lg:flex lg:flex-col">
           {sidebarContent}
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-[65px] z-30 border-b border-[var(--color-border)] bg-[var(--color-surface)] lg:static">
-            <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:hidden">
+          <header className="z-30 bg-transparent lg:static lg:border-b lg:border-[var(--color-border)] lg:bg-[var(--color-surface)]">
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4 shadow-[var(--shadow-card)] sm:px-6 lg:hidden">
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(true)}
@@ -693,7 +693,7 @@ React.useEffect(() => {
                 )}
               </div>
 
-              <div className="h-10 w-[62px]" aria-hidden="true" />
+              <AvatarBadge name={user?.name} initials={user?.initials} className="h-10 w-10 rounded-xl" />
             </div>
 
             <div className="hidden px-6 py-5 lg:flex lg:items-center lg:justify-between lg:gap-6">
@@ -712,13 +712,13 @@ React.useEffect(() => {
             </div>
 
             {actions && (
-              <div className="border-t border-[var(--color-border)] px-4 py-3 sm:px-6 lg:hidden">
-                {actions}
+              <div className="mt-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[var(--shadow-card)] sm:p-4 lg:hidden">
+                <div className="portal-mobile-actions">{actions}</div>
               </div>
             )}
           </header>
 
-          <main className="portal-scrollbar min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <main className="portal-scrollbar portal-content-enter min-w-0 flex-1 overflow-visible px-0 py-5 sm:p-6 lg:overflow-y-auto">
             {children}
           </main>
         </div>
@@ -735,7 +735,7 @@ React.useEffect(() => {
 
         <aside
           id={mobileMenuId}
-          className="absolute left-0 top-0 flex h-full w-[min(22rem,86vw)] flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-dialog)]"
+          className="portal-mobile-menu absolute left-0 top-0 flex h-full w-[min(22rem,86vw)] flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-dialog)]"
           aria-label="Mobile dashboard navigation"
         >
             <div className="mb-5 flex items-center justify-between gap-3">
@@ -779,7 +779,7 @@ export const DashboardGrid = ({
   className = "",
   columns = "auto",
 }: DashboardGridProps) => (
-  <div className={cn("grid gap-4", dashboardGridColumns[columns], className)}>
+  <div className={cn("portal-grid grid gap-5 sm:gap-4", dashboardGridColumns[columns], className)}>
     {children}
   </div>
 );
@@ -788,7 +788,7 @@ export const DashboardPanel = ({
   children,
   className = "",
 }: CommonProps) => (
-  <Card className={cn("p-5 sm:p-6", className)}>
+  <Card className={cn("portal-panel p-5 sm:p-6", className)}>
     {children}
   </Card>
 );
@@ -831,6 +831,91 @@ export const TagList = ({
     ))}
   </div>
 );
+
+
+const trimTrailingUrlPunctuation = (value: string) => {
+  const match = value.match(/[.,!?;:)\]}]+$/);
+
+  if (!match) {
+    return { url: value, trailing: "" };
+  }
+
+  return {
+    url: value.slice(0, -match[0].length),
+    trailing: match[0],
+  };
+};
+
+const getSafeHref = (value: string) => {
+  const trimmedValue = value.trim();
+  const normalizedValue = /^https?:\/\//i.test(trimmedValue)
+    ? trimmedValue
+    : `https://${trimmedValue}`;
+
+  try {
+    const url = new URL(normalizedValue);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return "";
+    }
+
+    return url.toString();
+  } catch {
+    return "";
+  }
+};
+
+export const LinkifiedText = ({
+  text,
+  className = "",
+}: {
+  text: string;
+  className?: string;
+}) => {
+  const source = String(text || "");
+  const parts: React.ReactNode[] = [];
+  const urlPattern = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+  let lastIndex = 0;
+
+  source.replace(urlPattern, (match, _unused, offset) => {
+    if (offset > lastIndex) {
+      parts.push(source.slice(lastIndex, offset));
+    }
+
+    const { url, trailing } = trimTrailingUrlPunctuation(match);
+    const href = getSafeHref(url);
+
+    if (href) {
+      parts.push(
+        <a
+          key={`${href}-${offset}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-bold text-[var(--color-accent)] underline decoration-[var(--color-accent)]/40 underline-offset-4 transition-colors hover:text-[var(--color-accent-hover)]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {url}
+        </a>
+      );
+    } else {
+      parts.push(match);
+    }
+
+    if (trailing) {
+      parts.push(trailing);
+    }
+
+    lastIndex = offset + match.length;
+    return match;
+  });
+
+  if (lastIndex < source.length) {
+    parts.push(source.slice(lastIndex));
+  }
+
+  return <span className={className}>{parts.length > 0 ? parts : source}</span>;
+};
 
 export const MobileSafeTable = ({
   children,

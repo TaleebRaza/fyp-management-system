@@ -34,6 +34,7 @@ import {
   DashboardPanel,
   DashboardShell,
   Dialog,
+  LinkifiedText,
   SectionHeader,
   StatCard,
   StyledInput,
@@ -600,14 +601,16 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   };
 
   const renderOverview = () => (
-    <div className="space-y-6">
+    <div className="space-y-7 sm:space-y-6">
       {headline && (
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-accent-soft)] p-4">
           <div className="flex items-start gap-3">
             <Megaphone size={20} className="mt-0.5 shrink-0 text-[var(--color-accent)]" />
             <div>
               <p className="text-sm font-bold text-[var(--color-text)]">Announcement</p>
-              <p className="mt-1 text-sm leading-6 text-[var(--color-text)]">{headline}</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--color-text)]">
+                <LinkifiedText text={headline} />
+              </p>
             </div>
           </div>
         </div>
@@ -639,7 +642,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
       <ProjectTimeline currentStage={currentStage} />
 
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+      <div className="grid gap-7 sm:gap-6 xl:grid-cols-[1.4fr_0.8fr]">
         <DashboardPanel>
           <SectionHeader
             title="Project Information"
@@ -888,7 +891,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   );
 
   const renderTeam = () => (
-    <div className="grid gap-6 xl:grid-cols-2">
+    <div className="grid gap-7 sm:gap-6 xl:grid-cols-2">
       <DashboardPanel>
         <SectionHeader
           title="Team Members"
@@ -1012,7 +1015,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   );
 
   const renderResources = () => (
-    <div className="grid gap-6 xl:grid-cols-[1fr_0.8fr]">
+    <div className="grid gap-7 sm:gap-6 xl:grid-cols-[1fr_0.8fr]">
       <DashboardPanel>
         <SectionHeader
           title="Templates & Resources"

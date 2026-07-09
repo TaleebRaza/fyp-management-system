@@ -434,30 +434,18 @@ const LoginView = ({ setIsRegistering, showDialog }: any) => {
       className="grid min-h-[calc(100vh-7rem)] items-center gap-6 py-6 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10 lg:py-10"
     >
       <section className="hidden lg:block">
-        <div className="max-w-xl">
-          <div className="mb-6 inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text-muted)]">
-            Final Year Project Management
+        <div className="flex max-w-xl flex-col items-start justify-center">
+          <div className="mb-8 flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.75rem] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)]">
+            <img src="/logo.png" alt="University Of Haripur logo" className="h-full w-full object-contain p-3" />
           </div>
 
-          <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)] xl:text-5xl">
-            A professional portal for academic project coordination.
+          <h1 className="max-w-lg text-5xl font-black leading-tight tracking-tight text-[var(--color-text)] xl:text-6xl">
+            Final Year Project Management
           </h1>
 
-          <p className="mt-5 max-w-lg text-base leading-8 text-[var(--color-text-muted)]">
-            Manage students, supervisors, submissions, templates, reviews, and announcements from one secure university workspace.
+          <p className="mt-5 text-2xl font-semibold tracking-tight text-[var(--color-accent)]">
+            University Of Haripur
           </p>
-
-          <div className="mt-8 grid max-w-lg grid-cols-2 gap-3">
-            <div className="portal-card p-4">
-              <p className="text-sm font-semibold text-[var(--color-text)]">Role-based access</p>
-              <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">Admin, supervisor, and student dashboards.</p>
-            </div>
-
-            <div className="portal-card p-4">
-              <p className="text-sm font-semibold text-[var(--color-text)]">Secure recovery</p>
-              <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">Email-based password reset workflow.</p>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -612,7 +600,7 @@ const LoginView = ({ setIsRegistering, showDialog }: any) => {
                   <button
                     type="button"
                     onClick={() => setIsResetMode(true)}
-                    className="text-sm font-semibold text-[var(--color-primary)] transition-colors hover:text-[var(--color-accent)]"
+                    className="text-sm font-semibold text-[var(--color-text-strong)] underline-offset-4 transition-colors hover:text-[var(--color-accent)] hover:underline"
                   >
                     Forgot password?
                   </button>
@@ -638,7 +626,7 @@ const LoginView = ({ setIsRegistering, showDialog }: any) => {
                 <button
                   type="button"
                   onClick={() => setIsRegistering(true)}
-                  className="font-semibold text-[var(--color-primary)] transition-colors hover:text-[var(--color-accent)]"
+                  className="font-semibold text-[var(--color-text-strong)] underline-offset-4 transition-colors hover:text-[var(--color-accent)] hover:underline"
                 >
                   Create an account
                 </button>
@@ -679,10 +667,13 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
   }
 
   const programOptions = [
-    { label: 'BS Computer Science', value: 'BSCS' },
-    { label: 'BS Artificial Intelligence', value: 'BSAI' },
-    { label: 'BS Software Engineering', value: 'BSSE' },
-    { label: 'BS Information Technology', value: 'BSIT' },
+    { label: 'BSCS', value: 'BS Computer Sciece' },
+    { label: 'BSTN', value: 'BS Telecommuncation & Networking' },
+    { label: 'BSAI', value: 'BS Artificial Intelligence' },
+    { label: 'BSCYS', value: 'BS Cyber Security' },
+    { label: 'BSROB', value: 'BS Robotics' },
+    { label: 'BSDS', value: 'BS Data Science' },
+    { label: 'BSSE', value: 'BS Software Engineering'}
   ];
 
   const supervisorOptions = [
@@ -905,7 +896,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
 
             <div className="portal-card flex items-start gap-3 p-4">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary-soft)] text-[var(--color-primary)] dark:text-white">
-                <Users size={18} />
+                <Users size={18} aria-hidden />
               </div>
               <div>
                 <p className="text-sm font-semibold text-[var(--color-text)]">Supervisor selection is optional</p>
@@ -1139,7 +1130,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
               <button
                 type="button"
                 onClick={() => setIsRegistering(false)}
-                className="font-semibold text-[var(--color-primary)] transition-colors hover:text-[var(--color-accent)]"
+                className="font-semibold text-[var(--color-text-strong)] underline-offset-4 transition-colors hover:text-[var(--color-accent)] hover:underline"
               >
                 Sign in
               </button>
