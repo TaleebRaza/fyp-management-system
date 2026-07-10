@@ -1,10 +1,13 @@
-
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
   AlertCircle,
+  BarChart3,
+  Download,
+  ExternalLink,
+  FileText,
   CheckCircle,
   Filter,
   GraduationCap,
@@ -55,6 +58,249 @@ const getProgramName = (program?: string) => {
   return PROGRAM_MAP[program as keyof typeof PROGRAM_MAP] || program;
 };
 
+
+type ReportOption = {
+  id:
+    | 'studentsPerSupervisor'
+    | 'studentStatusSummary'
+    | 'studentActivitySummary'
+    | 'programSummary'
+    | 'batchSummary'
+    | 'projectStatusSummary'
+    | 'projectStageSummary'
+    | 'pdfReviewSummary';
+  label: string;
+  description: string;
+};
+
+type ReportRow = {
+  label: string;
+  value: number;
+  note?: string;
+};
+
+const REPORT_OPTIONS: ReportOption[] = [
+  {
+    id: 'studentsPerSupervisor',
+    label: 'Students per Supervisor',
+    description: 'Bar chart showing how many students are assigned to each supervisor.',
+  },
+  {
+    id: 'studentStatusSummary',
+    label: 'Student Status Summary',
+    description: 'Counts students by portal status such as Pending, Approved, or Unassigned.',
+  },
+  {
+    id: 'studentActivitySummary',
+    label: 'Active vs Deactivated Students',
+    description: 'Shows active and deactivated student account totals.',
+  },
+  {
+    id: 'programSummary',
+    label: 'Students by Program',
+    description: 'Shows the student distribution across programs.',
+  },
+  {
+    id: 'batchSummary',
+    label: 'Students by Batch',
+    description: 'Shows the student distribution across academic batches.',
+  },
+  {
+    id: 'projectStatusSummary',
+    label: 'Project Status Report',
+    description: 'Shows project counts by current status.',
+  },
+  {
+    id: 'projectStageSummary',
+    label: 'Project Stage Report',
+    description: 'Shows project counts by Proposal, Thesis Draft, and Final Deliverables.',
+  },
+  {
+    id: 'pdfReviewSummary',
+    label: 'PDF Submission and Review Queue',
+    description: 'Shows uploaded PDFs, projects waiting for review, and approved projects.',
+  },
+];
+
+const escapeHtml = (value: unknown) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const toReportRows = (data: any, reportId: ReportOption['id']): ReportRow[] => {
+  if (!data) return [];
+
+  if (reportId === 'studentsPerSupervisor') {
+    return (data.studentsPerSupervisor || []).map((item: any) => ({
+      label: item.label || 'Unknown Supervisor',
+      value: Number(item.total || 0),
+      note: `${Number(item.active || 0)} active, ${Number(item.deactivated || 0)} deactivated`,
+    }));
+  }
+
+  if (reportId === 'studentStatusSummary') {
+    return (data.studentStatusSummary || []).map((item: any) => ({
+      label: item.label || 'No Status',
+      value: Number(item.total || 0),
+    }));
+  }
+
+  if (reportId === 'studentActivitySummary') {
+    return (data.studentActivitySummary || []).map((item: any) => ({
+      label: item.label || 'Unknown',
+      value: Number(item.total || 0),
+    }));
+  }
+
+  if (reportId === 'programSummary') {
+    return (data.programSummary || []).map((item: any) => ({
+      label: getProgramName(item.label || 'No Program'),
+      value: Number(item.total || 0),
+    }));
+  }
+
+  if (reportId === 'batchSummary') {
+    return (data.batchSummary || []).map((item: any) => ({
+      label: item.label || 'No Batch',
+      value: Number(item.total || 0),
+    }));
+  }
+
+  if (reportId === 'projectStatusSummary') {
+    return (data.projectStatusSummary || []).map((item: any) => ({
+      label: item.label || 'Pending',
+      value: Number(item.total || 0),
+    }));
+  }
+
+  if (reportId === 'projectStageSummary') {
+    return (data.projectStageSummary || []).map((item: any) => ({
+      label: item.label || 'PROPOSAL',
+      value: Number(item.total || 0),
+    }));
+  }
+
+  return (data.pdfReviewSummary || []).map((item: any) => ({
+    label: item.label || 'Unknown',
+    value: Number(item.total || 0),
+  }));
+};
+
+const buildCsv = (rows: ReportRow[]) => {
+  const header = ['Label', 'Value', 'Note'];
+  const body = rows.map((row) => [row.label, row.value, row.note || '']);
+
+  return [header, ...body]
+    .map((line) =>
+      line
+        .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+        .join(',')
+    )
+    .join('\n');
+};
+
+const downloadTextFile = (content: string, filename: string, mimeType: string) => {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const buildReportHtml = (data: any, report: ReportOption, rows: ReportRow[]) => {
+  const generatedAt = data?.generatedAt
+    ? new Date(data.generatedAt).toLocaleString()
+    : new Date().toLocaleString();
+  const maxValue = Math.max(...rows.map((row) => row.value), 1);
+  const totals = data?.totals || {};
+  const chartRows = rows
+    .map((row) => {
+      const width = Math.max((row.value / maxValue) * 100, row.value > 0 ? 4 : 0);
+
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${escapeHtml(row.label)}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${width}%"></div>
+          </div>
+          <div class="bar-value">${row.value}</div>
+        </div>
+        ${row.note ? `<div class="bar-note">${escapeHtml(row.note)}</div>` : ''}
+      `;
+    })
+    .join('');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(report.label)} - FYP Portal Report</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; background: #f4f4f5; color: #18181b; font-family: Arial, sans-serif; }
+    .page { max-width: 1040px; margin: 0 auto; padding: 32px 18px; }
+    .header { border-radius: 22px; background: #18181b; color: #fff; padding: 28px; }
+    .eyebrow { margin: 0 0 8px; color: #a1a1aa; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 30px; line-height: 1.2; }
+    .description { margin: 10px 0 0; color: #d4d4d8; font-size: 14px; line-height: 1.6; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+    .card { border: 1px solid #e4e4e7; background: #fff; border-radius: 18px; padding: 16px; }
+    .card-label { margin: 0; color: #71717a; font-size: 12px; font-weight: 700; }
+    .card-value { margin: 6px 0 0; font-size: 26px; font-weight: 900; }
+    .chart { border: 1px solid #e4e4e7; background: #fff; border-radius: 22px; padding: 18px; }
+    .bar-row { display: grid; grid-template-columns: 220px 1fr 60px; gap: 12px; align-items: center; margin-top: 12px; }
+    .bar-label { font-size: 13px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { height: 20px; border-radius: 999px; background: #f4f4f5; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; background: #2563eb; }
+    .bar-value { font-size: 13px; font-weight: 900; text-align: right; }
+    .bar-note { margin: 3px 0 0 232px; color: #71717a; font-size: 12px; }
+    .table { width: 100%; border-collapse: collapse; margin-top: 18px; overflow: hidden; border-radius: 16px; }
+    th, td { border-bottom: 1px solid #e4e4e7; padding: 11px 10px; text-align: left; font-size: 13px; }
+    th { background: #fafafa; color: #3f3f46; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    @media (max-width: 760px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bar-row { grid-template-columns: 1fr; gap: 6px; } .bar-value { text-align: left; } .bar-note { margin-left: 0; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="header">
+      <p class="eyebrow">FYP Portal Report</p>
+      <h1>${escapeHtml(report.label)}</h1>
+      <p class="description">${escapeHtml(report.description)}</p>
+      <p class="description">Generated on ${escapeHtml(generatedAt)}. This report was created in the browser and was not saved to portal storage.</p>
+    </section>
+    <section class="summary">
+      <div class="card"><p class="card-label">Students</p><p class="card-value">${Number(totals.students || 0)}</p></div>
+      <div class="card"><p class="card-label">Supervisors</p><p class="card-value">${Number(totals.supervisors || 0)}</p></div>
+      <div class="card"><p class="card-label">Projects</p><p class="card-value">${Number(totals.projects || 0)}</p></div>
+      <div class="card"><p class="card-label">Review Queue</p><p class="card-value">${Number(totals.reviewQueue || 0)}</p></div>
+    </section>
+    <section class="chart">
+      ${rows.length === 0 ? '<p>No data available for this report.</p>' : chartRows}
+      <table class="table">
+        <thead><tr><th>Label</th><th>Value</th><th>Note</th></tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (row) => `<tr><td>${escapeHtml(row.label)}</td><td>${row.value}</td><td>${escapeHtml(row.note || '')}</td></tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>`;
+};
+
 const AdminDashboard = ({ session, showDialog }: any) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
@@ -84,9 +330,10 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   const [studentFilter, setStudentFilter] = useState('All');
   const [batchFilter, setBatchFilter] = useState('All');
 
-  const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
-  const [graphData, setGraphData] = useState<any>({ supervisors: [], students: [] });
-  const [isGraphLoading, setIsGraphLoading] = useState(false);
+  const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
+  const [reportsData, setReportsData] = useState<any>(null);
+  const [isReportsLoading, setIsReportsLoading] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<ReportOption['id']>('studentsPerSupervisor');
 
   const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
 
@@ -109,30 +356,6 @@ const AdminDashboard = ({ session, showDialog }: any) => {
     });
   }, [adminSupervisors, supervisorSearch]);
 
-  const graphStudentGroups = useMemo(() => {
-    const bySupervisor = new Map<string, any[]>();
-    const unassigned: any[] = [];
-    const students = Array.isArray(graphData.students) ? graphData.students : [];
-
-    students.forEach((student: any) => {
-      if (!student.supervisorId) {
-        unassigned.push(student);
-        return;
-      }
-
-      const supervisorId = String(student.supervisorId);
-      const currentStudents = bySupervisor.get(supervisorId) || [];
-
-      currentStudents.push(student);
-      bySupervisor.set(supervisorId, currentStudents);
-    });
-
-    return {
-      bySupervisor,
-      unassigned,
-      totalStudents: students.length,
-    };
-  }, [graphData.students]);
 
   const stats = useMemo(() => {
     const loadedStudents = Array.isArray(adminStudents) ? adminStudents : [];
@@ -149,6 +372,15 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       supervisors: adminSupervisors.length,
     };
   }, [adminStudents, adminSupervisors.length, studentPagination.total]);
+
+
+  const selectedReport = useMemo(() => {
+    return REPORT_OPTIONS.find((report) => report.id === selectedReportId) || REPORT_OPTIONS[0];
+  }, [selectedReportId]);
+
+  const selectedReportRows = useMemo(() => {
+    return toReportRows(reportsData, selectedReportId);
+  }, [reportsData, selectedReportId]);
 
   const fetchHeadline = async () => {
     try {
@@ -222,35 +454,65 @@ const AdminDashboard = ({ session, showDialog }: any) => {
     }
   };
 
-  const fetchGraphData = async () => {
-    setIsGraphLoading(true);
+
+  const fetchReportsData = async () => {
+    setIsReportsLoading(true);
 
     try {
-      const response = await fetch('/api/admin/graph-data');
+      const response = await fetch('/api/admin/reports', { cache: 'no-store' });
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to load assignment map');
+        throw new Error(data.error || 'Failed to load reports');
       }
 
-      setGraphData({
-        supervisors: Array.isArray(data.supervisors) ? data.supervisors : [],
-        students: Array.isArray(data.students) ? data.students : [],
-      });
+      setReportsData(data);
     } catch (error) {
-      console.error('Assignment map error:', error);
+      console.error('Reports error:', error);
       showDialog({
-        title: 'Assignment map unavailable',
-        message: 'Unable to load the supervisor-student assignment map right now.',
+        title: 'Reports unavailable',
+        message: 'Unable to load report data right now. Please refresh and try again.',
       });
     } finally {
-      setIsGraphLoading(false);
+      setIsReportsLoading(false);
     }
   };
 
-  const openGraphModal = async () => {
-    setIsGraphModalOpen(true);
-    await fetchGraphData();
+  const openReportsModal = async () => {
+    setIsReportsModalOpen(true);
+    await fetchReportsData();
+  };
+
+  const handleOpenReportInNewTab = () => {
+    if (!reportsData) return;
+
+    const html = buildReportHtml(reportsData, selectedReport, selectedReportRows);
+    const reportWindow = window.open('', '_blank');
+
+    if (!reportWindow) {
+      showDialog({
+        title: 'Popup blocked',
+        message: 'Allow popups for this portal, then click Open Report again. The report is not downloaded or saved.',
+      });
+      return;
+    }
+
+    reportWindow.document.open();
+    reportWindow.document.write(html);
+    reportWindow.document.close();
+    reportWindow.focus();
+  };
+
+  const handleDownloadHtmlReport = () => {
+    if (!reportsData) return;
+
+    const html = buildReportHtml(reportsData, selectedReport, selectedReportRows);
+    downloadTextFile(html, `${selectedReport.id}-report.html`, 'text/html');
+  };
+
+  const handleDownloadCsvReport = () => {
+    const csv = buildCsv(selectedReportRows);
+    downloadTextFile(csv, `${selectedReport.id}-report.csv`, 'text/csv');
   };
 
   useEffect(() => {
@@ -622,8 +884,8 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       if (response.ok) {
         fetchStudents();
 
-        if (isGraphModalOpen) {
-          fetchGraphData();
+        if (isReportsModalOpen) {
+          fetchReportsData();
         }
       } else {
         showDialog({
@@ -686,7 +948,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       <section>
         <SectionHeader
           title="Management"
-          description="Core administration areas for accounts, students, and project assignments."
+          description="Core administration areas for accounts, students, and reports."
         />
 
         <DashboardGrid columns="three">
@@ -723,14 +985,14 @@ const AdminDashboard = ({ session, showDialog }: any) => {
           <DashboardPanel>
             <div className="flex h-full flex-col">
               <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
-                <Network size={20} />
+                <BarChart3 size={20} />
               </div>
-              <h3 className="text-base font-bold text-[var(--color-text)]">Assignment Map</h3>
+              <h3 className="text-base font-bold text-[var(--color-text)]">Reports</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
-                Review supervisor-student assignments in a clean structured view.
+                Generate charts for supervisors, students, projects, and review queues without using storage.
               </p>
-              <Button className="mt-5 w-full" onClick={openGraphModal}>
-                View Assignments
+              <Button className="mt-5 w-full" onClick={openReportsModal}>
+                Generate Reports
               </Button>
             </div>
           </DashboardPanel>
@@ -1139,10 +1401,10 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       onClick: () => setActiveTab('students'),
     },
     {
-      id: 'assignments',
-      label: 'Assignment Map',
-      icon: <Network size={18} />,
-      onClick: openGraphModal,
+      id: 'reports',
+      label: 'Reports',
+      icon: <BarChart3 size={18} />,
+      onClick: openReportsModal,
     },
   ];
 
@@ -1163,9 +1425,9 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         }}
         actions={
           <div className="grid gap-2 sm:flex">
-            <Button variant="outline" onClick={openGraphModal}>
-              <Network size={16} />
-              Assignment Map
+            <Button variant="outline" onClick={openReportsModal}>
+              <BarChart3 size={16} />
+              Reports
             </Button>
 
             <Button variant="danger" onClick={() => signOut({ redirect: false })}>
@@ -1184,122 +1446,139 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         )}
       </DashboardShell>
 
+
       <Dialog
-        open={isGraphModalOpen}
-        onClose={() => setIsGraphModalOpen(false)}
-        title="Supervisor Assignment Map"
-        description="A structured overview of supervisor-student assignments."
+        open={isReportsModalOpen}
+        onClose={() => setIsReportsModalOpen(false)}
+        title="Admin Reports"
+        description="Open reports in a temporary browser tab, or download HTML/CSV only when needed. Nothing is saved to portal storage."
         size="xl"
         footer={
-          <Button variant="outline" onClick={() => setIsGraphModalOpen(false)}>
-            Close
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button variant="outline" onClick={() => setIsReportsModalOpen(false)}>
+              Close
+            </Button>
+            <Button variant="outline" disabled={!reportsData || selectedReportRows.length === 0} onClick={handleDownloadCsvReport}>
+              <Download size={16} />
+              CSV
+            </Button>
+            <Button variant="outline" disabled={!reportsData || selectedReportRows.length === 0} onClick={handleDownloadHtmlReport}>
+              <FileText size={16} />
+              HTML
+            </Button>
+            <Button disabled={!reportsData || selectedReportRows.length === 0} onClick={handleOpenReportInNewTab}>
+              <ExternalLink size={16} />
+              Open Report
+            </Button>
+          </div>
         }
       >
-        {isGraphLoading ? (
+        {isReportsLoading ? (
           <div className="flex min-h-80 flex-col items-center justify-center">
             <Loader2 className="mb-3 animate-spin text-[var(--color-accent)]" size={36} />
-            <p className="text-sm font-bold text-[var(--color-text)]">Loading assignment map...</p>
+            <p className="text-sm font-bold text-[var(--color-text)]">Loading reports...</p>
+          </div>
+        ) : !reportsData ? (
+          <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+            <BarChart3 className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
+            <p className="text-sm font-bold text-[var(--color-text)]">No report data loaded</p>
+            <Button className="mt-4" onClick={fetchReportsData}>
+              Load Reports
+            </Button>
           </div>
         ) : (
-          <div className="space-y-4">
-            {graphData.supervisors.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-                <Network className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
-                <p className="text-sm font-bold text-[var(--color-text)]">No assignment data found</p>
-              </div>
-            ) : (
-              graphData.supervisors.map((supervisor: any) => {
-                const assignedStudents =
-                  graphStudentGroups.bySupervisor.get(String(supervisor._id)) || [];
+          <div className="space-y-5">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+              <Select
+                value={selectedReportId}
+                onChange={(event) => setSelectedReportId(event.target.value as ReportOption['id'])}
+                aria-label="Select report type"
+              >
+                {REPORT_OPTIONS.map((report) => (
+                  <option key={report.id} value={report.id}>
+                    {report.label}
+                  </option>
+                ))}
+              </Select>
 
-                return (
-                  <div
-                    key={supervisor._id}
-                    className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-3">
-                        <AvatarBadge name={supervisor.name} />
-                        <div>
-                          <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
-                          <p className="text-sm text-[var(--color-text-muted)]">
-                            {assignedStudents.length} assigned student
-                            {assignedStudents.length === 1 ? '' : 's'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+              <Button variant="outline" onClick={fetchReportsData} disabled={isReportsLoading}>
+                {isReportsLoading ? <Loader2 className="animate-spin" size={16} /> : <BarChart3 size={16} />}
+                Refresh Data
+              </Button>
+            </div>
 
-                    <div className="mt-4 grid gap-2 md:grid-cols-2">
-                      {assignedStudents.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm font-semibold text-[var(--color-text-muted)]">
-                          No students assigned
-                        </div>
-                      ) : (
-                        assignedStudents.map((student: any) => (
-                          <div
-                            key={student._id}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
-                          >
-                            <div className="min-w-0">
-                              <p
-                                className={`truncate text-sm font-bold text-[var(--color-text)] ${
-                                  student.isActive === false ? 'line-through opacity-60' : ''
-                                }`}
-                              >
-                                {student.name}
-                              </p>
-                              <p className="truncate text-xs text-[var(--color-text-muted)]">
-                                {student.rollNo || 'No roll number'}
-                              </p>
-                            </div>
+            <DashboardGrid columns="four">
+              <StatCard
+                label="Students"
+                value={reportsData.totals?.students || 0}
+                hint="Total student accounts"
+                icon={<Users size={18} />}
+              />
+              <StatCard
+                label="Supervisors"
+                value={reportsData.totals?.supervisors || 0}
+                hint="Total supervisor accounts"
+                icon={<UserCheck size={18} />}
+              />
+              <StatCard
+                label="Projects"
+                value={reportsData.totals?.projects || 0}
+                hint="Total project records"
+                icon={<FileText size={18} />}
+              />
+              <StatCard
+                label="Review Queue"
+                value={reportsData.totals?.reviewQueue || 0}
+                hint="PDF projects not approved"
+                icon={<AlertCircle size={18} />}
+              />
+            </DashboardGrid>
 
-                            <Button
-                              variant={student.isActive !== false ? 'danger' : 'success'}
-                              className="min-h-9 px-3 text-xs"
-                              onClick={() =>
-                                handleToggleStudentStatus(
-                                  student._id,
-                                  student.isActive !== false
-                                )
-                              }
-                            >
-                              {student.isActive !== false ? 'Deactivate' : 'Restore'}
-                            </Button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+            <DashboardPanel className="bg-[var(--color-surface-muted)]">
+              <SectionHeader
+                title={selectedReport.label}
+                description={`${selectedReport.description} Generated ${new Date(reportsData.generatedAt).toLocaleString()}.`}
+              />
 
-            {graphStudentGroups.unassigned.length > 0 && (
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-                <h3 className="font-bold text-[var(--color-text)]">Unassigned Students</h3>
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  {graphStudentGroups.unassigned.map((student: any) => (
-                    <div
-                      key={student._id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-[var(--color-text)]">
-                          {student.name}
-                        </p>
-                        <p className="truncate text-xs text-[var(--color-text-muted)]">
-                          {student.rollNo || 'No roll number'}
-                        </p>
-                      </div>
-
-                      <Badge variant="muted">Unassigned</Badge>
-                    </div>
-                  ))}
+              {selectedReportRows.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center">
+                  <BarChart3 className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
+                  <p className="text-sm font-bold text-[var(--color-text)]">No data available for this report</p>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="space-y-3">
+                  {selectedReportRows.map((row) => {
+                    const maxValue = Math.max(...selectedReportRows.map((item) => item.value), 1);
+                    const width = Math.max((row.value / maxValue) * 100, row.value > 0 ? 4 : 0);
+
+                    return (
+                      <div key={row.label} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-[var(--color-text)]">{row.label}</p>
+                            {row.note && (
+                              <p className="truncate text-xs font-semibold text-[var(--color-text-muted)]">{row.note}</p>
+                            )}
+                          </div>
+                          <span className="text-sm font-black text-[var(--color-text)]">{row.value}</span>
+                        </div>
+
+                        <div className="h-3 overflow-hidden rounded-full bg-[var(--color-border)]">
+                          <div
+                            className="h-full rounded-full bg-[var(--color-primary)]"
+                            style={{ width: `${width}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </DashboardPanel>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">
+              Reports are generated from aggregated counts returned by the API. Downloaded HTML and CSV files are created in your browser with Blob URLs, so they do not consume R2 storage or create saved report files on Vercel.
+            </div>
           </div>
         )}
       </Dialog>
