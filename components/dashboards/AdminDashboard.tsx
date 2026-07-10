@@ -404,7 +404,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
 
   const fetchSupervisors = async () => {
     try {
-      const response = await fetch('/api/supervisors');
+      const response = await fetch('/api/supervisors', { cache: 'no-store' });
       const data = await response.json();
 
       setAdminSupervisors(Array.isArray(data) ? data : []);
@@ -436,7 +436,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         params.set('search', debouncedStudentSearch);
       }
 
-      const response = await fetch(`/api/admin/students?${params.toString()}`);
+      const response = await fetch(`/api/admin/students?${params.toString()}`, { cache: 'no-store' });
       const data = await response.json();
 
       if (!response.ok) {
@@ -948,20 +948,54 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       message: `Enter a new email address for ${name}.`,
       defaultValue: currentEmail || '',
       onConfirm: async (newEmail: string) => {
-        if (!newEmail || newEmail === currentEmail) return;
+        const cleanedEmail = String(newEmail || '').trim().toLowerCase();
+        const cleanedCurrentEmail = String(currentEmail || '').trim().toLowerCase();
 
-        const response = await fetch('/api/admin/update-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetUserId: userId, newEmail }),
-        });
+        if (!cleanedEmail || cleanedEmail === cleanedCurrentEmail) return;
 
-        if (response.ok) {
-          showDialog({ title: 'Email updated', message: 'The email address has been updated.' });
-          fetchSupervisors();
-          fetchStudents();
-        } else {
-          showDialog({ title: 'Update failed', message: 'Failed to update email.' });
+        try {
+          const response = await fetch('/api/admin/update-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetUserId: userId, newEmail: cleanedEmail }),
+          });
+
+          const data = await response.json().catch(() => ({}));
+
+          if (response.ok) {
+            const updatedEmail = data.user?.email || data.email || cleanedEmail;
+
+            // Update the visible card immediately so the admin does not see stale data
+            // while the fresh list is being reloaded from the server.
+            setAdminStudents((students) =>
+              students.map((student) =>
+                student._id === userId ? { ...student, email: updatedEmail } : student
+              )
+            );
+
+            setAdminSupervisors((supervisors) =>
+              supervisors.map((supervisor) =>
+                supervisor._id === userId ? { ...supervisor, email: updatedEmail } : supervisor
+              )
+            );
+
+            showDialog({
+              title: 'Email updated',
+              message: data.message || 'The email address has been updated.',
+            });
+
+            await Promise.all([fetchSupervisors(), fetchStudents(studentPage)]);
+          } else {
+            showDialog({
+              title: 'Update failed',
+              message: data.error || 'Failed to update email.',
+            });
+          }
+        } catch (error) {
+          showDialog({
+            title: 'Connection error',
+            message: 'Unable to update email right now.',
+          });
         }
       },
     });

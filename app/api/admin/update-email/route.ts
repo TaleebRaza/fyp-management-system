@@ -1,20 +1,70 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 
-export async function POST(req: Request) {
+export const dynamic = 'force-dynamic';
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+export async function POST(req: NextRequest) {
   try {
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+
+    if (!token || token.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
+    }
+
     await connectToDatabase();
+
     const { targetUserId, newEmail } = await req.json();
+    const cleanedEmail = String(newEmail || '').trim().toLowerCase();
 
-    // Ensure the new email isn't already taken by someone else
-    const emailExists = await User.findOne({ email: newEmail, _id: { $ne: targetUserId } });
-    if (emailExists) return NextResponse.json({ error: 'This email is already in use.' }, { status: 400 });
+    if (!targetUserId) {
+      return NextResponse.json({ error: 'Student or supervisor ID is required.' }, { status: 400 });
+    }
 
-    await User.findByIdAndUpdate(targetUserId, { email: newEmail });
+    if (!cleanedEmail || !isValidEmail(cleanedEmail)) {
+      return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+    }
 
-    return NextResponse.json({ message: 'Email updated successfully!' }, { status: 200 });
+    const emailExists = await User.findOne({
+      email: cleanedEmail,
+      _id: { $ne: targetUserId },
+    }).select('_id').lean();
+
+    if (emailExists) {
+      return NextResponse.json({ error: 'This email is already in use.' }, { status: 400 });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      targetUserId,
+      { $set: { email: cleanedEmail } },
+      { new: true, runValidators: true }
+    )
+      .select('_id name email role')
+      .lean();
+
+    if (!updatedUser) {
+      return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+    }
+
+    return NextResponse.json(
+      {
+        message: 'Email updated successfully.',
+        user: updatedUser,
+      },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+        },
+      }
+    );
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to update email' }, { status: 500 });
+    console.error('Update Email Error:', error);
+    return NextResponse.json({ error: 'Failed to update email.' }, { status: 500 });
   }
 }

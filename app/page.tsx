@@ -123,13 +123,20 @@ const DialogModal = ({ dialog, closeDialog }: any) => {
     dialog.title?.includes('Warning');
 
   const handleConfirm = () => {
-    if (dialog.type === 'prompt') {
-      dialog.onConfirm(inputValue);
-    } else {
-      dialog.onConfirm();
-    }
+    const confirmedValue = inputValue;
 
+    // Close the current dialog first.
+    // This allows prompt callbacks to safely open a follow-up confirm dialog
+    // without the old prompt closing it immediately after.
     closeDialog();
+
+    Promise.resolve(
+      dialog.type === 'prompt'
+        ? dialog.onConfirm(confirmedValue)
+        : dialog.onConfirm()
+    ).catch((error) => {
+      console.error('Dialog confirm handler failed:', error);
+    });
   };
 
   return (
