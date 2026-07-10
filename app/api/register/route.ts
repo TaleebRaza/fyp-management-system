@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
+import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
 import Project from '../../../models/Project';
 import Otp from '../../../models/Otp';
 import { APP_SETTINGS } from '../../../config/appSettings';
@@ -10,27 +11,41 @@ import bcrypt from 'bcryptjs';
 export async function POST(req: Request) {
   try {
     const { name, email, rollNo, password, supervisorId, program, batch, otp } = await req.json();
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedRollNo = normalizeRollNo(rollNo);
 
-    if (!name || !rollNo || !password || !batch || !email || !otp) {
+    if (!name || !normalizedRollNo || !password || !batch || !normalizedEmail || !otp) {
       return NextResponse.json({ error: 'Missing required fields, including verification code payload.' }, { status: 400 });
     }
 
-    if (!/^[a-zA-Z0-9._%+-]+@(student\.)?uoh\.edu\.pk$/.test(email)) {
+    if (!/^[a-zA-Z0-9._%+-]+@(student\.)?uoh\.edu\.pk$/.test(normalizedEmail)) {
       return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@student.uoh.edu.pk)' }, { status: 400 });
     }
 
     await connectToDatabase();
 
     // 1. Strictly validate OTP before executing heavy database tasks
-    const otpRecord = await Otp.findOne({ email });
+    const otpRecord = await Otp.findOne({ email: normalizedEmail });
     if (!otpRecord || otpRecord.code !== otp) {
       return NextResponse.json({ error: 'Invalid verification code provided.' }, { status: 400 });
     }
 
     // 2. Secondary program manual validation ensuring timestamp boundaries (15 mins = 900,000 ms)
     if (Date.now() - new Date(otpRecord.createdAt).getTime() > 900000) {
-      await Otp.findOneAndDelete({ email });
+      await Otp.findOneAndDelete({ email: normalizedEmail });
       return NextResponse.json({ error: 'Verification code has expired. Please request a fresh token.' }, { status: 400 });
+    }
+
+    const existingUser = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { rollNo: normalizedRollNo },
+        { rollNo: buildRollNoRegex(normalizedRollNo) },
+      ],
+    });
+
+    if (existingUser) {
+      return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
     }
 
     // --- OPTIMIZATION: Pre-Flight Capacity Validation ---
@@ -63,8 +78,8 @@ export async function POST(req: Request) {
     try {
       const newStudent = new User({
         name,
-        email: email || undefined,
-        rollNo,
+        email: normalizedEmail || undefined,
+        rollNo: normalizedRollNo,
         password: hashedPassword,
         role: 'student',
         program: program || 'BSCS',
@@ -92,7 +107,7 @@ export async function POST(req: Request) {
       session.endSession();
 
       // Cleanly purge verified code to prevent replays (Post-transaction clean up)
-      await Otp.findOneAndDelete({ email });
+      await Otp.findOneAndDelete({ email: normalizedEmail });
 
       return NextResponse.json({ message: 'Registration successful!' }, { status: 201 });
 

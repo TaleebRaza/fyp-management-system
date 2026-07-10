@@ -1,9 +1,10 @@
 import mongoose, { Schema } from 'mongoose';
+import { normalizeRollNo } from '../lib/rollNo';
 
 const UserSchema = new Schema({
   name: { type: String, required: true },
   email: { type: String, required: false, unique: true, sparse: true },
-  rollNo: { type: String, required: true, unique: true },
+  rollNo: { type: String, required: true, unique: true, set: normalizeRollNo },
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   

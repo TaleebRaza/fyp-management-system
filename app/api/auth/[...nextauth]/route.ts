@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import connectToDatabase from "../../../../lib/mongodb";
 import User from "../../../../models/User";
+import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
 import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
 
 // --- HELPER: Backward-Compatible Verification ---
@@ -28,8 +29,19 @@ const handler = NextAuth({
       },
       async authorize(credentials) {
         await connectToDatabase();
+
+        const normalizedRollNo = normalizeRollNo(credentials?.rollNo);
+
+        if (!normalizedRollNo) {
+          throw new Error("Roll Number is required");
+        }
         
-        const user = await User.findOne({ rollNo: credentials?.rollNo });
+        let user = await User.findOne({ rollNo: normalizedRollNo });
+
+        // ponytail: fallback supports legacy rows that were saved with trailing spaces or mixed case.
+        if (!user) {
+          user = await User.findOne({ rollNo: buildRollNoRegex(normalizedRollNo) });
+        }
         
         if (!user) {
           throw new Error("No user found with this Roll Number");

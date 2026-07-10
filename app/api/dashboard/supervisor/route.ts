@@ -6,6 +6,9 @@ import { sendNotificationEmail } from '../../../../lib/mailer';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
+import { APP_SETTINGS } from '../../../../config/appSettings';
+import VoiceNote from '../../../../models/VoiceNote';
+import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,21 +186,143 @@ export async function POST(req: Request) {
     }
 
     if (action === 'migrate') {
-      const targetSup = await User.findOne({ role: 'supervisor', migrationCode });
-      if (!targetSup) return NextResponse.json({ error: 'Invalid Migration Code!' }, { status: 400 });
-      
-      const triggerStudent = await User.findById(studentId);
-      if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+  const { studentId, migrationCode } = await req.json();
 
-      // --- Team-Aware Migration ---
-      if (triggerStudent.projectId) {
-        await Project.findByIdAndUpdate(triggerStudent.projectId, { $set: { supervisorId: targetSup._id } });
-        await User.updateMany({ projectId: triggerStudent.projectId }, { $set: { supervisorId: targetSup._id } });
-      } else {
-        await User.findByIdAndUpdate(studentId, { $set: { supervisorId: targetSup._id } });
+  // 1. Find target supervisor
+  const targetSup = await User.findOne({ role: 'supervisor', migrationCode });
+  if (!targetSup) {
+    return NextResponse.json({ error: 'Invalid Migration Code!' }, { status: 400 });
+  }
+
+  // 2. Fetch the student to migrate
+  const student = await User.findById(studentId);
+  if (!student) {
+    return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+  }
+
+  // 3. Capacity check on target supervisor
+  let filledSlots = 0;
+  if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+    filledSlots = await User.countDocuments({ role: 'student', supervisorId: targetSup._id });
+  } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+    filledSlots = await Project.countDocuments({ supervisorId: targetSup._id });
+  }
+  if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+    return NextResponse.json(
+      { error: 'Target supervisor has reached maximum capacity.' },
+      { status: 409 }
+    );
+  }
+
+  // 4. Start a MongoDB transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  let oldProject: any = null;
+  const filesToDelete: string[] = [];
+
+  try {
+    // Re-fetch student inside transaction
+    const studentInTx = await User.findById(studentId).session(session);
+    if (!studentInTx) throw new Error('Student not found');
+
+    // Handle existing project
+    if (studentInTx.projectId) {
+      oldProject = await Project.findById(studentInTx.projectId).session(session);
+      if (oldProject) {
+        const members = oldProject.members || [];
+        if (members.length > 1) {
+          // Remove only this student from the team
+          await Project.findByIdAndUpdate(
+            oldProject._id,
+            { $pull: { members: studentInTx._id } },
+            { session }
+          );
+          oldProject = null; // mark as not deleted
+        } else {
+          // Sole member → delete project and clean up storage
+          const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
+
+          let totalBytes = oldProject.pdfSize || 0;
+          const noteIds: string[] = [];
+          voiceNotes.forEach((note: any) => {
+            totalBytes += note.fileSize || 0;
+            filesToDelete.push(note.blobUrl);
+            noteIds.push(note._id);
+          });
+          if (oldProject.pdfUrl) {
+            filesToDelete.push(oldProject.pdfUrl);
+          }
+
+          if (totalBytes > 0) {
+            await SystemConfig.findOneAndUpdate(
+              { configKey: 'storage' },
+              { $inc: { usedBytes: -totalBytes } },
+              { upsert: true, session }
+            );
+          }
+
+          if (noteIds.length > 0) {
+            await VoiceNote.deleteMany({ _id: { $in: noteIds } }).session(session);
+          }
+          await Project.findByIdAndDelete(oldProject._id).session(session);
+          oldProject = null;
+        }
       }
-      return NextResponse.json({ message: 'Team migrated successfully!' }, { status: 200 });
     }
+
+    // 5. Create a fresh project under the new supervisor
+    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const newProject = new Project({
+      supervisorId: targetSup._id,
+      members: [studentInTx._id],
+      inviteCode,
+      status: 'Pending',
+      stage: 'PROPOSAL',
+      title: '',
+      titleFingerprint: '',
+      domain: '',
+      pdfUrl: '',
+      pdfSize: 0,
+    });
+    await newProject.save({ session });
+
+    // 6. Update student record
+    studentInTx.supervisorId = targetSup._id;
+    studentInTx.projectId = newProject._id;
+    studentInTx.status = 'Pending';
+    studentInTx.remarks = `Migrated to supervisor ${targetSup.name} on ${new Date().toLocaleDateString()}`;
+    studentInTx.projectTitle = '';
+    studentInTx.projectDesc = '';
+    studentInTx.domain = '';
+    studentInTx.tools = '';
+    studentInTx.pdfUrl = '';
+    await studentInTx.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // 7. Async S3 cleanup (after commit)
+    if (filesToDelete.length > 0) {
+      const keys = filesToDelete.map((key) => {
+        if (key.includes('.com/')) return key.split('.com/')[1];
+        return key.replace(/^\//, '');
+      });
+      Promise.all(
+        keys.map((k) =>
+          s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: k }))
+        )
+      ).catch((err) => console.error('Async S3 cleanup failed:', err.message));
+    }
+
+    return NextResponse.json({ message: 'Student migrated successfully!' }, { status: 200 });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error('Migration transaction error:', error);
+    return NextResponse.json({ error: 'Migration failed. Please try again.' }, { status: 500 });
+  }
+}
 
     if (action === 'removeStudent') {
       const triggerStudent = await User.findById(studentId);

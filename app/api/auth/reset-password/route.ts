@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import { buildRollNoRegex, normalizeRollNo } from '../../../../lib/rollNo';
 import bcrypt from 'bcryptjs';
 import { consumeRateLimit } from '../../../../lib/rateLimit';
 
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
 
     const { rollNo, code, newPassword } = await req.json();
 
-    const normalizedRollNo = String(rollNo || '').trim();
+    const normalizedRollNo = normalizeRollNo(rollNo);
     const normalizedCode = String(code || '').trim();
     const normalizedPassword = String(newPassword || '');
 
@@ -38,7 +39,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await User.findOne({ rollNo: normalizedRollNo });
+    let user = await User.findOne({ rollNo: normalizedRollNo });
+
+    // ponytail: fallback supports legacy rows that were saved with trailing spaces or mixed case.
+    if (!user) {
+      user = await User.findOne({ rollNo: buildRollNoRegex(normalizedRollNo) });
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });

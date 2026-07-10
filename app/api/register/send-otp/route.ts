@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import { buildRollNoRegex, normalizeRollNo } from '../../../../lib/rollNo';
 import Otp from '../../../../models/Otp';
 import RateLimit from '../../../../models/RateLimit'; // NEW: Imported the RateLimit model
 import { sendNotificationEmail } from '../../../../lib/mailer';
@@ -9,20 +10,22 @@ import { sendNotificationEmail } from '../../../../lib/mailer';
 export async function POST(req: Request) {
   try {
     const { email, rollNo } = await req.json();
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedRollNo = normalizeRollNo(rollNo);
 
     // Explicit Pre-Flight Check: Halt immediately if email is absent
-    if (!email) {
+    if (!normalizedEmail) {
       return NextResponse.json({ error: 'No email found. Please provide a valid university email address.' }, { status: 400 });
     }
 
-    if (!rollNo) {
+    if (!normalizedRollNo) {
       return NextResponse.json({ error: 'Roll Number is required.' }, { status: 400 });
     }
 
     // Upgraded Regex Firewall
     const universityEmailPattern = /^([a-zA-Z]{1,3}\d{2}[-.]\d{3,5}|[a-zA-Z]{2}\d{2}[-.][a-zA-Z]{3}[-.]\d{3}|[a-zA-Z0-9]+[-.][a-zA-Z0-9]+)@(student\.)?uoh\.edu\.pk$/i;
 
-    if (!universityEmailPattern.test(email.trim())) {
+    if (!universityEmailPattern.test(normalizedEmail)) {
       return NextResponse.json({ 
         error: 'Invalid email structure. Please use your officially formatted university email prefix (e.g., f23-0201@student.uoh.edu.pk)' 
       }, { status: 400 });
@@ -31,13 +34,20 @@ export async function POST(req: Request) {
     await connectToDatabase();
 
     // 1. Prevent dispatching verification codes for existing accounts
-    const existingUser = await User.findOne({ $or: [{ email }, { rollNo }] });
+    const existingUser = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { rollNo: normalizedRollNo },
+        { rollNo: buildRollNoRegex(normalizedRollNo) },
+      ],
+    });
+
     if (existingUser) {
       return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
     }
 
     // 2. Strict 60-Second Cooldown Check (Using existing OTP ledger)
-    const existingOtp = await Otp.findOne({ email });
+    const existingOtp = await Otp.findOne({ email: normalizedEmail });
     if (existingOtp) {
       const timeSinceLastOtp = Date.now() - new Date(existingOtp.createdAt).getTime();
       if (timeSinceLastOtp < 60000) { // 60,000 ms = 60 seconds 
@@ -50,7 +60,7 @@ export async function POST(req: Request) {
 
     // 3. 1-Hour Quota Check (Max 5 requests per hour)
     const rateLimit = await RateLimit.findOneAndUpdate(
-      { identifier: email },
+      { identifier: normalizedEmail },
       { $inc: { count: 1 } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
@@ -66,7 +76,7 @@ export async function POST(req: Request) {
 
     // 5. Atomically upsert the OTP document
     await Otp.findOneAndUpdate(
-      { email },
+      { email: normalizedEmail },
       { code, createdAt: new Date() },
       { upsert: true, new: true }
     );
@@ -81,12 +91,12 @@ export async function POST(req: Request) {
       </div>
     `;
 
-    const emailSent = await sendNotificationEmail(email, 'Your FYP Portal Registration Code', htmlContent);
+    const emailSent = await sendNotificationEmail(normalizedEmail, 'Your FYP Portal Registration Code', htmlContent);
     
     if (!emailSent) {
       // EMERGENCY CLEANUP: If the mailer fails, we wipe the pending OTP and refund the user's rate limit quota
-      await Otp.findOneAndDelete({ email });
-      await RateLimit.updateOne({ identifier: email }, { $inc: { count: -1 } });
+      await Otp.findOneAndDelete({ email: normalizedEmail });
+      await RateLimit.updateOne({ identifier: normalizedEmail }, { $inc: { count: -1 } });
       
       return NextResponse.json({ 
         error: 'No email found or mailer service failed to deliver. Please verify your address or try again later.' 

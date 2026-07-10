@@ -41,7 +41,10 @@ import {
   StyledInput,
 } from '../ui/SharedUI';
 
+
+
 type SupervisorTab = 'overview' | 'projects';
+type ProjectQueueFilter = 'all' | 'submitted' | 'review';
 
 type BadgeVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger' | 'muted';
 
@@ -120,6 +123,10 @@ const hasProjectSubmission = (project: any) => {
   return Boolean(project?.projectTitle && project?.pdfUrl);
 };
 
+const isProjectReviewable = (project: any) => {
+  return hasProjectSubmission(project) && project?.status !== 'Approved';
+};
+
 const ProjectTimeline = ({ currentStage }: { currentStage?: string }) => {
   const currentIndex = Math.max(
     STAGES.findIndex((stage) => stage.id === currentStage),
@@ -185,6 +192,7 @@ const SupervisorDashboard = ({
   const [activeTab, setActiveTab] = useState<SupervisorTab>('overview');
   const [myProjects, setMyProjects] = useState<any[]>([]);
   const [migrationInput, setMigrationInput] = useState<Record<string, string>>({});
+  const [migrationStudentId, setMigrationStudentId] = useState<string>('');
   const [myMigrationCode, setMyMigrationCode] = useState<string>('Loading...');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<any>(null);
@@ -194,6 +202,8 @@ const SupervisorDashboard = ({
   const [programFilter, setProgramFilter] = useState('');
   const [isProjectMenuExpanded, setProjectMenuExpanded] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
+  const [projectQueueFilter, setProjectQueueFilter] = useState<ProjectQueueFilter>('all');
+  
 
   const supervisorName = session?.user?.name || 'Supervisor';
   const supervisorId = (session?.user as any)?.id;
@@ -309,8 +319,14 @@ const SupervisorDashboard = ({
     return myProjects.filter((project) => {
       const matchesProgram = !programFilter || getProjectProgram(project) === programFilter;
       const matchesBatch = batchFilter === 'All' || project.batch === batchFilter;
+      const matchesQueue =
+        projectQueueFilter === 'submitted'
+          ? hasProjectSubmission(project)
+          : projectQueueFilter === 'review'
+            ? isProjectReviewable(project)
+            : true;
 
-      if (!matchesProgram || !matchesBatch) return false;
+      if (!matchesProgram || !matchesBatch || !matchesQueue) return false;
       if (!query) return true;
 
       const searchableFields = [
@@ -328,14 +344,14 @@ const SupervisorDashboard = ({
 
       return searchableFields.some((field) => String(field || '').toLowerCase().includes(query));
     });
-  }, [myProjects, batchFilter, programFilter, projectSearch]);
+  }, [myProjects, batchFilter, programFilter, projectSearch, projectQueueFilter]);
 
   const dashboardStats = useMemo(() => {
     const statProjects = activeTab === 'projects' ? filteredProjects : myProjects;
     const submittedProjects = statProjects.filter(hasProjectSubmission);
     const approvedProjects = statProjects.filter((project) => project.status === 'Approved');
     const reviewQueue = statProjects.filter((project) => {
-      return hasProjectSubmission(project) && project.status !== 'Approved';
+      return isProjectReviewable(project);
     });
 
     return {
@@ -389,44 +405,49 @@ const SupervisorDashboard = ({
     );
   };
 
-  const handleMigrate = async (triggerStudentId: string, projectId: string) => {
-    const migrationCode = String(migrationInput[projectId] || '').trim().toUpperCase();
+  const handleMigrate = async (studentId: string, projectId: string) => {
+  const migrationCode = String(migrationInput[projectId] || '').trim().toUpperCase();
 
-    if (!migrationCode) {
-      notify('Input required', 'Enter the target supervisor migration code before migrating this team.');
-      return;
+  if (!migrationCode) {
+    notify('Input required', 'Enter the target supervisor migration code before migrating a student.');
+    return;
+  }
+
+  if (!studentId) {
+    notify('Select a student', 'Choose a student from the team to migrate.');
+    return;
+  }
+
+  setIsProcessingAction(true);
+
+  try {
+    const response = await fetch('/api/dashboard/supervisor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'migrate',
+        studentId,
+        migrationCode,
+      }),
+    });
+
+    const json = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(json.error || 'Invalid migration code.');
     }
 
-    setIsProcessingAction(true);
+    setMigrationInput((previous) => ({ ...previous, [projectId]: '' }));
+    setSelectedProject(null);
+    await fetchProjects();
 
-    try {
-      const response = await fetch('/api/dashboard/supervisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'migrate',
-          studentId: triggerStudentId,
-          migrationCode,
-        }),
-      });
-
-      const json = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Invalid migration code.');
-      }
-
-      setMigrationInput((previous) => ({ ...previous, [projectId]: '' }));
-      setSelectedProject(null);
-      await fetchProjects();
-
-      notify('Team migrated', json.message || 'The team was migrated successfully.');
-    } catch (error: any) {
-      notify('Migration failed', error.message || 'Unable to migrate this team right now.');
-    } finally {
-      setIsProcessingAction(false);
-    }
-  };
+    notify('Student migrated', json.message || 'The student was migrated successfully.');
+  } catch (error: any) {
+    notify('Migration failed', error.message || 'Unable to migrate this student right now.');
+  } finally {
+    setIsProcessingAction(false);
+  }
+};
 
   const handleRemoveTeam = (triggerStudentId: string, teamNames: string) => {
     requestConfirmation(
@@ -538,17 +559,68 @@ const SupervisorDashboard = ({
     }
   };
 
+  const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
+    setProjectQueueFilter(queueFilter);
+    setActiveTab('projects');
+    setProjectMenuExpanded(true);
+
+    if (!programFilter && uniquePrograms.length > 0) {
+      setProgramFilter(uniquePrograms[0]);
+    }
+  };
+
+  const projectQueueTitle =
+    projectQueueFilter === 'submitted'
+      ? 'Submitted Projects'
+      : projectQueueFilter === 'review'
+        ? 'Review Queue'
+        : 'Assigned Projects';
+
+  const projectQueueDescription =
+    projectQueueFilter === 'submitted'
+      ? 'Showing teams that have submitted a title and PDF.'
+      : projectQueueFilter === 'review'
+        ? 'Showing submitted projects still waiting for your decision.'
+        : programFilter
+          ? `Showing ${getProgramName(programFilter)} projects only. Choose another program from the sidebar.`
+          : 'Choose a program from the sidebar to keep this workspace focused.';
+
+  const emptyProjectState =
+    projectQueueFilter === 'submitted'
+      ? {
+          title: 'No submitted projects found',
+          description: 'No teams in this view have submitted both a title and PDF yet.',
+        }
+      : projectQueueFilter === 'review'
+        ? {
+            title: 'No projects waiting for review',
+            description: 'There are no submitted, non-approved projects in this view right now.',
+          }
+        : {
+            title: 'No matching projects',
+            description: 'Try clearing the search field or selecting a different batch filter.',
+          };
+
   const renderProjectCard = (project: any) => {
     const memberNames = getMemberNames(project);
     const memberRollNumbers = getMemberRollNumbers(project);
     const pdfKey = getSafePdfKey(project.pdfUrl);
+    const isReviewable = isProjectReviewable(project);
 
     return (
       <button
         key={project._id}
         type="button"
-        onClick={() => setSelectedProject(project)}
-        className="group flex min-h-full flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-left transition-colors hover:bg-[var(--color-surface-muted)]"
+        onClick={() => {
+          setSelectedProject(project);
+          const firstMember = project.members?.[0]?._id || project.triggerStudentId;
+          setMigrationStudentId(firstMember);
+        }}
+        className={`group flex min-h-full flex-col rounded-xl border p-4 text-left transition-colors ${
+          isReviewable
+            ? 'border-pink-500/70 bg-pink-50/80 shadow-sm ring-1 ring-pink-500/20 hover:bg-pink-50 dark:bg-pink-500/10 dark:hover:bg-pink-500/15'
+            : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'
+        }`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
@@ -564,7 +636,14 @@ const SupervisorDashboard = ({
             </div>
           </div>
 
-          <Badge variant={getStatusVariant(project.status)}>{project.status || 'Pending'}</Badge>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <Badge variant={getStatusVariant(project.status)}>{project.status || 'Pending'}</Badge>
+            {isReviewable && (
+              <span className="inline-flex items-center rounded-full border border-pink-500/40 bg-white/90 px-2.5 py-1 text-xs font-extrabold text-pink-700 shadow-sm dark:border-pink-300/30 dark:bg-pink-500/20 dark:text-pink-100">
+                Waiting for review
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -574,7 +653,13 @@ const SupervisorDashboard = ({
           {project.domain && <Badge variant="accent">{project.domain}</Badge>}
         </div>
 
-        <div className="mt-4 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+        <div
+          className={`mt-4 flex-1 rounded-xl border p-4 ${
+            isReviewable
+              ? 'border-pink-500/30 bg-white/70 dark:bg-pink-950/20'
+              : 'border-[var(--color-border)] bg-[var(--color-surface-muted)]'
+          }`}
+        >
           <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
             Project
           </p>
@@ -598,7 +683,11 @@ const SupervisorDashboard = ({
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
-          <span className="text-xs font-bold text-[var(--color-text-muted)]">
+          <span
+            className={`text-xs font-bold ${
+              isReviewable ? 'text-pink-700 dark:text-pink-200' : 'text-[var(--color-text-muted)]'
+            }`}
+          >
             {pdfKey ? 'PDF attached' : 'No PDF attached'}
           </span>
 
@@ -619,20 +708,26 @@ const SupervisorDashboard = ({
           value={dashboardStats.assigned}
           hint={activeTab === 'projects' && programFilter ? `Filtered by ${getProgramName(programFilter)}.` : 'All assigned teams.'}
           icon={<Users size={20} />}
+          onClick={() => openProjectsView('all')}
+          isActive={activeTab === 'projects' && projectQueueFilter === 'all'}
         />
 
         <StatCard
           label="Submitted Projects"
           value={dashboardStats.submitted}
-          hint="Teams with title and PDF attached."
+          hint="Teams with title and PDF attached. Click to filter."
           icon={<FileText size={20} />}
+          onClick={() => openProjectsView('submitted')}
+          isActive={activeTab === 'projects' && projectQueueFilter === 'submitted'}
         />
 
         <StatCard
           label="Review Queue"
           value={dashboardStats.reviewQueue}
-          hint="Submitted projects waiting for your decision."
+          hint="Submitted projects waiting for your decision. Click to filter."
           icon={<LayoutDashboard size={20} />}
+          onClick={() => openProjectsView('review')}
+          isActive={activeTab === 'projects' && projectQueueFilter === 'review'}
         />
 
         <StatCard
@@ -649,7 +744,7 @@ const SupervisorDashboard = ({
             title="Supervisor Work Queue"
             description="Recent assigned teams that need your attention."
             action={
-              <Button variant="outline" onClick={() => setActiveTab('projects')}>
+              <Button variant="outline" onClick={() => openProjectsView('all')}>
                 View All Projects
                 <ChevronRight size={16} />
               </Button>
@@ -729,17 +824,20 @@ const SupervisorDashboard = ({
   const renderProjects = () => (
     <DashboardPanel className="flex flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
       <SectionHeader
-        title="Assigned Projects"
-        description={
-          programFilter
-            ? `Showing ${getProgramName(programFilter)} projects only. Choose another program from the sidebar.`
-            : 'Choose a program from the sidebar to keep this workspace focused.'
-        }
+        title={projectQueueTitle}
+        description={projectQueueDescription}
         action={
-          <Button variant="outline" onClick={handleExportPDF} disabled={isExporting}>
-            {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-            {isExporting ? 'Exporting...' : 'Export Excel'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {projectQueueFilter !== 'all' && (
+              <Button variant="outline" onClick={() => setProjectQueueFilter('all')}>
+                Clear queue filter
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleExportPDF} disabled={isExporting}>
+              {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+              {isExporting ? 'Exporting...' : 'Export Excel'}
+            </Button>
+          </div>
         }
       />
 
@@ -772,8 +870,8 @@ const SupervisorDashboard = ({
       ) : filteredProjects.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <EmptyState
-            title="No matching projects"
-            description="Try clearing the search field or selecting a different batch filter."
+            title={emptyProjectState.title}
+            description={emptyProjectState.description}
             icon={<FileText size={28} />}
           />
         </div>
@@ -804,12 +902,8 @@ const SupervisorDashboard = ({
   }, {});
 
   const openProjectsFromSidebar = () => {
-    setActiveTab('projects');
+    openProjectsView('all');
     setProjectMenuExpanded((previous) => (activeTab === 'projects' ? !previous : true));
-
-    if (!programFilter && uniquePrograms.length > 0) {
-      setProgramFilter(uniquePrograms[0]);
-    }
   };
 
   const navItems = [
@@ -838,6 +932,7 @@ const SupervisorDashboard = ({
           onClick: () => {
             setActiveTab('projects');
             setProgramFilter(program);
+            setProjectQueueFilter('all');
             setProjectMenuExpanded(true);
           },
         }))
@@ -1080,57 +1175,78 @@ const SupervisorDashboard = ({
             <DashboardPanel>
               <SectionHeader
                 title="Supervisor Management"
-                description="Use these actions only when team assignment needs to change."
+                description="Select a student from the team and migrate them individually."
               />
 
-              <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-                <StyledInput
-                  value={migrationInput[selectedProject._id] || ''}
-                  onChange={(event: any) =>
-                    setMigrationInput((previous) => ({
-                      ...previous,
-                      [selectedProject._id]: event.target.value.toUpperCase(),
-                    }))
-                  }
-                  placeholder="Enter target migration code"
-                />
-
-                <Button
-                  variant="outline"
-                  disabled={isProcessingAction}
-                  onClick={() => handleMigrate(selectedProject.triggerStudentId, selectedProject._id)}
-                >
-                  {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <ArrowRightLeft size={16} />}
-                  Migrate Team
-                </Button>
-
-                <Button
-                  variant="danger"
-                  disabled={isProcessingAction}
-                  onClick={() =>
-                    handleRemoveTeam(
-                      selectedProject.triggerStudentId,
-                      getMemberNames(selectedProject)
-                    )
-                  }
-                >
-                  <UserMinus size={16} />
-                  Remove Team
-                </Button>
-              </div>
-
-              {(!selectedProject.maxTeamSize || selectedProject.maxTeamSize < 3) && (
-                <div className="mt-4 border-t border-[var(--color-border)] pt-4">
-                  <Button
-                    variant="secondary"
-                    disabled={isProcessingAction}
-                    onClick={() => handleExpandTeam(selectedProject._id)}
+              <div className="grid gap-4">
+                {/* Dropdown to select student */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
+                    Select Student to Migrate
+                  </label>
+                  <select
+                    value={migrationStudentId}
+                    onChange={(e) => setMigrationStudentId(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                   >
-                    <Users size={16} />
-                    Grant 3-Member Exception
+                    {(selectedProject?.members || []).map((member: any) => (
+                      <option key={member._id} value={member._id}>
+                        {member.name} ({member.rollNo || member.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Migration code input and action buttons */}
+                <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+                  <StyledInput
+                    value={migrationInput[selectedProject._id] || ''}
+                    onChange={(event: any) =>
+                      setMigrationInput((previous) => ({
+                        ...previous,
+                        [selectedProject._id]: event.target.value.toUpperCase(),
+                      }))
+                    }
+                    placeholder="Enter target migration code"
+                  />
+
+                  <Button
+                    variant="outline"
+                    disabled={isProcessingAction || !migrationStudentId}
+                    onClick={() => handleMigrate(migrationStudentId, selectedProject._id)}
+                  >
+                    {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <ArrowRightLeft size={16} />}
+                    Migrate Student
+                  </Button>
+
+                  <Button
+                    variant="danger"
+                    disabled={isProcessingAction}
+                    onClick={() =>
+                      handleRemoveTeam(
+                        selectedProject.triggerStudentId,
+                        getMemberNames(selectedProject)
+                      )
+                    }
+                  >
+                    <UserMinus size={16} />
+                    Remove Team
                   </Button>
                 </div>
-              )}
+
+                {(!selectedProject.maxTeamSize || selectedProject.maxTeamSize < 3) && (
+                  <div className="border-t border-[var(--color-border)] pt-4">
+                    <Button
+                      variant="secondary"
+                      disabled={isProcessingAction}
+                      onClick={() => handleExpandTeam(selectedProject._id)}
+                    >
+                      <Users size={16} />
+                      Grant 3‑Member Exception
+                    </Button>
+                  </div>
+                )}
+              </div>
             </DashboardPanel>
           </div>
         )}
