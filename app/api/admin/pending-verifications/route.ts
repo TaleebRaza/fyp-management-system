@@ -13,16 +13,18 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    const status = req.nextUrl.searchParams.get('status') || 'pending';
+    const status = req.nextUrl.searchParams.get('status') || 'open';
     const query: any = {};
 
-    if (status !== 'all') {
+    if (status === 'open') {
+      query.status = { $in: ['pending', 'action_required'] };
+    } else if (status !== 'all') {
       query.status = status;
     }
 
     const requests = await PendingVerification.find(query)
       .populate('supervisorId', 'name rollNo email')
-      .sort({ createdAt: -1 })
+      .sort({ updatedAt: -1, createdAt: -1 })
       .limit(100)
       .lean();
 

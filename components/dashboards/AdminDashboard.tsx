@@ -468,7 +468,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
     setIsPendingVerificationsLoading(true);
 
     try {
-      const response = await fetch('/api/admin/pending-verifications?status=pending', { cache: 'no-store' });
+      const response = await fetch('/api/admin/pending-verifications?status=open', { cache: 'no-store' });
       const data = await response.json();
 
       if (!response.ok) {
@@ -608,15 +608,17 @@ const AdminDashboard = ({ session, showDialog }: any) => {
 
   const handleRejectManualVerification = (request: any) => {
     showDialog({
-      type: 'confirm',
+      type: 'prompt',
       title: 'Reject manual verification?',
-      message: `This will reject the pending request for ${request.name} (${request.rollNo}). No student account will be created.`,
-      onConfirm: async () => {
+      message: `Write the rejection reason ${request.name} will see on the registration screen. No student account will be created.`,
+      defaultValue: request.adminRemark || 'Unable to verify this request from the received email proof.',
+      placeholder: 'Write rejection reason...',
+      onConfirm: async (reason: string) => {
         try {
           const response = await fetch('/api/admin/pending-verifications/reject', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId: request._id, reason: 'Rejected by admin.' }),
+            body: JSON.stringify({ requestId: request._id, reason }),
           });
 
           const data = await response.json().catch(() => ({}));
@@ -637,6 +639,46 @@ const AdminDashboard = ({ session, showDialog }: any) => {
           showDialog({
             title: 'Connection error',
             message: 'Unable to reject this request right now.',
+          });
+        }
+      },
+    });
+  };
+
+
+  const handleUpdateManualVerificationRemark = (request: any) => {
+    showDialog({
+      type: 'prompt',
+      title: 'Update student remark',
+      message: `Write the remark ${request.name} will see on the registration screen. Use this when the mail was not received or the student needs to resend the proof.`,
+      defaultValue: request.adminRemark || 'Mail not received. Please send the same Outlook email again using the details shown on your registration screen.',
+      placeholder: 'Mail not received. Please send the same Outlook email again.',
+      onConfirm: async (remark: string) => {
+        try {
+          const response = await fetch('/api/admin/pending-verifications/remark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: request._id, remark }),
+          });
+
+          const data = await response.json().catch(() => ({}));
+
+          if (response.ok) {
+            showDialog({
+              title: 'Remark updated',
+              message: data.message || 'The student can now see your remark and the same mail details again.',
+            });
+            fetchPendingManualVerifications();
+          } else {
+            showDialog({
+              title: 'Remark update failed',
+              message: data.error || 'Unable to update this verification remark.',
+            });
+          }
+        } catch (error) {
+          showDialog({
+            title: 'Connection error',
+            message: 'Unable to update this remark right now.',
           });
         }
       },
@@ -1390,8 +1432,8 @@ const AdminDashboard = ({ session, showDialog }: any) => {
     <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
       <div className="shrink-0">
         <SectionHeader
-          title="Pending Manual Verifications"
-          description="Approve students who could not receive OTP but sent the verification phrase from their university Microsoft account."
+          title="Manual Verification Requests"
+          description="Approve students who sent proof from their university Microsoft account, or update a remark if their mail was not received."
           action={
             <Button variant="outline" onClick={fetchPendingManualVerifications} disabled={isPendingVerificationsLoading}>
               {isPendingVerificationsLoading ? <Loader2 className="animate-spin" size={16} /> : null}
@@ -1410,7 +1452,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         ) : pendingManualVerifications.length === 0 ? (
           <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
             <ShieldCheck className="mb-3 text-[var(--color-text-muted)]" size={32} />
-            <p className="text-sm font-bold text-[var(--color-text)]">No pending manual verifications</p>
+            <p className="text-sm font-bold text-[var(--color-text)]">No open manual verifications</p>
             <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
               New fallback requests will appear here automatically.
             </p>
@@ -1434,7 +1476,9 @@ const AdminDashboard = ({ session, showDialog }: any) => {
                         <h3 className="truncate text-base font-bold text-[var(--color-text)]">
                           {request.name}
                         </h3>
-                        <Badge variant="warning">Pending proof</Badge>
+                        <Badge variant={request.status === 'action_required' ? 'danger' : 'warning'}>
+                          {request.status === 'action_required' ? 'Action needed' : 'Pending proof'}
+                        </Badge>
                       </div>
 
                       <div className="mt-3 grid gap-2 text-sm text-[var(--color-text-muted)] sm:grid-cols-2 xl:grid-cols-3">
@@ -1454,12 +1498,27 @@ const AdminDashboard = ({ session, showDialog }: any) => {
                           {request.verificationPhrase}
                         </p>
                       </div>
+
+                      {request.adminRemark ? (
+                        <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
+                          <p className="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">
+                            Student-visible remark
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-[var(--color-text)]">
+                            {request.adminRemark}
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
                       <Button variant="success" onClick={() => handleApproveManualVerification(request)}>
                         <UserCheck size={16} />
                         Approve
+                      </Button>
+                      <Button variant="outline" onClick={() => handleUpdateManualVerificationRemark(request)}>
+                        <MailX size={16} />
+                        Mail not received
                       </Button>
                       <Button variant="danger" onClick={() => handleRejectManualVerification(request)}>
                         <Trash2 size={16} />

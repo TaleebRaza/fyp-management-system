@@ -11,10 +11,13 @@ const PendingVerificationSchema = new Schema({
   verificationPhrase: { type: String, required: true },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'action_required', 'approved', 'rejected'],
     default: 'pending',
     index: true,
   },
+  adminRemark: { type: String, default: '' },
+  remarkedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  remarkedAt: { type: Date, default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   approvedAt: { type: Date, default: null },
   rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -27,6 +30,7 @@ const PendingVerificationSchema = new Schema({
 PendingVerificationSchema.index({ status: 1, createdAt: -1 });
 PendingVerificationSchema.index({ email: 1, status: 1 });
 PendingVerificationSchema.index({ rollNo: 1, status: 1 });
+PendingVerificationSchema.index({ email: 1, rollNo: 1, createdAt: -1 });
 
 const PendingVerification =
   mongoose.models.PendingVerification ||

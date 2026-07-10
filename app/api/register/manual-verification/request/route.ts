@@ -16,6 +16,56 @@ import {
   normalizeUniversityEmail,
 } from '../../../../../lib/studentIdentity';
 
+function getAdminEmail() {
+  return process.env.MANUAL_VERIFICATION_EMAIL || process.env.EMAIL_USER || '';
+}
+
+function buildManualMailDetails(rollNo: string, phrase: string) {
+  const subject = `FYP Portal Verification - ${rollNo}`;
+  const body = `My roll number is ${rollNo}. My verification phrase is: ${phrase}`;
+
+  return {
+    subject,
+    body,
+  };
+}
+
+function buildStatusMessage(status: string) {
+  if (status === 'approved') {
+    return 'Your manual verification has been approved. Your account is ready. You can sign in now.';
+  }
+
+  if (status === 'action_required') {
+    return 'Admin has updated your request. Read the remark below and send the same Outlook email again if needed.';
+  }
+
+  if (status === 'rejected') {
+    return 'Your manual verification request was rejected. Read the admin remark below.';
+  }
+
+  return 'Your manual verification request is already pending. Use the same email details shown below.';
+}
+
+function serializeManualVerification(request: any) {
+  const mailDetails = buildManualMailDetails(request.rollNo, request.verificationPhrase);
+
+  return {
+    message: buildStatusMessage(request.status),
+    requestId: request._id,
+    status: request.status,
+    adminRemark: request.adminRemark || request.rejectionReason || '',
+    rejectionReason: request.rejectionReason || '',
+    verificationPhrase: request.verificationPhrase,
+    adminEmail: getAdminEmail(),
+    emailSubject: mailDetails.subject,
+    emailBody: mailDetails.body,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    approvedAt: request.approvedAt,
+    rejectedAt: request.rejectedAt,
+  };
+}
+
 async function getFilledSlots(supervisorId: string) {
   if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
     return User.countDocuments({ role: 'student', supervisorId });
@@ -76,6 +126,19 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
+    const existingRequest = await PendingVerification.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { rollNo: normalizedRollNo },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (existingRequest) {
+      return NextResponse.json(serializeManualVerification(existingRequest), { status: 200 });
+    }
+
     const existingUser = await User.findOne({
       $or: [
         { email: normalizedEmail },
@@ -86,27 +149,8 @@ export async function POST(req: Request) {
 
     if (existingUser) {
       return NextResponse.json(
-        { error: 'This Roll Number or Email is already registered.' },
+        { error: 'This Roll Number or Email is already registered. Try signing in instead.' },
         { status: 400 }
-      );
-    }
-
-    const existingPending = await PendingVerification.findOne({
-      status: 'pending',
-      $or: [
-        { email: normalizedEmail },
-        { rollNo: normalizedRollNo },
-      ],
-    }).lean();
-
-    if (existingPending) {
-      return NextResponse.json(
-        {
-          message: 'A manual verification request is already pending for this student.',
-          verificationPhrase: existingPending.verificationPhrase,
-          adminEmail: process.env.MANUAL_VERIFICATION_EMAIL || process.env.EMAIL_USER || '',
-        },
-        { status: 200 }
       );
     }
 
@@ -147,14 +191,13 @@ export async function POST(req: Request) {
       supervisorId: finalSupervisorId,
       verificationPhrase,
       status: 'pending',
+      adminRemark: '',
     });
 
     return NextResponse.json(
       {
+        ...serializeManualVerification(pendingVerification),
         message: 'Manual verification request created. Follow the on-screen Outlook email steps to complete verification.',
-        requestId: pendingVerification._id,
-        verificationPhrase,
-        adminEmail: process.env.MANUAL_VERIFICATION_EMAIL || process.env.EMAIL_USER || '',
       },
       { status: 201 }
     );

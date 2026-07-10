@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     const pendingRequest = await PendingVerification.findById(requestId).session(session);
 
-    if (!pendingRequest || pendingRequest.status !== 'pending') {
+    if (!pendingRequest || !['pending', 'action_required'].includes(pendingRequest.status)) {
       await session.abortTransaction();
       return NextResponse.json({ error: 'Pending verification request was not found.' }, { status: 404 });
     }
@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
     pendingRequest.status = 'approved';
     pendingRequest.approvedBy = new mongoose.Types.ObjectId(String(token.id));
     pendingRequest.approvedAt = new Date();
+    pendingRequest.adminRemark = 'Manual verification approved. Account created.';
     await pendingRequest.save({ session });
 
     await session.commitTransaction();

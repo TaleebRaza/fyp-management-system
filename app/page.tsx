@@ -720,6 +720,27 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
   };
 
+  const getManualStatusTitle = (status?: string) => {
+    if (status === 'approved') return 'Manual verification approved';
+    if (status === 'action_required') return 'Action needed on your manual request';
+    if (status === 'rejected') return 'Manual verification rejected';
+    return 'Manual verification request is pending';
+  };
+
+  const getManualStatusClass = (status?: string) => {
+    if (status === 'approved') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200';
+    if (status === 'action_required') return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200';
+    if (status === 'rejected') return 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-200';
+    return 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-200';
+  };
+
+  const getManualStatusText = (status?: string) => {
+    if (status === 'approved') return 'Approved';
+    if (status === 'action_required') return 'Action needed';
+    if (status === 'rejected') return 'Rejected';
+    return 'Pending';
+  };
+
   const normalizeRegistrationIdentityKey = (value: string) => {
     return String(value || '')
       .trim()
@@ -852,8 +873,8 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
       if (response.ok) {
         setManualVerificationInfo(data);
         showDialog({
-          title: 'Manual verification request created',
-          message: 'Your request is ready. Follow the simple steps shown on this screen and send the email from your university Microsoft Outlook account.',
+          title: getManualStatusTitle(data.status),
+          message: data.message || 'Follow the simple steps shown on this screen and send the email from your university Microsoft Outlook account.',
         });
       } else {
         showDialog({
@@ -1051,20 +1072,58 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
 
                 {manualVerificationInfo ? (
                   <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                    <p className="text-sm font-bold text-[var(--color-text)]">
-                      Manual verification request is pending
-                    </p>
-                    <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-[var(--color-text-muted)]">
-                      <li>Login to your Microsoft Outlook account using the email details from your UOH student portal.</li>
-                      <li>Create a new email and send it to the admin email shown below.</li>
-                      <li>Use the subject and message exactly as shown below.</li>
-                      <li>After sending, wait for admin approval. You do not need to submit your details again.</li>
-                    </ol>
-                    <div className="mt-3 space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
-                      <p className="break-all"><strong>To:</strong> {manualVerificationInfo.adminEmail || 'Portal admin email'}</p>
-                      <p><strong>Subject:</strong> FYP Portal Verification - {formData.rollNo}</p>
-                      <p className="break-all"><strong>Message:</strong> My verification phrase is: {manualVerificationInfo.verificationPhrase}</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-[var(--color-text)]">
+                          {getManualStatusTitle(manualVerificationInfo.status)}
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+                          {manualVerificationInfo.message || 'Use the same Outlook email details below. Admin will approve or update your status.'}
+                        </p>
+                      </div>
+                      <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-black ${getManualStatusClass(manualVerificationInfo.status)}`}>
+                        {getManualStatusText(manualVerificationInfo.status)}
+                      </span>
                     </div>
+
+                    {manualVerificationInfo.adminRemark ? (
+                      <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">
+                          Admin remark
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-[var(--color-text)]">
+                          {manualVerificationInfo.adminRemark}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {manualVerificationInfo.status === 'approved' ? (
+                      <div className="mt-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm leading-6 text-[var(--color-text)]">
+                        Your account is approved. You can now sign in with your roll number and password.
+                      </div>
+                    ) : (
+                      <>
+                        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-[var(--color-text-muted)]">
+                          <li>Login to your Microsoft Outlook account using the email details from your UOH student portal.</li>
+                          <li>Create a new email and send it to the admin email shown below.</li>
+                          <li>Use the subject and message exactly as shown below.</li>
+                          <li>After sending, wait for admin approval. You do not need to submit your details again.</li>
+                        </ol>
+                        <div className="mt-3 space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
+                          <p className="break-all"><strong>To:</strong> {manualVerificationInfo.adminEmail || 'Portal admin email'}</p>
+                          <p className="break-all"><strong>Subject:</strong> {manualVerificationInfo.emailSubject || `FYP Portal Verification - ${formData.rollNo}`}</p>
+                          <p className="break-all"><strong>Message:</strong> {manualVerificationInfo.emailBody || `My verification phrase is: ${manualVerificationInfo.verificationPhrase}`}</p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isLoading}
+                          onClick={handleRequestManualVerification}
+                          className="mt-3 min-h-10 rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface)] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          Refresh status / show same email details
+                        </button>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
@@ -1098,7 +1157,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
                     className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
                   >
                     {isLoading ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                    {manualVerificationInfo ? 'Waiting for admin approval' : isLoading ? 'Verifying...' : 'Confirm registration'}
+                    {manualVerificationInfo ? getManualStatusText(manualVerificationInfo.status) : isLoading ? 'Verifying...' : 'Confirm registration'}
                   </button>
                 </div>
               </form>
