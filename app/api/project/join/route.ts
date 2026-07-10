@@ -5,6 +5,8 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { withTransactionRetry } from '../../../../lib/transactionUtils';
+import { APP_SETTINGS } from '../../../../config/appSettings';
+import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 
 export async function POST(req: Request) {
   try {
@@ -55,20 +57,23 @@ export async function POST(req: Request) {
 
             // --- OPTIMIZATION: Absolute Capacity Firewall Check ---
             if (firstMember.supervisorId) {
-              const { APP_SETTINGS } = await import('../../../../config/appSettings');
-              
               // Only block the join if we are counting by individual STUDENTS.
               // If we are counting by PROJECT, this project already exists and is already counted.
               // Adding a member to an existing project does not consume an extra project slot.
               if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+                const supervisor = await User.findOne({ _id: firstMember.supervisorId, role: 'supervisor' })
+                  .select('_id extraSlots')
+                  .session(session);
+
                 const currentFilledSlots = await User.countDocuments({ 
                   role: 'student', 
                   supervisorId: firstMember.supervisorId 
                 }).session(session);
+                const maxSlots = getSupervisorMaxSlots(supervisor);
                 
-                if (currentFilledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+                if (currentFilledSlots >= maxSlots) {
                   return NextResponse.json({ 
-                    error: 'Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit.' 
+                    error: `Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit (${maxSlots} slots).` 
                   }, { status: 409 });
                 }
               }
@@ -123,4 +128,4 @@ export async function POST(req: Request) {
     console.error('Join Team Error:', error);
     return NextResponse.json({ error: 'Failed to join team' }, { status: 500 });
   }
-} 
+}

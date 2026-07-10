@@ -42,7 +42,8 @@ import {
   StyledInput,
 } from '../ui/SharedUI';
 
-import { PROGRAM_MAP } from '../../config/appSettings';
+import { APP_SETTINGS, PROGRAM_MAP } from '../../config/appSettings';
+import { MAX_EXTRA_SUPERVISOR_SLOTS } from '../../lib/supervisorSlots';
 
 type AdminTab = 'overview' | 'supervisors' | 'students';
 
@@ -334,6 +335,10 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   const [reportsData, setReportsData] = useState<any>(null);
   const [isReportsLoading, setIsReportsLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<ReportOption['id']>('studentsPerSupervisor');
+
+  const [slotEditorSupervisor, setSlotEditorSupervisor] = useState<any>(null);
+  const [slotEditorValue, setSlotEditorValue] = useState('0');
+  const [isSlotEditorSaving, setIsSlotEditorSaving] = useState(false);
 
   const filterOptions = ['All', ...Object.keys(PROGRAM_MAP), 'Approved', 'Pending', 'Unassigned'];
 
@@ -713,6 +718,78 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         title: 'Connection error',
         message: 'Unable to update notification settings right now.',
       });
+    }
+  };
+
+  const openSupervisorSlotEditor = (supervisor: any) => {
+    const currentExtraSlots = Math.min(
+      Math.max(Number(supervisor.extraSlots || 0), 0),
+      MAX_EXTRA_SUPERVISOR_SLOTS
+    );
+
+    setSlotEditorSupervisor(supervisor);
+    setSlotEditorValue(String(currentExtraSlots));
+  };
+
+  const closeSupervisorSlotEditor = () => {
+    if (isSlotEditorSaving) return;
+
+    setSlotEditorSupervisor(null);
+    setSlotEditorValue('0');
+  };
+
+  const handleSaveSupervisorExtraSlots = async () => {
+    if (!slotEditorSupervisor) return;
+
+    const requestedExtraSlots = Number(slotEditorValue);
+
+    if (
+      !Number.isInteger(requestedExtraSlots) ||
+      requestedExtraSlots < 0 ||
+      requestedExtraSlots > MAX_EXTRA_SUPERVISOR_SLOTS
+    ) {
+      showDialog({
+        title: 'Invalid extra slots',
+        message: `Enter a whole number from 0 to ${MAX_EXTRA_SUPERVISOR_SLOTS}.`,
+      });
+      return;
+    }
+
+    setIsSlotEditorSaving(true);
+
+    try {
+      const response = await fetch('/api/admin/update-supervisor-slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supervisorId: slotEditorSupervisor._id,
+          extraSlots: requestedExtraSlots,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        setSlotEditorSupervisor(null);
+        setSlotEditorValue('0');
+        showDialog({
+          title: 'Extra slots updated',
+          message: data.message || 'Supervisor slot allowance has been updated.',
+        });
+        fetchSupervisors();
+      } else {
+        showDialog({
+          title: 'Update failed',
+          message: data.error || 'Failed to update supervisor extra slots.',
+        });
+      }
+    } catch (error) {
+      showDialog({
+        title: 'Connection error',
+        message: 'Unable to update supervisor slots right now.',
+      });
+    } finally {
+      setIsSlotEditorSaving(false);
     }
   };
 
@@ -1118,62 +1195,84 @@ const AdminDashboard = ({ session, showDialog }: any) => {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredSupervisors.map((supervisor) => (
-                <div
-                  key={supervisor._id}
-                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <AvatarBadge name={supervisor.name} />
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
-                          <Badge variant="muted">{supervisor.rollNo || 'No ID'}</Badge>
+              {filteredSupervisors.map((supervisor) => {
+                const filledSlots = Math.max(Number(supervisor.filledSlots || 0), 0);
+                const extraSlots = Math.min(
+                  Math.max(Number(supervisor.extraSlots || 0), 0),
+                  MAX_EXTRA_SUPERVISOR_SLOTS
+                );
+                const maxSlots = Math.max(
+                  Number(supervisor.maxSlots || APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR),
+                  APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR
+                );
+
+                return (
+                  <div
+                    key={supervisor._id}
+                    className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <AvatarBadge name={supervisor.name} />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
+                            <Badge variant="muted">{supervisor.rollNo || 'No ID'}</Badge>
+                            {supervisor.isFull ? <Badge variant="danger">Full</Badge> : null}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleUpdateEmail(supervisor._id, supervisor.email, supervisor.name)
+                            }
+                            className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+                          >
+                            {supervisor.email || 'Assign email'}
+                          </button>
+
+                          <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
+                            Migration Code:{' '}
+                            <span className="font-mono text-[var(--color-text)]">
+                              {supervisor.migrationCode || 'N/A'}
+                            </span>
+                          </p>
                         </div>
+                      </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleUpdateEmail(supervisor._id, supervisor.email, supervisor.name)
-                          }
-                          className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => openSupervisorSlotEditor(supervisor)}
+                          title={`Edit extra slots. Current usage: ${filledSlots} / ${maxSlots}`}
                         >
-                          {supervisor.email || 'Assign email'}
-                        </button>
+                          <PlusCircle size={16} />
+                          Extra Slots: {extraSlots}/{MAX_EXTRA_SUPERVISOR_SLOTS}
+                        </Button>
 
-                        <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
-                          Migration Code:{' '}
-                          <span className="font-mono text-[var(--color-text)]">
-                            {supervisor.migrationCode || 'N/A'}
-                          </span>
-                        </p>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            handleToggleNotifications(supervisor._id, supervisor.notificationsEnabled)
+                          }
+                          title="Toggle notifications"
+                        >
+                          {supervisor.notificationsEnabled ? <Mail size={16} /> : <MailX size={16} />}
+                          {supervisor.notificationsEnabled ? 'Notifications On' : 'Notifications Off'}
+                        </Button>
+
+                        <Button
+                          variant="danger"
+                          onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name)}
+                        >
+                          <Trash2 size={16} />
+                          Delete
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() =>
-                          handleToggleNotifications(supervisor._id, supervisor.notificationsEnabled)
-                        }
-                        title="Toggle notifications"
-                      >
-                        {supervisor.notificationsEnabled ? <Mail size={16} /> : <MailX size={16} />}
-                        {supervisor.notificationsEnabled ? 'Notifications On' : 'Notifications Off'}
-                      </Button>
-
-                      <Button
-                        variant="danger"
-                        onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name)}
-                      >
-                        <Trash2 size={16} />
-                        Delete
-                      </Button>
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1446,6 +1545,54 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         )}
       </DashboardShell>
 
+
+      <Dialog
+        open={Boolean(slotEditorSupervisor)}
+        onClose={closeSupervisorSlotEditor}
+        title="Edit Extra Slots"
+        description={
+          slotEditorSupervisor
+            ? `Set total extra slots for ${slotEditorSupervisor.name}. Default capacity stays ${APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR}.`
+            : undefined
+        }
+        size="sm"
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={closeSupervisorSlotEditor} disabled={isSlotEditorSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveSupervisorExtraSlots} disabled={isSlotEditorSaving}>
+              {isSlotEditorSaving ? <Loader2 className="animate-spin" size={16} /> : null}
+              Save Slots
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">
+            Enter total extra slots from 0 to {MAX_EXTRA_SUPERVISOR_SLOTS}. For example, if current extra slots are 4, the maximum future increase is 6.
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-bold text-[var(--color-text)]">
+              Extra Slots
+            </label>
+            <input
+              autoFocus
+              type="number"
+              min={0}
+              max={MAX_EXTRA_SUPERVISOR_SLOTS}
+              step={1}
+              value={slotEditorValue}
+              onChange={(event) => setSlotEditorValue(event.target.value)}
+              className="h-11 w-24 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-center text-sm font-black text-[var(--color-text)] outline-none transition-colors focus:border-[var(--color-accent)]"
+            />
+            <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
+              Allowed range: 0 to {MAX_EXTRA_SUPERVISOR_SLOTS}
+            </p>
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog
         open={isReportsModalOpen}

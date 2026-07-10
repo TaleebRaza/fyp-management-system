@@ -6,6 +6,7 @@ import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
 import Project from '../../../models/Project';
 import Otp from '../../../models/Otp';
 import { APP_SETTINGS } from '../../../config/appSettings';
+import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
@@ -51,6 +52,14 @@ export async function POST(req: Request) {
     // --- OPTIMIZATION: Pre-Flight Capacity Validation ---
     // Perform database lookups outside the transaction lock to avoid thread starvation
     if (supervisorId) {
+      const supervisor = await User.findOne({ _id: supervisorId, role: 'supervisor' })
+        .select('_id extraSlots')
+        .lean();
+
+      if (!supervisor) {
+        return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
+      }
+
       let filledSlots = 0;
       if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
         filledSlots = await User.countDocuments({ role: 'student', supervisorId });
@@ -58,9 +67,11 @@ export async function POST(req: Request) {
         filledSlots = await Project.countDocuments({ supervisorId });
       }
 
-      if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+      const maxSlots = getSupervisorMaxSlots(supervisor);
+
+      if (filledSlots >= maxSlots) {
         return NextResponse.json(
-          { error: 'Registration failed. The selected supervisor has reached maximum capacity.' },
+          { error: `Registration failed. The selected supervisor has reached maximum capacity (${maxSlots} slots).` },
           { status: 409 }
         );
       }

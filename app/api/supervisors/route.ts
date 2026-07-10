@@ -3,6 +3,7 @@ import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Project from '../../../models/Project'; 
 import { APP_SETTINGS } from '../../../config/appSettings';
+import { getSupervisorExtraSlots, getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 
 export async function GET() {
   try {
@@ -44,12 +45,15 @@ export async function GET() {
     const supervisorsWithSlots = supervisors.map(sup => {
       // Pull the pre-calculated count from our map, default to 0 if not found
       const filledSlots = countsMap.get(sup._id.toString()) || 0;
+      const extraSlots = getSupervisorExtraSlots(sup);
+      const maxSlots = getSupervisorMaxSlots(sup);
       
       return {
         ...sup,
+        extraSlots,
         filledSlots,
-        isFull: filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR,
-        maxSlots: APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR
+        isFull: filledSlots >= maxSlots,
+        maxSlots
       };
     });
 

@@ -7,6 +7,7 @@ import Project from '../../../../models/Project';
 import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
 import { APP_SETTINGS, PROGRAM_MAP } from '../../../../config/appSettings';
+import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
@@ -305,6 +306,16 @@ export async function POST(req: Request) {
       session.startTransaction();
 
       try {
+        const supervisor = await User.findOne({ _id: body.supervisorId, role: 'supervisor' })
+          .select('_id extraSlots')
+          .session(session);
+
+        if (!supervisor) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
+        }
+
         let filledSlots = 0;
         // 2. Count current slots WITH the session lock
         if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
@@ -313,12 +324,14 @@ export async function POST(req: Request) {
           filledSlots = await Project.countDocuments({ supervisorId: body.supervisorId }).session(session);
         }
 
+        const maxSlots = getSupervisorMaxSlots(supervisor);
+
         // 3. Strict Capacity Enforcement
-        if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
+        if (filledSlots >= maxSlots) {
           await session.abortTransaction();
           session.endSession();
           return NextResponse.json(
-            { error: 'Cannot assign. The selected supervisor has reached maximum capacity.' }, 
+            { error: `Cannot assign. The selected supervisor has reached maximum capacity (${maxSlots} slots).` }, 
             { status: 409 } // 409 Conflict is the correct HTTP status for a race condition rejection
           );
         }

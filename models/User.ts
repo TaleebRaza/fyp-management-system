@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import { normalizeRollNo } from '../lib/rollNo';
+import { normalizeExtraSupervisorSlots } from '../lib/supervisorSlots';
 
 const UserSchema = new Schema({
   name: { type: String, required: true },
@@ -23,6 +24,13 @@ const UserSchema = new Schema({
   projectDesc: { type: String, required: false },
   tools: { type: String, required: false },
   notificationsEnabled: { type: Boolean, default: true },
+  extraSlots: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 10,
+    set: normalizeExtraSupervisorSlots,
+  },
   isActive: { type: Boolean, default: true }, 
   
   monthlyLoginCount: { type: Number, default: 0 },
