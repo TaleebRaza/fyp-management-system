@@ -45,7 +45,7 @@ import {
 import { APP_SETTINGS, PROGRAM_MAP } from '../../config/appSettings';
 import { MAX_EXTRA_SUPERVISOR_SLOTS } from '../../lib/supervisorSlots';
 
-type AdminTab = 'overview' | 'supervisors' | 'students';
+type AdminTab = 'overview' | 'supervisors' | 'students' | 'verifications';
 
 const getStatusVariant = (status?: string) => {
   if (status === 'Approved') return 'success';
@@ -336,6 +336,9 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   const [isReportsLoading, setIsReportsLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<ReportOption['id']>('studentsPerSupervisor');
 
+  const [pendingManualVerifications, setPendingManualVerifications] = useState<any[]>([]);
+  const [isPendingVerificationsLoading, setIsPendingVerificationsLoading] = useState(false);
+
   const [slotEditorSupervisor, setSlotEditorSupervisor] = useState<any>(null);
   const [slotEditorValue, setSlotEditorValue] = useState('0');
   const [isSlotEditorSaving, setIsSlotEditorSaving] = useState(false);
@@ -375,8 +378,9 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       activeStudents,
       pendingStudents,
       supervisors: adminSupervisors.length,
+      pendingManualVerifications: pendingManualVerifications.length,
     };
-  }, [adminStudents, adminSupervisors.length, studentPagination.total]);
+  }, [adminStudents, adminSupervisors.length, pendingManualVerifications.length, studentPagination.total]);
 
 
   const selectedReport = useMemo(() => {
@@ -460,6 +464,30 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   };
 
 
+  const fetchPendingManualVerifications = async () => {
+    setIsPendingVerificationsLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/pending-verifications?status=pending', { cache: 'no-store' });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch pending verifications');
+      }
+
+      setPendingManualVerifications(Array.isArray(data.requests) ? data.requests : []);
+    } catch (error) {
+      console.error('Pending verification fetch error:', error);
+      showDialog({
+        title: 'Pending verifications unavailable',
+        message: 'Unable to load pending manual verification requests right now.',
+      });
+    } finally {
+      setIsPendingVerificationsLoading(false);
+    }
+  };
+
+
   const fetchReportsData = async () => {
     setIsReportsLoading(true);
 
@@ -523,6 +551,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   useEffect(() => {
     fetchSupervisors();
     fetchHeadline();
+    fetchPendingManualVerifications();
   }, []);
 
   useEffect(() => {
@@ -537,6 +566,82 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   useEffect(() => {
     fetchStudents(studentPage);
   }, [studentPage, studentFilter, batchFilter, debouncedStudentSearch]);
+
+  const handleApproveManualVerification = (request: any) => {
+    showDialog({
+      type: 'confirm',
+      title: 'Approve manual verification?',
+      message: `This will create the student account for ${request.name} (${request.rollNo}) using the details already saved in the pending request.`,
+      onConfirm: async () => {
+        try {
+          const response = await fetch('/api/admin/pending-verifications/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: request._id }),
+          });
+
+          const data = await response.json().catch(() => ({}));
+
+          if (response.ok) {
+            showDialog({
+              title: 'Student verified',
+              message: data.message || 'Student account created successfully.',
+            });
+            fetchPendingManualVerifications();
+            fetchStudents();
+            fetchSupervisors();
+          } else {
+            showDialog({
+              title: 'Approval failed',
+              message: data.error || 'Unable to approve this verification request.',
+            });
+          }
+        } catch (error) {
+          showDialog({
+            title: 'Connection error',
+            message: 'Unable to approve this request right now.',
+          });
+        }
+      },
+    });
+  };
+
+  const handleRejectManualVerification = (request: any) => {
+    showDialog({
+      type: 'confirm',
+      title: 'Reject manual verification?',
+      message: `This will reject the pending request for ${request.name} (${request.rollNo}). No student account will be created.`,
+      onConfirm: async () => {
+        try {
+          const response = await fetch('/api/admin/pending-verifications/reject', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: request._id, reason: 'Rejected by admin.' }),
+          });
+
+          const data = await response.json().catch(() => ({}));
+
+          if (response.ok) {
+            showDialog({
+              title: 'Request rejected',
+              message: data.message || 'Manual verification request rejected.',
+            });
+            fetchPendingManualVerifications();
+          } else {
+            showDialog({
+              title: 'Reject failed',
+              message: data.error || 'Unable to reject this verification request.',
+            });
+          }
+        } catch (error) {
+          showDialog({
+            title: 'Connection error',
+            message: 'Unable to reject this request right now.',
+          });
+        }
+      },
+    });
+  };
 
   const handleBroadcastHeadline = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1280,6 +1385,97 @@ const AdminDashboard = ({ session, showDialog }: any) => {
     </div>
   );
 
+
+  const renderManualVerifications = () => (
+    <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
+      <div className="shrink-0">
+        <SectionHeader
+          title="Pending Manual Verifications"
+          description="Approve students who could not receive OTP but sent the verification phrase from their university Microsoft account."
+          action={
+            <Button variant="outline" onClick={fetchPendingManualVerifications} disabled={isPendingVerificationsLoading}>
+              {isPendingVerificationsLoading ? <Loader2 className="animate-spin" size={16} /> : null}
+              Refresh
+            </Button>
+          }
+        />
+      </div>
+
+      <div className="portal-scrollbar mt-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
+        {isPendingVerificationsLoading ? (
+          <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+            <Loader2 className="mb-3 animate-spin text-[var(--color-accent)]" size={32} />
+            <p className="text-sm font-bold text-[var(--color-text)]">Loading pending requests...</p>
+          </div>
+        ) : pendingManualVerifications.length === 0 ? (
+          <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+            <ShieldCheck className="mb-3 text-[var(--color-text-muted)]" size={32} />
+            <p className="text-sm font-bold text-[var(--color-text)]">No pending manual verifications</p>
+            <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+              New fallback requests will appear here automatically.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingManualVerifications.map((request) => {
+              const supervisorName = request.supervisorId?.name || 'Choose later';
+              const createdAt = request.createdAt
+                ? new Date(request.createdAt).toLocaleString()
+                : 'Recently';
+
+              return (
+                <div
+                  key={request._id}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-base font-bold text-[var(--color-text)]">
+                          {request.name}
+                        </h3>
+                        <Badge variant="warning">Pending proof</Badge>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 text-sm text-[var(--color-text-muted)] sm:grid-cols-2 xl:grid-cols-3">
+                        <p><span className="font-bold text-[var(--color-text)]">Roll No:</span> {request.rollNo}</p>
+                        <p className="break-all"><span className="font-bold text-[var(--color-text)]">Email:</span> {request.email}</p>
+                        <p><span className="font-bold text-[var(--color-text)]">Program:</span> {request.program}</p>
+                        <p><span className="font-bold text-[var(--color-text)]">Batch:</span> {request.batch}</p>
+                        <p><span className="font-bold text-[var(--color-text)]">Supervisor:</span> {supervisorName}</p>
+                        <p><span className="font-bold text-[var(--color-text)]">Submitted:</span> {createdAt}</p>
+                      </div>
+
+                      <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+                          Phrase to verify in admin email inbox
+                        </p>
+                        <p className="mt-2 break-all font-mono text-sm font-black text-[var(--color-text)]">
+                          {request.verificationPhrase}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                      <Button variant="success" onClick={() => handleApproveManualVerification(request)}>
+                        <UserCheck size={16} />
+                        Approve
+                      </Button>
+                      <Button variant="danger" onClick={() => handleRejectManualVerification(request)}>
+                        <Trash2 size={16} />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </DashboardPanel>
+  );
+
   const renderStudents = () => (
     <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
       <div className="shrink-0">
@@ -1500,6 +1696,14 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       onClick: () => setActiveTab('students'),
     },
     {
+      id: 'verifications',
+      label: 'Manual Verifications',
+      icon: <ShieldCheck size={18} />,
+      active: activeTab === 'verifications',
+      badge: pendingManualVerifications.length,
+      onClick: () => setActiveTab('verifications'),
+    },
+    {
       id: 'reports',
       label: 'Reports',
       icon: <BarChart3 size={18} />,
@@ -1514,7 +1718,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         description="Manage the complete FYP portal ecosystem."
         navItems={navItems}
         className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${
-          activeTab === 'supervisors' || activeTab === 'students'
+          activeTab === 'supervisors' || activeTab === 'students' || activeTab === 'verifications'
             ? '[&>div>div>main]:lg:overflow-hidden'
             : ''
         }`}
@@ -1542,6 +1746,9 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         )}
         {activeTab === 'students' && (
           <div className="min-h-0 lg:h-full">{renderStudents()}</div>
+        )}
+        {activeTab === 'verifications' && (
+          <div className="min-h-0 lg:h-full">{renderManualVerifications()}</div>
         )}
       </DashboardShell>
 

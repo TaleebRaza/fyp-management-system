@@ -3,8 +3,15 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
+import {
+  UNIVERSITY_EMAIL_PATTERN,
+  doesRollNoMatchUniversityEmail,
+  getExpectedUniversityEmailExample,
+  normalizeUniversityEmail,
+} from '../../../lib/studentIdentity';
 import Project from '../../../models/Project';
 import Otp from '../../../models/Otp';
+import PendingVerification from '../../../models/PendingVerification';
 import { APP_SETTINGS } from '../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 import bcrypt from 'bcryptjs';
@@ -12,16 +19,26 @@ import bcrypt from 'bcryptjs';
 export async function POST(req: Request) {
   try {
     const { name, email, rollNo, password, supervisorId, program, batch, otp } = await req.json();
-    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedEmail = normalizeUniversityEmail(email);
     const normalizedRollNo = normalizeRollNo(rollNo);
 
     if (!name || !normalizedRollNo || !password || !batch || !normalizedEmail || !otp) {
       return NextResponse.json({ error: 'Missing required fields, including verification code payload.' }, { status: 400 });
     }
 
-    if (!/^[a-zA-Z0-9._%+-]+@(student\.)?uoh\.edu\.pk$/.test(normalizedEmail)) {
+    if (!UNIVERSITY_EMAIL_PATTERN.test(normalizedEmail)) {
       return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@student.uoh.edu.pk)' }, { status: 400 });
     }
+
+    if (!doesRollNoMatchUniversityEmail(normalizedRollNo, normalizedEmail)) {
+      return NextResponse.json(
+        {
+          error: `Your roll number and university email do not match. For ${normalizedRollNo}, use an email like ${getExpectedUniversityEmailExample(normalizedRollNo)}.`,
+        },
+        { status: 400 }
+      );
+    }
+
 
     await connectToDatabase();
 
@@ -119,6 +136,19 @@ export async function POST(req: Request) {
 
       // Cleanly purge verified code to prevent replays (Post-transaction clean up)
       await Otp.findOneAndDelete({ email: normalizedEmail });
+      await PendingVerification.updateMany(
+        {
+          status: 'pending',
+          $or: [{ email: normalizedEmail }, { rollNo: normalizedRollNo }],
+        },
+        {
+          $set: {
+            status: 'approved',
+            approvedAt: new Date(),
+            rejectionReason: 'Verified through OTP before manual approval was needed.',
+          },
+        }
+      );
 
       return NextResponse.json({ message: 'Registration successful!' }, { status: 201 });
 

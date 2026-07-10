@@ -646,6 +646,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
 
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [manualVerificationInfo, setManualVerificationInfo] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(900);
   const [formData, setFormData] = useState({
@@ -703,6 +704,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
       });
       setIsOtpMode(false);
       setOtpCode('');
+      setManualVerificationInfo(null);
       setTimeLeft(900);
     }
 
@@ -716,6 +718,18 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
     const remainingSeconds = seconds % 60;
 
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+
+  const normalizeRegistrationIdentityKey = (value: string) => {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  };
+
+  const rollNoMatchesUniversityEmail = (rollNoValue: string, emailValue: string) => {
+    const emailLocalPart = String(emailValue || '').split('@')[0] || '';
+    return normalizeRegistrationIdentityKey(rollNoValue) === normalizeRegistrationIdentityKey(emailLocalPart);
   };
 
   const handleSendOtp = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -748,6 +762,14 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
       return;
     }
 
+    if (!rollNoMatchesUniversityEmail(rollNoValue, emailValue)) {
+      showDialog({
+        title: 'Roll number and email do not match',
+        message: `Use the university email that belongs to this roll number. For ${rollNoValue.toUpperCase()}, use an email like ${rollNoValue.trim().toLowerCase()}@student.uoh.edu.pk.`,
+      });
+      return;
+    }
+
     if (passwordValue.length < 6) {
       showDialog({
         title: 'Password too short',
@@ -776,6 +798,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
         });
         setIsOtpMode(true);
         setOtpCode('');
+        setManualVerificationInfo(null);
         setTimeLeft(900);
 
         showDialog({
@@ -792,6 +815,56 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
       showDialog({
         title: 'Connection error',
         message: 'Unable to connect to the verification service right now. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRequestManualVerification = async () => {
+    if (!formData.name || !formData.email || !formData.rollNo || !formData.password || !program || !batch) {
+      showDialog({
+        title: 'Registration details missing',
+        message: 'Go back and complete the registration form before requesting manual verification.',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/register/manual-verification/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          rollNo: formData.rollNo,
+          password: formData.password,
+          supervisorId: supervisor,
+          program,
+          batch,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setManualVerificationInfo(data);
+        showDialog({
+          title: 'Manual verification request created',
+          message: 'Your request is ready. Follow the simple steps shown on this screen and send the email from your university Microsoft Outlook account.',
+        });
+      } else {
+        showDialog({
+          title: 'Manual verification failed',
+          message: data.error || 'Unable to create manual verification request right now.',
+        });
+      }
+    } catch (error) {
+      showDialog({
+        title: 'Connection error',
+        message: 'Unable to request manual verification right now. Please try again.',
       });
     } finally {
       setIsLoading(false);
@@ -856,6 +929,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
   const handleBackToForm = () => {
     setIsOtpMode(false);
     setOtpCode('');
+    setManualVerificationInfo(null);
     setTimeLeft(900);
   };
 
@@ -968,12 +1042,46 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
                   <StyledInput
                     value={otpCode}
                     onChange={(event: any) => setOtpCode(event.target.value)}
-                    required
+                    required={!manualVerificationInfo}
                     maxLength={6}
                     inputMode="numeric"
                     placeholder="123456"
                   />
                 </div>
+
+                {manualVerificationInfo ? (
+                  <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                    <p className="text-sm font-bold text-[var(--color-text)]">
+                      Manual verification request is pending
+                    </p>
+                    <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-[var(--color-text-muted)]">
+                      <li>Login to your Microsoft Outlook account using the email details from your UOH student portal.</li>
+                      <li>Create a new email and send it to the admin email shown below.</li>
+                      <li>Use the subject and message exactly as shown below.</li>
+                      <li>After sending, wait for admin approval. You do not need to submit your details again.</li>
+                    </ol>
+                    <div className="mt-3 space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
+                      <p className="break-all"><strong>To:</strong> {manualVerificationInfo.adminEmail || 'Portal admin email'}</p>
+                      <p><strong>Subject:</strong> FYP Portal Verification - {formData.rollNo}</p>
+                      <p className="break-all"><strong>Message:</strong> My verification phrase is: {manualVerificationInfo.verificationPhrase}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                    <p className="text-sm font-semibold text-[var(--color-text)]">Did not receive OTP?</p>
+                    <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+                      Create a manual request. We will show you simple Outlook email steps on the next screen.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={handleRequestManualVerification}
+                      className="mt-3 min-h-10 rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface)] disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      I can’t receive OTP
+                    </button>
+                  </div>
+                )}
 
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
@@ -985,12 +1093,12 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
                   </button>
 
                   <button
-                    disabled={isLoading}
+                    disabled={isLoading || Boolean(manualVerificationInfo)}
                     type="submit"
                     className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
                   >
                     {isLoading ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                    {isLoading ? 'Verifying...' : 'Confirm registration'}
+                    {manualVerificationInfo ? 'Waiting for admin approval' : isLoading ? 'Verifying...' : 'Confirm registration'}
                   </button>
                 </div>
               </form>
