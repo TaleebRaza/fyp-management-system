@@ -667,13 +667,13 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
   }
 
   const programOptions = [
-    { label: 'BSCS', value: 'BS Computer Sciece' },
-    { label: 'BSTN', value: 'BS Telecommuncation & Networking' },
-    { label: 'BSAI', value: 'BS Artificial Intelligence' },
-    { label: 'BSCYS', value: 'BS Cyber Security' },
-    { label: 'BSROB', value: 'BS Robotics' },
-    { label: 'BSDS', value: 'BS Data Science' },
-    { label: 'BSSE', value: 'BS Software Engineering'}
+    { label: 'BSCS', value: 'BSCS' },
+    { label: 'BSTN', value: 'BSTN' },
+    { label: 'BSAI', value: 'BSAI' },
+    { label: 'BSCYS', value: 'BSCYS' },
+    { label: 'BSROB', value: 'BSROB' },
+    { label: 'BSDS', value: 'BSDS' },
+    { label: 'BSSE', value: 'BSSE'}
   ];
 
   const supervisorOptions = [
