@@ -21,6 +21,7 @@ import {
   RefreshCcw,
   Settings,
   Upload,
+  Volume2,
   UserCheck,
   Users,
   Wrench,
@@ -81,6 +82,25 @@ const getStageProgress = (stage?: string) => {
 const getSafePdfKey = (url?: string) => {
   if (!url) return '';
   return url.includes('.com/') ? url.split('.com/')[1] : url.replace(/^\//, '');
+};
+
+const getSecureMediaUrl = (url?: string) => {
+  const key = getSafePdfKey(url);
+  return key ? `/api/read-pdf?url=${encodeURIComponent(key)}` : '';
+};
+
+const formatAnnouncementTime = (value?: string | Date | null) => {
+  if (!value) return '';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 };
 
 const splitTools = (tools?: string) => {
@@ -179,6 +199,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const me = data?.student;
   const supervisor = data?.supervisor;
   const project = data?.project;
+  const supervisorBroadcast = data?.supervisorBroadcast || null;
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
   const currentStage = project?.stage || 'PROPOSAL';
@@ -188,6 +209,35 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
   const canSubmit = ['Pending', 'Rejected', 'Changes Requested'].includes(me?.status);
+
+  const announcementItems = useMemo(() => {
+    const items: any[] = [];
+
+    if (headline.trim()) {
+      items.push({
+        id: 'admin-announcement',
+        source: 'Admin',
+        title: 'Admin Announcement',
+        type: 'text',
+        content: headline.trim(),
+        tone: 'admin',
+      });
+    }
+
+    if (supervisorBroadcast?.type && supervisorBroadcast?.content) {
+      items.push({
+        id: 'supervisor-broadcast',
+        source: supervisorBroadcast.supervisorName || supervisor?.name || 'Supervisor',
+        title: supervisorBroadcast.type === 'audio' ? 'Supervisor Voice Broadcast' : 'Supervisor Broadcast',
+        type: supervisorBroadcast.type,
+        content: supervisorBroadcast.content,
+        tone: 'supervisor',
+        createdAt: supervisorBroadcast.createdAt,
+      });
+    }
+
+    return items;
+  }, [headline, supervisorBroadcast, supervisor?.name]);
 
   const batchOptions = useMemo(() => {
     const options: string[] = [];
@@ -602,16 +652,73 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const renderOverview = () => (
     <div className="space-y-7 sm:space-y-6">
-      {headline && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-accent-soft)] p-4">
-          <div className="flex items-start gap-3">
-            <Megaphone size={20} className="mt-0.5 shrink-0 text-[var(--color-accent)]" />
-            <div>
-              <p className="text-sm font-bold text-[var(--color-text)]">Announcement</p>
-              <p className="mt-1 text-sm leading-6 text-[var(--color-text)]">
-                <LinkifiedText text={headline} />
-              </p>
+      {announcementItems.length > 0 && (
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-3 px-1">
+            <div className="flex items-center gap-2">
+              <Megaphone size={18} className="text-[var(--color-accent)]" />
+              <p className="text-sm font-bold text-[var(--color-text)]">Announcements</p>
             </div>
+            <span className="rounded-full bg-[var(--color-surface-muted)] px-2.5 py-1 text-xs font-bold text-[var(--color-text-muted)]">
+              {announcementItems.length}
+            </span>
+          </div>
+
+          <div className="portal-scrollbar max-h-52 space-y-3 overflow-y-auto pr-1">
+            {announcementItems.map((item) => {
+              const isSupervisor = item.tone === 'supervisor';
+
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-xl border p-4 ${
+                    isSupervisor
+                      ? 'border-purple-500/25 bg-purple-500/10'
+                      : 'border-amber-500/30 bg-amber-500/10'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                        isSupervisor
+                          ? 'bg-purple-500/15 text-purple-700 dark:text-purple-200'
+                          : 'bg-amber-500/15 text-amber-700 dark:text-amber-200'
+                      }`}
+                    >
+                      {item.type === 'audio' ? <Volume2 size={18} /> : <Megaphone size={18} />}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-bold text-[var(--color-text)]">{item.title}</p>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
+                            isSupervisor
+                              ? 'bg-purple-500/15 text-purple-700 dark:text-purple-200'
+                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-200'
+                          }`}
+                        >
+                          {item.source}
+                        </span>
+                        {item.createdAt ? (
+                          <span className="text-xs font-semibold text-[var(--color-text-muted)]">
+                            {formatAnnouncementTime(item.createdAt)}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {item.type === 'audio' ? (
+                        <audio controls src={getSecureMediaUrl(item.content)} className="mt-3 h-10 w-full max-w-md" />
+                      ) : (
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
+                          <LinkifiedText text={item.content} />
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

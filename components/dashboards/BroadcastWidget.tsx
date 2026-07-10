@@ -92,13 +92,24 @@ export default function BroadcastWidget({ isDarkMode, theme }: any) {
       let finalSize = 0;
 
       if (mode === 'audio' && audioBlob) {
-        const formData = new FormData();
-        formData.append('file', audioBlob);
-        const uploadRes = await fetch('/api/voice/upload', { method: 'POST', body: formData });
+        const uploadRes = await fetch('/api/voice/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contentType: audioBlob.type || 'audio/webm', fileSize: audioBlob.size })
+        });
         const uploadData = await uploadRes.json();
         
         if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
-        finalContent = uploadData.url;
+
+        const r2Res = await fetch(uploadData.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': audioBlob.type || 'audio/webm' },
+          body: audioBlob
+        });
+
+        if (!r2Res.ok) throw new Error('Cloud upload failed');
+
+        finalContent = uploadData.key;
         finalSize = audioBlob.size;
       }
 

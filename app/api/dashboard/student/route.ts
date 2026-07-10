@@ -120,12 +120,27 @@ export async function GET(req: Request) {
     if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
     // OPTIMIZATION: Parallel execution. Fetch supervisor and project at the exact same time.
+    // Security: only expose the supervisor fields the student dashboard actually needs.
     const [supervisor, project] = await Promise.all([
-      student.supervisorId ? User.findById(student.supervisorId).lean() : null,
+      student.supervisorId
+        ? User.findById(student.supervisorId)
+            .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
+            .lean()
+        : null,
       student.projectId ? Project.findById(student.projectId).populate('members', 'name rollNo email').lean() : null
     ]);
 
-    return NextResponse.json({ student, supervisor, project }, { status: 200 });
+    const supervisorBroadcast = supervisor?.broadcastType && supervisor?.broadcastContent
+      ? {
+          type: supervisor.broadcastType,
+          content: supervisor.broadcastContent,
+          size: supervisor.broadcastSize || 0,
+          createdAt: supervisor.broadcastCreatedAt || null,
+          supervisorName: supervisor.name || 'Supervisor',
+        }
+      : null;
+
+    return NextResponse.json({ student, supervisor, project, supervisorBroadcast }, { status: 200 });
   } catch (error) {
     console.error('Student Dashboard GET Error:', error);
     return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 });
