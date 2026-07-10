@@ -25,6 +25,9 @@ import {
   UserCheck,
   Users,
   Wrench,
+  Mic,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 import {
@@ -195,6 +198,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const [isFetchingTemplates, setIsFetchingTemplates] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
   const [isCopied, setIsCopied] = useState(false);
+
+  const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
 
   const me = data?.student;
   const supervisor = data?.supervisor;
@@ -653,75 +658,98 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const renderOverview = () => (
     <div className="space-y-7 sm:space-y-6">
       {announcementItems.length > 0 && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-3 px-1">
-            <div className="flex items-center gap-2">
-              <Megaphone size={18} className="text-[var(--color-accent)]" />
-              <p className="text-sm font-bold text-[var(--color-text)]">Announcements</p>
-            </div>
-            <span className="rounded-full bg-[var(--color-surface-muted)] px-2.5 py-1 text-xs font-bold text-[var(--color-text-muted)]">
-              {announcementItems.length}
-            </span>
-          </div>
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
+                  <Mic size={19} />
 
-          <div className="portal-scrollbar max-h-52 space-y-3 overflow-y-auto pr-1">
-            {announcementItems.map((item) => {
-              const isSupervisor = item.tone === 'supervisor';
-
-              return (
-                <div
-                  key={item.id}
-                  className={`rounded-xl border p-4 ${
-                    isSupervisor
-                      ? 'border-purple-500/25 bg-purple-500/10'
-                      : 'border-amber-500/30 bg-amber-500/10'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                        isSupervisor
-                          ? 'bg-purple-500/15 text-purple-700 dark:text-purple-200'
-                          : 'bg-amber-500/15 text-amber-700 dark:text-amber-200'
-                      }`}
-                    >
-                      {item.type === 'audio' ? <Volume2 size={18} /> : <Megaphone size={18} />}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-bold text-[var(--color-text)]">{item.title}</p>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
-                            isSupervisor
-                              ? 'bg-purple-500/15 text-purple-700 dark:text-purple-200'
-                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-200'
-                          }`}
-                        >
-                          {item.source}
-                        </span>
-                        {item.createdAt ? (
-                          <span className="text-xs font-semibold text-[var(--color-text-muted)]">
-                            {formatAnnouncementTime(item.createdAt)}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {item.type === 'audio' ? (
-                        <audio controls src={getSecureMediaUrl(item.content)} className="mt-3 h-10 w-full max-w-md" />
-                      ) : (
-                        <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
-                          <LinkifiedText text={item.content} />
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                  </span>
                 </div>
-              );
-            })}
+
+                <div>
+                  <p className="text-sm font-extrabold text-[var(--color-text)]">
+                    Announcements
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
+                    {announcementItems.length} active update{announcementItems.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAnnouncementPanelOpen((prev) => !prev)}
+                aria-label={isAnnouncementPanelOpen ? 'Collapse announcements' : 'Show announcements'}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              >
+                {isAnnouncementPanelOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </button>
+            </div>
+
+            {isAnnouncementPanelOpen && (
+              <div className="portal-scrollbar mt-4 max-h-52 space-y-3 overflow-y-auto pr-1">
+                {announcementItems.map((item) => {
+                  const isSupervisor = item.tone === 'supervisor';
+
+                  const cardClass = isSupervisor
+                    ? 'border-purple-500 bg-purple-600 dark:border-purple-400/40 dark:bg-purple-600/80'
+                    : 'border-amber-500 bg-amber-500 dark:border-amber-400/40 dark:bg-amber-500/80';
+
+                  const iconClass = 'bg-white/20 text-white ring-1 ring-white/30';
+                  const badgeClass = 'bg-white/20 text-white ring-1 ring-white/30';
+
+                  return (
+                    <div key={item.id} className={`rounded-xl border p-4 ${cardClass}`}>
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconClass}`}
+                        >
+                          {item.type === 'audio' ? <Mic size={18} /> : <Megaphone size={18} />}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-extrabold text-white">
+                              {item.title}
+                            </p>
+
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${badgeClass}`}
+                            >
+                              {item.source}
+                            </span>
+
+                            {item.createdAt ? (
+                              <span className="text-xs font-semibold text-white/80">
+                                {formatAnnouncementTime(item.createdAt)}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          {item.type === 'audio' ? (
+                            <audio
+                              controls
+                              src={getSecureMediaUrl(item.content)}
+                              className="mt-3 h-10 w-full max-w-md"
+                            />
+                          ) : (
+                            <p className="mt-2 text-sm leading-6 text-white">
+                              <LinkifiedText text={item.content} />
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
       <DashboardGrid columns="four">
         <StatCard
