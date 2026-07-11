@@ -143,7 +143,7 @@ const DialogModal = ({ dialog, closeDialog }: any) => {
     <AnimatePresence>
       {dialog.isOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center p-3 sm:items-center sm:p-4"
+          className="fixed inset-0 z-[300] flex items-end justify-center p-3 sm:items-center sm:p-4"
           role="dialog"
           aria-modal="true"
         >
@@ -1452,9 +1452,7 @@ export default function App() {
 
     return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] transition-colors">
-      <div className="relative z-[100]">
-        <DialogModal dialog={dialog} closeDialog={closeDialog} />
-      </div>
+      <DialogModal dialog={dialog} closeDialog={closeDialog} />
 
       <nav className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="mx-auto flex w-full items-center justify-between px-4 py-3 md:w-[90vw] md:px-0">
