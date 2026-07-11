@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { randomInt } from 'crypto';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import PendingVerification from '../../../../models/PendingVerification';
 import { buildRollNoRegex, normalizeRollNo } from '../../../../lib/rollNo';
 import {
   UNIVERSITY_EMAIL_PATTERN,
@@ -94,6 +95,48 @@ function pickOtpTemplate(code: string) {
   return templates[randomInt(0, templates.length)];
 }
 
+function getAdminEmail() {
+  return process.env.MANUAL_VERIFICATION_EMAIL || process.env.EMAIL_USER || '';
+}
+
+function buildManualStatusMessage(status: string) {
+  if (status === 'approved') {
+    return 'Your manual verification has been approved. Your account is ready. You can sign in now.';
+  }
+
+  if (status === 'action_required') {
+    return 'Admin has updated your request. Read the remark below and send the same Outlook email again if needed.';
+  }
+
+  if (status === 'rejected') {
+    return 'Your manual verification request was rejected. Read the admin remark below.';
+  }
+
+  return 'Your manual verification request is already pending. Use the same email details shown below.';
+}
+
+function serializeManualVerification(request: any) {
+  const subject = `FYP Portal Verification - ${request.rollNo}`;
+  const body = `My roll number is ${request.rollNo}. My verification phrase is: ${request.verificationPhrase}`;
+
+  return {
+    nextStep: 'manual_verification',
+    message: buildManualStatusMessage(request.status),
+    requestId: request._id,
+    status: request.status,
+    adminRemark: request.adminRemark || request.rejectionReason || '',
+    rejectionReason: request.rejectionReason || '',
+    verificationPhrase: request.verificationPhrase,
+    adminEmail: getAdminEmail(),
+    emailSubject: subject,
+    emailBody: body,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    approvedAt: request.approvedAt,
+    rejectedAt: request.rejectedAt,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const { email, rollNo } = await req.json();
@@ -125,16 +168,36 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
-    const existingUser = await User.findOne({
-      $or: [
-        { email: normalizedEmail },
-        { rollNo: normalizedRollNo },
-        { rollNo: buildRollNoRegex(normalizedRollNo) },
-      ],
-    });
+    const [existingManualRequest, existingUser] = await Promise.all([
+      PendingVerification.findOne({
+        email: normalizedEmail,
+        rollNo: normalizedRollNo,
+      }).sort({ createdAt: -1 }),
+      User.findOne({
+        $or: [
+          { email: normalizedEmail },
+          { rollNo: normalizedRollNo },
+          { rollNo: buildRollNoRegex(normalizedRollNo) },
+        ],
+      }).select('_id'),
+    ]);
+
+    // An open manual request takes priority over the generic "already registered" response.
+    // This lets the registration UI reopen the approval screen and show the latest admin remark.
+    if (
+      existingManualRequest &&
+      ['pending', 'action_required'].includes(existingManualRequest.status)
+    ) {
+      return NextResponse.json(serializeManualVerification(existingManualRequest), { status: 200 });
+    }
 
     if (existingUser) {
       return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
+    }
+
+    // Also surface rejected or orphaned approved requests when there is no registered user.
+    if (existingManualRequest) {
+      return NextResponse.json(serializeManualVerification(existingManualRequest), { status: 200 });
     }
 
     const existingOtp = await Otp.findOne({ email: normalizedEmail });
@@ -182,7 +245,7 @@ export async function POST(req: Request) {
       }, { status: 404 });
     }
 
-    return NextResponse.json({ message: 'Verification code sent to your university email!' }, { status: 200 });
+    return NextResponse.json({ nextStep: 'otp', message: 'Verification code sent to your university email!' }, { status: 200 });
   } catch (error: any) {
     console.error('Send OTP Error:', error.message);
     return NextResponse.json({ error: 'Failed to process verification request. Please try again.' }, { status: 500 });

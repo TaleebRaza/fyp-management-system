@@ -700,11 +700,13 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
 
-    if (isOtpMode && timeLeft > 0) {
+    // Manual verification can stay pending for longer than an OTP session,
+    // so only run the countdown while the user is actually entering an OTP.
+    if (isOtpMode && !manualVerificationInfo && timeLeft > 0) {
       timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
     }
 
-    if (isOtpMode && timeLeft === 0) {
+    if (isOtpMode && !manualVerificationInfo && timeLeft === 0) {
       showDialog({
         title: 'Verification expired',
         message: 'Your verification session expired. Please submit the registration form again.',
@@ -718,7 +720,7 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isOtpMode, timeLeft, showDialog]);
+  }, [isOtpMode, manualVerificationInfo, timeLeft, showDialog]);
 
   const formatCountdown = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -826,9 +828,18 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
         });
         setIsOtpMode(true);
         setOtpCode('');
-        setManualVerificationInfo(null);
         setTimeLeft(900);
 
+        if (data.nextStep === 'manual_verification') {
+          setManualVerificationInfo(data);
+          showDialog({
+            title: getManualStatusTitle(data.status),
+            message: data.message || 'Your registration request is already waiting for admin review.',
+          });
+          return;
+        }
+
+        setManualVerificationInfo(null);
         showDialog({
           title: 'Check your email',
           message: data.message || 'A verification code has been sent to your university email.',
@@ -1021,12 +1032,18 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
 
               <div>
                 <h2 className="text-xl font-bold tracking-tight text-[var(--color-text)]">
-                  {isOtpMode ? 'Verify your email' : 'Create student account'}
+                  {manualVerificationInfo
+                    ? 'Manual verification status'
+                    : isOtpMode
+                      ? 'Verify your email'
+                      : 'Create student account'}
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
-                  {isOtpMode
-                    ? 'Enter the 6-digit code sent to your university inbox.'
-                    : 'Use accurate academic information. These details are used inside your FYP workspace.'}
+                  {manualVerificationInfo
+                    ? 'This registration request is already being reviewed by the admin.'
+                    : isOtpMode
+                      ? 'Enter the 6-digit code sent to your university inbox.'
+                      : 'Use accurate academic information. These details are used inside your FYP workspace.'}
                 </p>
               </div>
             </div>
@@ -1035,47 +1052,63 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
           <div className="px-5 py-5 sm:px-6">
             {isOtpMode ? (
               <form onSubmit={handleVerifyRegistration} className="space-y-5">
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-sm font-semibold text-[var(--color-text)]">
-                    Verification sent
-                  </p>
-                  <p className="mt-1 break-all text-sm leading-6 text-[var(--color-text-muted)]">
-                    {formData.email}
-                  </p>
-
-                  <div className="mt-4 flex items-start gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
-                      <Mail size={17} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--color-text)]">
-                        Check your university inbox
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
-                        University mail may arrive in Outlook or your official student mailbox.
-                      </p>
-                    </div>
+                {manualVerificationInfo ? (
+                  <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                    <p className="text-sm font-semibold text-[var(--color-text)]">
+                      Existing registration request found
+                    </p>
+                    <p className="mt-1 break-all text-sm leading-6 text-[var(--color-text-muted)]">
+                      {formData.email}
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
+                      This email and roll number are already in the admin approval queue. The password from the original request remains unchanged.
+                    </p>
                   </div>
+                ) : (
+                  <>
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                      <p className="text-sm font-semibold text-[var(--color-text)]">
+                        Verification sent
+                      </p>
+                      <p className="mt-1 break-all text-sm leading-6 text-[var(--color-text-muted)]">
+                        {formData.email}
+                      </p>
 
-                  <p className="mt-4 text-sm font-semibold text-[var(--color-text-muted)]">
-                    Code expires in{' '}
-                    <span className="font-mono text-[var(--color-text)]">{formatCountdown(timeLeft)}</span>
-                  </p>
-                </div>
+                      <div className="mt-4 flex items-start gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
+                          <Mail size={17} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--color-text)]">
+                            Check your university inbox
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+                            University mail may arrive in Outlook or your official student mailbox.
+                          </p>
+                        </div>
+                      </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-                    6-digit verification code
-                  </label>
-                  <StyledInput
-                    value={otpCode}
-                    onChange={(event: any) => setOtpCode(event.target.value)}
-                    required={!manualVerificationInfo}
-                    maxLength={6}
-                    inputMode="numeric"
-                    placeholder="123456"
-                  />
-                </div>
+                      <p className="mt-4 text-sm font-semibold text-[var(--color-text-muted)]">
+                        Code expires in{' '}
+                        <span className="font-mono text-[var(--color-text)]">{formatCountdown(timeLeft)}</span>
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
+                        6-digit verification code
+                      </label>
+                      <StyledInput
+                        value={otpCode}
+                        onChange={(event: any) => setOtpCode(event.target.value)}
+                        required
+                        maxLength={6}
+                        inputMode="numeric"
+                        placeholder="123456"
+                      />
+                    </div>
+                  </>
+                )}
 
                 {manualVerificationInfo ? (
                   <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
