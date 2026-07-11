@@ -307,12 +307,6 @@ const SupervisorDashboard = ({
     return [...configuredPrograms, ...extraPrograms].sort((a, b) => getProgramName(a).localeCompare(getProgramName(b)));
   }, [myProjects]);
 
-  useEffect(() => {
-    if (activeTab !== 'projects' || programFilter || uniquePrograms.length === 0) return;
-
-    setProgramFilter(uniquePrograms[0]);
-  }, [activeTab, programFilter, uniquePrograms]);
-
   const filteredProjects = useMemo(() => {
     const query = projectSearch.trim().toLowerCase();
 
@@ -559,15 +553,12 @@ const SupervisorDashboard = ({
     }
   };
 
-  const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
-    setProjectQueueFilter(queueFilter);
-    setActiveTab('projects');
-    setProjectMenuExpanded(true);
-
-    if (!programFilter && uniquePrograms.length > 0) {
-      setProgramFilter(uniquePrograms[0]);
-    }
-  };
+const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
+  setProjectQueueFilter(queueFilter);
+  setActiveTab('projects');
+  setProgramFilter(''); // <-- Clear filter to show all programs
+  setProjectMenuExpanded(true);
+}; 
 
   const projectQueueTitle =
     projectQueueFilter === 'submitted'
@@ -577,13 +568,13 @@ const SupervisorDashboard = ({
         : 'Assigned Projects';
 
   const projectQueueDescription =
-    projectQueueFilter === 'submitted'
-      ? 'Showing teams that have submitted a title and PDF.'
-      : projectQueueFilter === 'review'
-        ? 'Showing submitted projects still waiting for your decision.'
-        : programFilter
-          ? `Showing ${getProgramName(programFilter)} projects only. Choose another program from the sidebar.`
-          : 'Choose a program from the sidebar to keep this workspace focused.';
+      projectQueueFilter === 'submitted'
+        ? 'Showing teams that have submitted a title and PDF across all programs.'
+        : projectQueueFilter === 'review'
+          ? 'Showing submitted projects still waiting for your decision across all programs.'
+          : programFilter
+            ? `Showing ${getProgramName(programFilter)} projects only.`
+            : 'Showing all programs. Select a specific program from the sidebar to filter.';
 
   const emptyProjectState =
     projectQueueFilter === 'submitted'
@@ -859,29 +850,21 @@ const SupervisorDashboard = ({
         </Select>
       </div>
 
-      {!programFilter ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <EmptyState
-            title="Select a program"
-            description="Open Assigned Projects in the sidebar and choose BSCS, BSAI, BSSE, or another program to view only that group."
-            icon={<GraduationCap size={28} />}
-          />
-        </div>
-      ) : filteredProjects.length === 0 ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <EmptyState
-            title={emptyProjectState.title}
-            description={emptyProjectState.description}
-            icon={<FileText size={28} />}
-          />
-        </div>
-      ) : (
-        <div className="portal-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-          <DashboardGrid columns="three" className="pb-1">
-            {filteredProjects.map(renderProjectCard)}
-          </DashboardGrid>
-        </div>
-      )}
+        {filteredProjects.length === 0 ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <EmptyState
+              title={emptyProjectState.title}
+              description={emptyProjectState.description}
+              icon={<FileText size={28} />}
+            />
+          </div>
+        ) : (
+          <div className="portal-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+            <DashboardGrid columns="three" className="pb-1">
+              {filteredProjects.map(renderProjectCard)}
+            </DashboardGrid>
+          </div>
+        )}
     </DashboardPanel>
   );
 
@@ -923,19 +906,33 @@ const SupervisorDashboard = ({
       onClick: openProjectsFromSidebar,
     },
     ...(isProjectMenuExpanded
-      ? uniquePrograms.map((program) => ({
-          id: `program-${program}`,
-          label: getProgramName(program),
-          icon: <span className="ml-5 h-1.5 w-1.5 rounded-full bg-current" />,
-          active: activeTab === 'projects' && programFilter === program,
-          badge: programProjectCounts[program],
-          onClick: () => {
-            setActiveTab('projects');
-            setProgramFilter(program);
-            setProjectQueueFilter('all');
-            setProjectMenuExpanded(true);
+      ? [
+          {
+            id: 'program-all',
+            label: 'All Programs',
+            icon: <span className="ml-5 h-1.5 w-1.5 rounded-full bg-current" />,
+            active: activeTab === 'projects' && !programFilter,
+            badge: myProjects.length,
+            onClick: () => {
+              setActiveTab('projects');
+              setProgramFilter('');
+              setProjectQueueFilter('all');
+            },
           },
-        }))
+          ...uniquePrograms.map((program) => ({
+            id: `program-${program}`,
+            label: getProgramName(program),
+            icon: <span className="ml-5 h-1.5 w-1.5 rounded-full bg-current" />,
+            active: activeTab === 'projects' && programFilter === program,
+            badge: programProjectCounts[program],
+            onClick: () => {
+              setActiveTab('projects');
+              setProgramFilter(program);
+              setProjectQueueFilter('all');
+              setProjectMenuExpanded(true);
+            },
+          })),
+        ]
       : []),
   ];
 
