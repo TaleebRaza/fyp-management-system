@@ -84,17 +84,24 @@ function mergeDeletionTargets(targets: DeletionTarget[]) {
   return Array.from(mergedTargets.values());
 }
 
-async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, session: ClientSession) {
+async function createFreshStudentProject(
+  studentId: mongoose.Types.ObjectId,
+  session: ClientSession,
+  supervisorId: mongoose.Types.ObjectId | null = null
+) {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
       const newProject = new Project({
-        supervisorId: null,
+        supervisorId,
         members: [studentId],
         inviteCode,
         stage: 'PROPOSAL',
         status: 'Pending',
+        title: '',
+        titleFingerprint: '',
+        domain: '',
         pdfUrl: '',
         pdfSize: 0,
       });
@@ -313,14 +320,240 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
+    // ACTION: CHANGE SUPERVISOR (student starts fresh)
+    // ==========================================
+    if (body.action === 'changeSupervisor') {
+      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
+
+      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
+        return NextResponse.json({ error: 'Unauthorized supervisor change request.' }, { status: 401 });
+      }
+
+      const studentId = String(body.id || '').trim();
+      const newSupervisorId = String(body.supervisorId || '').trim();
+
+      if (!mongoose.Types.ObjectId.isValid(studentId) || !mongoose.Types.ObjectId.isValid(newSupervisorId)) {
+        return NextResponse.json({ error: 'Invalid student or supervisor.' }, { status: 400 });
+      }
+
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      let deletionTargets: DeletionTarget[] = [];
+      let freedBytes = 0;
+      let leftTeam = false;
+
+      try {
+        const student = await User.findById(studentId).session(session);
+
+        if (!student || student.role !== 'student') {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
+        }
+
+        if (String(student.supervisorId || '') === newSupervisorId) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'You are already assigned to this supervisor.' }, { status: 400 });
+        }
+
+        const targetSupervisor = await User.findOne({
+          _id: newSupervisorId,
+          role: 'supervisor',
+        })
+          .select('_id name extraSlots')
+          .session(session);
+
+        if (!targetSupervisor) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
+        }
+
+        let filledSlots = 0;
+
+        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+          filledSlots = await User.countDocuments({
+            role: 'student',
+            supervisorId: targetSupervisor._id,
+          }).session(session);
+        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+          filledSlots = await Project.countDocuments({
+            supervisorId: targetSupervisor._id,
+          }).session(session);
+        }
+
+        const maxSlots = getSupervisorMaxSlots(targetSupervisor);
+
+        if (filledSlots >= maxSlots) {
+          await session.abortTransaction();
+          session.endSession();
+
+          return NextResponse.json(
+            { error: `Cannot change supervisor. The selected supervisor is full (${maxSlots} slots).` },
+            { status: 409 }
+          );
+        }
+
+        const oldProject = student.projectId
+          ? await Project.findById(student.projectId).session(session)
+          : null;
+
+        if (oldProject) {
+          const projectIsLocked = oldProject.status === 'Approved' || oldProject.stage !== 'PROPOSAL';
+
+          if (projectIsLocked) {
+            await session.abortTransaction();
+            session.endSession();
+
+            return NextResponse.json(
+              {
+                error:
+                  'Supervisor change is blocked because this project has already been approved. Use migration instead.',
+              },
+              { status: 403 }
+            );
+          }
+
+          const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
+          const isOnlyMember =
+            oldProjectMembers.length <= 1 ||
+            oldProjectMembers.every((member: any) => String(member) === String(student._id));
+
+          if (isOnlyMember) {
+            const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
+
+            deletionTargets = mergeDeletionTargets([
+              buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
+              String(student.pdfUrl || '') !== String(oldProject.pdfUrl || '')
+                ? buildDeletionTarget(student.pdfUrl, oldProject.pdfSize)
+                : null,
+              ...voiceNotes
+                .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
+                .filter(Boolean),
+            ].filter(Boolean) as DeletionTarget[]);
+
+            freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
+
+            if (voiceNotes.length > 0) {
+              await VoiceNote.deleteMany({
+                _id: { $in: voiceNotes.map((note: any) => note._id) },
+              }).session(session);
+            }
+
+            await Project.findByIdAndDelete(oldProject._id, { session });
+          } else {
+            leftTeam = true;
+
+            await Project.findByIdAndUpdate(
+              oldProject._id,
+              { $pull: { members: student._id } },
+              { session }
+            );
+          }
+        }
+
+        if (freedBytes > 0) {
+          await SystemConfig.findOneAndUpdate(
+            { configKey: 'storage' },
+            { $inc: { usedBytes: -freedBytes } },
+            { upsert: true, session }
+          );
+
+          await SystemConfig.updateOne(
+            { configKey: 'storage', usedBytes: { $lt: 0 } },
+            { $set: { usedBytes: 0 } },
+            { session }
+          );
+        }
+
+        const freshProject = await createFreshStudentProject(
+          student._id,
+          session,
+          targetSupervisor._id
+        );
+
+        student.supervisorId = targetSupervisor._id;
+        student.projectId = freshProject._id;
+        student.status = 'Pending';
+        student.remarks = leftTeam
+          ? 'You changed supervisor and left your previous team. You are starting fresh under the new supervisor.'
+          : 'You changed supervisor and started fresh. Your previous project data was reset.';
+        student.projectTitle = '';
+        student.projectDesc = '';
+        student.domain = '';
+        student.tools = '';
+        student.pdfUrl = '';
+
+        await student.save({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        if (deletionTargets.length > 0) {
+          Promise.all(
+            deletionTargets.map((target) =>
+              s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
+            )
+          ).catch((error: any) => {
+            console.error('Supervisor change file cleanup failed:', error.message);
+          });
+        }
+
+        return NextResponse.json(
+          {
+            message: leftTeam
+              ? 'Supervisor changed. You left your old team and started fresh under the new supervisor.'
+              : 'Supervisor changed. Your previous project files were deleted and you started fresh.',
+            freedBytes,
+          },
+          { status: 200 }
+        );
+      } catch (error: any) {
+        await session.abortTransaction();
+        session.endSession();
+
+        console.error('Supervisor Change Error:', error.message);
+        return NextResponse.json({ error: 'Failed to change supervisor.' }, { status: 500 });
+      }
+    }
+
+    // ==========================================
     // ACTION: ASSIGN SUPERVISOR (Transaction Lock)
     // ==========================================
     if (body.action === 'assignSupervisor') {
+      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
+
+      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
+        return NextResponse.json({ error: 'Unauthorized supervisor assignment request.' }, { status: 401 });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(String(body.id || '')) || !mongoose.Types.ObjectId.isValid(String(body.supervisorId || ''))) {
+        return NextResponse.json({ error: 'Invalid student or supervisor.' }, { status: 400 });
+      }
+
       // 1. Start an Atomic Transaction Session to prevent race conditions
       const session = await mongoose.startSession();
       session.startTransaction();
 
       try {
+        const triggeringStudent = await User.findById(body.id).session(session);
+        if (!triggeringStudent) {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+        }
+
+        if (triggeringStudent.supervisorId && triggeringStudent.status !== 'Unassigned') {
+          await session.abortTransaction();
+          session.endSession();
+          return NextResponse.json(
+            { error: 'You already have a supervisor. Use the change supervisor option instead.' },
+            { status: 400 }
+          );
+        }
+
         const supervisor = await User.findOne({ _id: body.supervisorId, role: 'supervisor' })
           .select('_id extraSlots')
           .session(session);
@@ -349,13 +582,6 @@ export async function POST(req: Request) {
             { error: `Cannot assign. The selected supervisor has reached maximum capacity (${maxSlots} slots).` }, 
             { status: 409 } // 409 Conflict is the correct HTTP status for a race condition rejection
           );
-        }
-
-        const triggeringStudent = await User.findById(body.id).session(session);
-        if (!triggeringStudent) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'Student not found' }, { status: 404 });
         }
 
         const supObjectId = new mongoose.Types.ObjectId(body.supervisorId);

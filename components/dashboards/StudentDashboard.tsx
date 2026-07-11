@@ -185,6 +185,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
+  const [isSupervisorWarningOpen, setIsSupervisorWarningOpen] = useState(false);
 
   const [isAcademicDialogOpen, setIsAcademicDialogOpen] = useState(false);
   const [isAcademicWarningStep, setIsAcademicWarningStep] = useState(false);
@@ -214,6 +215,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
   const canSubmit = ['Pending', 'Rejected', 'Changes Requested'].includes(me?.status);
+  const isSupervisorChangeLocked =
+    !isUnassigned && (project?.status === 'Approved' || currentStage !== 'PROPOSAL');
 
   const announcementItems = useMemo(() => {
     const items: any[] = [];
@@ -264,6 +267,16 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         label: `${supervisorItem.name} (${supervisorItem.filledSlots}/${supervisorItem.maxSlots} slots)`,
       }));
   }, [localSups]);
+
+  const supervisorChangeOptions = useMemo(() => {
+    const currentSupervisorId = String(me?.supervisorId || '');
+    return supervisorOptions.filter((option) => String(option.id) !== currentSupervisorId);
+  }, [supervisorOptions, me?.supervisorId]);
+
+  const visibleSupervisorOptions = isUnassigned ? supervisorOptions : supervisorChangeOptions;
+  const selectedSupervisorName =
+    localSups.find((supervisorItem) => String(supervisorItem._id) === String(selectedSupervisorId))?.name ||
+    'the selected supervisor';
 
   const fetchHeadline = async () => {
     try {
@@ -463,17 +476,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
     }
   };
 
-  const handleAssignSupervisor = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!selectedSupervisorId) {
-      showDialog({
-        title: 'Select supervisor',
-        message: 'Choose an available supervisor before confirming assignment.',
-      });
-      return;
-    }
-
+  const submitSupervisorRequest = async (action: 'assignSupervisor' | 'changeSupervisor') => {
     setIsSubmitting(true);
 
     try {
@@ -481,7 +484,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'assignSupervisor',
+          action,
           id: (session?.user as any)?.id,
           supervisorId: selectedSupervisorId,
         }),
@@ -490,25 +493,77 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       const json = await response.json();
 
       if (!response.ok) {
-        throw new Error(json.error || 'Failed to assign supervisor.');
+        throw new Error(json.error || 'Failed to update supervisor.');
       }
 
       setSelectedSupervisorId('');
+      setIsSupervisorWarningOpen(false);
+
+      if (action === 'changeSupervisor') {
+        setTitle('');
+        setDesc('');
+        setDomain('');
+        setTools('');
+        setFile(null);
+        setCachedTemplates([]);
+      }
+
       await fetchData();
       await fetchSupervisors();
 
       showDialog({
-        title: 'Supervisor assigned',
-        message: json.message || 'Your supervisor has been assigned.',
+        title: action === 'changeSupervisor' ? 'Supervisor changed' : 'Supervisor assigned',
+        message:
+          json.message ||
+          (action === 'changeSupervisor'
+            ? 'You have started fresh under the new supervisor.'
+            : 'Your supervisor has been assigned.'),
       });
     } catch (error: any) {
       showDialog({
-        title: 'Assignment failed',
-        message: error.message || 'Unable to assign supervisor right now.',
+        title: action === 'changeSupervisor' ? 'Supervisor change failed' : 'Assignment failed',
+        message: error.message || 'Unable to update supervisor right now.',
       });
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleAssignSupervisor = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedSupervisorId) {
+      showDialog({
+        title: 'Select supervisor',
+        message: 'Choose an available supervisor before confirming.',
+      });
+      return;
+    }
+
+    if (!isUnassigned) {
+      if (isSupervisorChangeLocked) {
+        showDialog({
+          title: 'Supervisor change locked',
+          message:
+            'This project has already moved past proposal approval. Ask your supervisor to use migration if a supervisor transfer is required.',
+        });
+        return;
+      }
+
+      setIsSupervisorWarningOpen(true);
+      return;
+    }
+
+    await submitSupervisorRequest('assignSupervisor');
+  };
+
+  const handleConfirmSupervisorChange = async () => {
+    if (!selectedSupervisorId) {
+      setIsSupervisorWarningOpen(false);
+      return;
+    }
+
+    await submitSupervisorRequest('changeSupervisor');
   };
 
   const handleJoinTeam = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1082,14 +1137,14 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       <DashboardPanel>
         <SectionHeader
           title="Supervisor / Team Actions"
-          description="Assign a supervisor or join another team."
+          description="Assign a supervisor, change supervisor before approval, or join another team."
         />
 
-        {isUnassigned && (
+        {(isUnassigned || !isSupervisorChangeLocked) ? (
           <form onSubmit={handleAssignSupervisor} className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-                Available Supervisors
+                {isUnassigned ? 'Available Supervisors' : 'Change Supervisor'}
               </label>
               <select
                 value={selectedSupervisorId}
@@ -1097,7 +1152,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
                 className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
               >
                 <option value="">Select supervisor</option>
-                {supervisorOptions.map((option) => (
+                {visibleSupervisorOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
@@ -1105,14 +1160,63 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               </select>
             </div>
 
-            <Button type="submit" disabled={isSubmitting} className="w-full">
+            {!isUnassigned && (
+              <div
+                className={`rounded-lg border p-3 ${
+                  isDarkMode
+                    ? 'border-white/10 bg-white/5'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <AlertCircle
+                    size={18}
+                    className={`mt-0.5 shrink-0 ${
+                      isDarkMode ? 'text-white/70' : 'text-slate-600'
+                    }`}
+                  />
+
+                  <div>
+                    <p
+                      className={`text-sm font-semibold ${
+                        isDarkMode ? 'text-white' : 'text-black'
+                      }`}
+                    >
+                      Your workspace will be reset
+                    </p>
+
+                    <p
+                      className={`mt-1 text-sm leading-5 ${
+                        isDarkMode ? 'text-white/70' : 'text-slate-600'
+                      }`}
+                    >
+                      Review what will change before confirming your new supervisor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Button type="submit" disabled={isSubmitting || visibleSupervisorOptions.length === 0} className="w-full">
               {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <UserCheck size={16} />}
-              Confirm Assignment
+              {isUnassigned ? 'Confirm Assignment' : 'Review Changes'}
             </Button>
           </form>
+        ) : (
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+            <div className="flex items-start gap-3">
+              <Lock className="mt-0.5 text-[var(--color-text-muted)]" size={18} />
+              <div>
+                <p className="text-sm font-bold text-[var(--color-text)]">Supervisor change locked</p>
+                <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+                  This project has already moved past proposal approval. Supervisor changes are only allowed through migration now.
+                </p>
+              </div>
+            </div>
+          </div>
         )}
 
-        <div className={isUnassigned ? 'mt-6 border-t border-[var(--color-border)] pt-6' : ''}>
+        <div className="mt-6 border-t border-[var(--color-border)] pt-6">
           <form onSubmit={handleJoinTeam} className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
@@ -1301,6 +1405,103 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         {activeTab === 'team' && renderTeam()}
         {activeTab === 'resources' && renderResources()}
       </DashboardShell>
+
+      <Dialog
+        open={isSupervisorWarningOpen}
+        onClose={() => {
+          if (!isSubmitting) setIsSupervisorWarningOpen(false);
+        }}
+        title="Confirm supervisor change"
+        description={`You are about to move to ${selectedSupervisorName}. This cannot be undone from your dashboard.`}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setIsSupervisorWarningOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+
+            <Button variant="danger" onClick={handleConfirmSupervisorChange} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <AlertCircle size={16} />}
+              Change Supervisor
+            </Button>
+          </>
+        }
+      >
+        <div
+          className={`overflow-hidden rounded-lg border ${
+            isDarkMode
+              ? 'border-red-500/30 bg-red-500/10'
+              : 'border-red-200 bg-red-50'
+          }`}
+        >
+          <div className="flex items-start gap-3 p-4">
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                isDarkMode ? 'bg-red-500/15' : 'bg-red-100'
+              }`}
+            >
+              <AlertCircle
+                size={19}
+                className={isDarkMode ? 'text-red-300' : 'text-red-600'}
+              />
+            </div>
+
+            <div>
+              <p
+                className={`text-sm font-semibold ${
+                  isDarkMode ? 'text-white' : 'text-black'
+                }`}
+              >
+                Your current workspace will be reset
+              </p>
+
+              <p
+                className={`mt-1 text-sm leading-5 ${
+                  isDarkMode ? 'text-white/70' : 'text-slate-600'
+                }`}
+              >
+                This action affects your project data and team membership.
+              </p>
+            </div>
+          </div>
+
+          <div
+            className={`border-t px-4 ${
+              isDarkMode ? 'border-white/10' : 'border-red-200'
+            }`}
+          >
+            {[
+              'Your uploaded project details, files, and voice notes will be deleted.',
+              'If you are in a team, you will leave it. Your teammate will keep the existing project.',
+              'You will start with a new workspace under the selected supervisor.',
+            ].map((message) => (
+              <div
+                key={message}
+                className={`flex gap-3 border-b py-3 last:border-b-0 ${
+                  isDarkMode ? 'border-white/10' : 'border-red-200'
+                }`}
+              >
+                <span
+                  className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    isDarkMode ? 'bg-red-300' : 'bg-red-500'
+                  }`}
+                />
+
+                <p
+                  className={`text-sm leading-6 ${
+                    isDarkMode ? 'text-white' : 'text-black'
+                  }`}
+                >
+                  {message}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog
         open={isAcademicDialogOpen}

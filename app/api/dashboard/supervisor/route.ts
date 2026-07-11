@@ -7,10 +7,68 @@ import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
 import { APP_SETTINGS } from '../../../../config/appSettings';
-import VoiceNote from '../../../../models/VoiceNote';
-import mongoose from 'mongoose';
+import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
+import mongoose, { ClientSession } from 'mongoose';
 
 export const dynamic = 'force-dynamic';
+
+type DeletionTarget = {
+  key: string;
+  size: number;
+};
+
+function getR2ObjectKey(value: string) {
+  const trimmedValue = String(value || '').trim();
+  if (!trimmedValue) return '';
+
+  try {
+    const parsedUrl = new URL(trimmedValue);
+    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
+  } catch {
+    return trimmedValue.replace(/^\/+/, '');
+  }
+}
+
+function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
+  const key = getR2ObjectKey(fileUrl || '');
+  if (!key) return null;
+
+  return {
+    key,
+    size: Math.max(Number(fileSize || 0), 0),
+  };
+}
+
+async function decrementStorageLedger(bytes: number, session?: ClientSession) {
+  if (bytes <= 0) return;
+
+  await SystemConfig.findOneAndUpdate(
+    { configKey: 'storage' },
+    { $inc: { usedBytes: -bytes } },
+    { upsert: true, ...(session ? { session } : {}) }
+  );
+
+  await SystemConfig.updateOne(
+    { configKey: 'storage', usedBytes: { $lt: 0 } },
+    { $set: { usedBytes: 0 } },
+    session ? { session } : undefined
+  );
+}
+
+async function createProjectWithUniqueInviteCode(projectData: any, session: ClientSession) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const project = new Project({ ...projectData, inviteCode });
+      await project.save({ session });
+      return project;
+    } catch (error: any) {
+      if (error?.code !== 11000) throw error;
+    }
+  }
+
+  throw new Error('Failed to generate a unique project invite code.');
+}
 
 export async function GET(req: Request) {
   try {
@@ -46,7 +104,7 @@ export async function GET(req: Request) {
           status: student.status,
           remarks: student.remarks,
           stage: projectMetadata[pId]?.stage || 'PROPOSAL',
-          maxTeamSize: projectMetadata[pId]?.maxTeamSize || 2, // <-- Inject capacity here
+          maxTeamSize: projectMetadata[pId]?.maxTeamSize || 2,
           program: student.program || 'N/A',
           batch: student.batch || 'N/A',
           semester: student.semester || '7th Semester',
@@ -74,7 +132,7 @@ export async function POST(req: Request) {
   try {
     await connectToDatabase();
     
-    // --- CRITICAL FIX: Extract projectId during the first and ONLY read of the body stream ---
+    // Read the body once only. Reading req.json() twice breaks migration.
     const { action, studentId, status, remarks, migrationCode, projectId } = await req.json();
 
     if (action === 'updateStatus') {
@@ -93,29 +151,37 @@ export async function POST(req: Request) {
       if (status === 'Approved' && triggerStudent.projectId) {
         const project = await Project.findById(triggerStudent.projectId);
         
-        if (project.stage === 'PROPOSAL') {
-          newStage = 'THESIS_DRAFT';
-          finalStatus = 'Pending'; 
-          notificationMessage = 'Proposal Approved! Please begin uploading your Thesis Chapters.';
-        } else if (project.stage === 'THESIS_DRAFT') {
-          newStage = 'FINAL_DELIVERABLES';
-          finalStatus = 'Pending';
-          notificationMessage = 'Thesis Approved! Please submit your Final Deliverables.';
-        } else {
-          finalStatus = 'Approved';
-          notificationMessage = 'Congratulations! Your FYP is fully Approved and completed.';
-        }
+        if (project) {
+          if (project.stage === 'PROPOSAL') {
+            newStage = 'THESIS_DRAFT';
+            finalStatus = 'Pending'; 
+            notificationMessage = 'Proposal Approved! Please begin uploading your Thesis Chapters.';
+          } else if (project.stage === 'THESIS_DRAFT') {
+            newStage = 'FINAL_DELIVERABLES';
+            finalStatus = 'Pending';
+            notificationMessage = 'Thesis Approved! Please submit your Final Deliverables.';
+          } else {
+            finalStatus = 'Approved';
+            notificationMessage = 'Congratulations! Your FYP is fully Approved and completed.';
+          }
 
-        // --- NEW: Advance Stage Orphan Prevention ---
-        // Physically delete the old PDF from Cloudflare before we wipe the database link
-        if (newStage && project.pdfUrl) {
-          try {
-            let keyToDelete = project.pdfUrl;
-            if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
-            await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
-            console.log(`🧹 Timeline Advance: Wiped previous stage PDF -> ${keyToDelete}`);
-          } catch (e: any) {
-            console.error('Failed to wipe old stage PDF:', e.message);
+          // --- Storage ledger fix for stage advance cleanup ---
+          if (newStage && project.pdfUrl) {
+            const target = buildDeletionTarget(project.pdfUrl, project.pdfSize);
+            const sameFileUsedElsewhere = await Project.exists({
+              _id: { $ne: project._id },
+              pdfUrl: project.pdfUrl,
+            });
+
+            if (target && !sameFileUsedElsewhere) {
+              try {
+                await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }));
+                await decrementStorageLedger(target.size);
+                console.log(`Timeline advance cleanup: deleted previous stage PDF -> ${target.key}`);
+              } catch (e: any) {
+                console.error('Failed to wipe old stage PDF:', e.message);
+              }
+            }
           }
         }
       }
@@ -186,143 +252,153 @@ export async function POST(req: Request) {
     }
 
     if (action === 'migrate') {
-  const { studentId, migrationCode } = await req.json();
+      const requestedStudentId = String(studentId || '').trim();
+      const requestedMigrationCode = String(migrationCode || '').trim().toUpperCase();
 
-  // 1. Find target supervisor
-  const targetSup = await User.findOne({ role: 'supervisor', migrationCode });
-  if (!targetSup) {
-    return NextResponse.json({ error: 'Invalid Migration Code!' }, { status: 400 });
-  }
+      if (!mongoose.Types.ObjectId.isValid(requestedStudentId)) {
+        return NextResponse.json({ error: 'Invalid student selected.' }, { status: 400 });
+      }
 
-  // 2. Fetch the student to migrate
-  const student = await User.findById(studentId);
-  if (!student) {
-    return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-  }
+      if (!requestedMigrationCode) {
+        return NextResponse.json({ error: 'Migration code is required.' }, { status: 400 });
+      }
 
-  // 3. Capacity check on target supervisor
-  let filledSlots = 0;
-  if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-    filledSlots = await User.countDocuments({ role: 'student', supervisorId: targetSup._id });
-  } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-    filledSlots = await Project.countDocuments({ supervisorId: targetSup._id });
-  }
-  if (filledSlots >= APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR) {
-    return NextResponse.json(
-      { error: 'Target supervisor has reached maximum capacity.' },
-      { status: 409 }
-    );
-  }
+      const session = await mongoose.startSession();
+      session.startTransaction();
 
-  // 4. Start a MongoDB transaction
-  const session = await mongoose.startSession();
-  session.startTransaction();
+      const fail = async (message: string, statusCode: number) => {
+        await session.abortTransaction();
+        session.endSession();
+        return NextResponse.json({ error: message }, { status: statusCode });
+      };
 
-  let oldProject: any = null;
-  const filesToDelete: string[] = [];
+      try {
+        const targetSup = await User.findOne({
+          role: 'supervisor',
+          migrationCode: requestedMigrationCode,
+        })
+          .select('_id name extraSlots')
+          .session(session);
 
-  try {
-    // Re-fetch student inside transaction
-    const studentInTx = await User.findById(studentId).session(session);
-    if (!studentInTx) throw new Error('Student not found');
-
-    // Handle existing project
-    if (studentInTx.projectId) {
-      oldProject = await Project.findById(studentInTx.projectId).session(session);
-      if (oldProject) {
-        const members = oldProject.members || [];
-        if (members.length > 1) {
-          // Remove only this student from the team
-          await Project.findByIdAndUpdate(
-            oldProject._id,
-            { $pull: { members: studentInTx._id } },
-            { session }
-          );
-          oldProject = null; // mark as not deleted
-        } else {
-          // Sole member → delete project and clean up storage
-          const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
-
-          let totalBytes = oldProject.pdfSize || 0;
-          const noteIds: string[] = [];
-          voiceNotes.forEach((note: any) => {
-            totalBytes += note.fileSize || 0;
-            filesToDelete.push(note.blobUrl);
-            noteIds.push(note._id);
-          });
-          if (oldProject.pdfUrl) {
-            filesToDelete.push(oldProject.pdfUrl);
-          }
-
-          if (totalBytes > 0) {
-            await SystemConfig.findOneAndUpdate(
-              { configKey: 'storage' },
-              { $inc: { usedBytes: -totalBytes } },
-              { upsert: true, session }
-            );
-          }
-
-          if (noteIds.length > 0) {
-            await VoiceNote.deleteMany({ _id: { $in: noteIds } }).session(session);
-          }
-          await Project.findByIdAndDelete(oldProject._id).session(session);
-          oldProject = null;
+        if (!targetSup) {
+          return await fail('Invalid Migration Code!', 400);
         }
+
+        const studentInTx = await User.findById(requestedStudentId).session(session);
+        if (!studentInTx || studentInTx.role !== 'student') {
+          return await fail('Student not found.', 404);
+        }
+
+        if (String(studentInTx.supervisorId || '') === String(targetSup._id)) {
+          return await fail('This student is already assigned to the target supervisor.', 400);
+        }
+
+        let filledSlots = 0;
+        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
+          filledSlots = await User.countDocuments({ role: 'student', supervisorId: targetSup._id }).session(session);
+        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
+          filledSlots = await Project.countDocuments({ supervisorId: targetSup._id }).session(session);
+        }
+
+        const maxSlots = getSupervisorMaxSlots(targetSup);
+        if (filledSlots >= maxSlots) {
+          return await fail(`Target supervisor has reached maximum capacity (${maxSlots} slots).`, 409);
+        }
+
+        const oldProject = studentInTx.projectId
+          ? await Project.findById(studentInTx.projectId).session(session)
+          : null;
+
+        if (!oldProject) {
+          const newProject = await createProjectWithUniqueInviteCode(
+            {
+              supervisorId: targetSup._id,
+              members: [studentInTx._id],
+              stage: 'PROPOSAL',
+              status: studentInTx.status || 'Pending',
+              title: studentInTx.projectTitle || '',
+              titleFingerprint: '',
+              domain: studentInTx.domain || '',
+              pdfUrl: studentInTx.pdfUrl || '',
+              pdfSize: 0,
+              maxTeamSize: 2,
+            },
+            session
+          );
+
+          studentInTx.supervisorId = targetSup._id;
+          studentInTx.projectId = newProject._id;
+          studentInTx.status = studentInTx.status || 'Pending';
+          studentInTx.remarks = `Migrated to supervisor ${targetSup.name}.`;
+          await studentInTx.save({ session });
+        } else {
+          const projectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
+          const isOnlyMember =
+            projectMembers.length <= 1 ||
+            projectMembers.every((member: any) => String(member) === String(studentInTx._id));
+
+          if (isOnlyMember) {
+            oldProject.supervisorId = targetSup._id;
+            oldProject.members = [studentInTx._id];
+            await oldProject.save({ session });
+
+            studentInTx.supervisorId = targetSup._id;
+            studentInTx.projectId = oldProject._id;
+            studentInTx.status = oldProject.status || studentInTx.status || 'Pending';
+            studentInTx.remarks = `Migrated to supervisor ${targetSup.name}. Project status and timeline were preserved.`;
+            await studentInTx.save({ session });
+          } else {
+            await Project.findByIdAndUpdate(
+              oldProject._id,
+              { $pull: { members: studentInTx._id } },
+              { session }
+            );
+
+            const inheritedTitle = oldProject.title || studentInTx.projectTitle || '';
+            const inheritedDomain = oldProject.domain || studentInTx.domain || '';
+
+            const newProject = await createProjectWithUniqueInviteCode(
+              {
+                supervisorId: targetSup._id,
+                members: [studentInTx._id],
+                stage: oldProject.stage || 'PROPOSAL',
+                status: oldProject.status || studentInTx.status || 'Pending',
+                title: inheritedTitle,
+                titleFingerprint: oldProject.titleFingerprint || '',
+                domain: inheritedDomain,
+                // In team migration, keep timeline/status but avoid sharing the old team's file object.
+                // The migrated student can upload the next document under the new supervisor.
+                pdfUrl: '',
+                pdfSize: 0,
+                maxTeamSize: oldProject.maxTeamSize || 2,
+              },
+              session
+            );
+
+            studentInTx.supervisorId = targetSup._id;
+            studentInTx.projectId = newProject._id;
+            studentInTx.status = oldProject.status || studentInTx.status || 'Pending';
+            studentInTx.remarks = `Migrated to supervisor ${targetSup.name}. Project status and timeline were preserved.`;
+            studentInTx.projectTitle = inheritedTitle;
+            studentInTx.projectDesc = studentInTx.projectDesc || '';
+            studentInTx.domain = inheritedDomain;
+            studentInTx.tools = studentInTx.tools || '';
+            studentInTx.pdfUrl = '';
+            await studentInTx.save({ session });
+          }
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return NextResponse.json({ message: 'Student migrated successfully. Project status and timeline were preserved.' }, { status: 200 });
+      } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        console.error('Migration transaction error:', error);
+        return NextResponse.json({ error: 'Migration failed. Please try again.' }, { status: 500 });
       }
     }
-
-    // 5. Create a fresh project under the new supervisor
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newProject = new Project({
-      supervisorId: targetSup._id,
-      members: [studentInTx._id],
-      inviteCode,
-      status: 'Pending',
-      stage: 'PROPOSAL',
-      title: '',
-      titleFingerprint: '',
-      domain: '',
-      pdfUrl: '',
-      pdfSize: 0,
-    });
-    await newProject.save({ session });
-
-    // 6. Update student record
-    studentInTx.supervisorId = targetSup._id;
-    studentInTx.projectId = newProject._id;
-    studentInTx.status = 'Pending';
-    studentInTx.remarks = `Migrated to supervisor ${targetSup.name} on ${new Date().toLocaleDateString()}`;
-    studentInTx.projectTitle = '';
-    studentInTx.projectDesc = '';
-    studentInTx.domain = '';
-    studentInTx.tools = '';
-    studentInTx.pdfUrl = '';
-    await studentInTx.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    // 7. Async S3 cleanup (after commit)
-    if (filesToDelete.length > 0) {
-      const keys = filesToDelete.map((key) => {
-        if (key.includes('.com/')) return key.split('.com/')[1];
-        return key.replace(/^\//, '');
-      });
-      Promise.all(
-        keys.map((k) =>
-          s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: k }))
-        )
-      ).catch((err) => console.error('Async S3 cleanup failed:', err.message));
-    }
-
-    return NextResponse.json({ message: 'Student migrated successfully!' }, { status: 200 });
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error('Migration transaction error:', error);
-    return NextResponse.json({ error: 'Migration failed. Please try again.' }, { status: 500 });
-  }
-}
 
     if (action === 'removeStudent') {
       const triggerStudent = await User.findById(studentId);
@@ -352,13 +428,13 @@ export async function POST(req: Request) {
     }
 
     if (action === 'expandTeam') {
-      // The projectId is now safely provided by the initial extraction at the top of the file
       if (!projectId) return NextResponse.json({ error: 'Project ID required' }, { status: 400 });
       
       await Project.findByIdAndUpdate(projectId, { $set: { maxTeamSize: 3 } });
       return NextResponse.json({ message: 'Team capacity successfully expanded to 3 members!' }, { status: 200 });
     }
 
+    return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   } catch (error) {
     console.error('Supervisor Action Error:', error);
     return NextResponse.json({ error: 'Action failed' }, { status: 500 });
