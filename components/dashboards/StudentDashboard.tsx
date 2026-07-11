@@ -273,7 +273,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
     return supervisorOptions.filter((option) => String(option.id) !== currentSupervisorId);
   }, [supervisorOptions, me?.supervisorId]);
 
-  const visibleSupervisorOptions = isUnassigned ? supervisorOptions : supervisorChangeOptions;
   const selectedSupervisorName =
     localSups.find((supervisorItem) => String(supervisorItem._id) === String(selectedSupervisorId))?.name ||
     'the selected supervisor';
@@ -540,26 +539,36 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       return;
     }
 
-    if (!isUnassigned) {
-      if (isSupervisorChangeLocked) {
-        showDialog({
-          title: 'Supervisor change locked',
-          message:
-            'This project has already moved past proposal approval. Ask your supervisor to use migration if a supervisor transfer is required.',
-        });
-        return;
-      }
+    await submitSupervisorRequest('assignSupervisor');
+  };
 
-      setIsSupervisorWarningOpen(true);
+  const openSupervisorChangeDialog = () => {
+    if (isSupervisorChangeLocked) {
+      showDialog({
+        title: 'Supervisor change locked',
+        message:
+          'This project has already moved past proposal approval. Ask your supervisor to use migration if a supervisor transfer is required.',
+      });
       return;
     }
 
-    await submitSupervisorRequest('assignSupervisor');
+    setSelectedSupervisorId('');
+    setIsSupervisorWarningOpen(true);
+  };
+
+  const closeSupervisorChangeDialog = () => {
+    if (isSubmitting) return;
+
+    setSelectedSupervisorId('');
+    setIsSupervisorWarningOpen(false);
   };
 
   const handleConfirmSupervisorChange = async () => {
     if (!selectedSupervisorId) {
-      setIsSupervisorWarningOpen(false);
+      showDialog({
+        title: 'Select supervisor',
+        message: 'Choose a new available supervisor before confirming the change.',
+      });
       return;
     }
 
@@ -1136,15 +1145,19 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
       <DashboardPanel>
         <SectionHeader
-          title="Supervisor / Team Actions"
-          description="Assign a supervisor, change supervisor before approval, or join another team."
+          title={isUnassigned ? 'Supervisor & Team Actions' : 'Team Actions'}
+          description={
+            isUnassigned
+              ? 'Choose a supervisor or join an existing team.'
+              : 'Manage your team or change your supervisor before proposal approval.'
+          }
         />
 
-        {(isUnassigned || !isSupervisorChangeLocked) ? (
+        {isUnassigned && (
           <form onSubmit={handleAssignSupervisor} className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-                {isUnassigned ? 'Available Supervisors' : 'Change Supervisor'}
+                Available Supervisors
               </label>
               <select
                 value={selectedSupervisorId}
@@ -1152,7 +1165,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
                 className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
               >
                 <option value="">Select supervisor</option>
-                {visibleSupervisorOptions.map((option) => (
+                {supervisorOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
@@ -1160,63 +1173,18 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               </select>
             </div>
 
-            {!isUnassigned && (
-              <div
-                className={`rounded-lg border p-3 ${
-                  isDarkMode
-                    ? 'border-white/10 bg-white/5'
-                    : 'border-slate-200 bg-slate-50'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <AlertCircle
-                    size={18}
-                    className={`mt-0.5 shrink-0 ${
-                      isDarkMode ? 'text-white/70' : 'text-slate-600'
-                    }`}
-                  />
-
-                  <div>
-                    <p
-                      className={`text-sm font-semibold ${
-                        isDarkMode ? 'text-white' : 'text-black'
-                      }`}
-                    >
-                      Your workspace will be reset
-                    </p>
-
-                    <p
-                      className={`mt-1 text-sm leading-5 ${
-                        isDarkMode ? 'text-white/70' : 'text-slate-600'
-                      }`}
-                    >
-                      Review what will change before confirming your new supervisor.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <Button type="submit" disabled={isSubmitting || visibleSupervisorOptions.length === 0} className="w-full">
+            <Button
+              type="submit"
+              disabled={isSubmitting || supervisorOptions.length === 0}
+              className="w-full"
+            >
               {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <UserCheck size={16} />}
-              {isUnassigned ? 'Confirm Assignment' : 'Review Changes'}
+              Confirm Assignment
             </Button>
           </form>
-        ) : (
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-            <div className="flex items-start gap-3">
-              <Lock className="mt-0.5 text-[var(--color-text-muted)]" size={18} />
-              <div>
-                <p className="text-sm font-bold text-[var(--color-text)]">Supervisor change locked</p>
-                <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
-                  This project has already moved past proposal approval. Supervisor changes are only allowed through migration now.
-                </p>
-              </div>
-            </div>
-          </div>
         )}
 
-        <div className="mt-6 border-t border-[var(--color-border)] pt-6">
+        <div className={isUnassigned ? 'mt-6 border-t border-[var(--color-border)] pt-6' : ''}>
           <form onSubmit={handleJoinTeam} className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
@@ -1235,6 +1203,33 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
             </Button>
           </form>
         </div>
+
+        {!isUnassigned && (
+          <div className="mt-6 border-t border-[var(--color-border)] pt-6">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={openSupervisorChangeDialog}
+              disabled={isSubmitting || isSupervisorChangeLocked || supervisorChangeOptions.length === 0}
+            >
+              {isSupervisorChangeLocked ? <Lock size={16} /> : <UserCheck size={16} />}
+              Change Supervisor
+            </Button>
+
+            {isSupervisorChangeLocked && (
+              <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
+                Supervisor changes are locked after proposal approval or once the project moves beyond the proposal stage.
+              </p>
+            )}
+
+            {!isSupervisorChangeLocked && supervisorChangeOptions.length === 0 && (
+              <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
+                No other supervisor currently has an available slot.
+              </p>
+            )}
+          </div>
+        )}
       </DashboardPanel>
 
       {project?._id && (
@@ -1408,97 +1403,127 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
       <Dialog
         open={isSupervisorWarningOpen}
-        onClose={() => {
-          if (!isSubmitting) setIsSupervisorWarningOpen(false);
-        }}
-        title="Confirm supervisor change"
-        description={`You are about to move to ${selectedSupervisorName}. This cannot be undone from your dashboard.`}
+        onClose={closeSupervisorChangeDialog}
+        title="Change Supervisor"
+        description="Select a new available supervisor and review what will happen before confirming."
         footer={
           <>
             <Button
               variant="outline"
-              onClick={() => setIsSupervisorWarningOpen(false)}
+              onClick={closeSupervisorChangeDialog}
               disabled={isSubmitting}
             >
               Cancel
             </Button>
 
-            <Button variant="danger" onClick={handleConfirmSupervisorChange} disabled={isSubmitting}>
+            <Button
+              variant="danger"
+              onClick={handleConfirmSupervisorChange}
+              disabled={isSubmitting || !selectedSupervisorId}
+            >
               {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <AlertCircle size={16} />}
-              Change Supervisor
+              Confirm Change
             </Button>
           </>
         }
       >
-        <div
-          className={`overflow-hidden rounded-lg border ${
-            isDarkMode
-              ? 'border-red-500/30 bg-red-500/10'
-              : 'border-red-200 bg-red-50'
-          }`}
-        >
-          <div className="flex items-start gap-3 p-4">
-            <div
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                isDarkMode ? 'bg-red-500/15' : 'bg-red-100'
-              }`}
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
+              New Supervisor
+            </label>
+            <select
+              value={selectedSupervisorId}
+              onChange={(event) => setSelectedSupervisorId(event.target.value)}
+              disabled={isSubmitting}
+              className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <AlertCircle
-                size={19}
-                className={isDarkMode ? 'text-red-300' : 'text-red-600'}
-              />
-            </div>
+              <option value="">Select a new supervisor</option>
+              {supervisorChangeOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
 
-            <div>
-              <p
-                className={`text-sm font-semibold ${
-                  isDarkMode ? 'text-white' : 'text-black'
-                }`}
-              >
-                Your current workspace will be reset
+            {selectedSupervisorId && (
+              <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                You selected <strong className="text-[var(--color-text)]">{selectedSupervisorName}</strong>.
               </p>
-
-              <p
-                className={`mt-1 text-sm leading-5 ${
-                  isDarkMode ? 'text-white/70' : 'text-slate-600'
-                }`}
-              >
-                This action affects your project data and team membership.
-              </p>
-            </div>
+            )}
           </div>
 
           <div
-            className={`border-t px-4 ${
-              isDarkMode ? 'border-white/10' : 'border-red-200'
+            className={`overflow-hidden rounded-lg border ${
+              isDarkMode
+                ? 'border-red-500/30 bg-red-500/10'
+                : 'border-red-200 bg-red-50'
             }`}
           >
-            {[
-              'Your uploaded project details, files, and voice notes will be deleted.',
-              'If you are in a team, you will leave it. Your teammate will keep the existing project.',
-              'You will start with a new workspace under the selected supervisor.',
-            ].map((message) => (
+            <div className="flex items-start gap-3 p-4">
               <div
-                key={message}
-                className={`flex gap-3 border-b py-3 last:border-b-0 ${
-                  isDarkMode ? 'border-white/10' : 'border-red-200'
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  isDarkMode ? 'bg-red-500/15' : 'bg-red-100'
                 }`}
               >
-                <span
-                  className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                    isDarkMode ? 'bg-red-300' : 'bg-red-500'
-                  }`}
+                <AlertCircle
+                  size={19}
+                  className={isDarkMode ? 'text-red-300' : 'text-red-600'}
                 />
+              </div>
 
+              <div>
                 <p
-                  className={`text-sm leading-6 ${
+                  className={`text-sm font-semibold ${
                     isDarkMode ? 'text-white' : 'text-black'
                   }`}
                 >
-                  {message}
+                  Your current workspace will be reset
+                </p>
+
+                <p
+                  className={`mt-1 text-sm leading-5 ${
+                    isDarkMode ? 'text-white/70' : 'text-slate-600'
+                  }`}
+                >
+                  This action affects your project data and team membership.
                 </p>
               </div>
-            ))}
+            </div>
+
+            <div
+              className={`border-t px-4 ${
+                isDarkMode ? 'border-white/10' : 'border-red-200'
+              }`}
+            >
+              {[
+                'Your uploaded project details, files, and voice notes will be deleted.',
+                'If you are in a team, you will leave it. Your teammate will keep the existing project.',
+                'You will start with a new workspace under the selected supervisor.',
+                'This change cannot be undone from your dashboard.',
+              ].map((message) => (
+                <div
+                  key={message}
+                  className={`flex gap-3 border-b py-3 last:border-b-0 ${
+                    isDarkMode ? 'border-white/10' : 'border-red-200'
+                  }`}
+                >
+                  <span
+                    className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                      isDarkMode ? 'bg-red-300' : 'bg-red-500'
+                    }`}
+                  />
+
+                  <p
+                    className={`text-sm leading-6 ${
+                      isDarkMode ? 'text-white' : 'text-black'
+                    }`}
+                  >
+                    {message}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </Dialog>
