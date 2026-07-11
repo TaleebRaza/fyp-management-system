@@ -95,6 +95,10 @@ export async function POST(req: NextRequest) {
     }
 
     let finalSupervisorId: mongoose.Types.ObjectId | null = null;
+    let studentRemark =
+      'Manual verification approved. Choose a supervisor or join a team to begin.';
+    let approvalRemark = 'Manual verification approved. Account created.';
+    let approvedWithoutSupervisor = false;
 
     if (pendingRequest.supervisorId) {
       const supervisor = await User.findOne({ _id: pendingRequest.supervisorId, role: 'supervisor' })
@@ -111,14 +115,15 @@ export async function POST(req: NextRequest) {
       const maxSlots = getSupervisorMaxSlots(supervisor);
 
       if (filledSlots >= maxSlots) {
-        await session.abortTransaction();
-        return NextResponse.json(
-          { error: `Selected supervisor has reached maximum capacity (${maxSlots} slots). Edit the pending request or ask the student to choose later.` },
-          { status: 409 }
-        );
+        approvedWithoutSupervisor = true;
+        studentRemark =
+          'Your account was approved, but the supervisor you selected during registration reached full capacity before your manual verification request was accepted. You are currently unassigned. Please choose another available supervisor or join a team.';
+        approvalRemark =
+          'Manual verification approved. Account created as Unassigned because the selected supervisor reached full capacity before approval.';
+      } else {
+        finalSupervisorId = pendingRequest.supervisorId;
+        studentRemark = '';
       }
-
-      finalSupervisorId = pendingRequest.supervisorId;
     }
 
     const newStudent = new User({
@@ -132,7 +137,7 @@ export async function POST(req: NextRequest) {
       semester: '7th Semester',
       supervisorId: finalSupervisorId,
       status: finalSupervisorId ? 'Pending' : 'Unassigned',
-      remarks: finalSupervisorId ? '' : 'Manual verification approved. Choose a supervisor or join a team to begin.',
+      remarks: studentRemark,
     });
 
     await newStudent.save({ session });
@@ -144,13 +149,18 @@ export async function POST(req: NextRequest) {
     pendingRequest.status = 'approved';
     pendingRequest.approvedBy = new mongoose.Types.ObjectId(String(token.id));
     pendingRequest.approvedAt = new Date();
-    pendingRequest.adminRemark = 'Manual verification approved. Account created.';
+    pendingRequest.adminRemark = approvalRemark;
     await pendingRequest.save({ session });
 
     await session.commitTransaction();
 
     return NextResponse.json(
-      { message: `${pendingRequest.name}'s account has been created and verified.` },
+      {
+        message: approvedWithoutSupervisor
+          ? `${pendingRequest.name}'s account has been created and verified as Unassigned because the selected supervisor reached full capacity before approval.`
+          : `${pendingRequest.name}'s account has been created and verified.`,
+        assignedToSupervisor: Boolean(finalSupervisorId),
+      },
       { status: 201 }
     );
   } catch (error: any) {
