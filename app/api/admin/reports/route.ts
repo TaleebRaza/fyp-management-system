@@ -23,6 +23,8 @@ const toLabelRows = (rows: CountRow[], fallback: string) => {
   }));
 };
 
+const REVIEWED_PROJECT_STATUSES = ['Approved', 'Rejected', 'Changes Requested'];
+
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -129,7 +131,16 @@ export async function GET(req: NextRequest) {
                   {
                     $and: [
                       { $gt: [{ $strLenCP: { $ifNull: ['$pdfUrl', ''] } }, 0] },
-                      { $ne: ['$status', 'Approved'] },
+                      {
+                        $not: [
+                          {
+                            $in: [
+                              { $ifNull: ['$status', 'Pending'] },
+                              REVIEWED_PROJECT_STATUSES,
+                            ],
+                          },
+                        ],
+                      },
                     ],
                   },
                   1,

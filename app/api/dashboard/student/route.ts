@@ -711,7 +711,13 @@ export async function POST(req: Request) {
 
     if (triggeringStudent.projectId) {
       // Prepare dynamic payload: only update pdfSize if a new file was actually sent
-      const projectUpdates: any = { title: body.title, titleFingerprint: fingerprint, domain: body.domain, pdfUrl: body.pdfUrl };
+      const projectUpdates: any = {
+        title: body.title,
+        titleFingerprint: fingerprint,
+        domain: body.domain,
+        pdfUrl: body.pdfUrl,
+        status: 'Submitted For Review',
+      };
       if (body.fileSize && body.fileSize > 0) projectUpdates.pdfSize = body.fileSize;
 
       // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time

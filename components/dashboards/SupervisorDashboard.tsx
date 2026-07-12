@@ -119,12 +119,15 @@ const getSafePdfKey = (url?: string) => {
   }
 };
 
+const REVIEWED_PROJECT_STATUSES = new Set(['Approved', 'Rejected', 'Changes Requested']);
+
 const hasProjectSubmission = (project: any) => {
-  return Boolean(project?.projectTitle && project?.pdfUrl);
+  return Boolean(project?.pdfUrl);
 };
 
 const isProjectReviewable = (project: any) => {
-  return hasProjectSubmission(project) && project?.status !== 'Approved';
+  const status = String(project?.status || '').trim();
+  return hasProjectSubmission(project) && !REVIEWED_PROJECT_STATUSES.has(status);
 };
 
 const ProjectTimeline = ({ currentStage }: { currentStage?: string }) => {
@@ -569,7 +572,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
 
   const projectQueueDescription =
       projectQueueFilter === 'submitted'
-        ? 'Showing teams that have submitted a title and PDF across all programs.'
+        ? 'Showing teams with an attached PDF across all programs.'
         : projectQueueFilter === 'review'
           ? 'Showing submitted projects still waiting for your decision across all programs.'
           : programFilter
@@ -580,7 +583,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
     projectQueueFilter === 'submitted'
       ? {
           title: 'No submitted projects found',
-          description: 'No teams in this view have submitted both a title and PDF yet.',
+          description: 'No teams in this view have attached a PDF yet.',
         }
       : projectQueueFilter === 'review'
         ? {
@@ -706,7 +709,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
         <StatCard
           label="Submitted Projects"
           value={dashboardStats.submitted}
-          hint="Teams with title and PDF attached. Click to filter."
+          hint="Teams with a PDF attached. Click to filter."
           icon={<FileText size={20} />}
           onClick={() => openProjectsView('submitted')}
           isActive={activeTab === 'projects' && projectQueueFilter === 'submitted'}
