@@ -761,10 +761,27 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
                   const cardClass = isSupervisor
                     ? 'border-purple-500 bg-purple-600 dark:border-purple-400/40 dark:bg-purple-600/80'
-                    : 'border-amber-500 bg-amber-500 dark:border-amber-400/40 dark:bg-amber-500/80';
+                    : 'border-emerald-300 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/70';
 
-                  const iconClass = 'bg-white/20 text-white ring-1 ring-white/30';
-                  const badgeClass = 'bg-white/20 text-white ring-1 ring-white/30';
+                  const iconClass = isSupervisor
+                    ? 'bg-white/20 text-white ring-1 ring-white/30'
+                    : 'bg-emerald-200 text-emerald-950 ring-1 ring-emerald-300 dark:bg-emerald-800 dark:text-emerald-50 dark:ring-emerald-700';
+
+                  const badgeClass = isSupervisor
+                    ? 'bg-white/20 text-white ring-1 ring-white/30'
+                    : 'bg-emerald-200 text-emerald-950 ring-1 ring-emerald-300 dark:bg-emerald-800 dark:text-emerald-50 dark:ring-emerald-700';
+
+                  const titleClass = isSupervisor
+                    ? 'text-white'
+                    : 'text-emerald-950 dark:text-emerald-50';
+
+                  const metaClass = isSupervisor
+                    ? 'text-white/80'
+                    : 'text-emerald-800 dark:text-emerald-200';
+
+                  const contentClass = isSupervisor
+                    ? 'text-white'
+                    : 'text-emerald-950 dark:text-emerald-50';
 
                   return (
                     <div key={item.id} className={`rounded-xl border p-4 ${cardClass}`}>
@@ -777,7 +794,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-extrabold text-white">
+                            <p className={`text-sm font-extrabold ${titleClass}`}>
                               {item.title}
                             </p>
 
@@ -788,7 +805,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
                             </span>
 
                             {item.createdAt ? (
-                              <span className="text-xs font-semibold text-white/80">
+                              <span className={`text-xs font-semibold ${metaClass}`}>
                                 {formatAnnouncementTime(item.createdAt)}
                               </span>
                             ) : null}
@@ -801,7 +818,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
                               className="mt-3 h-10 w-full max-w-md"
                             />
                           ) : (
-                            <p className="mt-2 text-sm leading-6 text-white">
+                            <p className={`mt-2 text-sm leading-6 ${contentClass}`}>
                               <LinkifiedText text={item.content} />
                             </p>
                           )}
