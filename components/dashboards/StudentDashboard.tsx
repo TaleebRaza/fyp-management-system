@@ -46,6 +46,7 @@ import {
 } from '../ui/SharedUI';
 
 import { VoiceChat } from '../ui/VoiceChat';
+import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
 import { PROGRAM_MAP } from '../../config/appSettings';
 
 type StudentTab = 'overview' | 'project' | 'team' | 'resources';
@@ -721,6 +722,11 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const renderOverview = () => (
     <div className="space-y-7 sm:space-y-6">
+      <LateRegistrationFineBanner
+        daysLate={Number(me?.lateRegistrationDays || 0)}
+        amount={Number(me?.lateRegistrationFine || 0)}
+      />
+
       {announcementItems.length > 0 && (
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">

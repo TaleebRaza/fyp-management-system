@@ -42,6 +42,10 @@ const UserSchema = new Schema({
 
   // Limits student Program/Batch self-editing to once per 24 hours.
   lastProgramBatchChangeAt: { type: Date, required: false },
+
+  // Final late-registration assessment. Calculated only once when registration becomes effective.
+  lateRegistrationDays: { type: Number, default: 0, min: 0 },
+  lateRegistrationFine: { type: Number, default: 0, min: 0 },
   
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
 

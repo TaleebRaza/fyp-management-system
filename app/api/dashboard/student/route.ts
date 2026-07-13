@@ -118,23 +118,46 @@ async function createFreshStudentProject(
 
 export async function GET(req: Request) {
   try {
-    await connectToDatabase();
-    const url = new URL(req.url);
-    const id = url.searchParams.get("id");
-    
-    // OPTIMIZATION: Use .lean() for faster read-only queries
-    const student = await User.findById(id).lean();
-    if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    const token = await getToken({
+      req: req as any,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
 
-    // OPTIMIZATION: Parallel execution. Fetch supervisor and project at the exact same time.
-    // Security: only expose the supervisor fields the student dashboard actually needs.
+    if (!token || token.role !== 'student' || !(token as any).id) {
+      return NextResponse.json({ error: 'Unauthorized student request.' }, { status: 401 });
+    }
+
+    const studentId = String((token as any).id);
+
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+
+    // Use the authenticated student's ID and return only dashboard-safe fields.
+    const student = await User.findOne({ _id: studentId, role: 'student' })
+      .select(
+        '_id name email rollNo role program batch semester supervisorId status remarks projectTitle pdfUrl projectDesc domain tools notificationsEnabled isActive projectId lateRegistrationDays lateRegistrationFine'
+      )
+      .lean();
+
+    if (!student) {
+      return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
+
+    // Fetch the supervisor and project in parallel without adding another fine-related query.
     const [supervisor, project] = await Promise.all([
       student.supervisorId
         ? User.findById(student.supervisorId)
             .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
             .lean()
         : null,
-      student.projectId ? Project.findById(student.projectId).populate('members', 'name rollNo email').lean() : null
+      student.projectId
+        ? Project.findById(student.projectId)
+            .populate('members', 'name rollNo email')
+            .lean()
+        : null,
     ]);
 
     const supervisorBroadcast = supervisor?.broadcastType && supervisor?.broadcastContent
@@ -147,7 +170,10 @@ export async function GET(req: Request) {
         }
       : null;
 
-    return NextResponse.json({ student, supervisor, project, supervisorBroadcast }, { status: 200 });
+    return NextResponse.json(
+      { student, supervisor, project, supervisorBroadcast },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Student Dashboard GET Error:', error);
     return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 });

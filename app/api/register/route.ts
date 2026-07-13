@@ -14,6 +14,7 @@ import Otp from '../../../models/Otp';
 import PendingVerification from '../../../models/PendingVerification';
 import { APP_SETTINGS } from '../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
+import { calculateLateRegistrationFine } from '../../../lib/lateRegistrationFine';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
@@ -54,17 +55,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Verification code has expired. Please request a fresh token.' }, { status: 400 });
     }
 
-    const existingUser = await User.findOne({
-      $or: [
-        { email: normalizedEmail },
-        { rollNo: normalizedRollNo },
-        { rollNo: buildRollNoRegex(normalizedRollNo) },
-      ],
-    });
+    const [existingUser, firstManualVerificationRequest] = await Promise.all([
+      User.findOne({
+        $or: [
+          { email: normalizedEmail },
+          { rollNo: normalizedRollNo },
+          { rollNo: buildRollNoRegex(normalizedRollNo) },
+        ],
+      })
+        .select('_id')
+        .lean(),
+      PendingVerification.findOne({
+        $or: [
+          { email: normalizedEmail },
+          { rollNo: normalizedRollNo },
+        ],
+      })
+        .sort({ createdAt: 1 })
+        .select('createdAt')
+        .lean(),
+    ]);
 
     if (existingUser) {
       return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
     }
+
+    // A manual verification request freezes the fine counter at its first request time.
+    // Otherwise, the successful OTP registration time is used.
+    const effectiveRegistrationAt = firstManualVerificationRequest?.createdAt || new Date();
+    const lateRegistrationAssessment = calculateLateRegistrationFine(effectiveRegistrationAt);
 
     // --- OPTIMIZATION: Pre-Flight Capacity Validation ---
     // Perform database lookups outside the transaction lock to avoid thread starvation
@@ -116,7 +135,9 @@ export async function POST(req: Request) {
         supervisorId: supervisorId || null,
         // Direct assignment: supervisor selection is final when capacity is available.
         status: supervisorId ? 'Pending' : 'Unassigned',
-        remarks: ''
+        remarks: '',
+        lateRegistrationDays: lateRegistrationAssessment.daysLate,
+        lateRegistrationFine: lateRegistrationAssessment.fineAmount,
       });
       await newStudent.save({ session });
 

@@ -8,6 +8,7 @@ import Project from '../../../../../models/Project';
 import { APP_SETTINGS } from '../../../../../config/appSettings';
 import { buildRollNoRegex } from '../../../../../lib/rollNo';
 import { getSupervisorMaxSlots } from '../../../../../lib/supervisorSlots';
+import { calculateLateRegistrationFine } from '../../../../../lib/lateRegistrationFine';
 
 async function getFilledSlots(supervisorId: mongoose.Types.ObjectId, session: mongoose.ClientSession) {
   if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
@@ -126,6 +127,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Manual verification freezes the counter at the original request creation time,
+    // not at the later admin approval time.
+    const lateRegistrationAssessment = calculateLateRegistrationFine(pendingRequest.createdAt);
+
     const newStudent = new User({
       name: pendingRequest.name,
       email: pendingRequest.email,
@@ -138,6 +143,8 @@ export async function POST(req: NextRequest) {
       supervisorId: finalSupervisorId,
       status: finalSupervisorId ? 'Pending' : 'Unassigned',
       remarks: studentRemark,
+      lateRegistrationDays: lateRegistrationAssessment.daysLate,
+      lateRegistrationFine: lateRegistrationAssessment.fineAmount,
     });
 
     await newStudent.save({ session });
