@@ -4,7 +4,7 @@ import { normalizeExtraSupervisorSlots } from '../lib/supervisorSlots';
 
 const UserSchema = new Schema({
   name: { type: String, required: true },
-  email: { type: String, required: false, unique: true, sparse: true },
+  email: { type: String, required: false, unique: true, sparse: true, trim: true, lowercase: true },
   rollNo: { type: String, required: true, unique: true, set: normalizeRollNo },
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },

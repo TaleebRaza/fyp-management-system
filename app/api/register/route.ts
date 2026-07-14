@@ -1,93 +1,63 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
-import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
-import {
-  UNIVERSITY_EMAIL_PATTERN,
-  doesRollNoMatchUniversityEmail,
-  getExpectedUniversityEmailExample,
-  normalizeUniversityEmail,
-} from '../../../lib/studentIdentity';
 import Project from '../../../models/Project';
-import Otp from '../../../models/Otp';
-import PendingVerification from '../../../models/PendingVerification';
-import { APP_SETTINGS } from '../../../config/appSettings';
+import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
+import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
+import { APP_SETTINGS, PROGRAM_MAP } from '../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 import { calculateLateRegistrationFine } from '../../../lib/lateRegistrationFine';
-import bcrypt from 'bcryptjs';
+
+const MIN_PASSWORD_LENGTH = 6;
 
 export async function POST(req: Request) {
   try {
-    const { name, email, rollNo, password, supervisorId, program, batch, otp } = await req.json();
-    const normalizedEmail = normalizeUniversityEmail(email);
+    const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
+    const normalizedName = String(name || '').trim();
+    const normalizedEmail = normalizeEmailAddress(email);
     const normalizedRollNo = normalizeRollNo(rollNo);
+    const normalizedPassword = String(password || '');
+    const normalizedProgram = String(program || 'BSCS').trim().toUpperCase();
+    const normalizedBatch = String(batch || '').trim();
 
-    if (!name || !normalizedRollNo || !password || !batch || !normalizedEmail || !otp) {
-      return NextResponse.json({ error: 'Missing required fields, including verification code payload.' }, { status: 400 });
+    if (!normalizedName || !normalizedEmail || !normalizedRollNo || !normalizedPassword || !normalizedBatch) {
+      return NextResponse.json({ error: 'Name, email, roll number, password, and batch are required.' }, { status: 400 });
     }
 
-    if (!UNIVERSITY_EMAIL_PATTERN.test(normalizedEmail)) {
-      return NextResponse.json({ error: 'Only university emails are allowed (e.g. f23-0201@student.uoh.edu.pk)' }, { status: 400 });
+    if (!isValidEmailAddress(normalizedEmail)) {
+      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
     }
 
-    if (!doesRollNoMatchUniversityEmail(normalizedRollNo, normalizedEmail)) {
-      return NextResponse.json(
-        {
-          error: `Your roll number and university email do not match. For ${normalizedRollNo}, use an email like ${getExpectedUniversityEmailExample(normalizedRollNo)}.`,
-        },
-        { status: 400 }
-      );
+    if (normalizedPassword.length < MIN_PASSWORD_LENGTH) {
+      return NextResponse.json({ error: `Password must contain at least ${MIN_PASSWORD_LENGTH} characters.` }, { status: 400 });
     }
 
+    if (!Object.prototype.hasOwnProperty.call(PROGRAM_MAP, normalizedProgram)) {
+      return NextResponse.json({ error: 'Invalid program selected.' }, { status: 400 });
+    }
 
     await connectToDatabase();
 
-    // 1. Strictly validate OTP before executing heavy database tasks
-    const otpRecord = await Otp.findOne({ email: normalizedEmail });
-    if (!otpRecord || otpRecord.code !== otp) {
-      return NextResponse.json({ error: 'Invalid verification code provided.' }, { status: 400 });
-    }
-
-    // 2. Secondary program manual validation ensuring timestamp boundaries (15 mins = 900,000 ms)
-    if (Date.now() - new Date(otpRecord.createdAt).getTime() > 900000) {
-      await Otp.findOneAndDelete({ email: normalizedEmail });
-      return NextResponse.json({ error: 'Verification code has expired. Please request a fresh token.' }, { status: 400 });
-    }
-
-    const [existingUser, firstManualVerificationRequest] = await Promise.all([
-      User.findOne({
-        $or: [
-          { email: normalizedEmail },
-          { rollNo: normalizedRollNo },
-          { rollNo: buildRollNoRegex(normalizedRollNo) },
-        ],
-      })
-        .select('_id')
-        .lean(),
-      PendingVerification.findOne({
-        $or: [
-          { email: normalizedEmail },
-          { rollNo: normalizedRollNo },
-        ],
-      })
-        .sort({ createdAt: 1 })
-        .select('createdAt')
-        .lean(),
-    ]);
+    const existingUser = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { rollNo: normalizedRollNo },
+        { rollNo: buildRollNoRegex(normalizedRollNo) },
+      ],
+    }).select('_id').lean();
 
     if (existingUser) {
-      return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
+      return NextResponse.json({ error: 'This roll number or email is already registered.' }, { status: 400 });
     }
 
-    // A manual verification request freezes the fine counter at its first request time.
-    // Otherwise, the successful OTP registration time is used.
-    const effectiveRegistrationAt = firstManualVerificationRequest?.createdAt || new Date();
-    const lateRegistrationAssessment = calculateLateRegistrationFine(effectiveRegistrationAt);
-
-    // --- OPTIMIZATION: Pre-Flight Capacity Validation ---
-    // Perform database lookups outside the transaction lock to avoid thread starvation
     if (supervisorId) {
+      if (!mongoose.Types.ObjectId.isValid(supervisorId)) {
+        return NextResponse.json({ error: 'Invalid supervisor selected.' }, { status: 400 });
+      }
+
       const supervisor = await User.findOne({ _id: supervisorId, role: 'supervisor' })
         .select('_id extraSlots')
         .lean();
@@ -104,7 +74,6 @@ export async function POST(req: Request) {
       }
 
       const maxSlots = getSupervisorMaxSlots(supervisor);
-
       if (filledSlots >= maxSlots) {
         return NextResponse.json(
           { error: `Registration failed. The selected supervisor has reached maximum capacity (${maxSlots} slots).` },
@@ -113,27 +82,23 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- OPTIMIZATION: Decoupled Cryptographic Hashing ---
-    // Execute CPU-heavy string processing completely outside the transaction lock
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // --- OPTIMIZATION: Lightning-Fast Atomic Transaction ---
-    // The session lock now encapsulates pure write pipelines lasting under 50ms
+    const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
+    const lateRegistrationAssessment = calculateLateRegistrationFine(new Date());
     const session = await mongoose.startSession();
-    session.startTransaction();
 
     try {
+      session.startTransaction();
+
       const newStudent = new User({
-        name,
-        email: normalizedEmail || undefined,
+        name: normalizedName,
+        email: normalizedEmail,
         rollNo: normalizedRollNo,
         password: hashedPassword,
         role: 'student',
-        program: program || 'BSCS',
-        batch,
+        program: normalizedProgram,
+        batch: normalizedBatch,
         semester: '7th Semester',
         supervisorId: supervisorId || null,
-        // Direct assignment: supervisor selection is final when capacity is available.
         status: supervisorId ? 'Pending' : 'Unassigned',
         remarks: '',
         lateRegistrationDays: lateRegistrationAssessment.daysLate,
@@ -141,11 +106,10 @@ export async function POST(req: Request) {
       });
       await newStudent.save({ session });
 
-      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       const newProject = new Project({
         supervisorId: supervisorId || null,
         members: [newStudent._id],
-        inviteCode: inviteCode
+        inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
       });
       await newProject.save({ session });
 
@@ -153,38 +117,20 @@ export async function POST(req: Request) {
       await newStudent.save({ session });
 
       await session.commitTransaction();
-      session.endSession();
-
-      // Cleanly purge verified code to prevent replays (Post-transaction clean up)
-      await Otp.findOneAndDelete({ email: normalizedEmail });
-      await PendingVerification.updateMany(
-        {
-          status: 'pending',
-          $or: [{ email: normalizedEmail }, { rollNo: normalizedRollNo }],
-        },
-        {
-          $set: {
-            status: 'approved',
-            approvedAt: new Date(),
-            rejectionReason: 'Verified through OTP before manual approval was needed.',
-          },
-        }
-      );
-
-      return NextResponse.json({ message: 'Registration successful!' }, { status: 201 });
-
+      return NextResponse.json({ message: 'Registration successful! You can now sign in.' }, { status: 201 });
     } catch (transactionError: any) {
-      await session.abortTransaction();
-      session.endSession();
+      if (session.inTransaction()) await session.abortTransaction();
 
-      if (transactionError.code === 11000) {
-        return NextResponse.json({ error: 'This Roll Number or Email is already registered!' }, { status: 400 });
+      if (transactionError?.code === 11000) {
+        return NextResponse.json({ error: 'This roll number or email is already registered.' }, { status: 400 });
       }
-      throw transactionError;
-    }
 
+      throw transactionError;
+    } finally {
+      await session.endSession();
+    }
   } catch (error: any) {
-    console.error('Registration error:', error.message);
+    console.error('Registration error:', error?.message || error);
     return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
   }
 }
