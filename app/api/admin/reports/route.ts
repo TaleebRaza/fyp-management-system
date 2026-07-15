@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
       batchRaw,
       projectStatusRaw,
       projectStageRaw,
+      finedStudentsRaw,
       pdfReviewRaw,
       totalsRaw,
     ] = await Promise.all([
@@ -110,6 +111,11 @@ export async function GET(req: NextRequest) {
         { $group: { _id: { $ifNull: ['$stage', 'PROPOSAL'] }, total: { $sum: 1 } } },
         { $sort: { total: -1 } },
       ]),
+
+      User.find({ role: 'student', lateRegistrationFine: { $gt: 0 } })
+        .select('name rollNo program batch lateRegistrationDays lateRegistrationFine')
+        .sort({ lateRegistrationFine: -1 })
+        .lean(),
 
       Project.aggregate([
         {
@@ -236,6 +242,15 @@ export async function GET(req: NextRequest) {
     const studentTotals = Array.isArray(studentTotalsRaw) && studentTotalsRaw.length > 0
       ? studentTotalsRaw[0]
       : { students: 0, activeStudents: 0, deactivatedStudents: 0, assignedStudents: 0, unassignedStudents: 0 };
+    const finedStudents = finedStudentsRaw.map((student: any) => ({
+      label: `${student.name || 'Unknown Student'} (${student.rollNo || 'No Roll No'})`,
+      fineAmount: Number(student.lateRegistrationFine || 0),
+      daysLate: Number(student.lateRegistrationDays || 0),
+      program: student.program || 'No Program',
+      batch: student.batch || 'No Batch',
+    }));
+    const totalFineAmount = finedStudents.reduce((sum: number, student: any) => sum + student.fineAmount, 0);
+
     const students = Number(studentTotals.students || 0);
     const activeStudents = Number(studentTotals.activeStudents || 0);
     const deactivatedStudents = Number(studentTotals.deactivatedStudents || 0);
@@ -265,7 +280,10 @@ export async function GET(req: NextRequest) {
           projects,
           reviewQueue: Number(pdfReview.waitingForReview || 0),
           projectsWithPdf: Number(pdfReview.withPdf || 0),
+          finedStudents: finedStudents.length,
+          totalFineAmount,
         },
+        finedStudents,
         studentsPerSupervisor,
         studentStatusSummary: toLabelRows(studentStatusRaw, 'No Status'),
         studentActivitySummary: toLabelRows(studentActivityRaw, 'Unknown'),

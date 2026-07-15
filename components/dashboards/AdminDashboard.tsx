@@ -69,7 +69,8 @@ type ReportOption = {
     | 'batchSummary'
     | 'projectStatusSummary'
     | 'projectStageSummary'
-    | 'pdfReviewSummary';
+    | 'pdfReviewSummary'
+    | 'finedStudents';
   label: string;
   description: string;
 };
@@ -120,6 +121,11 @@ const REPORT_OPTIONS: ReportOption[] = [
     id: 'pdfReviewSummary',
     label: 'PDF Submission and Review Queue',
     description: 'Shows uploaded PDFs, projects waiting for review, and approved projects.',
+  },
+  {
+    id: 'finedStudents',
+    label: 'Students Fined',
+    description: 'Shows every student charged a late-registration fine and the amount charged.',
   },
 ];
 
@@ -181,6 +187,14 @@ const toReportRows = (data: any, reportId: ReportOption['id']): ReportRow[] => {
     return (data.projectStageSummary || []).map((item: any) => ({
       label: item.label || 'PROPOSAL',
       value: Number(item.total || 0),
+    }));
+  }
+
+  if (reportId === 'finedStudents') {
+    return (data.finedStudents || []).map((item: any) => ({
+      label: item.label || 'Unknown Student',
+      value: Number(item.fineAmount || 0),
+      note: `${Number(item.daysLate || 0)} day(s) late · ${item.program || 'No Program'} · ${item.batch || 'No Batch'}`,
     }));
   }
 
@@ -335,6 +349,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   const [reportsData, setReportsData] = useState<any>(null);
   const [isReportsLoading, setIsReportsLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<ReportOption['id']>('studentsPerSupervisor');
+
 
   const [slotEditorSupervisor, setSlotEditorSupervisor] = useState<any>(null);
   const [slotEditorValue, setSlotEditorValue] = useState('0');
@@ -996,8 +1011,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         fetchStudents();
 
         if (isReportsModalOpen) {
-          fetchReportsData();
-        }
+              }
       } else {
         showDialog({
           title: 'Status update failed',
@@ -1712,6 +1726,12 @@ const AdminDashboard = ({ session, showDialog }: any) => {
                 label="Review Queue"
                 value={reportsData.totals?.reviewQueue || 0}
                 hint="PDF projects not approved"
+                icon={<AlertCircle size={18} />}
+              />
+              <StatCard
+                label="Students Fined"
+                value={reportsData.totals?.finedStudents || 0}
+                hint={`Total amount: PKR ${Number(reportsData.totals?.totalFineAmount || 0).toLocaleString()}`}
                 icon={<AlertCircle size={18} />}
               />
             </DashboardGrid>
