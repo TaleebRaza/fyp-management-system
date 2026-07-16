@@ -8,6 +8,8 @@ import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 
+const MAX_TEAM_MEMBERS = 2;
+
 export async function POST(req: Request) {
   try {
     const { studentId, inviteCode } = await req.json();
@@ -30,12 +32,19 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
         }
 
-        // 2. Limit and Redundancy Checks
-        const capacity = targetProject.maxTeamSize || 2;
-        if (targetProject.members.length >= capacity) {
-          return NextResponse.json({ error: `This team is already full (Max ${capacity} members).` }, { status: 400 });
+        // 2. Fixed two-student limit and redundancy checks.
+        // Existing three-member teams are preserved, but no future join may create or restore one.
+        if (targetProject.members.length >= MAX_TEAM_MEMBERS) {
+          return NextResponse.json(
+            {
+              error: `This team is already full (maximum ${MAX_TEAM_MEMBERS} students).`,
+              code: 'TEAM_FULL',
+            },
+            { status: 409 }
+          );
         }
-        if (targetProject.members.includes(studentId)) {
+
+        if (targetProject.members.some((memberId: any) => String(memberId) === String(studentId))) {
           return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
         }
 
@@ -81,9 +90,27 @@ export async function POST(req: Request) {
           }
         }
 
-        // 4. ATOMIC UPDATE (Replaces the fragile optimistic concurrency logic)
-        targetProject.members.push(studentId);
-        await targetProject.save({ session });
+        // 4. Guard the final write as well as the read-time check.
+        // The transaction retry wrapper will re-run this flow after a concurrent write conflict.
+        const joinedProject = await Project.findOneAndUpdate(
+          {
+            _id: targetProject._id,
+            members: { $ne: studentId },
+            'members.1': { $exists: false },
+          },
+          { $addToSet: { members: studentId } },
+          { new: true, session }
+        );
+
+        if (!joinedProject) {
+          return NextResponse.json(
+            {
+              error: `This team is already full (maximum ${MAX_TEAM_MEMBERS} students).`,
+              code: 'TEAM_FULL',
+            },
+            { status: 409 }
+          );
+        }
 
         // 5. Ghost Data Purge
         if (student.projectId && student.projectId.toString() !== targetProject._id.toString()) {
@@ -100,7 +127,7 @@ export async function POST(req: Request) {
         }
 
         // 6. Inherit EVERY piece of state from the existing teammate
-        student.projectId = targetProject._id;
+        student.projectId = joinedProject._id;
         
         if (firstMember) {
           student.supervisorId = firstMember.supervisorId;

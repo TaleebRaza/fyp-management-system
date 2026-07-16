@@ -13,8 +13,6 @@ const ProjectSchema = new Schema({
   pdfSize: { type: Number, default: 0 }, // <-- NEW: track size of the uploaded PDF
   status: { type: String, default: 'Pending' },
   
-  maxTeamSize: { type: Number, default: 2 },
-
   stage: { 
     type: String, 
     enum: ['PROPOSAL', 'THESIS_DRAFT', 'FINAL_DELIVERABLES'], 

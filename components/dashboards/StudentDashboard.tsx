@@ -219,6 +219,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const supervisorBroadcast = data?.supervisorBroadcast || null;
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
+  const isLegacyThreeMemberTeam = projectMembers.length > 2;
+  const canShareInviteCode = Boolean(project?.inviteCode) && projectMembers.length < 2;
   const currentStage = project?.stage || 'PROPOSAL';
   const visibleTemplates = cachedTemplateStage === currentStage ? cachedTemplates : [];
   const currentProgramName = getProgramName(me?.program);
@@ -1238,9 +1240,15 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       <DashboardPanel>
         <SectionHeader
           title="Team Members"
-          description="Your current FYP team and invite code."
+          description={
+            isLegacyThreeMemberTeam
+              ? 'Legacy 3-member team. All existing members remain active, but no new members can join.'
+              : projectMembers.length >= 2
+                ? 'Your team is full. FYP teams can contain a maximum of 2 students.'
+                : 'FYP teams can contain a maximum of 2 students. Share the invite code with one teammate.'
+          }
           action={
-            project?.inviteCode ? (
+            canShareInviteCode ? (
               <Button variant="outline" onClick={handleCopyInviteCode}>
                 <Copy size={16} />
                 Copy Code
@@ -1275,7 +1283,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
           )}
         </div>
 
-        {project?.inviteCode && (
+        {canShareInviteCode ? (
           <div className="mt-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
               Team Invite Code
@@ -1284,7 +1292,18 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               {project.inviteCode}
             </p>
           </div>
-        )}
+        ) : projectMembers.length >= 2 ? (
+          <div className="mt-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+              Team Capacity
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-[var(--color-text)]">
+              {isLegacyThreeMemberTeam
+                ? `Legacy team preserved with all ${projectMembers.length} existing students. New members cannot join.`
+                : 'Team full with 2 students. New members cannot join.'}
+            </p>
+          </div>
+        ) : null}
       </DashboardPanel>
 
       <DashboardPanel>

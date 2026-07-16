@@ -78,11 +78,11 @@ export async function GET(req: Request) {
     
     const students = await User.find({ role: 'student', supervisorId: id }).lean();
 
-    // --- NEW: Fetch associated projects to get the Timeline Stage & Capacity ---
+    // Fetch associated projects to get the timeline stage.
     const projectIds = students.map(s => s.projectId).filter(Boolean);
     const projects = await Project.find({ _id: { $in: projectIds } }).lean();
     const projectMetadata = projects.reduce((acc: any, p: any) => {
-      acc[p._id.toString()] = { stage: p.stage, maxTeamSize: p.maxTeamSize };
+      acc[p._id.toString()] = { stage: p.stage };
       return acc;
     }, {});
     // --------------------------------------------------------------
@@ -104,7 +104,6 @@ export async function GET(req: Request) {
           status: student.status,
           remarks: student.remarks,
           stage: projectMetadata[pId]?.stage || 'PROPOSAL',
-          maxTeamSize: projectMetadata[pId]?.maxTeamSize || 2,
           program: student.program || 'N/A',
           batch: student.batch || 'N/A',
           semester: student.semester || '7th Semester',
@@ -133,7 +132,7 @@ export async function POST(req: Request) {
     await connectToDatabase();
     
     // Read the body once only. Reading req.json() twice breaks migration.
-    const { action, studentId, status, remarks, migrationCode, projectId } = await req.json();
+    const { action, studentId, status, remarks, migrationCode } = await req.json();
 
     if (action === 'updateStatus') {
       const triggerStudent = await User.findById(studentId);
@@ -321,7 +320,6 @@ export async function POST(req: Request) {
               domain: studentInTx.domain || '',
               pdfUrl: studentInTx.pdfUrl || '',
               pdfSize: 0,
-              maxTeamSize: 2,
             },
             session
           );
@@ -370,7 +368,6 @@ export async function POST(req: Request) {
                 // The migrated student can upload the next document under the new supervisor.
                 pdfUrl: '',
                 pdfSize: 0,
-                maxTeamSize: oldProject.maxTeamSize || 2,
               },
               session
             );
@@ -425,13 +422,6 @@ export async function POST(req: Request) {
         });
       }
       return NextResponse.json({ message: 'Team removed successfully!' }, { status: 200 });
-    }
-
-    if (action === 'expandTeam') {
-      if (!projectId) return NextResponse.json({ error: 'Project ID required' }, { status: 400 });
-      
-      await Project.findByIdAndUpdate(projectId, { $set: { maxTeamSize: 3 } });
-      return NextResponse.json({ message: 'Team capacity successfully expanded to 3 members!' }, { status: 200 });
     }
 
     return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });

@@ -482,45 +482,6 @@ const SupervisorDashboard = ({
     );
   };
 
-  const handleExpandTeam = (projectId: string) => {
-    requestConfirmation(
-      'Expand team capacity?',
-      'Grant an exception to allow this team to add a third member?',
-      async () => {
-        setIsProcessingAction(true);
-
-        try {
-          const response = await fetch('/api/dashboard/supervisor', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'expandTeam',
-              projectId,
-            }),
-          });
-
-          const json = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(json.error || 'Failed to expand team capacity.');
-          }
-
-          setSelectedProject(null);
-          await fetchProjects();
-
-          notify(
-            'Capacity expanded',
-            json.message || 'The team can now share their invite code with a third student.'
-          );
-        } catch (error: any) {
-          notify('Capacity update failed', error.message || 'Unable to expand this team right now.');
-        } finally {
-          setIsProcessingAction(false);
-        }
-      }
-    );
-  };
-
   const handleExportPDF = async () => {
     setIsExporting(true);
 
@@ -1064,10 +1025,16 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
                   Team Size
                 </p>
                 <p className="mt-2 text-sm font-bold text-[var(--color-text)]">
-                  {Array.isArray(selectedProject.members) ? selectedProject.members.length : 0}
-                  {' / '}
-                  {selectedProject.maxTeamSize || 2}
+                  {Array.isArray(selectedProject.members) ? selectedProject.members.length : 0}{' '}
+                  {Array.isArray(selectedProject.members) && selectedProject.members.length === 1
+                    ? 'student'
+                    : 'students'}
                 </p>
+                {Array.isArray(selectedProject.members) && selectedProject.members.length > 2 ? (
+                  <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
+                    Legacy 3-member team · all existing members preserved
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -1233,19 +1200,6 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
                     Remove Team
                   </Button>
                 </div>
-
-                {(!selectedProject.maxTeamSize || selectedProject.maxTeamSize < 3) && (
-                  <div className="border-t border-[var(--color-border)] pt-4">
-                    <Button
-                      variant="secondary"
-                      disabled={isProcessingAction}
-                      onClick={() => handleExpandTeam(selectedProject._id)}
-                    >
-                      <Users size={16} />
-                      Grant 3‑Member Exception
-                    </Button>
-                  </div>
-                )}
               </div>
             </DashboardPanel>
           </div>
