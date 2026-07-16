@@ -7,6 +7,7 @@ import { User, Lock, Moon, Sun, ArrowRight, UserPlus, LogIn, Users, FileText, Ch
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { GlassCard, StyledInput } from '../components/ui/SharedUI';
+import SessionIntro from '../components/ui/SessionIntro';
 import { PROGRAM_MAP } from '../config/appSettings';
 
 // ✅ Lazy load dashboards
@@ -23,6 +24,11 @@ const AdminDashboard = dynamic(() => import('../components/dashboards/AdminDashb
 // Temporary compatibility adapter for old dashboard/auth props.
 // This is not a theme engine. It is a fixed professional palette bridge
 // until the dashboard components are fully redesigned in later milestones.
+type IntroState = 'checking' | 'showing' | 'complete';
+
+const INTRO_SESSION_KEY = 'fyp_intro_seen';
+const INTRO_SAFETY_TIMEOUT_MS = 7000;
+
 const PORTAL_THEME = {
   name: 'Professional',
   bg: 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]',
@@ -768,6 +774,7 @@ export default function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [supervisorsList, setSupervisorsList] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState(false);
+  const [introState, setIntroState] = useState<IntroState>('checking');
   const [dialog, setDialog] = useState({
     isOpen: false,
     type: 'alert',
@@ -795,6 +802,46 @@ export default function App() {
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
   }, [isDarkMode, isMounted]);
 
+  useEffect(() => {
+    if (!isMounted || status === 'loading') return;
+
+    if (status === 'authenticated') {
+      setIntroState('complete');
+      return;
+    }
+
+    if (status !== 'unauthenticated') return;
+
+    try {
+      if (sessionStorage.getItem(INTRO_SESSION_KEY) === '1') {
+        setIntroState('complete');
+        return;
+      }
+
+      // Mark it before playback so a refresh during the intro does not replay it.
+      sessionStorage.setItem(INTRO_SESSION_KEY, '1');
+    } catch (error) {
+      console.warn('Session intro storage is unavailable:', error);
+    }
+
+    setIntroState('showing');
+  }, [isMounted, status]);
+
+  const handleIntroComplete = useCallback(() => {
+    setIntroState('complete');
+  }, []);
+
+  useEffect(() => {
+    if (introState !== 'showing') return;
+
+    // Safety net: authentication must never remain blocked by a stalled animation.
+    const safetyTimer = window.setTimeout(() => {
+      setIntroState('complete');
+    }, INTRO_SAFETY_TIMEOUT_MS);
+
+    return () => window.clearTimeout(safetyTimer);
+  }, [introState]);
+
   // ✅ useCallback - stable function references
   const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '', inputType = 'text', inputOptions = [], placeholder = '' }: any) => {
     setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue, inputType, inputOptions, placeholder });
@@ -808,16 +855,6 @@ export default function App() {
 
   // ✅ useCallback - only recreated when dependencies change
   const renderView = useCallback(() => {
-    if (!isMounted) return <div className="min-h-screen" />;
-
-    if (status === "loading") {
-      return (
-        <div className="flex min-h-[80vh] items-center justify-center">
-          <Loader2 className="animate-spin text-[var(--color-accent)]" size={40} />
-        </div>
-      );
-    }
-
     if (status === "authenticated" && session?.user) {
   const role = (session.user as any).role;
 
@@ -894,9 +931,29 @@ export default function App() {
         showDialog={showDialog}
       />
     );
-  }, [isMounted, status, session, isDarkMode, isRegistering, supervisorsList, showDialog]);
+  }, [status, session, isDarkMode, isRegistering, supervisorsList, showDialog]);
 
+  if (!isMounted || status === 'loading') {
     return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)]">
+        <Loader2 className="animate-spin text-[var(--color-accent)]" size={40} />
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated' && introState !== 'complete') {
+    return introState === 'showing' ? (
+      <SessionIntro onComplete={handleIntroComplete} />
+    ) : (
+      <div
+        className="min-h-screen bg-black"
+        aria-busy="true"
+        aria-label="Preparing FYP Management System"
+      />
+    );
+  }
+
+  return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] transition-colors">
       <DialogModal dialog={dialog} closeDialog={closeDialog} />
 
