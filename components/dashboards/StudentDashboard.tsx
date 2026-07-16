@@ -51,6 +51,14 @@ import { PROGRAM_MAP } from '../../config/appSettings';
 
 type StudentTab = 'overview' | 'project' | 'team' | 'resources';
 
+type WordTemplate = {
+  id: string;
+  title: string;
+  filename: string;
+  format: 'word';
+  content: string;
+};
+
 const STAGES = [
   { id: 'PROPOSAL', label: 'Proposal' },
   { id: 'THESIS_DRAFT', label: 'Thesis Draft' },
@@ -196,9 +204,11 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
     batch: '',
   });
 
-  const [cachedTemplates, setCachedTemplates] = useState<any[]>([]);
+  const [cachedTemplates, setCachedTemplates] = useState<WordTemplate[]>([]);
+  const [cachedTemplateStage, setCachedTemplateStage] = useState<string | null>(null);
   const [isFetchingTemplates, setIsFetchingTemplates] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<WordTemplate | null>(null);
+  const [isCopyingTemplate, setIsCopyingTemplate] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
 
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
@@ -210,6 +220,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
   const currentStage = project?.stage || 'PROPOSAL';
+  const visibleTemplates = cachedTemplateStage === currentStage ? cachedTemplates : [];
   const currentProgramName = getProgramName(me?.program);
   const toolsList = splitTools(me?.tools || tools);
   const pdfUrl = me?.pdfUrl || project?.pdfUrl;
@@ -336,24 +347,46 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   };
 
   const fetchTemplatesByStage = async () => {
-    if (cachedTemplates.length > 0) return;
+    if (cachedTemplateStage === currentStage && cachedTemplates.length > 0) return;
 
+    const requestedStage = currentStage;
     setIsFetchingTemplates(true);
 
     try {
-      const response = await fetch(`/api/templates?stage=${currentStage}`);
+      const response = await fetch(`/api/templates?stage=${requestedStage}`);
       const json = await response.json();
 
       if (!response.ok) {
         throw new Error(json.error || 'Failed to load templates.');
       }
 
-      setCachedTemplates(Array.isArray(json.templates) ? json.templates : []);
+      const templates = Array.isArray(json.templates)
+        ? json.templates.filter(
+            (template: unknown): template is WordTemplate => {
+              if (!template || typeof template !== 'object') return false;
+
+              const candidate = template as Partial<WordTemplate>;
+              return (
+                typeof candidate.id === 'string' &&
+                typeof candidate.title === 'string' &&
+                typeof candidate.filename === 'string' &&
+                candidate.format === 'word' &&
+                typeof candidate.content === 'string'
+              );
+            }
+          )
+        : [];
+
+      setCachedTemplates(templates);
+      setCachedTemplateStage(requestedStage);
     } catch (error) {
       console.error('Template fetch error:', error);
       showDialog({
         title: 'Templates unavailable',
-        message: 'Failed to load templates from the server.',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to load templates from the server.',
       });
     } finally {
       setIsFetchingTemplates(false);
@@ -506,6 +539,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         setTools('');
         setFile(null);
         setCachedTemplates([]);
+        setCachedTemplateStage(null);
       }
 
       await fetchData();
@@ -681,6 +715,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       setTools('');
       setFile(null);
       setCachedTemplates([]);
+      setCachedTemplateStage(null);
 
       await fetchData();
       await fetchSupervisors();
@@ -699,25 +734,111 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
     }
   };
 
-  const handleOpenTemplate = async (template?: any) => {
+  const handleOpenTemplate = async (template?: WordTemplate) => {
     if (!template) {
       await fetchTemplatesByStage();
       setActiveTab('resources');
       return;
     }
 
+    setIsCopied(false);
     setSelectedTemplate(template);
   };
 
+  const closeTemplateDialog = () => {
+    if (isCopyingTemplate) return;
+
+    setSelectedTemplate(null);
+    setIsCopied(false);
+  };
+
+  const getPlainTextFromHtml = (html: string) => {
+    const documentFragment = new DOMParser().parseFromString(html, 'text/html');
+    return documentFragment.body.innerText.replace(/\n{3,}/g, '\n\n').trim();
+  };
+
+  const copyHtmlWithLegacySelection = (html: string) => {
+    const container = document.createElement('div');
+    container.contentEditable = 'true';
+    container.setAttribute('aria-hidden', 'true');
+    container.style.position = 'fixed';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.style.opacity = '0';
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    const selection = window.getSelection();
+    const previousRanges: Range[] = [];
+
+    if (selection) {
+      for (let index = 0; index < selection.rangeCount; index += 1) {
+        previousRanges.push(selection.getRangeAt(index).cloneRange());
+      }
+
+      const range = document.createRange();
+      range.selectNodeContents(container);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    const copied = document.execCommand('copy');
+
+    if (selection) {
+      selection.removeAllRanges();
+      previousRanges.forEach((range) => selection.addRange(range));
+    }
+
+    container.remove();
+    return copied;
+  };
+
   const handleCopyTemplate = async () => {
-    if (!selectedTemplate) return;
+    if (!selectedTemplate || isCopyingTemplate) return;
 
-    await navigator.clipboard.writeText(selectedTemplate.content || '');
-    setIsCopied(true);
+    const html = selectedTemplate.content.trim();
+    if (!html) {
+      showDialog({
+        title: 'Template is empty',
+        message: 'This template has no content to copy.',
+      });
+      return;
+    }
 
-    window.setTimeout(() => {
-      setIsCopied(false);
-    }, 1500);
+    setIsCopyingTemplate(true);
+
+    try {
+      const plainText = getPlainTextFromHtml(html);
+      const clipboardHtml = `<!doctype html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`;
+
+      if (
+        navigator.clipboard?.write &&
+        typeof ClipboardItem !== 'undefined'
+      ) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([clipboardHtml], { type: 'text/html' }),
+            'text/plain': new Blob([plainText], { type: 'text/plain' }),
+          }),
+        ]);
+      } else if (!copyHtmlWithLegacySelection(html)) {
+        throw new Error('Rich clipboard copying is not supported in this browser.');
+      }
+
+      setIsCopied(true);
+      window.setTimeout(() => setIsCopied(false), 1800);
+    } catch (error) {
+      console.error('Word template copy failed:', error);
+      showDialog({
+        title: 'Copy failed',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Your browser blocked clipboard access. Try again from a secure tab.',
+      });
+    } finally {
+      setIsCopyingTemplate(false);
+    }
   };
 
   const renderOverview = () => (
@@ -1284,22 +1405,22 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               ) : (
                 <RefreshCcw size={16} />
               )}
-              Load Templates
+              Load Word Templates
             </Button>
           }
         />
 
         <div className="space-y-3">
-          {cachedTemplates.length === 0 ? (
+          {visibleTemplates.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
               <FileText className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
               <p className="text-sm font-bold text-[var(--color-text)]">No templates loaded</p>
               <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                Load templates for the current project stage.
+                Load editable Word-format templates for the current project stage.
               </p>
             </div>
           ) : (
-            cachedTemplates.map((template) => (
+            visibleTemplates.map((template) => (
               <button
                 key={template.id || template.filename}
                 type="button"
@@ -1656,26 +1777,38 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
       <Dialog
         open={!!selectedTemplate}
-        onClose={() => setSelectedTemplate(null)}
+        onClose={closeTemplateDialog}
         title={selectedTemplate?.title || 'Template'}
-        description={selectedTemplate?.filename}
+        description="Word preview · editable after pasting"
         size="xl"
         footer={
           <>
-            <Button variant="outline" onClick={() => setSelectedTemplate(null)}>
+            <Button variant="outline" onClick={closeTemplateDialog} disabled={isCopyingTemplate}>
               Close
             </Button>
 
-            <Button onClick={handleCopyTemplate}>
-              {isCopied ? <CheckCircle size={16} /> : <Copy size={16} />}
-              {isCopied ? 'Copied' : 'Copy LaTeX'}
+            <Button onClick={handleCopyTemplate} disabled={isCopyingTemplate}>
+              {isCopyingTemplate ? (
+                <Loader2 className="animate-spin" size={16} />
+              ) : isCopied ? (
+                <CheckCircle size={16} />
+              ) : (
+                <Copy size={16} />
+              )}
+              {isCopyingTemplate ? 'Copying' : isCopied ? 'Copied for Word' : 'Copy for Word'}
             </Button>
           </>
         }
       >
-        <pre className="portal-scrollbar max-h-[60vh] overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-xs leading-6 text-[var(--color-text)]">
-          {selectedTemplate?.content || ''}
-        </pre>
+        <div className="portal-scrollbar max-h-[68vh] overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 sm:p-5">
+          <div
+            role="document"
+            aria-label={`${selectedTemplate?.title || 'Template'} Word preview`}
+            className="mx-auto min-h-[720px] w-full max-w-[816px] bg-white px-6 py-10 text-black shadow-sm sm:px-10 md:px-16"
+            // Trusted, allowlisted static HTML from word_templates/. Never use this for user HTML.
+            dangerouslySetInnerHTML={{ __html: selectedTemplate?.content || '' }}
+          />
+        </div>
       </Dialog>
     </>
   );
