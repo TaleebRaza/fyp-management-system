@@ -7,6 +7,10 @@ import Project from '../../../../models/Project';
 import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
+import {
+  formatProjectDomainLabels,
+  normalizeProjectDomainIds,
+} from '../../../../config/projectDomains';
 
 const MAX_TEAM_MEMBERS = 2;
 
@@ -90,6 +94,17 @@ export async function POST(req: Request) {
           }
         }
 
+        const inheritedDomainIds = normalizeProjectDomainIds(
+          Array.isArray((targetProject as any).domains) && (targetProject as any).domains.length > 0
+            ? (targetProject as any).domains
+            : (firstMember as any)?.domains,
+          targetProject.domain || (firstMember as any)?.domain
+        );
+        const inheritedDomainText = formatProjectDomainLabels(
+          inheritedDomainIds,
+          targetProject.domain || (firstMember as any)?.domain
+        );
+
         // 4. Guard the final write as well as the read-time check.
         // The transaction retry wrapper will re-run this flow after a concurrent write conflict.
         const joinedProject = await Project.findOneAndUpdate(
@@ -98,7 +113,13 @@ export async function POST(req: Request) {
             members: { $ne: studentId },
             'members.1': { $exists: false },
           },
-          { $addToSet: { members: studentId } },
+          {
+            $addToSet: { members: studentId },
+            $set: {
+              domains: inheritedDomainIds,
+              domain: inheritedDomainText,
+            },
+          },
           { new: true, session }
         );
 
@@ -135,7 +156,8 @@ export async function POST(req: Request) {
           student.remarks = firstMember.remarks;
           student.projectTitle = firstMember.projectTitle;
           student.projectDesc = firstMember.projectDesc;
-          student.domain = firstMember.domain;
+          student.domain = inheritedDomainText;
+          student.domains = inheritedDomainIds;
           student.tools = firstMember.tools;
           student.pdfUrl = firstMember.pdfUrl;
         } else {

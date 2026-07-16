@@ -9,6 +9,10 @@ import SystemConfig from '../../../../models/SystemConfig';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 import mongoose, { ClientSession } from 'mongoose';
+import {
+  formatProjectDomainLabels,
+  normalizeProjectDomainIds,
+} from '../../../../config/projectDomains';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,7 +86,13 @@ export async function GET(req: Request) {
     const projectIds = students.map(s => s.projectId).filter(Boolean);
     const projects = await Project.find({ _id: { $in: projectIds } }).lean();
     const projectMetadata = projects.reduce((acc: any, p: any) => {
-      acc[p._id.toString()] = { stage: p.stage };
+      const domainIds = normalizeProjectDomainIds(p.domains, p.domain);
+
+      acc[p._id.toString()] = {
+        stage: p.stage,
+        domains: domainIds,
+        domain: formatProjectDomainLabels(domainIds, p.domain),
+      };
       return acc;
     }, {});
     // --------------------------------------------------------------
@@ -93,12 +103,23 @@ export async function GET(req: Request) {
       const pId = student.projectId ? student.projectId.toString() : `legacy-${student._id.toString()}`;
       
       if (!projectMap.has(pId)) {
+        const metadata = projectMetadata[pId];
+        const domainIds = normalizeProjectDomainIds(
+          metadata?.domains?.length ? metadata.domains : student.domains,
+          metadata?.domain || student.domain
+        );
+        const domainText = formatProjectDomainLabels(
+          domainIds,
+          metadata?.domain || student.domain
+        );
+
         projectMap.set(pId, {
           _id: pId, 
           triggerStudentId: student._id.toString(),
           projectTitle: student.projectTitle,
           projectDesc: student.projectDesc,
-          domain: student.domain,
+          domain: domainText,
+          domains: domainIds,
           tools: student.tools,
           pdfUrl: student.pdfUrl,
           status: student.status,
@@ -309,6 +330,15 @@ export async function POST(req: Request) {
           : null;
 
         if (!oldProject) {
+          const inheritedDomainIds = normalizeProjectDomainIds(
+            studentInTx.domains,
+            studentInTx.domain
+          );
+          const inheritedDomainText = formatProjectDomainLabels(
+            inheritedDomainIds,
+            studentInTx.domain
+          );
+
           const newProject = await createProjectWithUniqueInviteCode(
             {
               supervisorId: targetSup._id,
@@ -317,13 +347,16 @@ export async function POST(req: Request) {
               status: studentInTx.status || 'Pending',
               title: studentInTx.projectTitle || '',
               titleFingerprint: '',
-              domain: studentInTx.domain || '',
+              domain: inheritedDomainText,
+              domains: inheritedDomainIds,
               pdfUrl: studentInTx.pdfUrl || '',
               pdfSize: 0,
             },
             session
           );
 
+          studentInTx.domain = inheritedDomainText;
+          studentInTx.domains = inheritedDomainIds;
           studentInTx.supervisorId = targetSup._id;
           studentInTx.projectId = newProject._id;
           studentInTx.status = studentInTx.status || 'Pending';
@@ -336,10 +369,23 @@ export async function POST(req: Request) {
             projectMembers.every((member: any) => String(member) === String(studentInTx._id));
 
           if (isOnlyMember) {
+            const inheritedDomainIds = normalizeProjectDomainIds(
+              oldProject.domains?.length ? oldProject.domains : studentInTx.domains,
+              oldProject.domain || studentInTx.domain
+            );
+            const inheritedDomainText = formatProjectDomainLabels(
+              inheritedDomainIds,
+              oldProject.domain || studentInTx.domain
+            );
+
             oldProject.supervisorId = targetSup._id;
             oldProject.members = [studentInTx._id];
+            oldProject.domain = inheritedDomainText;
+            oldProject.domains = inheritedDomainIds;
             await oldProject.save({ session });
 
+            studentInTx.domain = inheritedDomainText;
+            studentInTx.domains = inheritedDomainIds;
             studentInTx.supervisorId = targetSup._id;
             studentInTx.projectId = oldProject._id;
             studentInTx.status = oldProject.status || studentInTx.status || 'Pending';
@@ -353,7 +399,14 @@ export async function POST(req: Request) {
             );
 
             const inheritedTitle = oldProject.title || studentInTx.projectTitle || '';
-            const inheritedDomain = oldProject.domain || studentInTx.domain || '';
+            const inheritedDomainIds = normalizeProjectDomainIds(
+              oldProject.domains?.length ? oldProject.domains : studentInTx.domains,
+              oldProject.domain || studentInTx.domain
+            );
+            const inheritedDomain = formatProjectDomainLabels(
+              inheritedDomainIds,
+              oldProject.domain || studentInTx.domain
+            );
 
             const newProject = await createProjectWithUniqueInviteCode(
               {
@@ -364,6 +417,7 @@ export async function POST(req: Request) {
                 title: inheritedTitle,
                 titleFingerprint: oldProject.titleFingerprint || '',
                 domain: inheritedDomain,
+                domains: inheritedDomainIds,
                 // In team migration, keep timeline/status but avoid sharing the old team's file object.
                 // The migrated student can upload the next document under the new supervisor.
                 pdfUrl: '',
@@ -379,6 +433,7 @@ export async function POST(req: Request) {
             studentInTx.projectTitle = inheritedTitle;
             studentInTx.projectDesc = studentInTx.projectDesc || '';
             studentInTx.domain = inheritedDomain;
+            studentInTx.domains = inheritedDomainIds;
             studentInTx.tools = studentInTx.tools || '';
             studentInTx.pdfUrl = '';
             await studentInTx.save({ session });

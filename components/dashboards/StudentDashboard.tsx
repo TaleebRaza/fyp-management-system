@@ -28,6 +28,7 @@ import {
   Mic,
   ChevronDown,
   ChevronUp,
+  X,
 } from 'lucide-react';
 
 import {
@@ -48,6 +49,13 @@ import {
 import { VoiceChat } from '../ui/VoiceChat';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
 import { PROGRAM_MAP } from '../../config/appSettings';
+import {
+  PROJECT_DOMAIN_GROUPS,
+  formatProjectDomainLabels,
+  getProjectDomainLabel,
+  getProjectDomainLabels,
+  normalizeProjectDomainIds,
+} from '../../config/projectDomains';
 
 type StudentTab = 'overview' | 'project' | 'team' | 'resources';
 
@@ -122,6 +130,167 @@ const splitTools = (tools?: string) => {
     .filter(Boolean);
 };
 
+type ProjectDomainSelectorProps = {
+  selectedDomains: string[];
+  legacyDomain?: string;
+  disabled?: boolean;
+  onChange: (domains: string[]) => void;
+};
+
+const ProjectDomainSelector = ({
+  selectedDomains,
+  legacyDomain = '',
+  disabled = false,
+  onChange,
+}: ProjectDomainSelectorProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (disabled) setIsOpen(false);
+  }, [disabled]);
+
+  const toggleDomain = (domainId: string) => {
+    if (disabled) return;
+
+    onChange(
+      selectedDomains.includes(domainId)
+        ? selectedDomains.filter((item) => item !== domainId)
+        : [...selectedDomains, domainId]
+    );
+  };
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <label className="block text-sm font-semibold text-[var(--color-text)]">
+          Project Domains
+        </label>
+        <span className="text-xs font-semibold text-[var(--color-text-muted)]">
+          {selectedDomains.length} selected
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+        <button
+          type="button"
+          disabled={disabled}
+          aria-expanded={isOpen}
+          aria-controls="project-domain-options"
+          onClick={() => setIsOpen((previous) => !previous)}
+          className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-surface-muted)] disabled:cursor-not-allowed disabled:opacity-65"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+            <Globe size={18} className="text-[var(--color-accent)]" />
+            {selectedDomains.length > 0
+              ? `${selectedDomains.length} domain${selectedDomains.length === 1 ? '' : 's'} selected`
+              : 'Choose project domains'}
+          </span>
+          <ChevronDown
+            size={18}
+            className={`shrink-0 text-[var(--color-text-muted)] transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {(selectedDomains.length > 0 || legacyDomain) && (
+          <div className="flex flex-wrap gap-2 border-t border-[var(--color-border)] px-4 py-3">
+            {selectedDomains.map((domainId) => (
+              <span
+                key={domainId}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-bold text-[var(--color-text)]"
+              >
+                {getProjectDomainLabel(domainId)}
+                {!disabled && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${getProjectDomainLabel(domainId)}`}
+                    onClick={() => toggleDomain(domainId)}
+                    className="rounded-full p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </span>
+            ))}
+
+            {selectedDomains.length === 0 && legacyDomain && (
+              <span className="inline-flex items-center rounded-full bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-bold text-[var(--color-text-muted)]">
+                Previous value: {legacyDomain}
+              </span>
+            )}
+          </div>
+        )}
+
+        {isOpen && !disabled && (
+          <div
+            id="project-domain-options"
+            className="portal-scrollbar max-h-[28rem] space-y-5 overflow-y-auto border-t border-[var(--color-border)] p-4"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold leading-5 text-[var(--color-text-muted)]">
+                Select every area that applies to this project.
+              </p>
+              {selectedDomains.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onChange([])}
+                  className="shrink-0 text-xs font-bold text-[var(--color-text-strong)] underline-offset-4 hover:text-[var(--color-accent)] hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            {legacyDomain && selectedDomains.length === 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-100">
+                Your previous text value is preserved above. Select one or more catalogue domains before the next submission.
+              </div>
+            )}
+
+            <div className="grid gap-5 lg:grid-cols-2">
+              {PROJECT_DOMAIN_GROUPS.map((group) => (
+                <fieldset key={group.category} className="space-y-2">
+                  <legend className="mb-2 text-xs font-extrabold uppercase tracking-wide text-[var(--color-text-muted)]">
+                    {group.category}
+                  </legend>
+
+                  {group.options.map((option) => {
+                    const isChecked = selectedDomains.includes(option.id);
+
+                    return (
+                      <label
+                        key={option.id}
+                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                          isChecked
+                            ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]'
+                            : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleDomain(option.id)}
+                          className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-primary)]"
+                        />
+                        <span className="text-sm font-semibold leading-5 text-[var(--color-text)]">
+                          {option.label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
+        You can select multiple domains, such as Machine Learning and Augmented Reality.
+      </p>
+    </div>
+  );
+};
+
 const ProjectTimeline = ({ currentStage }: { currentStage?: string }) => {
   const currentIndex = Math.max(
     STAGES.findIndex((stage) => stage.id === currentStage),
@@ -188,7 +357,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-  const [domain, setDomain] = useState('');
+  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
+  const [legacyDomain, setLegacyDomain] = useState('');
   const [tools, setTools] = useState('');
   const [file, setFile] = useState<File | null>(null);
 
@@ -225,6 +395,24 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const visibleTemplates = cachedTemplateStage === currentStage ? cachedTemplates : [];
   const currentProgramName = getProgramName(me?.program);
   const toolsList = splitTools(me?.tools || tools);
+  const savedDomainIds = useMemo(
+    () =>
+      normalizeProjectDomainIds(
+        Array.isArray(project?.domains) && project.domains.length > 0
+          ? project.domains
+          : me?.domains,
+        project?.domain || me?.domain
+      ),
+    [project?.domains, project?.domain, me?.domains, me?.domain]
+  );
+  const savedDomainLabels = useMemo(
+    () => getProjectDomainLabels(savedDomainIds),
+    [savedDomainIds]
+  );
+  const savedDomainText = formatProjectDomainLabels(
+    savedDomainIds,
+    project?.domain || me?.domain
+  );
   const pdfUrl = me?.pdfUrl || project?.pdfUrl;
 
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
@@ -319,7 +507,15 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       if (json?.student) {
         setTitle(json.student.projectTitle || '');
         setDesc(json.student.projectDesc || '');
-        setDomain(json.student.domain || '');
+        const domainSource =
+          Array.isArray(json.project?.domains) && json.project.domains.length > 0
+            ? json.project.domains
+            : json.student.domains;
+        const previousDomainText = json.project?.domain || json.student.domain || '';
+        const restoredDomains = normalizeProjectDomainIds(domainSource, previousDomainText);
+
+        setSelectedDomains(restoredDomains);
+        setLegacyDomain(restoredDomains.length === 0 ? previousDomainText : '');
         setTools(json.student.tools || '');
         setAcademicForm({
           program: json.student.program || 'BSCS',
@@ -453,10 +649,10 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       return;
     }
 
-    if (!title.trim() || !desc.trim() || !domain.trim() || !tools.trim()) {
+    if (!title.trim() || !desc.trim() || selectedDomains.length === 0 || !tools.trim()) {
       showDialog({
         title: 'Missing project details',
-        message: 'Complete title, description, domain, and tools before submitting.',
+        message: 'Complete the title, description, project domains, and tools before submitting.',
       });
       return;
     }
@@ -481,7 +677,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
           id: (session?.user as any)?.id,
           title: title.trim(),
           desc: desc.trim(),
-          domain: domain.trim(),
+          domains: selectedDomains,
           tools: tools.trim(),
           pdfUrl: upload.url,
           fileSize: upload.fileSize,
@@ -537,7 +733,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       if (action === 'changeSupervisor') {
         setTitle('');
         setDesc('');
-        setDomain('');
+        setSelectedDomains([]);
+        setLegacyDomain('');
         setTools('');
         setFile(null);
         setCachedTemplates([]);
@@ -991,7 +1188,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         <DashboardPanel>
           <SectionHeader
             title="Project Information"
-            description="Your current title, domain, tools, and supervisor review status."
+            description="Your current title, domains, tools, and supervisor review status."
             action={
               <Button variant="outline" onClick={() => setActiveTab('project')}>
                 Edit Project
@@ -1013,11 +1210,21 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
                   <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                    Domain
+                    Domains
                   </p>
-                  <p className="mt-2 text-sm font-semibold text-[var(--color-text)]">
-                    {me.domain || 'Not provided'}
-                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {savedDomainLabels.length > 0 ? (
+                      savedDomainLabels.map((domainLabel) => (
+                        <Badge key={domainLabel} variant="accent">
+                          {domainLabel}
+                        </Badge>
+                      ))
+                    ) : savedDomainText ? (
+                      <Badge variant="muted">{savedDomainText}</Badge>
+                    ) : (
+                      <span className="text-sm text-[var(--color-text-muted)]">Not provided</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
@@ -1163,34 +1370,28 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
           />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-              Domain
-            </label>
-            <StyledInput
-              icon={Globe}
-              value={domain}
-              disabled={!canSubmit}
-              onChange={(event: any) => setDomain(event.target.value)}
-              required
-              placeholder="e.g. Artificial Intelligence"
-            />
-          </div>
+        <ProjectDomainSelector
+          selectedDomains={selectedDomains}
+          legacyDomain={legacyDomain}
+          disabled={!canSubmit}
+          onChange={(domains) => {
+            setSelectedDomains(domains);
+            if (domains.length > 0) setLegacyDomain('');
+          }}
+        />
 
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-              Tools and Technologies
-            </label>
-            <StyledInput
-              icon={Wrench}
-              value={tools}
-              disabled={!canSubmit}
-              onChange={(event: any) => setTools(event.target.value)}
-              required
-              placeholder="e.g. React, Python, TensorFlow"
-            />
-          </div>
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
+            Tools and Technologies
+          </label>
+          <StyledInput
+            icon={Wrench}
+            value={tools}
+            disabled={!canSubmit}
+            onChange={(event: any) => setTools(event.target.value)}
+            required
+            placeholder="e.g. React, Python, TensorFlow"
+          />
         </div>
 
         <div>
@@ -1740,7 +1941,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               This action will reset the student workspace.
             </p>
             <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
-              Project title, description, domain, tools, PDF, supervisor assignment, and team
+              Project title, description, domains, tools, PDF, supervisor assignment, and team
               membership can be cleared by this update.
             </p>
           </div>

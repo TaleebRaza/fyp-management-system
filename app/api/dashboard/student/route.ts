@@ -11,6 +11,11 @@ import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
+import {
+  formatProjectDomainLabels,
+  normalizeProjectDomainIds,
+  validateProjectDomainIds,
+} from '../../../../config/projectDomains';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +107,7 @@ async function createFreshStudentProject(
         title: '',
         titleFingerprint: '',
         domain: '',
+        domains: [],
         pdfUrl: '',
         pdfSize: 0,
       });
@@ -138,7 +144,7 @@ export async function GET(req: Request) {
     // Use the authenticated student's ID and return only dashboard-safe fields.
     const student = await User.findOne({ _id: studentId, role: 'student' })
       .select(
-        '_id name email rollNo role program batch semester supervisorId status remarks projectTitle pdfUrl projectDesc domain tools notificationsEnabled isActive projectId lateRegistrationDays lateRegistrationFine'
+        '_id name email rollNo role program batch semester supervisorId status remarks projectTitle pdfUrl projectDesc domain domains tools notificationsEnabled isActive projectId lateRegistrationDays lateRegistrationFine'
       )
       .lean();
 
@@ -170,8 +176,42 @@ export async function GET(req: Request) {
         }
       : null;
 
+    const projectRecord = project as any;
+    const studentRecord = student as any;
+    const storedDomainIds =
+      Array.isArray(projectRecord?.domains) && projectRecord.domains.length > 0
+        ? projectRecord.domains
+        : studentRecord.domains;
+    const normalizedDomains = normalizeProjectDomainIds(
+      storedDomainIds,
+      projectRecord?.domain || studentRecord.domain
+    );
+    const normalizedDomainText = formatProjectDomainLabels(
+      normalizedDomains,
+      projectRecord?.domain || studentRecord.domain
+    );
+
+    const studentResponse = {
+      ...studentRecord,
+      domains: normalizedDomains,
+      domain: normalizedDomainText,
+    };
+
+    const projectResponse = projectRecord
+      ? {
+          ...projectRecord,
+          domains: normalizedDomains,
+          domain: normalizedDomainText,
+        }
+      : projectRecord;
+
     return NextResponse.json(
-      { student, supervisor, project, supervisorBroadcast },
+      {
+        student: studentResponse,
+        supervisor,
+        project: projectResponse,
+        supervisorBroadcast,
+      },
       { status: 200 }
     );
   } catch (error) {
@@ -320,6 +360,7 @@ export async function POST(req: Request) {
         student.projectTitle = '';
         student.projectDesc = '';
         student.domain = '';
+        student.domains = [];
         student.tools = '';
         student.pdfUrl = '';
         student.lastProgramBatchChangeAt = new Date();
@@ -509,6 +550,7 @@ export async function POST(req: Request) {
         student.projectTitle = '';
         student.projectDesc = '';
         student.domain = '';
+        student.domains = [];
         student.tools = '';
         student.pdfUrl = '';
 
@@ -665,6 +707,56 @@ export async function POST(req: Request) {
     const triggeringStudent = await User.findById(body.id);
     if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
+    const hasDomainArrayPayload = Object.prototype.hasOwnProperty.call(body, 'domains');
+    const legacyDomainText = String(body.domain || '').trim();
+    let selectedDomainIds: string[] = [];
+
+    if (hasDomainArrayPayload) {
+      const domainValidation = validateProjectDomainIds(body.domains);
+
+      if (!domainValidation.isArray) {
+        return NextResponse.json(
+          { error: 'Project domains must be submitted as a list.' },
+          { status: 400 }
+        );
+      }
+
+      if (domainValidation.invalid.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'One or more selected project domains are invalid.',
+            invalidDomains: domainValidation.invalid,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (domainValidation.ids.length === 0) {
+        return NextResponse.json(
+          { error: 'Select at least one project domain.' },
+          { status: 400 }
+        );
+      }
+
+      selectedDomainIds = domainValidation.ids;
+    } else {
+      // Transitional support for the current free-text UI.
+      // Once the checkbox UI is installed, requests will always use `domains`.
+      selectedDomainIds = normalizeProjectDomainIds([], legacyDomainText);
+
+      if (!legacyDomainText && selectedDomainIds.length === 0) {
+        return NextResponse.json(
+          { error: 'Select at least one project domain.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    const normalizedDomainText = formatProjectDomainLabels(
+      selectedDomainIds,
+      legacyDomainText
+    );
+
     // --- NEW: Dynamic Title Deduplication Engine ---
     const fingerprint = generateFingerprint(body.title);
     
@@ -727,7 +819,8 @@ export async function POST(req: Request) {
     const submissionData = {  
       projectTitle: body.title,
       projectDesc: body.desc,
-      domain: body.domain,
+      domain: normalizedDomainText,
+      domains: selectedDomainIds,
       tools: body.tools,
       pdfUrl: body.pdfUrl,
       status: 'Submitted For Review'
@@ -740,7 +833,8 @@ export async function POST(req: Request) {
       const projectUpdates: any = {
         title: body.title,
         titleFingerprint: fingerprint,
-        domain: body.domain,
+        domain: normalizedDomainText,
+        domains: selectedDomainIds,
         pdfUrl: body.pdfUrl,
         status: 'Submitted For Review',
       };
@@ -775,7 +869,7 @@ export async function POST(req: Request) {
                 <p style="color: #71717a; margin-bottom: 24px;">A new Final Year Project proposal has been submitted.</p>
                 <div style="background-color: #f4f4f5; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
                   <p style="margin: 0 0 12px 0;"><strong>Submitted By:</strong> ${updatedStudent.name}</p>
-                  <p style="margin: 0 0 12px 0;"><strong>Domain:</strong> ${body.domain}</p>
+                  <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${normalizedDomainText}</p>
                   <p style="margin: 0;"><strong>Title:</strong> ${body.title}</p>
                 </div>
               </div>

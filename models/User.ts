@@ -22,6 +22,10 @@ const UserSchema = new Schema({
   
   migrationCode: { type: String, required: false },
   projectDesc: { type: String, required: false },
+  // Legacy display string retained while existing routes and exports are upgraded.
+  domain: { type: String, default: '' },
+  // Canonical multi-select project domain identifiers shared by the whole team.
+  domains: { type: [String], default: [] },
   tools: { type: String, required: false },
   notificationsEnabled: { type: Boolean, default: true },
   extraSlots: {

@@ -25,6 +25,11 @@ import {
 import BroadcastWidget from './BroadcastWidget';
 import { VoiceChat } from '../ui/VoiceChat';
 import { PROGRAM_MAP } from '../../config/appSettings';
+import {
+  formatProjectDomainLabels,
+  getProjectDomainLabels,
+  normalizeProjectDomainIds,
+} from '../../config/projectDomains';
 
 import {
   AvatarBadge,
@@ -97,6 +102,16 @@ const getMemberNames = (project?: any) => {
 const getMemberRollNumbers = (project?: any) => {
   const members = Array.isArray(project?.members) ? project.members : [];
   return members.map((member: any) => member.rollNo || member.email).filter(Boolean).join(' | ') || 'No roll numbers';
+};
+
+const getProjectDomainDisplayLabels = (project?: any) => {
+  const domainIds = normalizeProjectDomainIds(project?.domains, project?.domain);
+  const labels = getProjectDomainLabels(domainIds);
+
+  if (labels.length > 0) return labels;
+
+  const legacyDomain = formatProjectDomainLabels(domainIds, project?.domain);
+  return legacyDomain ? [legacyDomain] : [];
 };
 
 const getStageProgress = (stage?: string) => {
@@ -333,6 +348,8 @@ const SupervisorDashboard = ({
         getProjectProgram(project),
         project.projectTitle,
         project.domain,
+        ...(Array.isArray(project.domains) ? project.domains : []),
+        ...getProjectDomainDisplayLabels(project),
         project.tools,
         project.status,
         project.batch,
@@ -561,6 +578,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
     const memberRollNumbers = getMemberRollNumbers(project);
     const pdfKey = getSafePdfKey(project.pdfUrl);
     const isReviewable = isProjectReviewable(project);
+    const domainLabels = getProjectDomainDisplayLabels(project);
 
     return (
       <button
@@ -605,7 +623,11 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
           <Badge variant="muted">{getProgramName(getProjectProgram(project))}</Badge>
           {project.batch && <Badge variant="muted">{project.batch}</Badge>}
           {project.semester && <Badge variant="muted">{project.semester}</Badge>}
-          {project.domain && <Badge variant="accent">{project.domain}</Badge>}
+          {domainLabels.map((domainLabel) => (
+            <Badge key={domainLabel} variant="accent">
+              {domainLabel}
+            </Badge>
+          ))}
         </div>
 
         <div
@@ -901,6 +923,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
   ];
 
   const selectedPdfKey = getSafePdfKey(selectedProject?.pdfUrl);
+  const selectedProjectDomainLabels = getProjectDomainDisplayLabels(selectedProject);
 
   return (
     <>
@@ -1071,12 +1094,12 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {selectedProject.domain && (
-                      <Badge variant="accent">
+                    {selectedProjectDomainLabels.map((domainLabel) => (
+                      <Badge key={domainLabel} variant="accent">
                         <Globe size={13} />
-                        {selectedProject.domain}
+                        {domainLabel}
                       </Badge>
-                    )}
+                    ))}
 
                     {selectedProject.tools && (
                       <Badge variant="muted">

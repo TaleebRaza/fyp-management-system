@@ -8,7 +8,10 @@ const ProjectSchema = new Schema({
   
   title: { type: String, default: '' },
   titleFingerprint: { type: String, default: '', index: true },
+  // Legacy display string retained for backwards compatibility and exports.
   domain: { type: String, default: '' },
+  // Canonical multi-select project domain identifiers.
+  domains: { type: [String], default: [] },
   pdfUrl: { type: String, default: '' },
   pdfSize: { type: Number, default: 0 }, // <-- NEW: track size of the uploaded PDF
   status: { type: String, default: 'Pending' },
