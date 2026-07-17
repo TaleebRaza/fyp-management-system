@@ -910,7 +910,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       setIsAcademicWarningStep(false);
       setTitle('');
       setDesc('');
-      setDomain('');
+      setSelectedDomains([]);
+      setLegacyDomain('');
       setTools('');
       setFile(null);
       setCachedTemplates([]);
