@@ -5,9 +5,10 @@ Last updated: 2026-07-18 (Asia/Karachi)
 ## Status
 
 - Current milestone: Milestone 2 — Secure route-local boundaries.
-- State: in progress; the typed NextAuth claims in step 2.1 and the public supervisor response boundary in step 2.3 are complete.
+- State: in progress; steps 2.1 and 2.3 plus the `GET /api/read-pdf` portion of step 2.4 are complete.
+- Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
-- Application runtime source changes made in the current session: one bounded change to `app/api/supervisors/route.ts`; the NextAuth work is type-only.
+- Application runtime source changes made in the current session: bounded changes to `app/api/supervisors/route.ts` and `app/api/read-pdf/route.ts`; the NextAuth work is type-only.
 - Documentation is intentionally ignored through `docs/` in `.gitignore` as requested.
 
 The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Milestones.md).
@@ -36,7 +37,7 @@ The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Mile
 
 ## Highest-priority risks
 
-1. Route authorization often depends on the root matcher; object-level ownership is missing or inconsistent in supervisor, join, voice, and file-read flows.
+1. Route authorization often depends on the root matcher; object-level ownership is missing or inconsistent in supervisor, join, and voice flows.
 2. There are still no route or transaction tests around most destructive and cross-system operations.
 3. Student academic reset duplicates the shared reset logic and has already diverged around canonical domains.
 4. `User` and `Project` duplicate project state and can disagree.
@@ -44,7 +45,7 @@ The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Mile
 6. Voice GET has destructive hidden side effects.
 7. Three dashboard components exceed 1,000 lines and mix UI with network/business/file behavior.
 
-Resolved in the current slice: public `/api/supervisors` no longer returns whole supervisor documents and is protected by explicit response-shape tests.
+Resolved in the current slice: public `/api/supervisors` no longer returns whole supervisor documents, and `/api/read-pdf` now verifies ownership before signing an R2 URL.
 
 ## Decisions and guardrails for the next session
 
@@ -61,10 +62,11 @@ Resolved in the current slice: public `/api/supervisors` no longer returns whole
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Begin Milestone 2.4 with `GET /api/read-pdf`: trace every caller and add anonymous, wrong-role, correct-role, and cross-user file-key characterization tests before changing authorization.
-3. Add a shared role/session assertion only when the selected work produces a second concrete caller; until then, keep the route-local check direct.
-4. Do not split dashboard components or add React component tooling during this security milestone.
-5. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
+2. Continue Milestone 2.4 with `GET /api/voice`: trace the existing cleanup transaction and add anonymous, wrong-role, correct-role, and cross-project tests before adding an authorization check.
+3. Keep the current `GET /api/voice` cleanup behavior unchanged during its authorization slice; move its read-side mutation separately in Milestone 5.
+4. Add a shared role/session assertion only when the selected work produces a second concrete caller; until then, keep the route-local check direct.
+5. Do not split dashboard components or add React component tooling during this security milestone.
+6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
 
 ## Milestone 1 progress
 
@@ -106,16 +108,24 @@ Completed in the current session:
 - Replaced the document spread with explicit response objects. Anonymous and student callers receive only `_id`, `name`, `filledSlots`, `isFull`, and `maxSlots`.
 - Preserved the Admin dashboard fields for authenticated admins. Authenticated supervisors receive `rollNo` and `migrationCode` only on their own record, so the existing dashboard continues to work without exposing other supervisors' codes.
 - Changed the touched catch block from explicit `any` to `unknown`; this removed one existing lint error.
+- Added 11 `GET /api/read-pdf` authorization tests covering anonymous and missing-key requests, valid project member/supervisor/admin access, cross-project PDF and voice-note denial, legacy student PDF access, and supervisor-broadcast access.
+- Files changed for this sub-step: `app/api/read-pdf/route.ts`, `tests/read-pdf-route.test.ts`, `docs/Current Milestone.md`, and `docs/Refactor Milestones.md`.
+- Replaced the authenticated-only file read with database-backed ownership checks before an R2 URL is signed. Project members and supervisors can read their own project files and voice notes; students can read only their assigned supervisor's broadcast; admins retain access to recorded resources.
+- Preserved legacy PDFs stored only on a student record, including team and supervisor access when a project record exists.
+- Kept the existing signed-URL response, cache headers, API path, key format, and five-minute expiry unchanged for authorized callers.
 - Added no dependency, framework change, route rename, schema change, or new feature.
 
 Validation for this slice:
 
 - `npx vitest run tests/supervisors-route.test.ts`: passed, 1 file and 5 tests.
+- `npx vitest run tests/read-pdf-route.test.ts`: passed, 1 file and 11 tests.
 - `npm test`: passed, 2 files and 16 tests.
 - `npm run typecheck`: passed.
 - `npx eslint app/api/auth/[...nextauth]/route.ts types/next-auth.d.ts`: passed.
 - `npx eslint app/api/supervisors/route.ts tests/supervisors-route.test.ts`: passed.
-- `npm run lint`: expected baseline failure, now 214 problems (173 errors, 41 warnings), down from 223 because this slice removed nine unsafe casts from the auth route.
+- `npx eslint app/api/read-pdf/route.ts tests/read-pdf-route.test.ts`: passed.
+- `npm test`: passed, 3 files and 27 tests.
+- `npm run lint`: expected baseline failure, now 213 problems (172 errors, 41 warnings), down from 214 because this slice removed one explicit `any` from the file-read route.
 - `npm run build`: passed and produced a fresh production build artifact; the existing `middleware.ts` deprecation warning remains.
 - `git diff --check`: passed.
 
@@ -124,6 +134,8 @@ Known limits and risk:
 - The route still serves both public and role-specific shapes at the same URL to avoid breaking three existing dashboards. The response branches are explicit and tested, but a future contract split may be worthwhile only when its clients are changed together.
 - JWT roles are trusted in the same way as the current application middleware. Typed claims and route-local authorization for protected routes remain Milestone 2 work.
 - Dashboard components still accept `session` through broad `any` props. Replacing those component props is deliberately deferred to their own bounded typing/refactoring work; this declaration makes the correct type available when that work begins.
+- `read-pdf` can only sign keys represented by a Project, VoiceNote, recorded legacy student PDF, or active supervisor broadcast. Orphaned uploads are intentionally denied and remain a storage-reconciliation concern for Milestone 5.
+- R2 URLs remain valid for five minutes after authorization. Revocation within that window would require a different delivery architecture and is out of scope.
 - No live database or browser role smoke test was run; the test suite uses mocked route dependencies and the production build validates compilation.
 
 ## Definition of done for Milestone 1
@@ -147,7 +159,9 @@ npm test
 npm run typecheck
 npx eslint tests/pure-helpers.test.ts
 npx vitest run tests/supervisors-route.test.ts
+npx vitest run tests/read-pdf-route.test.ts
 npx eslint app/api/supervisors/route.ts tests/supervisors-route.test.ts
+npx eslint app/api/read-pdf/route.ts tests/read-pdf-route.test.ts
 npx eslint app/api/auth/[...nextauth]/route.ts types/next-auth.d.ts
 git diff --check
 ```

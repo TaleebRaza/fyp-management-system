@@ -245,13 +245,15 @@ Gate: new tests pass; typecheck passes; lint baseline is captured and cannot wor
 
 ### Milestone 2 — Secure route-local boundaries
 
-2.1 Add typed NextAuth session/JWT augmentation to remove repeated session assertions.
+Status: in progress. Steps 2.1 and 2.3 are complete. The `GET /api/read-pdf` file-read boundary in step 2.4 is complete: 11 route tests verify anonymous, valid-role, legacy-data, and cross-user behavior; the route only signs keys represented by authorized Project, VoiceNote, student, or supervisor-broadcast records.
+
+2.1 Add typed NextAuth session/JWT augmentation to remove repeated session assertions. Complete.
 
 2.2 Add one small server-only role/session assertion function and use it first in the public-data and voice routes.
 
-2.3 Project the public supervisor response to an explicit allowlist. Keep any admin-only response separate.
+2.3 Project the public supervisor response to an explicit allowlist. Keep any admin-only response separate. Complete.
 
-2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership.
+2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. In progress: `GET /api/read-pdf` is complete; `GET /api/voice` is next.
 
 2.5 Add route-local checks to handlers currently protected only by the network matcher.
 
@@ -380,4 +382,3 @@ Gate: all commands pass, no unresolved Critical/High finding, and remaining Medi
 - Next.js unit/component testing guidance for Vitest and React Testing Library: <https://nextjs.org/docs/app/guides/testing/vitest>
 - Next.js documents compression as enabled by default: <https://nextjs.org/docs/app/api-reference/config/next-config-js/compress>
 - Next.js documents `lucide-react` and `date-fns` as optimized by default: <https://nextjs.org/docs/pages/api-reference/config/next-config-js/optimizePackageImports>
-
