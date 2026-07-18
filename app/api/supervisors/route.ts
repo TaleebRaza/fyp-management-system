@@ -1,16 +1,23 @@
-import { NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Project from '../../../models/Project'; 
 import { APP_SETTINGS } from '../../../config/appSettings';
 import { getSupervisorExtraSlots, getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 
-export async function GET() {
+const SUPERVISOR_RESPONSE_FIELDS =
+  '_id name rollNo email migrationCode notificationsEnabled extraSlots';
+
+export async function GET(req: NextRequest) {
   try {
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     await connectToDatabase();
-    
+
     // 1. Fetch all users with the role of supervisor (Query 1)
-    const supervisors = await User.find({ role: 'supervisor' }).lean();
+    const supervisors = await User.find({ role: 'supervisor' })
+      .select(SUPERVISOR_RESPONSE_FIELDS)
+      .lean();
     
     // If no supervisors exist, return early to save processing time
     if (!supervisors.length) {
@@ -47,20 +54,46 @@ export async function GET() {
       const filledSlots = countsMap.get(sup._id.toString()) || 0;
       const extraSlots = getSupervisorExtraSlots(sup);
       const maxSlots = getSupervisorMaxSlots(sup);
-      
-      return {
-        ...sup,
-        extraSlots,
+
+      const publicSupervisor = {
+        _id: sup._id,
+        name: sup.name,
         filledSlots,
         isFull: filledSlots >= maxSlots,
         maxSlots
       };
+
+      if (token?.role === 'admin') {
+        return {
+          ...publicSupervisor,
+          rollNo: sup.rollNo,
+          email: sup.email,
+          migrationCode: sup.migrationCode,
+          notificationsEnabled: sup.notificationsEnabled,
+          extraSlots
+        };
+      }
+
+      const isOwnSupervisorRecord =
+        token?.role === 'supervisor' &&
+        String(token.id ?? '') === sup._id.toString();
+
+      if (isOwnSupervisorRecord) {
+        return {
+          ...publicSupervisor,
+          rollNo: sup.rollNo,
+          migrationCode: sup.migrationCode
+        };
+      }
+
+      return publicSupervisor;
     });
 
     return NextResponse.json(supervisorsWithSlots, { status: 200 });
     
-  } catch (error: any) {
-    console.error('API Error [supervisor-fetch]:', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('API Error [supervisor-fetch]:', message);
     return NextResponse.json({ error: 'Failed to fetch supervisors' }, { status: 500 });
   }
 }

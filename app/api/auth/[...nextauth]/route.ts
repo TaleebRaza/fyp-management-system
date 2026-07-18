@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import type { NextRequest } from "next/server";
 import connectToDatabase from "../../../../lib/mongodb";
 import User from "../../../../models/User";
 import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
@@ -85,16 +86,16 @@ const handler = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
-        token.rollNo = (user as any).rollNo;
+        token.role = user.role;
+        token.rollNo = user.rollNo;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).role = token.role;
-        (session.user as any).rollNo = token.rollNo;
+        session.user.id = token.id;
+        session.user.role = token.role;
+        session.user.rollNo = token.rollNo;
       }
       return session;
     }
@@ -105,6 +106,10 @@ const handler = NextAuth({
   },
   secret: process.env.NEXTAUTH_SECRET,
 });
+
+type NextAuthRouteContext = {
+  params: Promise<{ nextauth: string[] }>;
+};
 
 // --- ARCHITECT-AI: TRUE BROWSER SESSION OVERRIDE ---
 // Intercept the NextAuth response and strip the explicit expiration dates.
@@ -129,12 +134,12 @@ function enforceBrowserSession(response: Response) {
 }
 
 // We must pass the "context" object so NextAuth knows the exact route parameters
-export async function GET(req: Request, context: any) {
-  const response = await handler(req as any, context);
+export async function GET(req: NextRequest, context: NextAuthRouteContext) {
+  const response = await handler(req, context);
   return enforceBrowserSession(response);
 }
 
-export async function POST(req: Request, context: any) {
-  const response = await handler(req as any, context);
+export async function POST(req: NextRequest, context: NextAuthRouteContext) {
+  const response = await handler(req, context);
   return enforceBrowserSession(response);
 }
