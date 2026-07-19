@@ -1,6 +1,6 @@
 # Refactor Milestones
 
-Last audited: 2026-07-18 (Asia/Karachi)
+Last audited: 2026-07-19 (Asia/Karachi)
 
 ## Scope and guardrails
 
@@ -245,7 +245,7 @@ Gate: new tests pass; typecheck passes; lint baseline is captured and cannot wor
 
 ### Milestone 2 — Secure route-local boundaries
 
-Status: in progress. Steps 2.1 and 2.3 are complete. The `GET /api/read-pdf` file-read boundary in step 2.4 is complete: 11 route tests verify anonymous, valid-role, legacy-data, and cross-user behavior; the route only signs keys represented by authorized Project, VoiceNote, student, or supervisor-broadcast records.
+Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, `GET /api/read-pdf` and `GET /api/voice` are complete. Eleven file-read tests protect authorized records and cross-user denial; six voice-route tests protect anonymous/wrong-role denial, valid member/supervisor reads, and cross-project denial. Voice cleanup still occurs on authorized GET and remains scheduled for Milestone 5.
 
 2.1 Add typed NextAuth session/JWT augmentation to remove repeated session assertions. Complete.
 
@@ -253,7 +253,7 @@ Status: in progress. Steps 2.1 and 2.3 are complete. The `GET /api/read-pdf` fil
 
 2.3 Project the public supervisor response to an explicit allowlist. Keep any admin-only response separate. Complete.
 
-2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. In progress: `GET /api/read-pdf` is complete; `GET /api/voice` is next.
+2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. In progress: `GET /api/read-pdf` and `GET /api/voice` are complete; `POST /api/voice` is next.
 
 2.5 Add route-local checks to handlers currently protected only by the network matcher.
 

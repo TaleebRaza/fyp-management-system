@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import connectToDatabase from '../../../lib/mongodb';
+import Project from '../../../models/Project';
+import SystemConfig from '../../../models/SystemConfig';
 import VoiceNote from '../../../models/VoiceNote';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
@@ -11,12 +14,33 @@ export const dynamic = 'force-dynamic';
 // 1. FETCH & LAZY GARBAGE COLLECTION
 export async function GET(req: NextRequest) {
   try {
-    await connectToDatabase();
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (token.role !== 'student' && token.role !== 'supervisor') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const url = new URL(req.url);
     const projectId = url.searchParams.get('projectId');
     
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID required' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    const project = await Project.findById(projectId)
+      .select('members supervisorId')
+      .lean();
+    const userId = String(token.id);
+    const canAccessProject =
+      (token.role === 'student' && project?.members?.some((member: unknown) => String(member) === userId)) ||
+      (token.role === 'supervisor' && String(project?.supervisorId ?? '') === userId);
+
+    if (!canAccessProject) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const session = await mongoose.startSession();
@@ -82,8 +106,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-import SystemConfig from '../../../models/SystemConfig';
-
 // 2. SAVE NEW NOTE LEDGER
 // app/api/voice/route.ts (POST handler only – replace the whole POST function)
 
@@ -130,7 +152,7 @@ export async function PATCH(req: NextRequest) {
     );
 
     return NextResponse.json({ message: 'Note marked as played', note: updatedNote }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to update note' }, { status: 500 });
   }
 }

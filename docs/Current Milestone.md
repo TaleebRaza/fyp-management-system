@@ -1,14 +1,14 @@
 # Current Milestone
 
-Last updated: 2026-07-18 (Asia/Karachi)
+Last updated: 2026-07-19 (Asia/Karachi)
 
 ## Status
 
 - Current milestone: Milestone 2 — Secure route-local boundaries.
-- State: in progress; steps 2.1 and 2.3 plus the `GET /api/read-pdf` portion of step 2.4 are complete.
+- State: in progress; steps 2.1 and 2.3 plus the `GET /api/read-pdf` and `GET /api/voice` portions of step 2.4 are complete.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
-- Application runtime source changes made in the current session: bounded changes to `app/api/supervisors/route.ts` and `app/api/read-pdf/route.ts`; the NextAuth work is type-only.
+- Application runtime source changes made in the current session: bounded changes to `app/api/supervisors/route.ts`, `app/api/read-pdf/route.ts`, and `app/api/voice/route.ts`; the NextAuth work is type-only.
 - Documentation is intentionally ignored through `docs/` in `.gitignore` as requested.
 
 The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Milestones.md).
@@ -45,7 +45,7 @@ The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Mile
 6. Voice GET has destructive hidden side effects.
 7. Three dashboard components exceed 1,000 lines and mix UI with network/business/file behavior.
 
-Resolved in the current slice: public `/api/supervisors` no longer returns whole supervisor documents, and `/api/read-pdf` now verifies ownership before signing an R2 URL.
+Resolved in the current slices: public `/api/supervisors` no longer returns whole supervisor documents, `/api/read-pdf` verifies ownership before signing an R2 URL, and `GET /api/voice` verifies project membership before reading notes or starting cleanup.
 
 ## Decisions and guardrails for the next session
 
@@ -62,9 +62,9 @@ Resolved in the current slice: public `/api/supervisors` no longer returns whole
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 2.4 with `GET /api/voice`: trace the existing cleanup transaction and add anonymous, wrong-role, correct-role, and cross-project tests before adding an authorization check.
-3. Keep the current `GET /api/voice` cleanup behavior unchanged during its authorization slice; move its read-side mutation separately in Milestone 5.
-4. Add a shared role/session assertion only when the selected work produces a second concrete caller; until then, keep the route-local check direct.
+2. Continue Milestone 2.4 with `POST /api/voice`: characterize anonymous, wrong-role, sender spoofing, valid membership, and cross-project behavior before changing authorization.
+3. Keep the current `GET /api/voice` cleanup behavior unchanged; move its read-side mutation separately in Milestone 5.
+4. Consider the planned small server-only role/session assertion now that multiple protected route handlers use the same token boundary; add it only if it reduces the next bounded diff without broad churn.
 5. Do not split dashboard components or add React component tooling during this security milestone.
 6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
 
@@ -114,6 +114,11 @@ Completed in the current session:
 - Preserved legacy PDFs stored only on a student record, including team and supervisor access when a project record exists.
 - Kept the existing signed-URL response, cache headers, API path, key format, and five-minute expiry unchanged for authorized callers.
 - Added no dependency, framework change, route rename, schema change, or new feature.
+- Added six `GET /api/voice` route tests covering anonymous access, admin/wrong-role access, valid project-member and assigned-supervisor access, and cross-project student/supervisor access.
+- Reproduced the authorization defect before the runtime change: all four unauthorized and cross-project cases returned `200` and could start the cleanup transaction.
+- Added a route-local JWT role and Project membership check before the existing cleanup transaction. Only project-member students and the assigned supervisor can fetch notes or trigger cleanup.
+- Preserved the required `projectId`, cleanup timing/query/order, R2 deletion, database deletion, ledger adjustment, population/sort, and successful response shape.
+- Files changed for this sub-step: `app/api/voice/route.ts`, `tests/voice-route.test.ts`, `docs/Current Milestone.md`, and `docs/Refactor Milestones.md`.
 
 Validation for this slice:
 
@@ -128,6 +133,14 @@ Validation for this slice:
 - `npm run lint`: expected baseline failure, now 213 problems (172 errors, 41 warnings), down from 214 because this slice removed one explicit `any` from the file-read route.
 - `npm run build`: passed and produced a fresh production build artifact; the existing `middleware.ts` deprecation warning remains.
 - `git diff --check`: passed.
+- Pre-change `npx vitest run tests/voice-route.test.ts`: failed as expected, 4 unauthorized/cross-project failures and 2 valid-access passes.
+- Post-change `npx vitest run tests/voice-route.test.ts`: passed, 1 file and 6 tests.
+- `npm test`: passed, 4 files and 33 tests.
+- `npm run typecheck`: passed.
+- `npx eslint app/api/voice/route.ts tests/voice-route.test.ts`: passed with no findings.
+- `npm run lint`: expected baseline failure, 212 problems (172 errors, 40 warnings); no new findings, and the touched route's existing unused catch-variable warning was removed.
+- `npm run build`: passed outside the restricted sandbox; compilation, TypeScript, page generation, and all 20 static pages completed. The existing `middleware.ts` deprecation warning remains. The sandboxed attempt failed because Turbopack could not bind a local port (`Operation not permitted`).
+- `git diff --check`: passed.
 
 Known limits and risk:
 
@@ -137,6 +150,7 @@ Known limits and risk:
 - `read-pdf` can only sign keys represented by a Project, VoiceNote, recorded legacy student PDF, or active supervisor broadcast. Orphaned uploads are intentionally denied and remain a storage-reconciliation concern for Milestone 5.
 - R2 URLs remain valid for five minutes after authorization. Revocation within that window would require a different delivery architecture and is out of scope.
 - No live database or browser role smoke test was run; the test suite uses mocked route dependencies and the production build validates compilation.
+- `GET /api/voice` is now protected, but POST, PATCH, and the voice upload-presign route remain separate Milestone 2.4 authorization work.
 
 ## Definition of done for Milestone 1
 
