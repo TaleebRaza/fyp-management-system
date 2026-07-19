@@ -11,6 +11,22 @@ import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
+type ProjectAccessRecord = {
+  members?: unknown[];
+  supervisorId?: unknown;
+};
+
+function canAccessVoiceProject(
+  project: ProjectAccessRecord | null,
+  userId: string,
+  role: unknown
+) {
+  return (
+    (role === 'student' && project?.members?.some(member => String(member) === userId)) ||
+    (role === 'supervisor' && String(project?.supervisorId ?? '') === userId)
+  );
+}
+
 // 1. FETCH & LAZY GARBAGE COLLECTION
 export async function GET(req: NextRequest) {
   try {
@@ -35,11 +51,7 @@ export async function GET(req: NextRequest) {
       .select('members supervisorId')
       .lean();
     const userId = String(token.id);
-    const canAccessProject =
-      (token.role === 'student' && project?.members?.some((member: unknown) => String(member) === userId)) ||
-      (token.role === 'supervisor' && String(project?.supervisorId ?? '') === userId);
-
-    if (!canAccessProject) {
+    if (!canAccessVoiceProject(project, userId, token.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -111,7 +123,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await connectToDatabase();
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (token.role !== 'student' && token.role !== 'supervisor') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { projectId, senderId, blobUrl, fileSize } = await req.json();
 
     // Validate all required fields, including fileSize
@@ -122,7 +142,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const newNote = new VoiceNote({ projectId, senderId, blobUrl, fileSize });
+    const userId = String(token.id);
+    if (String(senderId) !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await connectToDatabase();
+    const project = await Project.findById(projectId)
+      .select('members supervisorId')
+      .lean();
+
+    if (!canAccessVoiceProject(project, userId, token.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const newNote = new VoiceNote({ projectId, senderId: userId, blobUrl, fileSize });
     await newNote.save();
 
     // Increment the storage ledger
@@ -142,8 +176,33 @@ export async function POST(req: NextRequest) {
 // 3. MARK AS PLAYED (Starts the 10-Minute Timer)
 export async function PATCH(req: NextRequest) {
   try {
-    await connectToDatabase();
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (token.role !== 'student' && token.role !== 'supervisor') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { noteId } = await req.json();
+    if (!noteId) {
+      return NextResponse.json({ error: 'Note ID required' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    const note = await VoiceNote.findById(noteId).select('projectId').lean();
+    if (!note?.projectId) {
+      return NextResponse.json({ error: 'Voice note not found' }, { status: 404 });
+    }
+
+    const project = await Project.findById(note.projectId)
+      .select('members supervisorId')
+      .lean();
+
+    if (!canAccessVoiceProject(project, String(token.id), token.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const updatedNote = await VoiceNote.findByIdAndUpdate(
       noteId,
