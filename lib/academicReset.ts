@@ -118,6 +118,7 @@ async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, ses
         title: '',
         titleFingerprint: '',
         domain: '',
+        domains: [],
         pdfUrl: '',
         pdfSize: 0,
         status: 'Pending',
@@ -171,19 +172,33 @@ export async function resetStudentAcademicInfo({
     const finalProgram = providedProgram ? String(newProgram).trim().toUpperCase() : currentProgram;
     const finalBatch = providedBatch ? String(newBatch).trim() : currentBatch;
 
-    if (providedProgram && !isValidProgram(finalProgram)) {
+    if (
+      (actor === 'student' && (!providedProgram || !isValidProgram(finalProgram))) ||
+      (providedProgram && !isValidProgram(finalProgram))
+    ) {
       throw new AcademicResetError('Invalid program selected.', 400);
     }
 
-    if (providedBatch && !isValidBatch(finalBatch)) {
+    if (
+      (actor === 'student' && (!providedBatch || !isValidBatch(finalBatch))) ||
+      (providedBatch && !isValidBatch(finalBatch))
+    ) {
       throw new AcademicResetError('Invalid batch selected.', 400);
     }
 
-    const programChanged = providedProgram && finalProgram !== currentProgram;
-    const batchChanged = providedBatch && finalBatch !== currentBatch;
+    const programChanged =
+      providedProgram &&
+      finalProgram !== (actor === 'student' ? student.program : currentProgram);
+    const batchChanged =
+      providedBatch && finalBatch !== (actor === 'student' ? student.batch : currentBatch);
 
     if (!programChanged && !batchChanged) {
-      throw new AcademicResetError('No changes selected. Academic information is already the same.', 400);
+      throw new AcademicResetError(
+        actor === 'student'
+          ? 'No changes selected. Program and Batch are already the same.'
+          : 'No changes selected. Academic information is already the same.',
+        400
+      );
     }
 
     if (actor === 'student' && enforceStudentCooldown && student.lastProgramBatchChangeAt) {
@@ -275,6 +290,7 @@ export async function resetStudentAcademicInfo({
     student.projectTitle = '';
     student.projectDesc = '';
     student.domain = '';
+    student.domains = [];
     student.tools = '';
     student.pdfUrl = '';
 
@@ -291,7 +307,7 @@ export async function resetStudentAcademicInfo({
       message:
         actor === 'admin'
           ? 'Academic information updated by Admin. Student has been reset.'
-          : 'Academic information updated. Your dashboard has been reset.',
+          : 'Program and Batch updated successfully. Your dashboard has been reset.',
       freedBytes,
     };
   } catch (error) {

@@ -253,7 +253,7 @@ Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GE
 
 2.3 Project the public supervisor response to an explicit allowlist. Keep any admin-only response separate. Complete.
 
-2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. In progress: file reads, voice operations/upload, Supervisor GET, and the Supervisor POST action boundary are complete. `updateStatus`, `migrate`, and `removeStudent` now require an authenticated supervisor who owns the target student, or an admin; migration rechecks ownership in its transaction. Project join is next.
+2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. Complete: file reads, voice operations/upload, Supervisor GET/POST, and project join actor binding now check the authenticated actor and applicable resource membership. `updateStatus`, `migrate`, and `removeStudent` require an authenticated supervisor who owns the target student, or an admin; migration rechecks ownership in its transaction. Project join requires a matching student JWT (admins retain their existing path).
 
 2.5 Add route-local checks to handlers currently protected only by the network matcher.
 
@@ -261,21 +261,25 @@ Gate: full auth matrix passes; no protected field appears in public JSON; valid 
 
 ### Milestone 3 — Remove the academic reset duplicate
 
-3.1 Add parity tests for the student route branch and `resetStudentAcademicInfo`.
+Status: 3.1–3.3 complete. Direct helper and route characterization now cover the student reset state, canonical domain clearing, cleanup/ledger refund, validation, and response mapping. The dashboard branch now reuses `resetStudentAcademicInfo`. The remaining helper functions in the student route serve supervisor change and are not reset duplicates; retain them pending their own storage milestone tests.
 
-3.2 Resolve the canonical `domains` reset discrepancy in the shared function.
+3.1 Add parity tests for the student route branch and `resetStudentAcademicInfo`. Complete for reset state, canonical domains, solo cleanup/ledger refund, validation, and response mapping; team/cooldown/rollback cases remain part of the gate.
 
-3.3 Replace the student branch with one shared call and preserve status/error messages where clients depend on them.
+3.2 Resolve the canonical `domains` reset discrepancy in the shared function. Complete.
 
-3.4 Delete now-unused duplicate helpers from the student route.
+3.3 Replace the student branch with one shared call and preserve status/error messages where clients depend on them. Complete.
+
+3.4 Delete now-unused duplicate helpers from the student route. Complete for the program/batch branch; remaining local helpers are used by supervisor change.
 
 Gate: reset, cleanup, cooldown, rollback, and route contract tests pass; line count decreases materially.
 
 ### Milestone 4 — Consolidate capacity and team invariants
 
-4.1 Extract one typed capacity query/calculation used by the existing call sites.
+Status: 4.1 complete and 4.2 is partial. `lib/supervisorCapacity.ts` owns the tested per-target, mode-dependent count and is used by registration, student assignment/change, supervisor migration, and the student-mode join firewall. Supervisor listing deliberately retains its efficient bulk aggregation rather than adding N+1 queries; concurrency tests remain.
 
-4.2 Use it in registration, list, assignment, supervisor change, migration, and join without merging those workflows.
+4.1 Extract one typed capacity query/calculation used by the existing call sites. Complete.
+
+4.2 Use it in registration, list, assignment, supervisor change, migration, and join without merging those workflows. Partial: the list keeps its equivalent bulk aggregation to preserve query efficiency.
 
 4.3 Add concurrency tests and correct any verified race in a separate focused change.
 

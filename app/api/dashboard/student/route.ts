@@ -6,8 +6,9 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
-import { APP_SETTINGS, PROGRAM_MAP } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
+import { getSupervisorFilledSlots } from '../../../../lib/supervisorCapacity';
+import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
@@ -19,38 +20,10 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const MIN_BATCH_YEAR = 2021;
-
 type DeletionTarget = {
   key: string;
   size: number;
 };
-
-function isValidProgram(program: string) {
-  return Object.prototype.hasOwnProperty.call(PROGRAM_MAP, program);
-}
-
-function isValidBatch(batch: string) {
-  const match = /^(Spring|Fall) (20\d{2})$/.exec(batch);
-  if (!match) return false;
-
-  const year = Number(match[2]);
-  const maxYear = new Date().getFullYear() + 1;
-
-  return year >= MIN_BATCH_YEAR && year <= maxYear;
-}
-
-function formatCooldown(ms: number) {
-  const hours = Math.floor(ms / 3600000);
-  const minutes = Math.ceil((ms % 3600000) / 60000);
-
-  if (hours > 0) {
-    return `${hours} hour${hours === 1 ? '' : 's'}${minutes > 0 ? ` and ${minutes} minute${minutes === 1 ? '' : 's'}` : ''}`;
-  }
-
-  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-}
 
 function getR2ObjectKey(value: string) {
   const trimmedValue = String(value || '').trim();
@@ -235,153 +208,22 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Unauthorized Program/Batch update request.' }, { status: 401 });
       }
 
-      const studentId = String(body.id || '').trim();
-      const newProgram = String(body.program || '').trim().toUpperCase();
-      const newBatch = String(body.batch || '').trim();
-
-      if (!mongoose.Types.ObjectId.isValid(studentId)) {
-        return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
-      }
-
-      if (!isValidProgram(newProgram)) {
-        return NextResponse.json({ error: 'Invalid program selected.' }, { status: 400 });
-      }
-
-      if (!isValidBatch(newBatch)) {
-        return NextResponse.json({ error: 'Invalid batch selected.' }, { status: 400 });
-      }
-
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
       try {
-        const student = await User.findById(studentId).session(session);
+        const result = await resetStudentAcademicInfo({
+          targetUserId: String(body.id || '').trim(),
+          newProgram: String(body.program || '').trim().toUpperCase(),
+          newBatch: String(body.batch || '').trim(),
+          actor: 'student',
+          enforceStudentCooldown: true,
+        });
 
-        if (!student || student.role !== 'student') {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
+        return NextResponse.json(result, { status: 200 });
+      } catch (error: unknown) {
+        if (error instanceof AcademicResetError) {
+          return NextResponse.json({ error: error.message }, { status: error.statusCode });
         }
 
-        if (student.program === newProgram && student.batch === newBatch) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'No changes selected. Program and Batch are already the same.' }, { status: 400 });
-        }
-
-        if (student.lastProgramBatchChangeAt) {
-          const lastChangeTime = new Date(student.lastProgramBatchChangeAt).getTime();
-          const timeSinceLastChange = Date.now() - lastChangeTime;
-
-          if (timeSinceLastChange < PROGRAM_BATCH_CHANGE_COOLDOWN_MS) {
-            const remainingTime = PROGRAM_BATCH_CHANGE_COOLDOWN_MS - timeSinceLastChange;
-
-            await session.abortTransaction();
-            session.endSession();
-
-            return NextResponse.json(
-              { error: `You can change Program/Batch once per day. Please try again in ${formatCooldown(remainingTime)}.` },
-              { status: 429 }
-            );
-          }
-        }
-
-        const oldProject = student.projectId
-          ? await Project.findById(student.projectId).session(session)
-          : null;
-
-        let freedBytes = 0;
-
-        if (oldProject) {
-          const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
-          const isOnlyMember =
-            oldProjectMembers.length <= 1 ||
-            oldProjectMembers.every((member: any) => String(member) === String(student._id));
-
-          if (isOnlyMember) {
-            const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
-
-            const deletionTargets = mergeDeletionTargets([
-              buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
-              buildDeletionTarget(student.pdfUrl, oldProject.pdfSize),
-              ...voiceNotes
-                .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
-                .filter(Boolean),
-            ].filter(Boolean) as DeletionTarget[]);
-
-            if (deletionTargets.length > 0) {
-              await Promise.all(
-                deletionTargets.map((target) =>
-                  s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
-                )
-              );
-
-              freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
-            }
-
-            if (voiceNotes.length > 0) {
-              await VoiceNote.deleteMany({
-                _id: { $in: voiceNotes.map((note: any) => note._id) },
-              }).session(session);
-            }
-
-            await Project.findByIdAndDelete(oldProject._id, { session });
-          } else {
-            await Project.findByIdAndUpdate(
-              oldProject._id,
-              { $pull: { members: student._id } },
-              { session }
-            );
-          }
-        }
-
-        if (freedBytes > 0) {
-          await SystemConfig.findOneAndUpdate(
-            { configKey: 'storage' },
-            { $inc: { usedBytes: -freedBytes } },
-            { upsert: true, session }
-          );
-
-          await SystemConfig.updateOne(
-            { configKey: 'storage', usedBytes: { $lt: 0 } },
-            { $set: { usedBytes: 0 } },
-            { session }
-          );
-        }
-
-        const newProject = await createFreshStudentProject(student._id, session);
-
-        student.program = newProgram;
-        student.batch = newBatch;
-        student.supervisorId = null;
-        student.projectId = newProject._id;
-        student.status = 'Unassigned';
-        student.remarks = 'You changed your academic information and accepted the progress reset. Please choose a supervisor again or join a team to begin.';
-        student.projectTitle = '';
-        student.projectDesc = '';
-        student.domain = '';
-        student.domains = [];
-        student.tools = '';
-        student.pdfUrl = '';
-        student.lastProgramBatchChangeAt = new Date();
-
-        await student.save({ session });
-
-        await session.commitTransaction();
-        session.endSession();
-
-        return NextResponse.json(
-          {
-            message: 'Program and Batch updated successfully. Your dashboard has been reset.',
-            freedBytes,
-          },
-          { status: 200 }
-        );
-      } catch (error: any) {
-        await session.abortTransaction();
-        session.endSession();
-
-        console.error('Program/Batch Update Error:', error.message);
+        console.error('Program/Batch Update Error:', error);
         return NextResponse.json({ error: 'Failed to update Program/Batch.' }, { status: 500 });
       }
     }
@@ -438,18 +280,10 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
         }
 
-        let filledSlots = 0;
-
-        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-          filledSlots = await User.countDocuments({
-            role: 'student',
-            supervisorId: targetSupervisor._id,
-          }).session(session);
-        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-          filledSlots = await Project.countDocuments({
-            supervisorId: targetSupervisor._id,
-          }).session(session);
-        }
+        const filledSlots = await getSupervisorFilledSlots(
+          String(targetSupervisor._id),
+          session
+        );
 
         const maxSlots = getSupervisorMaxSlots(targetSupervisor);
 
@@ -632,13 +466,8 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
         }
 
-        let filledSlots = 0;
         // 2. Count current slots WITH the session lock
-        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-          filledSlots = await User.countDocuments({ role: 'student', supervisorId: body.supervisorId }).session(session);
-        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-          filledSlots = await Project.countDocuments({ supervisorId: body.supervisorId }).session(session);
-        }
+        const filledSlots = await getSupervisorFilledSlots(body.supervisorId, session);
 
         const maxSlots = getSupervisorMaxSlots(supervisor);
 

@@ -1,5 +1,6 @@
 // app/api/project/join/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
@@ -7,6 +8,7 @@ import Project from '../../../../models/Project';
 import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
+import { getSupervisorFilledSlots } from '../../../../lib/supervisorCapacity';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -14,9 +16,23 @@ import {
 
 const MAX_TEAM_MEMBERS = 2;
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const { studentId, inviteCode } = await req.json();
+
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (token.role !== 'student' && token.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    if (token.role === 'student' && String(token.id) !== String(studentId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     await connectToDatabase();
 
     // Fetch the joining student OUTSIDE the transaction because their core identity doesn't change
@@ -78,10 +94,10 @@ export async function POST(req: Request) {
                   .select('_id extraSlots')
                   .session(session);
 
-                const currentFilledSlots = await User.countDocuments({ 
-                  role: 'student', 
-                  supervisorId: firstMember.supervisorId 
-                }).session(session);
+                const currentFilledSlots = await getSupervisorFilledSlots(
+                  String(firstMember.supervisorId),
+                  session
+                );
                 const maxSlots = getSupervisorMaxSlots(supervisor);
                 
                 if (currentFilledSlots >= maxSlots) {

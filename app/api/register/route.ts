@@ -7,8 +7,9 @@ import User from '../../../models/User';
 import Project from '../../../models/Project';
 import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
 import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
-import { APP_SETTINGS, PROGRAM_MAP } from '../../../config/appSettings';
+import { PROGRAM_MAP } from '../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
+import { getSupervisorFilledSlots } from '../../../lib/supervisorCapacity';
 import { calculateLateRegistrationFine } from '../../../lib/lateRegistrationFine';
 
 const MIN_PASSWORD_LENGTH = 6;
@@ -66,12 +67,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
       }
 
-      let filledSlots = 0;
-      if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-        filledSlots = await User.countDocuments({ role: 'student', supervisorId });
-      } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-        filledSlots = await Project.countDocuments({ supervisorId });
-      }
+      const filledSlots = await getSupervisorFilledSlots(supervisorId);
 
       const maxSlots = getSupervisorMaxSlots(supervisor);
       if (filledSlots >= maxSlots) {

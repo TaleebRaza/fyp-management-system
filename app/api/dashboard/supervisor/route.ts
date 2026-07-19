@@ -7,8 +7,8 @@ import { sendNotificationEmail } from '../../../../lib/mailer';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
-import { APP_SETTINGS } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
+import { getSupervisorFilledSlots } from '../../../../lib/supervisorCapacity';
 import mongoose, { ClientSession } from 'mongoose';
 import {
   formatProjectDomainLabels,
@@ -360,12 +360,7 @@ export async function POST(req: NextRequest) {
           return await fail('This student is already assigned to the target supervisor.', 400);
         }
 
-        let filledSlots = 0;
-        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-          filledSlots = await User.countDocuments({ role: 'student', supervisorId: targetSup._id }).session(session);
-        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-          filledSlots = await Project.countDocuments({ supervisorId: targetSup._id }).session(session);
-        }
+        const filledSlots = await getSupervisorFilledSlots(String(targetSup._id), session);
 
         const maxSlots = getSupervisorMaxSlots(targetSup);
         if (filledSlots >= maxSlots) {
