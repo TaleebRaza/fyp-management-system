@@ -112,7 +112,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       const urlRes = await fetch('/api/voice/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentType: file.type, fileSize: file.size })
+        body: JSON.stringify({ contentType: file.type, fileSize: file.size, projectId })
       });
       
       if (!urlRes.ok) {

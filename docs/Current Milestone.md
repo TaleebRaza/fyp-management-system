@@ -5,10 +5,10 @@ Last updated: 2026-07-19 (Asia/Karachi)
 ## Status
 
 - Current milestone: Milestone 2 — Secure route-local boundaries.
-- State: in progress; steps 2.1 and 2.3 plus `GET /api/read-pdf` and all three handlers in `/api/voice` are complete in step 2.4.
+- State: in progress; steps 2.1 and 2.3 plus file reads, all `/api/voice` handlers, voice upload presigning, and Supervisor dashboard GET are complete in step 2.4.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
-- Application runtime source changes made in the current session: bounded changes to `app/api/supervisors/route.ts`, `app/api/read-pdf/route.ts`, and `app/api/voice/route.ts`; the NextAuth work is type-only.
+- Application runtime source changes made in the current session: bounded route-local security changes to supervisor listing, file reads, voice operations/upload, and Supervisor dashboard GET; the NextAuth work is type-only.
 - Documentation is intentionally ignored through `docs/` in `.gitignore` as requested.
 
 The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Milestones.md).
@@ -45,7 +45,7 @@ The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Mile
 6. Voice GET has destructive hidden side effects.
 7. Three dashboard components exceed 1,000 lines and mix UI with network/business/file behavior.
 
-Resolved in the current slices: public `/api/supervisors` no longer returns whole supervisor documents, `/api/read-pdf` verifies ownership before signing an R2 URL, and every `/api/voice` handler verifies project membership before reading or mutating notes.
+Resolved in the current slices: public `/api/supervisors` no longer returns whole supervisor documents; file and voice routes verify resource ownership; voice presigning is role/context bound; Supervisor dashboard GET no longer trusts a caller-supplied supervisor ID.
 
 ## Decisions and guardrails for the next session
 
@@ -62,7 +62,7 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 2.4 with `POST /api/voice/upload`: characterize anonymous, wrong-role, valid membership, and cross-project presign behavior; update its sole voice-chat caller to send `projectId` only if required by the authorization boundary.
+2. Continue Milestone 2.4 with the `updateStatus` action in `POST /api/dashboard/supervisor`: characterize anonymous, wrong-role, own-project, cross-supervisor, stage-change, cleanup, and notification behavior before adding ownership checks.
 3. Keep the current `GET /api/voice` cleanup behavior unchanged; move its read-side mutation separately in Milestone 5.
 4. Consider the planned small server-only role/session assertion now that multiple protected route handlers use the same token boundary; add it only if it reduces the next bounded diff without broad churn.
 5. Do not split dashboard components or add React component tooling during this security milestone.
@@ -163,7 +163,22 @@ Known limits and risk:
 - `read-pdf` can only sign keys represented by a Project, VoiceNote, recorded legacy student PDF, or active supervisor broadcast. Orphaned uploads are intentionally denied and remain a storage-reconciliation concern for Milestone 5.
 - R2 URLs remain valid for five minutes after authorization. Revocation within that window would require a different delivery architecture and is out of scope.
 - No live database or browser role smoke test was run; the test suite uses mocked route dependencies and the production build validates compilation.
-- All handlers in `/api/voice` are protected. The separate voice upload-presign route remains Milestone 2.4 authorization work and currently lacks project membership context.
+- All handlers in `/api/voice` and its upload-presign route are protected; project-chat uploads are membership-bound while the existing supervisor broadcast flow remains supported.
+- Added eight voice-upload route tests covering anonymous/wrong-role denial, required project and file-size validation, cross-project denial, valid member/assigned-supervisor access, and preserved supervisor broadcast uploads.
+- Added six Supervisor dashboard GET tests covering anonymous/student denial, missing ID, own-supervisor access, cross-supervisor denial, and admin access.
+- Reproduced six authorization defects before implementation: invalid-role/context upload requests and anonymous/student/cross-supervisor dashboard requests all returned `200`.
+- Bound student voice presigning to Project membership and supervisor project-chat presigning to ownership; retained no-project supervisor presigning for the existing broadcast caller. `VoiceChat` now supplies its existing `projectId`.
+- Added route-local JWT role and actor-ID checks to Supervisor dashboard GET before database access; supervisors can read only their own dashboard while admins retain explicit access.
+- Files changed for these sub-steps: `app/api/voice/upload/route.ts`, `components/ui/VoiceChat.tsx`, `app/api/dashboard/supervisor/route.ts`, `tests/voice-upload-route.test.ts`, `tests/supervisor-dashboard-get-route.test.ts`, and both milestone documents.
+- Pre-change focused tests: 6 authorization failures and 6 valid/existing-flow passes.
+- Post-change focused tests: passed, 2 files and 14 tests.
+- `npm test`: passed, 6 files and 60 tests.
+- `npm run typecheck`: passed.
+- `npx eslint app/api/voice/upload/route.ts tests/voice-upload-route.test.ts tests/supervisor-dashboard-get-route.test.ts`: passed.
+- The changed lines in `app/api/dashboard/supervisor/route.ts` and `components/ui/VoiceChat.tsx` add no lint findings; those files retain 11 errors and 5 warnings from the recorded baseline.
+- `npm run lint`: expected baseline failure, 211 problems (171 errors, 40 warnings), down by one error because the touched upload catch now uses `unknown`.
+- `npm run build`: passed outside the restricted sandbox; compilation, TypeScript, page generation, and all 20 static pages completed. The existing `middleware.ts` deprecation warning remains.
+- `git diff --check`: passed.
 
 ## Definition of done for Milestone 1
 

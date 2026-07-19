@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
@@ -74,11 +75,27 @@ async function createProjectWithUniqueInviteCode(projectData: any, session: Clie
   throw new Error('Failed to generate a unique project invite code.');
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (token.role !== 'supervisor' && token.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const id = req.nextUrl.searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'Supervisor ID required' }, { status: 400 });
+    }
+
+    if (token.role === 'supervisor' && String(token.id) !== id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     await connectToDatabase();
-    const url = new URL(req.url);
-    const id = url.searchParams.get("id");
     
     const students = await User.find({ role: 'student', supervisorId: id }).lean();
 
