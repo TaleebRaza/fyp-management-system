@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   startSession: vi.fn(),
   startTransaction: vi.fn(),
   userFindByIdAndDelete: vi.fn(),
+  userFindByIdAndUpdate: vi.fn(),
   userSave: vi.fn(),
   userUpdateMany: vi.fn(),
 }));
@@ -22,6 +23,7 @@ vi.mock('../lib/mongodb', () => ({ default: mocks.connectToDatabase }));
 vi.mock('../models/User', () => ({
   default: Object.assign(userConstructor, {
     findByIdAndDelete: mocks.userFindByIdAndDelete,
+    findByIdAndUpdate: mocks.userFindByIdAndUpdate,
     updateMany: mocks.userUpdateMany,
   }),
 }));
@@ -32,6 +34,7 @@ vi.mock('mongoose', () => ({ default: { startSession: mocks.startSession } }));
 
 import { POST as addSupervisor } from '../app/api/add-supervisor/route';
 import { POST as deleteSupervisor } from '../app/api/delete-supervisor/route';
+import { POST as toggleNotifications } from '../app/api/supervisors/toggle-notifications/route';
 
 function add() {
   return addSupervisor(new NextRequest('http://localhost/api/add-supervisor', {
@@ -51,6 +54,14 @@ function remove() {
   return deleteSupervisor(new NextRequest('http://localhost/api/delete-supervisor', {
     method: 'POST',
     body: JSON.stringify({ id: 'supervisor-1' }),
+    headers: { 'Content-Type': 'application/json' },
+  }));
+}
+
+function toggle() {
+  return toggleNotifications(new NextRequest('http://localhost/api/supervisors/toggle-notifications', {
+    method: 'POST',
+    body: JSON.stringify({ id: 'supervisor-1', enabled: false }),
     headers: { 'Content-Type': 'application/json' },
   }));
 }
@@ -77,6 +88,7 @@ describe('admin-only supervisor mutations', () => {
 
     expect((await add()).status).toBe(401);
     expect((await remove()).status).toBe(401);
+    expect((await toggle()).status).toBe(401);
     expect(mocks.connectToDatabase).not.toHaveBeenCalled();
   });
 
@@ -85,6 +97,7 @@ describe('admin-only supervisor mutations', () => {
 
     expect((await add()).status).toBe(403);
     expect((await remove()).status).toBe(403);
+    expect((await toggle()).status).toBe(403);
     expect(mocks.connectToDatabase).not.toHaveBeenCalled();
   });
 
@@ -119,5 +132,16 @@ describe('admin-only supervisor mutations', () => {
       expect.objectContaining({ session: expect.any(Object) })
     );
     expect(mocks.commitTransaction).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the valid admin notification update', async () => {
+    const response = await toggle();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ message: 'Notification settings updated' });
+    expect(mocks.userFindByIdAndUpdate).toHaveBeenCalledWith(
+      'supervisor-1',
+      { notificationsEnabled: false }
+    );
   });
 });

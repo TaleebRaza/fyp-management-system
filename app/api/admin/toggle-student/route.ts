@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import { requireRole } from '../../../../lib/routeAuth';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const auth = await requireRole(req, ['admin']);
+    if (auth.kind === 'denied') return auth.response;
+
     await connectToDatabase();
     const { studentId, isActive } = await req.json();
 
@@ -17,7 +21,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
         message: `Student account ${isActive ? 'restored' : 'deactivated'} successfully` 
     }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to update student status' }, { status: 500 });
   }
 }

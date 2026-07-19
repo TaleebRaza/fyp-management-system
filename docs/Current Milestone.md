@@ -5,7 +5,7 @@ Last updated: 2026-07-19 (Asia/Karachi)
 ## Status
 
 - Current milestone: Milestone 2 — Secure route-local boundaries.
-- State: in progress; steps 2.1 and 2.3 plus file reads, all `/api/voice` handlers, voice upload presigning, Supervisor dashboard GET/POST, and project-join actor binding are complete in step 2.4. Step 2.5 has begun with local checks for supervisor creation and deletion.
+- State: in progress; steps 2.1 and 2.3 plus file reads, all `/api/voice` handlers, voice upload presigning, Supervisor dashboard GET/POST, and project-join actor binding are complete in step 2.4. Step 2.5 now locally protects supervisor creation/deletion, supervisor notification toggling, and student account activation changes.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
 - Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, one shared supervisor-capacity query, and a small server-only role assertion; the NextAuth work is type-only.
@@ -62,7 +62,7 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 2.5 with one protected-only handler at a time, starting with `POST /api/supervisors/toggle-notifications`; characterize anonymous, wrong-role, valid-admin, cross-supervisor, and valid-target behavior before adding its local admin assertion.
+2. Continue Milestone 2.5 with one protected-only handler at a time, starting with `POST /api/admin/promote-batch`; characterize anonymous, wrong-role, validation, and valid-admin batch promotion behavior before adding its local admin assertion.
 3. Keep the current `GET /api/voice` cleanup behavior unchanged; move its read-side mutation separately in Milestone 5.
 4. Milestone 3 is complete. Do not reopen it without a specific reset behavior regression.
 5. Milestone 4.2/4.3 remains explicitly deferred: its concurrency boundary tests are not a small improvement. Do not replace the supervisor-list bulk aggregation with per-supervisor queries.
@@ -97,6 +97,14 @@ Validation for this slice:
 ## Milestone 2 progress
 
 Latest completed sub-step (2026-07-19, `Portal-Overhaul`):
+
+- Completed the next two bounded Milestone 2.5 route protections: `POST /api/supervisors/toggle-notifications` and `POST /api/admin/toggle-student`. Both routes previously trusted only the network matcher, so anonymous or non-admin direct calls could update any supplied supervisor notification setting or student activation state.
+- Reused the existing server-only `requireRole(req, ['admin'])` assertion before request parsing or database access. Anonymous calls now receive 401 and non-admin calls 403; existing admin request bodies, successful response shapes/statuses, target selection, database mutations, and not-found handling remain unchanged.
+- Added notification-toggle cases to `tests/admin-supervisor-routes.test.ts` and added `tests/admin-toggle-student-route.test.ts`. Files changed: `app/api/supervisors/toggle-notifications/route.ts`, `app/api/admin/toggle-student/route.ts`, those two test files, and both milestone documents. No dependency, route-path, schema, client-payload, or valid-contract change was made.
+- Characterization evidence: before the route change, the focused suite failed four authorization assertions because both handlers returned 200 to anonymous and non-admin calls. Afterward it passed (2 files, 8 tests), including the valid admin mutations.
+- Validation: `npm test` passed (13 files, 92 tests); `npm run typecheck` passed; touched-file ESLint passed; `git diff --check` passed; and `npm run build` passed outside the restricted sandbox with only the existing Next.js `middleware.ts` deprecation warning. The sandboxed build is unable to bind Turbopack's worker port. Full lint remains a pre-existing baseline failure at 203 problems (165 errors, 38 warnings), two warnings fewer than the prior recorded 205-problem baseline; no new findings were introduced and the changed files are clean.
+- Decision and next action: keep `requireRole` as the single concrete local assertion rather than duplicate JWT parsing. Continue with `POST /api/admin/promote-batch` only after its route characterization; do not start a later milestone while Milestone 2.5 remains incomplete.
+- Retained risk: remaining routes covered only by the network matcher still need local authorization. This step intentionally does not add target-domain validation or change user-visible error messages, which require their own bounded characterization.
 
 - Began Milestone 2.5 with `POST /api/add-supervisor` and `POST /api/delete-supervisor`. Both handlers previously trusted only middleware, so direct route calls could create or delete supervisor accounts. Added the small server-only `requireRole` assertion and run it before parsing or database access; anonymous callers now receive 401, non-admin callers 403, and valid admin creation/deletion contracts and transaction operations are unchanged.
 - Completed the remaining Milestone 3 gate. The academic-reset suite now covers shared-team departure without file deletion or ledger refund, student cooldown rejection before project state changes, fresh-project creation failure with transaction abort, admin partial-update messaging, and the nonnegative-ledger clamp. Existing direct helper and route tests cover reset state, solo cleanup/refund, student validation, success response, and actor binding.

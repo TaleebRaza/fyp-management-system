@@ -245,7 +245,7 @@ Gate: new tests pass; typecheck passes; lint baseline is captured and cannot wor
 
 ### Milestone 2 — Secure route-local boundaries
 
-Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GET/POST/PATCH `/api/voice`, voice upload presigning, Supervisor dashboard GET/POST, and project join are complete. Step 2.5 has begun: supervisor creation and deletion now assert admin role locally before parsing or database access. The route suites protect authentication, roles, actor identity, project membership, cross-supervisor access, and missing-resource boundaries. Voice cleanup still occurs on authorized GET and remains scheduled for Milestone 5.
+Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GET/POST/PATCH `/api/voice`, voice upload presigning, Supervisor dashboard GET/POST, and project join are complete. In step 2.5, supervisor creation/deletion, supervisor notification toggling, and student activation changes now assert admin role locally before parsing or database access. The route suites protect authentication, roles, actor identity, project membership, cross-supervisor access, and missing-resource boundaries. Voice cleanup still occurs on authorized GET and remains scheduled for Milestone 5.
 
 2.1 Add typed NextAuth session/JWT augmentation to remove repeated session assertions. Complete.
 
@@ -255,7 +255,7 @@ Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GE
 
 2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. Complete: file reads, voice operations/upload, Supervisor GET/POST, and project join actor binding now check the authenticated actor and applicable resource membership. `updateStatus`, `migrate`, and `removeStudent` require an authenticated supervisor who owns the target student, or an admin; migration rechecks ownership in its transaction. Project join requires a matching student JWT (admins retain their existing path).
 
-2.5 Add route-local checks to handlers currently protected only by the network matcher. In progress: `POST /api/add-supervisor` and `POST /api/delete-supervisor` now reject anonymous and non-admin requests locally before database access; valid admin workflows are characterized. Next target: supervisor notification toggling.
+2.5 Add route-local checks to handlers currently protected only by the network matcher. In progress: `POST /api/add-supervisor`, `POST /api/delete-supervisor`, `POST /api/supervisors/toggle-notifications`, and `POST /api/admin/toggle-student` now reject anonymous and non-admin requests locally before database access; valid admin workflows are characterized. The two latest routes failed four pre-change authorization checks and now pass eight focused checks, while preserving their admin mutations. Next target: batch promotion.
 
 Gate: full auth matrix passes; no protected field appears in public JSON; valid role workflows remain unchanged.
 
