@@ -175,6 +175,105 @@ describe('resetStudentAcademicInfo', () => {
       { $inc: { usedBytes: -120 } },
       expect.objectContaining({ upsert: true, session: expect.any(Object) })
     );
+    expect(mocks.storageClamp).toHaveBeenCalledWith(
+      { configKey: 'storage', usedBytes: { $lt: 0 } },
+      { $set: { usedBytes: 0 } },
+      expect.objectContaining({ session: expect.any(Object) })
+    );
+  });
+
+  it('leaves a team project without deleting shared files or refunding its storage', async () => {
+    const currentStudent = student({ projectId: 'project-1' });
+    mocks.userFindById.mockReturnValue(sessionQuery(currentStudent));
+    mocks.projectFindById.mockReturnValue(
+      sessionQuery({
+        _id: 'project-1',
+        members: ['student-1', 'student-2'],
+        pdfUrl: 'proposals/shared.pdf',
+        pdfSize: 100,
+      })
+    );
+
+    await expect(
+      resetStudentAcademicInfo({
+        targetUserId: 'student-1',
+        newProgram: 'BSAI',
+        newBatch: 'Fall 2026',
+        actor: 'student',
+        enforceStudentCooldown: true,
+      })
+    ).resolves.toMatchObject({ freedBytes: 0 });
+
+    expect(mocks.projectFindByIdAndUpdate).toHaveBeenCalledWith(
+      'project-1',
+      { $pull: { members: 'student-1' } },
+      expect.objectContaining({ session: expect.any(Object) })
+    );
+    expect(mocks.projectFindByIdAndDelete).not.toHaveBeenCalled();
+    expect(mocks.s3Send).not.toHaveBeenCalled();
+    expect(mocks.storageDecrement).not.toHaveBeenCalled();
+  });
+
+  it('enforces the student cooldown before changing project state', async () => {
+    mocks.userFindById.mockReturnValue(
+      sessionQuery(student({ lastProgramBatchChangeAt: new Date() }))
+    );
+
+    await expect(
+      resetStudentAcademicInfo({
+        targetUserId: 'student-1',
+        newProgram: 'BSAI',
+        newBatch: 'Fall 2026',
+        actor: 'student',
+        enforceStudentCooldown: true,
+      })
+    ).rejects.toMatchObject({ statusCode: 429 });
+
+    expect(mocks.projectFindById).not.toHaveBeenCalled();
+    expect(mocks.abortTransaction).toHaveBeenCalledOnce();
+    expect(mocks.commitTransaction).not.toHaveBeenCalled();
+  });
+
+  it('aborts the transaction when creating the fresh project fails', async () => {
+    mocks.projectSave.mockRejectedValueOnce(new Error('duplicate invite code exhausted'));
+
+    await expect(
+      resetStudentAcademicInfo({
+        targetUserId: 'student-1',
+        newProgram: 'BSAI',
+        newBatch: 'Fall 2026',
+        actor: 'student',
+        enforceStudentCooldown: true,
+      })
+    ).rejects.toThrow('duplicate invite code exhausted');
+
+    expect(mocks.abortTransaction).toHaveBeenCalledOnce();
+    expect(mocks.commitTransaction).not.toHaveBeenCalled();
+    expect(mocks.endSession).toHaveBeenCalledOnce();
+  });
+
+  it('preserves the admin partial-update response and leaves the cooldown untouched', async () => {
+    const currentStudent = student();
+    mocks.userFindById.mockReturnValue(sessionQuery(currentStudent));
+
+    await expect(
+      resetStudentAcademicInfo({
+        targetUserId: 'student-1',
+        newProgram: 'BSAI',
+        actor: 'admin',
+      })
+    ).resolves.toEqual({
+      message: 'Academic information updated by Admin. Student has been reset.',
+      freedBytes: 0,
+    });
+
+    expect(currentStudent).toMatchObject({
+      program: 'BSAI',
+      batch: 'Fall 2025',
+      remarks:
+        'Your academic information was updated by an Admin. Please choose a supervisor again or join a team to begin.',
+    });
+    expect(currentStudent).not.toHaveProperty('lastProgramBatchChangeAt');
   });
 
   it('preserves student-only validation and unchanged-state responses', async () => {

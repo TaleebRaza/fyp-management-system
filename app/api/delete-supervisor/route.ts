@@ -1,11 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
-import Project from '../../../models/Project'; // NEW: Imported to fix the ghost-project bug
+import Project from '../../../models/Project';
+import { requireRole } from '../../../lib/routeAuth';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    const auth = await requireRole(req, ['admin']);
+    if (auth.kind === 'denied') return auth.response;
+
     await connectToDatabase();
     const { id } = await req.json();
 
@@ -55,8 +59,11 @@ export async function POST(req: Request) {
       session.endSession();
       throw transactionError;
     }
-  } catch (error: any) {
-    console.error('Delete Supervisor Error:', error.message);
+  } catch (error: unknown) {
+    console.error(
+      'Delete Supervisor Error:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
     return NextResponse.json({ error: 'Failed to delete supervisor' }, { status: 500 });
   }
 }

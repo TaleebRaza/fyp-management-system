@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
-import bcrypt from 'bcryptjs'; // NEW: Import secure hashing library
+import bcrypt from 'bcryptjs';
+import { requireRole } from '../../../lib/routeAuth';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    const auth = await requireRole(req, ['admin']);
+    if (auth.kind === 'denied') return auth.response;
+
     const { name, email, rollNo, password, migrationCode } = await req.json();
 
     // 1. Basic validation to prevent empty payloads reaching the database
@@ -35,15 +39,22 @@ export async function POST(req: Request) {
     
     return NextResponse.json({ message: 'Supervisor added successfully!' }, { status: 201 });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     // 5. Catch the atomic MongoDB Duplicate Key Error (E11000)
     // This perfectly handles race conditions if two requests hit at the exact same time.
-    if (error.code === 11000) {
+    const code =
+      typeof error === 'object' && error && 'code' in error
+        ? (error as { code?: unknown }).code
+        : undefined;
+    if (code === 11000) {
       return NextResponse.json({ error: 'This Username/ID or Email already exists!' }, { status: 400 });
     }
-    
+
     // Log the actual error for debugging, but hide it from the client
-    console.error("API Error [add-supervisor]:", error.message);
+    console.error(
+      'API Error [add-supervisor]:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
     return NextResponse.json({ error: 'Failed to add supervisor.' }, { status: 500 });
   }
 }

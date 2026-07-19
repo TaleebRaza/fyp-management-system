@@ -5,10 +5,10 @@ Last updated: 2026-07-19 (Asia/Karachi)
 ## Status
 
 - Current milestone: Milestone 2 — Secure route-local boundaries.
-- State: in progress; steps 2.1 and 2.3 plus file reads, all `/api/voice` handlers, voice upload presigning, Supervisor dashboard GET/POST, and project-join actor binding are complete in step 2.4. Step 2.5 remains.
+- State: in progress; steps 2.1 and 2.3 plus file reads, all `/api/voice` handlers, voice upload presigning, Supervisor dashboard GET/POST, and project-join actor binding are complete in step 2.4. Step 2.5 has begun with local checks for supervisor creation and deletion.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
-- Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, and one shared supervisor-capacity query; the NextAuth work is type-only.
+- Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, one shared supervisor-capacity query, and a small server-only role assertion; the NextAuth work is type-only.
 - Documentation is intentionally ignored through `docs/` in `.gitignore` as requested.
 
 The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Milestones.md).
@@ -62,10 +62,10 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 2.5 with one protected-only handler at a time, starting with `POST /api/add-supervisor` and `POST /api/delete-supervisor`; characterize anonymous, wrong-role, valid-admin, and destructive-target behavior before adding the local admin assertion.
+2. Continue Milestone 2.5 with one protected-only handler at a time, starting with `POST /api/supervisors/toggle-notifications`; characterize anonymous, wrong-role, valid-admin, cross-supervisor, and valid-target behavior before adding its local admin assertion.
 3. Keep the current `GET /api/voice` cleanup behavior unchanged; move its read-side mutation separately in Milestone 5.
-4. Complete the remaining Milestone 3 gate with team-member, cooldown, failure/rollback, and full route-contract characterization before considering its status complete.
-5. Complete Milestone 4.2/4.3 with the supervisor-list bulk aggregation decision and concurrency boundary tests; do not replace the list aggregation with per-supervisor queries.
+4. Milestone 3 is complete. Do not reopen it without a specific reset behavior regression.
+5. Milestone 4.2/4.3 remains explicitly deferred: its concurrency boundary tests are not a small improvement. Do not replace the supervisor-list bulk aggregation with per-supervisor queries.
 6. Do not split dashboard components or add React component tooling during this security milestone.
 7. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
 
@@ -97,6 +97,12 @@ Validation for this slice:
 ## Milestone 2 progress
 
 Latest completed sub-step (2026-07-19, `Portal-Overhaul`):
+
+- Began Milestone 2.5 with `POST /api/add-supervisor` and `POST /api/delete-supervisor`. Both handlers previously trusted only middleware, so direct route calls could create or delete supervisor accounts. Added the small server-only `requireRole` assertion and run it before parsing or database access; anonymous callers now receive 401, non-admin callers 403, and valid admin creation/deletion contracts and transaction operations are unchanged.
+- Completed the remaining Milestone 3 gate. The academic-reset suite now covers shared-team departure without file deletion or ledger refund, student cooldown rejection before project state changes, fresh-project creation failure with transaction abort, admin partial-update messaging, and the nonnegative-ledger clamp. Existing direct helper and route tests cover reset state, solo cleanup/refund, student validation, success response, and actor binding.
+- Added `tests/admin-supervisor-routes.test.ts`; expanded `tests/academic-reset.test.ts`. Files changed: `lib/routeAuth.ts`, `app/api/add-supervisor/route.ts`, `app/api/delete-supervisor/route.ts`, the two test files, and both milestone documents. No dependencies, route paths, schemas, client payloads, or valid success/error contracts were changed.
+- Validation: `npm test` passed (12 files, 88 tests); `npm run typecheck` passed; targeted lint passed; `git diff --check` passed; `npm run build` passed with only the existing Next.js `middleware.ts` deprecation warning. Full lint remains a pre-existing baseline failure at 205 problems (165 errors, 40 warnings), down from 207 because the touched routes no longer use explicit `any`; no new findings were introduced.
+- Retained risks: the remaining protected-only handlers still need local authorization in Milestone 2.5. Academic reset still spans MongoDB and R2 without cross-system atomicity, which belongs to Milestone 5. Milestone 4 concurrency work was intentionally not started because it is not a small improvement.
 
 - Completed Milestone 3.1–3.3: added direct shared-helper tests for the student reset state, canonical `domains` clearing, fresh-project data, single-member PDF/voice cleanup deduplication, storage-ledger refund, validation, and student response mapping. Replaced the 160-line `updateProgramBatch` branch with the existing `resetStudentAcademicInfo` call while preserving student-only identity checks, required program/batch validation, status codes, error text, success text, cooldown, transaction, cleanup, and ledger behavior.
 - Corrected the verified shared-state discrepancy: `resetStudentAcademicInfo` now explicitly creates fresh projects with `domains: []` and clears `student.domains`, matching the former student route and canonical domain policy. Branch-local reset helpers were removed; the remaining local project/cleanup functions still serve the separate supervisor-change workflow and were intentionally retained.

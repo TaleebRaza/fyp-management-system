@@ -245,25 +245,25 @@ Gate: new tests pass; typecheck passes; lint baseline is captured and cannot wor
 
 ### Milestone 2 — Secure route-local boundaries
 
-Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GET/POST/PATCH `/api/voice`, voice upload presigning, and Supervisor dashboard GET are complete. The route suites protect authentication, roles, actor identity, project membership, cross-supervisor access, and missing-resource boundaries. Voice cleanup still occurs on authorized GET and remains scheduled for Milestone 5.
+Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GET/POST/PATCH `/api/voice`, voice upload presigning, Supervisor dashboard GET/POST, and project join are complete. Step 2.5 has begun: supervisor creation and deletion now assert admin role locally before parsing or database access. The route suites protect authentication, roles, actor identity, project membership, cross-supervisor access, and missing-resource boundaries. Voice cleanup still occurs on authorized GET and remains scheduled for Milestone 5.
 
 2.1 Add typed NextAuth session/JWT augmentation to remove repeated session assertions. Complete.
 
-2.2 Add one small server-only role/session assertion function and use it first in the public-data and voice routes.
+2.2 Add one small server-only role/session assertion function and use it first in the public-data and voice routes. In progress: `lib/routeAuth.ts` now supplies the small `requireRole` assertion for local admin mutations; existing public-data and voice checks remain intentionally unchanged until their next bounded edits.
 
 2.3 Project the public supervisor response to an explicit allowlist. Keep any admin-only response separate. Complete.
 
 2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. Complete: file reads, voice operations/upload, Supervisor GET/POST, and project join actor binding now check the authenticated actor and applicable resource membership. `updateStatus`, `migrate`, and `removeStudent` require an authenticated supervisor who owns the target student, or an admin; migration rechecks ownership in its transaction. Project join requires a matching student JWT (admins retain their existing path).
 
-2.5 Add route-local checks to handlers currently protected only by the network matcher.
+2.5 Add route-local checks to handlers currently protected only by the network matcher. In progress: `POST /api/add-supervisor` and `POST /api/delete-supervisor` now reject anonymous and non-admin requests locally before database access; valid admin workflows are characterized. Next target: supervisor notification toggling.
 
 Gate: full auth matrix passes; no protected field appears in public JSON; valid role workflows remain unchanged.
 
 ### Milestone 3 — Remove the academic reset duplicate
 
-Status: 3.1–3.3 complete. Direct helper and route characterization now cover the student reset state, canonical domain clearing, cleanup/ledger refund, validation, and response mapping. The dashboard branch now reuses `resetStudentAcademicInfo`. The remaining helper functions in the student route serve supervisor change and are not reset duplicates; retain them pending their own storage milestone tests.
+Status: complete. Direct helper and route characterization cover the student/admin reset state, canonical domain clearing, solo cleanup/ledger refund, team departure, cooldown, rollback, validation, and response mapping. The dashboard branch reuses `resetStudentAcademicInfo`. The remaining helper functions in the student route serve supervisor change and are not reset duplicates.
 
-3.1 Add parity tests for the student route branch and `resetStudentAcademicInfo`. Complete for reset state, canonical domains, solo cleanup/ledger refund, validation, and response mapping; team/cooldown/rollback cases remain part of the gate.
+3.1 Add parity tests for the student route branch and `resetStudentAcademicInfo`. Complete: student/admin reset state, canonical domains, solo and team cleanup, ledger refund/clamp, cooldown, rollback, validation, and response mapping are characterized.
 
 3.2 Resolve the canonical `domains` reset discrepancy in the shared function. Complete.
 
@@ -271,7 +271,7 @@ Status: 3.1–3.3 complete. Direct helper and route characterization now cover t
 
 3.4 Delete now-unused duplicate helpers from the student route. Complete for the program/batch branch; remaining local helpers are used by supervisor change.
 
-Gate: reset, cleanup, cooldown, rollback, and route contract tests pass; line count decreases materially.
+Gate: passed. Reset, cleanup, cooldown, rollback, and route contract tests pass; the duplicated branch was removed materially.
 
 ### Milestone 4 — Consolidate capacity and team invariants
 
