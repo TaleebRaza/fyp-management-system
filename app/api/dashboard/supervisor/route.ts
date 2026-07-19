@@ -165,16 +165,39 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    await connectToDatabase();
-    
     // Read the body once only. Reading req.json() twice breaks migration.
     const { action, studentId, status, remarks, migrationCode } = await req.json();
 
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (token.role !== 'supervisor' && token.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await connectToDatabase();
+
+    const isStudentAction = ['updateStatus', 'migrate', 'removeStudent'].includes(action);
+    const targetStudent = isStudentAction ? await User.findById(studentId) : null;
+
+    if (isStudentAction && !targetStudent) {
+      return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
+
+    if (
+      token.role === 'supervisor' &&
+      targetStudent &&
+      String(targetStudent.supervisorId || '') !== String(token.id)
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     if (action === 'updateStatus') {
-      const triggerStudent = await User.findById(studentId);
-      if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      const triggerStudent = targetStudent!;
 
       const teamMembers = triggerStudent.projectId 
         ? await User.find({ projectId: triggerStudent.projectId }) 
@@ -326,6 +349,13 @@ export async function POST(req: Request) {
           return await fail('Student not found.', 404);
         }
 
+        if (
+          token.role === 'supervisor' &&
+          String(studentInTx.supervisorId || '') !== String(token.id)
+        ) {
+          return await fail('Forbidden', 403);
+        }
+
         if (String(studentInTx.supervisorId || '') === String(targetSup._id)) {
           return await fail('This student is already assigned to the target supervisor.', 400);
         }
@@ -470,8 +500,7 @@ export async function POST(req: Request) {
     }
 
     if (action === 'removeStudent') {
-      const triggerStudent = await User.findById(studentId);
-      if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      const triggerStudent = targetStudent!;
 
       // --- Team-Aware Removal ---
       if (triggerStudent.projectId) {

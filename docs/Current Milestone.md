@@ -62,7 +62,7 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 2.4 with the `updateStatus` action in `POST /api/dashboard/supervisor`: characterize anonymous, wrong-role, own-project, cross-supervisor, stage-change, cleanup, and notification behavior before adding ownership checks.
+2. Continue Milestone 2.4 with `POST /api/project/join`: characterize anonymous, wrong-role, sender spoofing, own membership, cross-project attempts, team limits, and valid joining behavior before binding `studentId` to the authenticated actor.
 3. Keep the current `GET /api/voice` cleanup behavior unchanged; move its read-side mutation separately in Milestone 5.
 4. Consider the planned small server-only role/session assertion now that multiple protected route handlers use the same token boundary; add it only if it reduces the next bounded diff without broad churn.
 5. Do not split dashboard components or add React component tooling during this security milestone.
@@ -94,6 +94,15 @@ Validation for this slice:
 - `npm install` reported 6 dependency audit findings (4 moderate, 2 high). No automatic or breaking dependency fix was run because upgrades are outside this bounded refactoring slice.
 
 ## Milestone 2 progress
+
+Latest completed sub-step (2026-07-19, `Portal-Overhaul`):
+
+- Secured the shared POST boundary in `app/api/dashboard/supervisor/route.ts` for its three existing student actions: `updateStatus`, `migrate`, and `removeStudent`.
+- Added `tests/supervisor-dashboard-post-route.test.ts` with 9 characterisation tests. Before the route change, anonymous users, students, and a supervisor targeting another supervisor's student could reach the actions; after it, they receive 401 or 403 before the target student is read. The existing own-student and admin status-update paths remain successful.
+- The route now reads the JWT locally, permits only supervisors and admins, and proves that a supervisor owns the target student. Admins retain their existing cross-supervisor authority. Migration repeats the ownership check inside its transaction to avoid authorising a stale assignment.
+- Files changed: `app/api/dashboard/supervisor/route.ts`, `tests/supervisor-dashboard-post-route.test.ts`, `docs/Current Milestone.md`, and `docs/Refactor Milestones.md`. No dependency, route-path, schema, or client-contract change was added.
+- Checks: focused Vitest suite passed (9 tests); `npm test` passed (7 files, 69 tests); `npm run typecheck` passed; `npx eslint app/api/dashboard/supervisor/route.ts tests/supervisor-dashboard-post-route.test.ts` reports 7 existing `no-explicit-any` errors in the route and none in the new test; `npm run lint` remains at the recorded baseline of 211 problems (171 errors, 40 warnings), with no new findings; `npm run build` compiled successfully outside the restricted sandbox and retained the existing Next.js `middleware.ts` deprecation warning; `git diff --check` passed.
+- Risk retained: status advancement still combines database writes, R2 deletion, ledger changes, and notifications without cross-system atomicity. That behavior is intentionally unchanged and belongs to Milestone 5/6. The only deferred authorization work in this route is deeper workflow characterization, while the next concrete Milestone 2.4 target is `/api/project/join` actor binding.
 
 Completed in the current session:
 

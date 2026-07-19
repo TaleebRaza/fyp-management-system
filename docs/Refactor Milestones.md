@@ -253,7 +253,7 @@ Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GE
 
 2.3 Project the public supervisor response to an explicit allowlist. Keep any admin-only response separate. Complete.
 
-2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. In progress: file reads, voice operations/upload, and Supervisor GET are complete; Supervisor POST actions are next, beginning with `updateStatus`.
+2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. In progress: file reads, voice operations/upload, Supervisor GET, and the Supervisor POST action boundary are complete. `updateStatus`, `migrate`, and `removeStudent` now require an authenticated supervisor who owns the target student, or an admin; migration rechecks ownership in its transaction. Project join is next.
 
 2.5 Add route-local checks to handlers currently protected only by the network matcher.
 
