@@ -18,12 +18,27 @@ export const APP_SETTINGS = {
   },
 };
 
-export const PROGRAM_MAP: Record<string, string> = {
+export const MAX_TEAM_MEMBERS = 2;
+
+export const PROJECT_STAGES = [
+  'PROPOSAL',
+  'THESIS_DRAFT',
+  'FINAL_DELIVERABLES',
+] as const;
+
+export type ProjectStage = (typeof PROJECT_STAGES)[number];
+export const DEFAULT_PROJECT_STAGE: ProjectStage = 'PROPOSAL';
+
+export const PROGRAM_MAP = {
   'BSCS': 'BS Computer Science',
   'BSAI': 'BS Artificial Intelligence',
   'BSTN': 'BS Telecommunication & Networking',
   'BSSE': 'BS Software Engineering',
   'BSCYS': 'BS Cyber Security',
   'BSROB': 'BS Robotics',
-  'BSDS': 'BS Data Science'
-};
+  'BSDS': 'BS Data Science',
+} as const;
+
+export type ProgramKey = keyof typeof PROGRAM_MAP;
+export const PROGRAM_KEYS = Object.keys(PROGRAM_MAP) as ProgramKey[];
+export const DEFAULT_PROGRAM: ProgramKey = 'BSCS';

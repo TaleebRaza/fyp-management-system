@@ -7,10 +7,10 @@ import User from '../../../models/User';
 import Project from '../../../models/Project';
 import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
 import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
-import { PROGRAM_MAP } from '../../../config/appSettings';
-import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
-import { getSupervisorFilledSlots } from '../../../lib/supervisorCapacity';
+import { DEFAULT_PROGRAM, PROGRAM_MAP } from '../../../config/appSettings';
+import { reserveSupervisorCapacity } from '../../../lib/supervisorCapacity';
 import { calculateLateRegistrationFine } from '../../../lib/lateRegistrationFine';
+import { withTransactionRetry } from '../../../lib/transactionUtils';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const normalizedEmail = normalizeEmailAddress(email);
     const normalizedRollNo = normalizeRollNo(rollNo);
     const normalizedPassword = String(password || '');
-    const normalizedProgram = String(program || 'BSCS').trim().toUpperCase();
+    const normalizedProgram = String(program || DEFAULT_PROGRAM).trim().toUpperCase();
     const normalizedBatch = String(batch || '').trim();
 
     if (!normalizedName || !normalizedEmail || !normalizedRollNo || !normalizedPassword || !normalizedBatch) {
@@ -59,23 +59,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Invalid supervisor selected.' }, { status: 400 });
       }
 
-      const supervisor = await User.findOne({ _id: supervisorId, role: 'supervisor' })
-        .select('_id extraSlots')
-        .lean();
-
-      if (!supervisor) {
-        return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
-      }
-
-      const filledSlots = await getSupervisorFilledSlots(supervisorId);
-
-      const maxSlots = getSupervisorMaxSlots(supervisor);
-      if (filledSlots >= maxSlots) {
-        return NextResponse.json(
-          { error: `Registration failed. The selected supervisor has reached maximum capacity (${maxSlots} slots).` },
-          { status: 409 }
-        );
-      }
     }
 
     const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
@@ -83,37 +66,51 @@ export async function POST(req: Request) {
     const session = await mongoose.startSession();
 
     try {
-      session.startTransaction();
+      return await withTransactionRetry(session, async () => {
+        if (supervisorId) {
+          const capacity = await reserveSupervisorCapacity(String(supervisorId), session);
 
-      const newStudent = new User({
-        name: normalizedName,
-        email: normalizedEmail,
-        rollNo: normalizedRollNo,
-        password: hashedPassword,
-        role: 'student',
-        program: normalizedProgram,
-        batch: normalizedBatch,
-        semester: '7th Semester',
-        supervisorId: supervisorId || null,
-        status: supervisorId ? 'Pending' : 'Unassigned',
-        remarks: '',
-        lateRegistrationDays: lateRegistrationAssessment.daysLate,
-        lateRegistrationFine: lateRegistrationAssessment.fineAmount,
+          if (capacity.kind === 'missing') {
+            return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
+          }
+
+          if (capacity.kind === 'full') {
+            return NextResponse.json(
+              { error: `Registration failed. The selected supervisor has reached maximum capacity (${capacity.maxSlots} slots).` },
+              { status: 409 }
+            );
+          }
+        }
+
+        const newStudent = new User({
+          name: normalizedName,
+          email: normalizedEmail,
+          rollNo: normalizedRollNo,
+          password: hashedPassword,
+          role: 'student',
+          program: normalizedProgram,
+          batch: normalizedBatch,
+          semester: '7th Semester',
+          supervisorId: supervisorId || null,
+          status: supervisorId ? 'Pending' : 'Unassigned',
+          remarks: '',
+          lateRegistrationDays: lateRegistrationAssessment.daysLate,
+          lateRegistrationFine: lateRegistrationAssessment.fineAmount,
+        });
+        await newStudent.save({ session });
+
+        const newProject = new Project({
+          supervisorId: supervisorId || null,
+          members: [newStudent._id],
+          inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
+        });
+        await newProject.save({ session });
+
+        newStudent.projectId = newProject._id;
+        await newStudent.save({ session });
+
+        return NextResponse.json({ message: 'Registration successful! You can now sign in.' }, { status: 201 });
       });
-      await newStudent.save({ session });
-
-      const newProject = new Project({
-        supervisorId: supervisorId || null,
-        members: [newStudent._id],
-        inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
-      });
-      await newProject.save({ session });
-
-      newStudent.projectId = newProject._id;
-      await newStudent.save({ session });
-
-      await session.commitTransaction();
-      return NextResponse.json({ message: 'Registration successful! You can now sign in.' }, { status: 201 });
     } catch (transactionError: any) {
       if (session.inTransaction()) await session.abortTransaction();
 

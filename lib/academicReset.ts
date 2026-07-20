@@ -3,7 +3,7 @@ import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 import connectToDatabase from './mongodb';
 import { s3Client, BUCKET_NAME } from './s3-client';
-import { PROGRAM_MAP } from '../config/appSettings';
+import { DEFAULT_PROJECT_STAGE, MAX_TEAM_MEMBERS, PROGRAM_MAP } from '../config/appSettings';
 
 import User from '../models/User';
 import Project from '../models/Project';
@@ -122,8 +122,8 @@ async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, ses
         pdfUrl: '',
         pdfSize: 0,
         status: 'Pending',
-        maxTeamSize: 2,
-        stage: 'PROPOSAL',
+        maxTeamSize: MAX_TEAM_MEMBERS,
+        stage: DEFAULT_PROJECT_STAGE,
       });
 
       await newProject.save({ session });

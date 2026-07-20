@@ -1,14 +1,14 @@
 # Current Milestone
 
-Last updated: 2026-07-19 (Asia/Karachi)
+Last updated: 2026-07-20 (Asia/Karachi)
 
 ## Status
 
-- Current milestone: Milestone 2 — Secure route-local boundaries.
-- State: in progress; steps 2.1 and 2.3 plus file reads, all `/api/voice` handlers, voice upload presigning, Supervisor dashboard GET/POST, and project-join actor binding are complete in step 2.4. Step 2.5 now locally protects supervisor creation/deletion, supervisor notification toggling, and student account activation changes.
+- Current milestone: Milestone 5 — Make storage behavior explicit.
+- State: Milestones 2 and 4 are complete. Begin the bounded R2-key normalization and deletion-target-deduplication extraction in step 5.1.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
-- Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, one shared supervisor-capacity query, and a small server-only role assertion; the NextAuth work is type-only.
+- Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, and centralized team/stage/program constants; the NextAuth work is type-only.
 - Documentation is intentionally ignored through `docs/` in `.gitignore` as requested.
 
 The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Milestones.md).
@@ -37,19 +37,17 @@ The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Mile
 
 ## Highest-priority risks
 
-1. Route authorization often depends on the root matcher; object-level ownership is missing or inconsistent in supervisor, join, and voice flows.
-2. There are still no route or transaction tests around most destructive and cross-system operations.
-3. Student academic reset duplicates the shared reset logic and has already diverged around canonical domains.
+1. MongoDB transactions and R2 mutations use inconsistent ordering/failure behavior; the global byte ledger can drift.
+2. Voice GET has destructive hidden side effects.
+3. There are still no route or transaction tests around most destructive and cross-system operations.
 4. `User` and `Project` duplicate project state and can disagree.
-5. MongoDB transactions and R2 mutations use inconsistent ordering/failure behavior; the global byte ledger can drift.
-6. Voice GET has destructive hidden side effects.
-7. Three dashboard components exceed 1,000 lines and mix UI with network/business/file behavior.
+5. Three dashboard components exceed 1,000 lines and mix UI with network/business/file behavior.
 
-Resolved in the current slices: public `/api/supervisors` no longer returns whole supervisor documents; file and voice routes verify resource ownership; voice presigning is role/context bound; Supervisor dashboard GET no longer trusts a caller-supplied supervisor ID.
+Resolved in the current slices: public `/api/supervisors` no longer returns whole supervisor documents; file and voice routes verify resource ownership; voice presigning is role/context bound; Supervisor dashboard GET no longer trusts a caller-supplied supervisor ID; all non-public API handlers now perform a route-local authorization check.
 
 ## Decisions and guardrails for the next session
 
-- Continue Milestone 2 one tested route boundary at a time; do not start dashboard splitting.
+- Continue Milestone 5 one storage workflow at a time; do not start dashboard splitting.
 - Do not modify application behavior until characterization tests exist for the target workflow.
 - Vitest is installed as the only new direct development dependency. React Testing Library, jsdom, and the Vite React plugin remain deferred until the first concrete component test needs them.
 - E2E tooling remains deferred until a critical browser flow requires it.
@@ -62,12 +60,11 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 2.5 with one protected-only handler at a time, starting with `POST /api/admin/promote-batch`; characterize anonymous, wrong-role, validation, and valid-admin batch promotion behavior before adding its local admin assertion.
-3. Keep the current `GET /api/voice` cleanup behavior unchanged; move its read-side mutation separately in Milestone 5.
-4. Milestone 3 is complete. Do not reopen it without a specific reset behavior regression.
-5. Milestone 4.2/4.3 remains explicitly deferred: its concurrency boundary tests are not a small improvement. Do not replace the supervisor-list bulk aggregation with per-supervisor queries.
-6. Do not split dashboard components or add React component tooling during this security milestone.
-7. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
+2. Begin Milestone 5.1 by extracting and characterizing the existing R2 key normalizer and deletion-target deduper. Do not alter deletion ordering, ledger adjustment, or cleanup retries in this first storage step.
+3. Keep the current `GET /api/voice` cleanup behavior unchanged until the read-only conversion in step 5.3.
+4. Do not touch production data or add a queue dependency; use a read-only reconciliation report before any policy change.
+5. Do not split dashboard components or add React component tooling during this storage milestone.
+6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
 
 ## Milestone 1 progress
 
@@ -94,7 +91,31 @@ Validation for this slice:
 - `npm run build`: passed; the existing `middleware.ts` deprecation warning remains.
 - `npm install` reported 6 dependency audit findings (4 moderate, 2 high). No automatic or breaking dependency fix was run because upgrades are outside this bounded refactoring slice.
 
+## Milestone 4 progress
+
+Latest completed sub-step (2026-07-20, `Portal-Overhaul`):
+
+- Completed Milestone 4.3–4.4. The shared count query alone allowed write skew: concurrent transactions could each observe one open slot while mutating different student/project records. Added the internal `User.capacityVersion` field and `reserveSupervisorCapacity`, which checks capacity and writes that shared supervisor document in the same transaction. A conflicting writer is retried through the existing `withTransactionRetry` helper and re-counts before it can write.
+- Registration, student assignment/change, supervisor migration, and student-mode team joins now use that reservation. Their transactions now all use the existing retry wrapper; the supervisor-list route deliberately retains its equivalent bulk aggregation rather than introducing N+1 capacity queries.
+- Added both STUDENT- and PROJECT-mode conflict characterizations: the losing transaction re-runs, sees the limit reached, and never acquires a second reservation. Added registration route coverage showing the reservation happens before student/project creation and a full supervisor creates neither record.
+- Centralized `MAX_TEAM_MEMBERS`, project stage IDs/default, and program keys/default in `config/appSettings.ts`. Project/User schemas, templates, capacity UI, joins, registration, resets, and stage progression now consume those values while retaining existing labels, values, and program option order.
+- Files changed: `lib/supervisorCapacity.ts`, `models/User.ts`, `app/api/register/route.ts`, `app/api/project/join/route.ts`, `app/api/dashboard/student/route.ts`, `app/api/dashboard/supervisor/route.ts`, `config/appSettings.ts`, `models/Project.ts`, `app/api/templates/route.ts`, `lib/academicReset.ts`, the three stage/team UI files, `tests/supervisor-slots-count.test.ts`, `tests/register-capacity-route.test.ts`, `tests/pure-helpers.test.ts`, and both milestone documents. No dependency, API path, payload, valid response, or production-data migration was added.
+- Validation: `npm test` passed (19 files, 116 tests); `npm run typecheck` passed; capacity, registration, configuration, and focused route suites passed; new helper/config/model/test files are lint-clean. The touched legacy routes/components retain their recorded lint debt; `npm run lint` remains at 198 problems (161 errors, 37 warnings) with no new findings; `git diff --check` passed; and `npm run build` passed outside the sandbox with only the existing Next.js `middleware.ts` deprecation warning.
+- Decisions: used a single persisted version counter instead of a new lock service, queue, dependency, or migration. The counter is created lazily by `$inc` for existing supervisors and is not exposed by route projections. The concurrency tests simulate MongoDB write conflicts through the transaction retry boundary; a live replica-set race test remains a future hardening option, not a reason to change the verified transaction semantics now.
+- Known risk: a reservation's internal version increment is transactional and rolls back with any later workflow failure. Capacity still relies on the existing MongoDB transaction availability and does not solve cross-system R2/ledger failures, which are Milestone 5 work.
+
 ## Milestone 2 progress
+
+Latest completed sub-step (2026-07-20, `Portal-Overhaul`):
+
+- Completed Milestone 2.5 and the Milestone 2 gate. `POST /api/admin/promote-batch` and `GET /api/admin/students` previously relied exclusively on the network matcher; anonymous and non-admin callers could promote a whole batch or read student records directly. Both now reuse the existing server-only `requireRole(req, ['admin'])` assertion before database access.
+- The protected Excel export route also relied exclusively on the matcher and trusted its `id` query parameter. It now uses the same assertion for supervisors/admins and binds supervisors to their own ID; admins retain cross-supervisor export access. The PDF-upload signer now locally allows only students/admins, so a supervisor cannot obtain a proposal-upload URL by bypassing the matcher.
+- Closed the remaining actor-binding hole in the default `POST /api/dashboard/student` project-submission action. It now requires a matching student JWT before its target student record is read; the existing three named student actions were already actor-bound.
+- Added five focused route suites (18 tests total) covering anonymous/wrong-role rejection, cross-supervisor export denial, student-ID spoofing, validation, and each retained valid flow. Pre-change tests reproduced ten authorization failures: anonymous/non-admin batch promotion and student listing, anonymous/wrong-role/cross-supervisor export, supervisor upload signing, and anonymous/wrong-role/spoofed student submission.
+- Files changed: `app/api/admin/promote-batch/route.ts`, `app/api/admin/students/route.ts`, `app/api/export-pdf/route.ts`, `app/api/upload/route.ts`, `app/api/dashboard/student/route.ts`, `tests/admin-promote-batch-route.test.ts`, `tests/admin-students-route.test.ts`, `tests/export-pdf-route.test.ts`, `tests/upload-route.test.ts`, `tests/student-project-submission-auth-route.test.ts`, and both milestone documents. No dependency, route-path, schema, client-payload, or valid success-contract change was made.
+- Validation: `npm test` passed (18 files, 110 tests); `npm run typecheck` passed; the newly added routes/tests passed targeted ESLint with no findings; the touched student dashboard retains 19 pre-existing `no-explicit-any` errors and 2 warnings, with no new lint finding on the changed lines; `npm run lint` remains a pre-existing baseline failure at 198 problems (161 errors, 37 warnings), improved from the prior recorded 203 problems; `git diff --check` passed; and `npm run build` passed outside the sandbox, with only the existing Next.js `middleware.ts` deprecation warning.
+- Decision: retained the existing `requireRole` helper rather than a new authorization layer. Routes with project/resource ownership retain their specialized checks after authentication. The export route uses one direct token-ID comparison because it has one concrete caller and no reusable ownership rule.
+- Known risk: the student dashboard still opens a database connection before selecting its action, although the default submission now rejects before reading or mutating the supplied student record. Refactoring that command dispatcher belongs to Milestone 6 and must preserve its action-specific contracts.
 
 Latest completed sub-step (2026-07-19, `Portal-Overhaul`):
 

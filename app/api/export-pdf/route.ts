@@ -1,11 +1,24 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import ExcelJS from 'exceljs';
+import { requireRole } from '../../../lib/routeAuth';
+
+type ExportStudent = {
+  batch?: string;
+  name?: string;
+  program?: string;
+  projectDesc?: string;
+  projectTitle?: string;
+  rollNo?: string;
+  semester?: string;
+  tools?: string;
+};
 
 export async function GET(req: NextRequest) {
   try {
-    await connectToDatabase();
+    const auth = await requireRole(req, ['supervisor', 'admin']);
+    if (auth.kind === 'denied') return auth.response;
 
     const url = new URL(req.url);
     const supervisorId = url.searchParams.get('id');
@@ -17,8 +30,19 @@ export async function GET(req: NextRequest) {
       return new Response(JSON.stringify({ error: 'Supervisor ID is required' }), { status: 400 });
     }
 
+    if (auth.token.role === 'supervisor' && String(auth.token.id) !== supervisorId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await connectToDatabase();
+
     // 1. Build the dynamic query based on the batch filter
-    const query: any = {
+    const query: {
+      role: string;
+      $or: Array<{ supervisorId: string }>;
+      batch?: string;
+      program?: string;
+    } = {
       role: 'student',
       $or: [
         { supervisorId: supervisorId },
@@ -61,7 +85,7 @@ export async function GET(req: NextRequest) {
 
     // 4. Add each student as a single row
     if (students && students.length > 0) {
-      students.forEach((student: any) => {
+      students.forEach((student: ExportStudent) => {
         worksheet.addRow({
           name: student.name,
           rollNo: student.rollNo,

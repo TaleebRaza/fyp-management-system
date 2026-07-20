@@ -24,7 +24,13 @@ import {
 
 import BroadcastWidget from './BroadcastWidget';
 import { VoiceChat } from '../ui/VoiceChat';
-import { PROGRAM_MAP } from '../../config/appSettings';
+import {
+  DEFAULT_PROJECT_STAGE,
+  MAX_TEAM_MEMBERS,
+  PROGRAM_MAP,
+  PROJECT_STAGES,
+  type ProjectStage,
+} from '../../config/appSettings';
 import {
   formatProjectDomainLabels,
   getProjectDomainLabels,
@@ -62,11 +68,13 @@ const FALLBACK_THEME = {
   border: 'border-[var(--color-accent)]',
 };
 
-const STAGES = [
-  { id: 'PROPOSAL', label: 'Proposal' },
-  { id: 'THESIS_DRAFT', label: 'Thesis Draft' },
-  { id: 'FINAL_DELIVERABLES', label: 'Final Deliverables' },
-];
+const STAGE_LABELS: Record<ProjectStage, string> = {
+  PROPOSAL: 'Proposal',
+  THESIS_DRAFT: 'Thesis Draft',
+  FINAL_DELIVERABLES: 'Final Deliverables',
+};
+
+const STAGES = PROJECT_STAGES.map((id) => ({ id, label: STAGE_LABELS[id] }));
 
 const getStatusVariant = (status?: string): BadgeVariant => {
   if (status === 'Approved') return 'success';
@@ -1053,7 +1061,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
                     ? 'student'
                     : 'students'}
                 </p>
-                {Array.isArray(selectedProject.members) && selectedProject.members.length > 2 ? (
+                {Array.isArray(selectedProject.members) && selectedProject.members.length > MAX_TEAM_MEMBERS ? (
                   <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
                     Legacy 3-member team · all existing members preserved
                   </p>
@@ -1061,7 +1069,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
               </div>
             </div>
 
-            <ProjectTimeline currentStage={selectedProject.stage || 'PROPOSAL'} />
+            <ProjectTimeline currentStage={selectedProject.stage || DEFAULT_PROJECT_STAGE} />
 
             <DashboardPanel>
               <SectionHeader

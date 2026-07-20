@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import mongoose, { ClientSession } from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
@@ -6,12 +6,13 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
-import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
-import { getSupervisorFilledSlots } from '../../../../lib/supervisorCapacity';
+import { reserveSupervisorCapacity } from '../../../../lib/supervisorCapacity';
+import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
+import { DEFAULT_PROJECT_STAGE, PROJECT_STAGES } from '../../../../config/appSettings';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -75,7 +76,7 @@ async function createFreshStudentProject(
         supervisorId,
         members: [studentId],
         inviteCode,
-        stage: 'PROPOSAL',
+        stage: DEFAULT_PROJECT_STAGE,
         status: 'Pending',
         title: '',
         titleFingerprint: '',
@@ -193,7 +194,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
     const body = await req.json();
@@ -246,68 +247,45 @@ export async function POST(req: Request) {
       }
 
       const session = await mongoose.startSession();
-      session.startTransaction();
-
-      let deletionTargets: DeletionTarget[] = [];
-      let freedBytes = 0;
-      let leftTeam = false;
 
       try {
+        const result = await withTransactionRetry(session, async () => {
+        let deletionTargets: DeletionTarget[] = [];
+        let freedBytes = 0;
+        let leftTeam = false;
         const student = await User.findById(studentId).session(session);
 
         if (!student || student.role !== 'student') {
-          await session.abortTransaction();
-          session.endSession();
           return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
         }
 
         if (String(student.supervisorId || '') === newSupervisorId) {
-          await session.abortTransaction();
-          session.endSession();
           return NextResponse.json({ error: 'You are already assigned to this supervisor.' }, { status: 400 });
         }
 
-        const targetSupervisor = await User.findOne({
-          _id: newSupervisorId,
-          role: 'supervisor',
-        })
-          .select('_id name extraSlots')
-          .session(session);
+        const capacity = await reserveSupervisorCapacity(newSupervisorId, session);
 
-        if (!targetSupervisor) {
-          await session.abortTransaction();
-          session.endSession();
+        if (capacity.kind === 'missing') {
           return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
         }
 
-        const filledSlots = await getSupervisorFilledSlots(
-          String(targetSupervisor._id),
-          session
-        );
-
-        const maxSlots = getSupervisorMaxSlots(targetSupervisor);
-
-        if (filledSlots >= maxSlots) {
-          await session.abortTransaction();
-          session.endSession();
-
+        if (capacity.kind === 'full') {
           return NextResponse.json(
-            { error: `Cannot change supervisor. The selected supervisor is full (${maxSlots} slots).` },
+            { error: `Cannot change supervisor. The selected supervisor is full (${capacity.maxSlots} slots).` },
             { status: 409 }
           );
         }
+
+        const targetSupervisor = capacity.supervisor;
 
         const oldProject = student.projectId
           ? await Project.findById(student.projectId).session(session)
           : null;
 
         if (oldProject) {
-          const projectIsLocked = oldProject.status === 'Approved' || oldProject.stage !== 'PROPOSAL';
+          const projectIsLocked = oldProject.status === 'Approved' || oldProject.stage !== DEFAULT_PROJECT_STAGE;
 
           if (projectIsLocked) {
-            await session.abortTransaction();
-            session.endSession();
-
             return NextResponse.json(
               {
                 error:
@@ -390,12 +368,22 @@ export async function POST(req: Request) {
 
         await student.save({ session });
 
-        await session.commitTransaction();
-        session.endSession();
+        return {
+          deletionTargets,
+          response: NextResponse.json({
+            message: leftTeam
+              ? 'Supervisor changed. You left your old team and started fresh under the new supervisor.'
+              : 'Supervisor changed. Your previous project files were deleted and you started fresh.',
+            freedBytes,
+          }, { status: 200 }),
+        };
+        });
 
-        if (deletionTargets.length > 0) {
+        if (result instanceof NextResponse) return result;
+
+        if (result.deletionTargets.length > 0) {
           Promise.all(
-            deletionTargets.map((target) =>
+            result.deletionTargets.map((target) =>
               s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
             )
           ).catch((error: any) => {
@@ -403,21 +391,13 @@ export async function POST(req: Request) {
           });
         }
 
-        return NextResponse.json(
-          {
-            message: leftTeam
-              ? 'Supervisor changed. You left your old team and started fresh under the new supervisor.'
-              : 'Supervisor changed. Your previous project files were deleted and you started fresh.',
-            freedBytes,
-          },
-          { status: 200 }
-        );
+        return result.response;
       } catch (error: any) {
-        await session.abortTransaction();
-        session.endSession();
 
         console.error('Supervisor Change Error:', error.message);
         return NextResponse.json({ error: 'Failed to change supervisor.' }, { status: 500 });
+      } finally {
+        session.endSession();
       }
     }
 
@@ -437,46 +417,30 @@ export async function POST(req: Request) {
 
       // 1. Start an Atomic Transaction Session to prevent race conditions
       const session = await mongoose.startSession();
-      session.startTransaction();
 
       try {
+        return await withTransactionRetry(session, async () => {
         const triggeringStudent = await User.findById(body.id).session(session);
         if (!triggeringStudent) {
-          await session.abortTransaction();
-          session.endSession();
           return NextResponse.json({ error: 'Student not found' }, { status: 404 });
         }
 
         if (triggeringStudent.supervisorId && triggeringStudent.status !== 'Unassigned') {
-          await session.abortTransaction();
-          session.endSession();
           return NextResponse.json(
             { error: 'You already have a supervisor. Use the change supervisor option instead.' },
             { status: 400 }
           );
         }
 
-        const supervisor = await User.findOne({ _id: body.supervisorId, role: 'supervisor' })
-          .select('_id extraSlots')
-          .session(session);
+        const capacity = await reserveSupervisorCapacity(body.supervisorId, session);
 
-        if (!supervisor) {
-          await session.abortTransaction();
-          session.endSession();
+        if (capacity.kind === 'missing') {
           return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
         }
 
-        // 2. Count current slots WITH the session lock
-        const filledSlots = await getSupervisorFilledSlots(body.supervisorId, session);
-
-        const maxSlots = getSupervisorMaxSlots(supervisor);
-
-        // 3. Strict Capacity Enforcement
-        if (filledSlots >= maxSlots) {
-          await session.abortTransaction();
-          session.endSession();
+        if (capacity.kind === 'full') {
           return NextResponse.json(
-            { error: `Cannot assign. The selected supervisor has reached maximum capacity (${maxSlots} slots).` }, 
+            { error: `Cannot assign. The selected supervisor has reached maximum capacity (${capacity.maxSlots} slots).` },
             { status: 409 } // 409 Conflict is the correct HTTP status for a race condition rejection
           );
         }
@@ -504,16 +468,10 @@ export async function POST(req: Request) {
           );
         }
 
-        // 5. Commit the transaction ONLY if no other request modified the count during our process
-        await session.commitTransaction();
-        session.endSession();
         return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
-
-      } catch (transactionError) {
-        // Safe Fallback: Abort all changes if anything fails
-        await session.abortTransaction();
+        });
+      } finally {
         session.endSession();
-        throw transactionError; 
       }
     }
 
@@ -533,6 +491,12 @@ export async function POST(req: Request) {
     // ==========================================
     // ACTION: PROJECT SUBMISSION
     // ==========================================
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+
+    if (!token?.id || token.role !== 'student' || String(token.id) !== String(body.id)) {
+      return NextResponse.json({ error: 'Unauthorized project submission request.' }, { status: 401 });
+    }
+
     const triggeringStudent = await User.findById(body.id);
     if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
@@ -595,7 +559,7 @@ export async function POST(req: Request) {
         _id: { $ne: triggeringStudent.projectId }, // Ignore our own current team
         $or: [
           { status: 'Approved' }, // Fully finished projects
-          { stage: { $in: ['THESIS_DRAFT', 'FINAL_DELIVERABLES'] } } // Projects that have already passed the Proposal stage
+          { stage: { $in: PROJECT_STAGES.slice(1) } } // Projects that have already passed the Proposal stage
         ]
       });
 

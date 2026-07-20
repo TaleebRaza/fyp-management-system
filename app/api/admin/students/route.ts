@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import { requireRole } from '../../../../lib/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,9 @@ export async function GET(req: NextRequest) {
   const startedAt = Date.now();
 
   try {
+    const auth = await requireRole(req, ['admin']);
+    if (auth.kind === 'denied') return auth.response;
+
     await connectToDatabase();
 
     const { searchParams } = new URL(req.url);
@@ -47,7 +51,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')?.trim();
     const search = searchParams.get('search')?.trim();
 
-    const query: any = { role: 'student' };
+    const query: Record<string, unknown> = { role: 'student' };
 
     if (program && program !== 'All') {
       query.program = program;

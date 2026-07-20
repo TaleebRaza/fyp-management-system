@@ -1,6 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 import { normalizeRollNo } from '../lib/rollNo';
 import { normalizeExtraSupervisorSlots } from '../lib/supervisorSlots';
+import { PROGRAM_KEYS } from '../config/appSettings';
 
 const UserSchema = new Schema({
   name: { type: String, required: true },
@@ -9,7 +10,7 @@ const UserSchema = new Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   
-  program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS'], required: false },
+  program: { type: String, enum: PROGRAM_KEYS, required: false },
   
   batch: { type: String, required: false }, // e.g., "Fall 2026"
   semester: { type: String, default: '7th Semester' }, // Default for new signups
@@ -35,6 +36,8 @@ const UserSchema = new Schema({
     max: 10,
     set: normalizeExtraSupervisorSlots,
   },
+  // Transactional capacity writes increment this so concurrent assignments conflict and retry.
+  capacityVersion: { type: Number, default: 0 },
   isActive: { type: Boolean, default: true }, 
   
   monthlyLoginCount: { type: Number, default: 0 },

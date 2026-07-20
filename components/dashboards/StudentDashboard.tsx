@@ -48,7 +48,13 @@ import {
 
 import { VoiceChat } from '../ui/VoiceChat';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
-import { PROGRAM_MAP } from '../../config/appSettings';
+import {
+  DEFAULT_PROJECT_STAGE,
+  MAX_TEAM_MEMBERS,
+  PROGRAM_MAP,
+  PROJECT_STAGES,
+  type ProjectStage,
+} from '../../config/appSettings';
 import {
   PROJECT_DOMAIN_GROUPS,
   formatProjectDomainLabels,
@@ -67,11 +73,13 @@ type WordTemplate = {
   content: string;
 };
 
-const STAGES = [
-  { id: 'PROPOSAL', label: 'Proposal' },
-  { id: 'THESIS_DRAFT', label: 'Thesis Draft' },
-  { id: 'FINAL_DELIVERABLES', label: 'Final Deliverables' },
-];
+const STAGE_LABELS: Record<ProjectStage, string> = {
+  PROPOSAL: 'Proposal',
+  THESIS_DRAFT: 'Thesis Draft',
+  FINAL_DELIVERABLES: 'Final Deliverables',
+};
+
+const STAGES = PROJECT_STAGES.map((id) => ({ id, label: STAGE_LABELS[id] }));
 
 const DASHBOARD_THEME = {
   name: 'Professional',
@@ -389,9 +397,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const supervisorBroadcast = data?.supervisorBroadcast || null;
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
-  const isLegacyThreeMemberTeam = projectMembers.length > 2;
-  const canShareInviteCode = Boolean(project?.inviteCode) && projectMembers.length < 2;
-  const currentStage = project?.stage || 'PROPOSAL';
+  const isLegacyThreeMemberTeam = projectMembers.length > MAX_TEAM_MEMBERS;
+  const canShareInviteCode = Boolean(project?.inviteCode) && projectMembers.length < MAX_TEAM_MEMBERS;
+  const currentStage = project?.stage || DEFAULT_PROJECT_STAGE;
   const visibleTemplates = cachedTemplateStage === currentStage ? cachedTemplates : [];
   const currentProgramName = getProgramName(me?.program);
   const toolsList = splitTools(me?.tools || tools);
@@ -418,7 +426,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
   const canSubmit = ['Pending', 'Rejected', 'Changes Requested'].includes(me?.status);
   const isSupervisorChangeLocked =
-    !isUnassigned && (project?.status === 'Approved' || currentStage !== 'PROPOSAL');
+    !isUnassigned && (project?.status === 'Approved' || currentStage !== DEFAULT_PROJECT_STAGE);
 
   const announcementItems = useMemo(() => {
     const items: any[] = [];
@@ -1445,9 +1453,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
           description={
             isLegacyThreeMemberTeam
               ? 'Legacy 3-member team. All existing members remain active, but no new members can join.'
-              : projectMembers.length >= 2
-                ? 'Your team is full. FYP teams can contain a maximum of 2 students.'
-                : 'FYP teams can contain a maximum of 2 students. Share the invite code with one teammate.'
+              : projectMembers.length >= MAX_TEAM_MEMBERS
+                ? `Your team is full. FYP teams can contain a maximum of ${MAX_TEAM_MEMBERS} students.`
+                : `FYP teams can contain a maximum of ${MAX_TEAM_MEMBERS} students. Share the invite code with one teammate.`
           }
           action={
             canShareInviteCode ? (
@@ -1494,7 +1502,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               {project.inviteCode}
             </p>
           </div>
-        ) : projectMembers.length >= 2 ? (
+        ) : projectMembers.length >= MAX_TEAM_MEMBERS ? (
           <div className="mt-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
               Team Capacity
@@ -1502,7 +1510,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
             <p className="mt-2 text-sm font-semibold leading-6 text-[var(--color-text)]">
               {isLegacyThreeMemberTeam
                 ? `Legacy team preserved with all ${projectMembers.length} existing students. New members cannot join.`
-                : 'Team full with 2 students. New members cannot join.'}
+                : `Team full with ${MAX_TEAM_MEMBERS} students. New members cannot join.`}
             </p>
           </div>
         ) : null}

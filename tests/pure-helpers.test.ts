@@ -18,6 +18,21 @@ import {
   getSupervisorMaxSlots,
   normalizeExtraSupervisorSlots,
 } from '../lib/supervisorSlots';
+import {
+  DEFAULT_PROJECT_STAGE,
+  MAX_TEAM_MEMBERS,
+  PROGRAM_KEYS,
+  PROJECT_STAGES,
+} from '../config/appSettings';
+
+describe('shared academic constants', () => {
+  it('keeps the team limit, project stages, and program keys in one configuration', () => {
+    expect(MAX_TEAM_MEMBERS).toBe(2);
+    expect(PROJECT_STAGES).toEqual(['PROPOSAL', 'THESIS_DRAFT', 'FINAL_DELIVERABLES']);
+    expect(DEFAULT_PROJECT_STAGE).toBe('PROPOSAL');
+    expect(PROGRAM_KEYS).toEqual(['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS']);
+  });
+});
 
 describe('late-registration fine', () => {
   it('uses Pakistan calendar days at the configured deadline boundary', () => {

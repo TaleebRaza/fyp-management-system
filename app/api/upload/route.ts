@@ -1,21 +1,19 @@
 // Replace entire file with:
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
 import { s3Client, BUCKET_NAME, MAX_STORAGE_BYTES } from '../../../lib/s3-client';
 import connectToDatabase from '../../../lib/mongodb';
 import SystemConfig from '../../../models/SystemConfig';
+import { requireRole } from '../../../lib/routeAuth';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB strict ceiling
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-    if (!token || !token.id) {
-      return NextResponse.json({ error: 'Unauthorized: Authentication token missing or invalid.' }, { status: 401 });
-    }
+    const auth = await requireRole(req, ['student', 'admin']);
+    if (auth.kind === 'denied') return auth.response;
 
     await connectToDatabase();
     
@@ -42,8 +40,11 @@ export async function POST(req: NextRequest) {
     const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 });
 
     return NextResponse.json({ uploadUrl, url: key });
-  } catch (error: any) {
-    console.error('Client Upload Token Generation Handshake Error:', error.message);
+  } catch (error: unknown) {
+    console.error(
+      'Client Upload Token Generation Handshake Error:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
     return NextResponse.json({ error: 'Server token generation routing aborted.' }, { status: 500 });
   }
 }

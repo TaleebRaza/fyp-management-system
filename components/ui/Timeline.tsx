@@ -1,11 +1,14 @@
 import React from 'react';
 import { CheckCircle, Circle, FileText } from 'lucide-react';
+import { PROJECT_STAGES, type ProjectStage } from '../../config/appSettings';
 
-const STAGES = [
-  { id: 'PROPOSAL', label: 'Proposal Stage' },
-  { id: 'THESIS_DRAFT', label: 'Thesis Chapters' },
-  { id: 'FINAL_DELIVERABLES', label: 'Final Submission' }
-];
+const STAGE_LABELS: Record<ProjectStage, string> = {
+  PROPOSAL: 'Proposal Stage',
+  THESIS_DRAFT: 'Thesis Chapters',
+  FINAL_DELIVERABLES: 'Final Submission',
+};
+
+const STAGES = PROJECT_STAGES.map((id) => ({ id, label: STAGE_LABELS[id] }));
 
 export const Timeline = ({ 
   currentStage, 

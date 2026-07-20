@@ -245,17 +245,17 @@ Gate: new tests pass; typecheck passes; lint baseline is captured and cannot wor
 
 ### Milestone 2 — Secure route-local boundaries
 
-Status: in progress. Steps 2.1 and 2.3 are complete. In step 2.4, file reads, GET/POST/PATCH `/api/voice`, voice upload presigning, Supervisor dashboard GET/POST, and project join are complete. In step 2.5, supervisor creation/deletion, supervisor notification toggling, and student activation changes now assert admin role locally before parsing or database access. The route suites protect authentication, roles, actor identity, project membership, cross-supervisor access, and missing-resource boundaries. Voice cleanup still occurs on authorized GET and remains scheduled for Milestone 5.
+Status: complete. The route suites protect authentication, roles, actor identity, project membership, cross-supervisor access, and missing-resource boundaries. Anonymous/non-admin batch promotion and student listings, cross-supervisor exports, supervisor PDF-upload signing, and spoofed default project submissions are now rejected locally. Voice cleanup still occurs on authorized GET and remains scheduled for Milestone 5.
 
 2.1 Add typed NextAuth session/JWT augmentation to remove repeated session assertions. Complete.
 
-2.2 Add one small server-only role/session assertion function and use it first in the public-data and voice routes. In progress: `lib/routeAuth.ts` now supplies the small `requireRole` assertion for local admin mutations; existing public-data and voice checks remain intentionally unchanged until their next bounded edits.
+2.2 Add one small server-only role/session assertion function and use it first in the public-data and voice routes. Complete: `lib/routeAuth.ts` supplies the small `requireRole` assertion for routes whose role boundary does not require resource ownership; public-data and voice routes retain their specialized token/resource checks.
 
 2.3 Project the public supervisor response to an explicit allowlist. Keep any admin-only response separate. Complete.
 
 2.4 Bind supervisor GET/POST, project join, file reads, and voice operations to the authenticated actor and resource membership. Complete: file reads, voice operations/upload, Supervisor GET/POST, and project join actor binding now check the authenticated actor and applicable resource membership. `updateStatus`, `migrate`, and `removeStudent` require an authenticated supervisor who owns the target student, or an admin; migration rechecks ownership in its transaction. Project join requires a matching student JWT (admins retain their existing path).
 
-2.5 Add route-local checks to handlers currently protected only by the network matcher. In progress: `POST /api/add-supervisor`, `POST /api/delete-supervisor`, `POST /api/supervisors/toggle-notifications`, and `POST /api/admin/toggle-student` now reject anonymous and non-admin requests locally before database access; valid admin workflows are characterized. The two latest routes failed four pre-change authorization checks and now pass eight focused checks, while preserving their admin mutations. Next target: batch promotion.
+2.5 Add route-local checks to handlers currently protected only by the network matcher. Complete: in addition to the earlier admin mutations, batch promotion and student listing now assert admin role locally; export binds a supervisor to their own ID (with retained admin access); upload locally rejects supervisors; and default project submission binds the request body to the student JWT. Ten pre-change authorization assertions failed and the 18 focused tests now pass, preserving valid workflows.
 
 Gate: full auth matrix passes; no protected field appears in public JSON; valid role workflows remain unchanged.
 
@@ -275,17 +275,17 @@ Gate: passed. Reset, cleanup, cooldown, rollback, and route contract tests pass;
 
 ### Milestone 4 — Consolidate capacity and team invariants
 
-Status: 4.1 complete and 4.2 is partial. `lib/supervisorCapacity.ts` owns the tested per-target, mode-dependent count and is used by registration, student assignment/change, supervisor migration, and the student-mode join firewall. Supervisor listing deliberately retains its efficient bulk aggregation rather than adding N+1 queries; concurrency tests remain.
+Status: complete. `lib/supervisorCapacity.ts` owns the tested mode-dependent count and the transactional supervisor reservation used by registration, student assignment/change, supervisor migration, and the student-mode join firewall. Supervisor listing deliberately retains its equivalent efficient bulk aggregation rather than adding N+1 queries.
 
 4.1 Extract one typed capacity query/calculation used by the existing call sites. Complete.
 
-4.2 Use it in registration, list, assignment, supervisor change, migration, and join without merging those workflows. Partial: the list keeps its equivalent bulk aggregation to preserve query efficiency.
+4.2 Use it in registration, list, assignment, supervisor change, migration, and join without merging those workflows. Complete: the list keeps its equivalent bulk aggregation to preserve query efficiency.
 
-4.3 Add concurrency tests and correct any verified race in a separate focused change.
+4.3 Add concurrency tests and correct any verified race in a separate focused change. Complete: `capacityVersion` creates a shared write-conflict boundary; both slot modes simulate a losing transaction retrying, re-counting a full supervisor, and making no second reservation.
 
-4.4 Centralize the team-size constant and project stage/program constants.
+4.4 Centralize the team-size constant and project stage/program constants. Complete: typed team, stage/default, and program/default constants now drive schemas, server rules, templates, and dashboard display logic without changing labels or valid values.
 
-Gate: both slot modes and concurrent boundary tests pass; no ghost membership in rollback tests.
+Gate: passed. Both slot modes and simulated concurrent boundary tests pass; registration confirms a full supervisor creates no student/project records. Live replica-set concurrency remains a future hardening test, not a prerequisite for this bounded refactor.
 
 ### Milestone 5 — Make storage behavior explicit
 

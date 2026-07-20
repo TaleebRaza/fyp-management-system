@@ -1,5 +1,6 @@
 // models/Project.ts
 import mongoose, { Schema } from 'mongoose';
+import { DEFAULT_PROJECT_STAGE, PROJECT_STAGES } from '../config/appSettings';
 
 const ProjectSchema = new Schema({
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -18,8 +19,8 @@ const ProjectSchema = new Schema({
   
   stage: { 
     type: String, 
-    enum: ['PROPOSAL', 'THESIS_DRAFT', 'FINAL_DELIVERABLES'], 
-    default: 'PROPOSAL' 
+    enum: PROJECT_STAGES,
+    default: DEFAULT_PROJECT_STAGE,
   }
 }, { timestamps: true });
 

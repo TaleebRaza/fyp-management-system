@@ -7,15 +7,18 @@ import { sendNotificationEmail } from '../../../../lib/mailer';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
-import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
-import { getSupervisorFilledSlots } from '../../../../lib/supervisorCapacity';
+import { reserveSupervisorCapacity } from '../../../../lib/supervisorCapacity';
+import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import mongoose, { ClientSession } from 'mongoose';
+import { DEFAULT_PROJECT_STAGE, PROJECT_STAGES } from '../../../../config/appSettings';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
 
 export const dynamic = 'force-dynamic';
+
+const [PROPOSAL_STAGE, THESIS_DRAFT_STAGE, FINAL_DELIVERABLES_STAGE] = PROJECT_STAGES;
 
 type DeletionTarget = {
   key: string;
@@ -141,7 +144,7 @@ export async function GET(req: NextRequest) {
           pdfUrl: student.pdfUrl,
           status: student.status,
           remarks: student.remarks,
-          stage: projectMetadata[pId]?.stage || 'PROPOSAL',
+          stage: projectMetadata[pId]?.stage || DEFAULT_PROJECT_STAGE,
           program: student.program || 'N/A',
           batch: student.batch || 'N/A',
           semester: student.semester || '7th Semester',
@@ -212,12 +215,12 @@ export async function POST(req: NextRequest) {
         const project = await Project.findById(triggerStudent.projectId);
         
         if (project) {
-          if (project.stage === 'PROPOSAL') {
-            newStage = 'THESIS_DRAFT';
+          if (project.stage === PROPOSAL_STAGE) {
+            newStage = THESIS_DRAFT_STAGE;
             finalStatus = 'Pending'; 
             notificationMessage = 'Proposal Approved! Please begin uploading your Thesis Chapters.';
-          } else if (project.stage === 'THESIS_DRAFT') {
-            newStage = 'FINAL_DELIVERABLES';
+          } else if (project.stage === THESIS_DRAFT_STAGE) {
+            newStage = FINAL_DELIVERABLES_STAGE;
             finalStatus = 'Pending';
             notificationMessage = 'Thesis Approved! Please submit your Final Deliverables.';
           } else {
@@ -324,15 +327,12 @@ export async function POST(req: NextRequest) {
       }
 
       const session = await mongoose.startSession();
-      session.startTransaction();
 
-      const fail = async (message: string, statusCode: number) => {
-        await session.abortTransaction();
-        session.endSession();
-        return NextResponse.json({ error: message }, { status: statusCode });
-      };
+      const fail = (message: string, statusCode: number) =>
+        NextResponse.json({ error: message }, { status: statusCode });
 
       try {
+        return await withTransactionRetry(session, async () => {
         const targetSup = await User.findOne({
           role: 'supervisor',
           migrationCode: requestedMigrationCode,
@@ -360,11 +360,13 @@ export async function POST(req: NextRequest) {
           return await fail('This student is already assigned to the target supervisor.', 400);
         }
 
-        const filledSlots = await getSupervisorFilledSlots(String(targetSup._id), session);
+        const capacity = await reserveSupervisorCapacity(String(targetSup._id), session);
+        if (capacity.kind === 'missing') {
+          return await fail('Invalid Migration Code!', 400);
+        }
 
-        const maxSlots = getSupervisorMaxSlots(targetSup);
-        if (filledSlots >= maxSlots) {
-          return await fail(`Target supervisor has reached maximum capacity (${maxSlots} slots).`, 409);
+        if (capacity.kind === 'full') {
+          return await fail(`Target supervisor has reached maximum capacity (${capacity.maxSlots} slots).`, 409);
         }
 
         const oldProject = studentInTx.projectId
@@ -385,7 +387,7 @@ export async function POST(req: NextRequest) {
             {
               supervisorId: targetSup._id,
               members: [studentInTx._id],
-              stage: 'PROPOSAL',
+              stage: DEFAULT_PROJECT_STAGE,
               status: studentInTx.status || 'Pending',
               title: studentInTx.projectTitle || '',
               titleFingerprint: '',
@@ -454,7 +456,7 @@ export async function POST(req: NextRequest) {
               {
                 supervisorId: targetSup._id,
                 members: [studentInTx._id],
-                stage: oldProject.stage || 'PROPOSAL',
+                stage: oldProject.stage || DEFAULT_PROJECT_STAGE,
                 status: oldProject.status || studentInTx.status || 'Pending',
                 title: inheritedTitle,
                 titleFingerprint: oldProject.titleFingerprint || '',
@@ -482,15 +484,13 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        await session.commitTransaction();
-        session.endSession();
-
         return NextResponse.json({ message: 'Student migrated successfully. Project status and timeline were preserved.' }, { status: 200 });
+        });
       } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
         console.error('Migration transaction error:', error);
         return NextResponse.json({ error: 'Migration failed. Please try again.' }, { status: 500 });
+      } finally {
+        session.endSession();
       }
     }
 

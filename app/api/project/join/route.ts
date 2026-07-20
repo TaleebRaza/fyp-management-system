@@ -6,15 +6,12 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { withTransactionRetry } from '../../../../lib/transactionUtils';
-import { APP_SETTINGS } from '../../../../config/appSettings';
-import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
-import { getSupervisorFilledSlots } from '../../../../lib/supervisorCapacity';
+import { APP_SETTINGS, MAX_TEAM_MEMBERS } from '../../../../config/appSettings';
+import { reserveSupervisorCapacity } from '../../../../lib/supervisorCapacity';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
-
-const MAX_TEAM_MEMBERS = 2;
 
 export async function POST(req: NextRequest) {
   try {
@@ -90,19 +87,18 @@ export async function POST(req: NextRequest) {
               // If we are counting by PROJECT, this project already exists and is already counted.
               // Adding a member to an existing project does not consume an extra project slot.
               if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-                const supervisor = await User.findOne({ _id: firstMember.supervisorId, role: 'supervisor' })
-                  .select('_id extraSlots')
-                  .session(session);
-
-                const currentFilledSlots = await getSupervisorFilledSlots(
+                const capacity = await reserveSupervisorCapacity(
                   String(firstMember.supervisorId),
                   session
                 );
-                const maxSlots = getSupervisorMaxSlots(supervisor);
-                
-                if (currentFilledSlots >= maxSlots) {
+
+                if (capacity.kind === 'missing') {
+                  return NextResponse.json({ error: 'Assigned supervisor was not found.' }, { status: 404 });
+                }
+
+                if (capacity.kind === 'full') {
                   return NextResponse.json({ 
-                    error: `Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit (${maxSlots} slots).` 
+                    error: `Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit (${capacity.maxSlots} slots).`
                   }, { status: 409 });
                 }
               }
@@ -127,7 +123,7 @@ export async function POST(req: NextRequest) {
           {
             _id: targetProject._id,
             members: { $ne: studentId },
-            'members.1': { $exists: false },
+            [`members.${MAX_TEAM_MEMBERS - 1}`]: { $exists: false },
           },
           {
             $addToSet: { members: studentId },

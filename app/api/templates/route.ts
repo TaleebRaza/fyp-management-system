@@ -3,17 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import fs from 'fs/promises';
 import path from 'path';
+import { DEFAULT_PROJECT_STAGE, PROJECT_STAGES, type ProjectStage } from '../../../config/appSettings';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const TEMPLATE_STAGES = [
-  'PROPOSAL',
-  'THESIS_DRAFT',
-  'FINAL_DELIVERABLES',
-] as const;
-
-type TemplateStage = (typeof TEMPLATE_STAGES)[number];
 
 type TemplateDefinition = {
   id: string;
@@ -22,7 +15,7 @@ type TemplateDefinition = {
 };
 
 // The existing phase-to-template assignments are intentionally unchanged.
-const STAGE_MAP: Record<TemplateStage, readonly TemplateDefinition[]> = {
+const STAGE_MAP: Record<ProjectStage, readonly TemplateDefinition[]> = {
   PROPOSAL: [
     {
       id: 'prop',
@@ -106,8 +99,8 @@ const STAGE_MAP: Record<TemplateStage, readonly TemplateDefinition[]> = {
   ],
 };
 
-function isTemplateStage(value: string): value is TemplateStage {
-  return TEMPLATE_STAGES.includes(value as TemplateStage);
+function isTemplateStage(value: string): value is ProjectStage {
+  return (PROJECT_STAGES as readonly string[]).includes(value);
 }
 
 function resolveWordTemplatePath(filename: string) {
@@ -146,7 +139,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const stageParam = req.nextUrl.searchParams.get('stage') || 'PROPOSAL';
+    const stageParam = req.nextUrl.searchParams.get('stage') || DEFAULT_PROJECT_STAGE;
 
     if (!isTemplateStage(stageParam)) {
       return NextResponse.json(
