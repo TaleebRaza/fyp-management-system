@@ -2,15 +2,10 @@ import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  abortTransaction: vi.fn(),
-  commitTransaction: vi.fn(),
   connectToDatabase: vi.fn(),
-  endSession: vi.fn(),
   getToken: vi.fn(),
   ledgerUpdate: vi.fn(),
   projectFindById: vi.fn(),
-  startSession: vi.fn(),
-  startTransaction: vi.fn(),
   voiceDeleteMany: vi.fn(),
   voiceFind: vi.fn(),
   voiceFindById: vi.fn(),
@@ -35,14 +30,6 @@ vi.mock('../models/SystemConfig', () => ({
   default: { findOneAndUpdate: mocks.ledgerUpdate },
 }));
 vi.mock('next-auth/jwt', () => ({ getToken: mocks.getToken }));
-vi.mock('mongoose', () => ({
-  default: { startSession: mocks.startSession },
-}));
-vi.mock('@aws-sdk/client-s3', () => ({ DeleteObjectCommand: vi.fn() }));
-vi.mock('../lib/s3-client', () => ({
-  BUCKET_NAME: 'test-bucket',
-  s3Client: { send: vi.fn() },
-}));
 
 import { GET, PATCH, POST } from '../app/api/voice/route';
 
@@ -96,24 +83,16 @@ describe('GET /api/voice', () => {
     mocks.projectFindById.mockReturnValue(
       leanQuery({ members: ['student-1', 'student-2'], supervisorId: 'supervisor-1' })
     );
-    mocks.startSession.mockResolvedValue({
-      abortTransaction: mocks.abortTransaction,
-      commitTransaction: mocks.commitTransaction,
-      endSession: mocks.endSession,
-      startTransaction: mocks.startTransaction,
-    });
-    mocks.voiceFind
-      .mockReturnValueOnce({ session: vi.fn().mockResolvedValue([]) })
-      .mockReturnValueOnce(activeNotesQuery([{ _id: 'note-1' }]));
+    mocks.voiceFind.mockReturnValue(activeNotesQuery([{ _id: 'note-1' }]));
   });
 
-  it('rejects anonymous requests before starting cleanup', async () => {
+  it('rejects anonymous requests before reading notes', async () => {
     mocks.getToken.mockResolvedValue(null);
 
     const response = await getVoice();
 
     expect(response.status).toBe(401);
-    expect(mocks.startSession).not.toHaveBeenCalled();
+    expect(mocks.voiceFind).not.toHaveBeenCalled();
   });
 
   it('rejects roles that do not participate in project voice chat', async () => {
@@ -122,15 +101,16 @@ describe('GET /api/voice', () => {
     const response = await getVoice();
 
     expect(response.status).toBe(403);
-    expect(mocks.startSession).not.toHaveBeenCalled();
+    expect(mocks.voiceFind).not.toHaveBeenCalled();
   });
 
-  it('returns notes to a project member', async () => {
+  it('returns notes to a project member without mutating storage or note records', async () => {
     const response = await getVoice();
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ notes: [{ _id: 'note-1' }] });
-    expect(mocks.commitTransaction).toHaveBeenCalledOnce();
+    expect(mocks.voiceDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.ledgerUpdate).not.toHaveBeenCalled();
   });
 
   it('returns notes to the project supervisor', async () => {
@@ -141,22 +121,22 @@ describe('GET /api/voice', () => {
     expect(response.status).toBe(200);
   });
 
-  it('rejects a student from another project before starting cleanup', async () => {
+  it('rejects a student from another project before reading notes', async () => {
     mocks.getToken.mockResolvedValue({ id: 'student-3', role: 'student' });
 
     const response = await getVoice();
 
     expect(response.status).toBe(403);
-    expect(mocks.startSession).not.toHaveBeenCalled();
+    expect(mocks.voiceFind).not.toHaveBeenCalled();
   });
 
-  it('rejects a supervisor from another project before starting cleanup', async () => {
+  it('rejects a supervisor from another project before reading notes', async () => {
     mocks.getToken.mockResolvedValue({ id: 'supervisor-2', role: 'supervisor' });
 
     const response = await getVoice();
 
     expect(response.status).toBe(403);
-    expect(mocks.startSession).not.toHaveBeenCalled();
+    expect(mocks.voiceFind).not.toHaveBeenCalled();
   });
 });
 

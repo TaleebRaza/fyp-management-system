@@ -4,11 +4,11 @@ Last updated: 2026-07-20 (Asia/Karachi)
 
 ## Status
 
-- Current milestone: Milestone 5 — Make storage behavior explicit.
-- State: Milestones 2 and 4 are complete. Begin the bounded R2-key normalization and deletion-target-deduplication extraction in step 5.1.
+- Current milestone: Milestone 6 — Thin the route handlers.
+- State: Milestone 5 is complete. Milestone 6.1 is in progress: the program/batch and supervisor-assignment actions are extracted behind their unchanged contracts; change-supervisor and project-submission remain in the route.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
-- Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, and centralized team/stage/program constants; the NextAuth work is type-only.
+- Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, centralized team/stage/program constants, and explicit R2 cleanup/reconciliation behavior; the NextAuth work is type-only.
 - Documentation is intentionally ignored through `docs/` in `.gitignore` as requested.
 
 The complete findings and roadmap are in [Refactor Milestones](./Refactor%20Milestones.md).
@@ -60,10 +60,10 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Begin Milestone 5.1 by extracting and characterizing the existing R2 key normalizer and deletion-target deduper. Do not alter deletion ordering, ledger adjustment, or cleanup retries in this first storage step.
-3. Keep the current `GET /api/voice` cleanup behavior unchanged until the read-only conversion in step 5.3.
-4. Do not touch production data or add a queue dependency; use a read-only reconciliation report before any policy change.
-5. Do not split dashboard components or add React component tooling during this storage milestone.
+2. Continue Milestone 6.1 with the existing `changeSupervisor` action behind its unchanged API contract; characterize its success, capacity rejection, and cleanup failure behavior first.
+3. Do not split dashboard components or add React component tooling during route-handler extraction.
+4. Keep email delivery outside extracted transaction functions; do not alter user-visible message content in the first action extraction.
+5. Do not add a generic service layer, dependency, queue, or production-data migration.
 6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
 
 ## Milestone 1 progress
@@ -90,6 +90,26 @@ Validation for this slice:
 - `npm run lint`: unchanged baseline failure, 224 problems (183 errors, 41 warnings); no new findings from the test file.
 - `npm run build`: passed; the existing `middleware.ts` deprecation warning remains.
 - `npm install` reported 6 dependency audit findings (4 moderate, 2 high). No automatic or breaking dependency fix was run because upgrades are outside this bounded refactoring slice.
+
+## Milestone 5 progress
+
+Latest completed sub-step (2026-07-20, `Portal-Overhaul`):
+
+- Completed 5.1–5.5. `lib/r2Cleanup.ts` now owns the existing URL/bare-key normalization, deletion-target construction, and maximum-size deduplication. Reset, student supervisor-change, stage-advance, broadcast, and cron cleanup callers reuse it; no generic utility layer or dependency was added.
+- Added the admin-only, read-only `GET /api/admin/storage-reconciliation` report. It paginates R2, compares its objects with project PDFs, voice notes, audio broadcasts, and the `usedBytes` ledger, and reports drift, missing references, unreferenced objects, size mismatches, and duplicate references. It performs no database or R2 mutation.
+- `GET /api/voice` now only authorizes and reads notes. The secured cron route owns cleanup of played notes after ten minutes and stale notes after 24 hours, so a read request has no destructive side effects.
+- Cleanup now normalizes/deduplicates, retries each R2 deletion once, and only then changes metadata and debits the clamped ledger. Failed retry exhaustion leaves the related metadata and ledger intact for the next secured cleanup/reconciliation attempt. This is still not cross-system atomic: an R2 deletion can succeed before a later MongoDB failure, but repeating the deletion is idempotent and reconciliation exposes the remaining inconsistency.
+- Added focused R2 parsing/reconciliation/deletion, cron, broadcast, and academic-reset failure tests. `npm test` passed (24 files, 130 tests); `npm run typecheck` passed; focused lint for all new helpers, route, and tests passed; `git diff --check` passed; and `npm run build` passed outside the sandbox with the existing Next.js `middleware.ts` deprecation warning. Full lint remains a pre-existing baseline failure at 193 problems (156 errors, 37 warnings), improved from the recorded 198-problem baseline; touched legacy handlers retain their existing explicit-`any` debt and the new files are clean.
+- Decision: no abandoned-presigned-upload cleanup was added because the new reconciliation report must first show that those objects are material. No production report was run and no production data was changed. The next concrete action is Milestone 6.1, beginning with a single characterized student dashboard action.
+
+## Milestone 6 progress
+
+Current sub-step (2026-07-20, `Portal-Overhaul`):
+
+- Began 6.1 by moving the program/batch and supervisor-assignment actions from `POST /api/dashboard/student` into the cohesive `lib/studentDashboardActions.ts` module. The route still reads the body and dispatches by its existing action field; the extracted actions retain their JWT actor binding, validation, transaction/capacity reservation, response statuses, messages, and session cleanup.
+- Added `tests/student-assign-supervisor-route.test.ts`; it covers spoofed actor rejection and the valid transaction-backed assignment response. Existing program/batch and project-submission suites continue to protect their contracts.
+- Focused validation: the three student action suites passed (3 files, 9 tests); typecheck passed; the new module and tests are lint-clean; `git diff --check` passed. Full-suite/lint/build validation and the remaining student action extractions are still required before Milestone 6 can be complete.
+- No dependencies, API paths, payloads, or response contract changes were added. The next action is the characterized `changeSupervisor` extraction; email composition and typed structured errors remain intentionally deferred within Milestone 6.
 
 ## Milestone 4 progress
 

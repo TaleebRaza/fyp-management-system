@@ -4,8 +4,9 @@ import { getToken } from 'next-auth/jwt';
 import connectToDatabase from '../../../../../lib/mongodb';
 import User from '../../../../../models/User';
 import SystemConfig from '../../../../../models/SystemConfig';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../../../lib/s3-client';
+import { toR2DeletionTarget } from '../../../../../lib/r2Cleanup';
+import { deleteR2Targets } from '../../../../../lib/r2Deletion';
+import { decrementStorageLedger } from '../../../../../lib/storageLedger';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,15 +34,11 @@ export async function POST(req: NextRequest) {
 
     // 2. Orphan Prevention: Purge old audio from R2 if it exists
     if (supervisor.broadcastType === 'audio' && supervisor.broadcastContent) {
-      try {
-        let keyToDelete = supervisor.broadcastContent;
-        if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
-        
-        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
-        sizeDelta -= (supervisor.broadcastSize || 0); // Refund the bytes
-        console.log(`🧹 Broadcast Overwrite: Wiped old audio -> ${keyToDelete}`);
-      } catch (e: any) {
-        console.error('Failed to wipe old broadcast audio:', e.message);
+      const oldTarget = toR2DeletionTarget(supervisor.broadcastContent, supervisor.broadcastSize);
+      if (oldTarget) {
+        await deleteR2Targets([oldTarget]);
+        sizeDelta -= oldTarget.size;
+        console.log(`🧹 Broadcast Overwrite: Wiped old audio -> ${oldTarget.key}`);
       }
     }
 
@@ -91,15 +88,11 @@ export async function DELETE(req: NextRequest) {
 
     // 1. If the active broadcast is audio, wipe the physical file
     if (supervisor.broadcastType === 'audio' && supervisor.broadcastContent) {
-      try {
-        let keyToDelete = supervisor.broadcastContent;
-        if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
-        
-        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
-        sizeRefund = supervisor.broadcastSize || 0;
-        console.log(`🧹 Broadcast Clear: Wiped audio -> ${keyToDelete}`);
-      } catch (e: any) {
-        console.error('Failed to wipe broadcast audio during clear:', e.message);
+      const oldTarget = toR2DeletionTarget(supervisor.broadcastContent, supervisor.broadcastSize);
+      if (oldTarget) {
+        await deleteR2Targets([oldTarget]);
+        sizeRefund = oldTarget.size;
+        console.log(`🧹 Broadcast Clear: Wiped audio -> ${oldTarget.key}`);
       }
     }
 
@@ -112,11 +105,7 @@ export async function DELETE(req: NextRequest) {
 
     // 3. Refund the ledger
     if (sizeRefund > 0) {
-      await SystemConfig.findOneAndUpdate(
-        { configKey: 'storage' },
-        { $inc: { usedBytes: -sizeRefund } },
-        { upsert: true }
-      );
+      await decrementStorageLedger(sizeRefund);
     }
 
     return NextResponse.json({ message: 'Broadcast cleared.' }, { status: 200 });

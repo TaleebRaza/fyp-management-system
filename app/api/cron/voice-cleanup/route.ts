@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import VoiceNote from '../../../../models/VoiceNote';
 import User from '../../../../models/User';
-import SystemConfig from '../../../../models/SystemConfig';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
+import { toR2DeletionTarget, type R2DeletionTarget } from '../../../../lib/r2Cleanup';
+import { deleteR2Targets } from '../../../../lib/r2Deletion';
+import { decrementStorageLedger } from '../../../../lib/storageLedger';
 
 // Ensure Vercel never caches this route
 export const dynamic = 'force-dynamic';
@@ -23,35 +23,22 @@ export async function GET(req: Request) {
   try {
     await connectToDatabase();
 
-    let totalRefundBytes = 0;
     let purgedVoiceNotesCount = 0;
     let purgedBroadcastsCount = 0;
 
     const now = Date.now();
 
     // ==========================================
-    // TASK 1: CLEANUP ORPHANED VOICE NOTES (24 HRS)
+    // TASK 1: CLEANUP PLAYED (10 MINUTES) OR STALE (24 HOURS) VOICE NOTES
     // ==========================================
     const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000);
-    const expiredNotes = await VoiceNote.find({ createdAt: { $lte: twentyFourHoursAgo } });
-
-    if (expiredNotes.length > 0) {
-      purgedVoiceNotesCount = expiredNotes.length;
-      
-      // Calculate bytes being freed
-      const notesSize = expiredNotes.reduce((sum, note) => sum + (note.fileSize || 0), 0);
-      totalRefundBytes += notesSize;
-
-      // Delete physical files from R2
-      const urlsToDelete = expiredNotes.map(note => note.blobUrl);
-      await Promise.all(urlsToDelete.map(key => 
-        s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
-      ).map(p => p.catch(e => console.error('R2 VoiceNote Deletion Error:', e.message))));
-
-      // Wipe the database ledgers
-      const idsToDelete = expiredNotes.map(note => note._id);
-      await VoiceNote.deleteMany({ _id: { $in: idsToDelete } });
-    }
+    const tenMinutesAgo = new Date(now - 10 * 60 * 1000);
+    const expiredNotes = await VoiceNote.find({
+      $or: [
+        { isPlayed: true, playedAt: { $lte: tenMinutesAgo } },
+        { createdAt: { $lte: twentyFourHoursAgo } },
+      ],
+    });
 
     // ==========================================
     // TASK 2: CLEANUP SUPERVISOR BROADCASTS (72 HRS)
@@ -64,23 +51,23 @@ export async function GET(req: Request) {
       broadcastCreatedAt: { $lte: seventyTwoHoursAgo }
     });
 
+    const deletionTargets = [
+      ...expiredNotes.map(note => toR2DeletionTarget(note.blobUrl, note.fileSize)),
+      ...expiredBroadcasts.map(user => toR2DeletionTarget(user.broadcastContent, user.broadcastSize)),
+    ].filter(Boolean) as R2DeletionTarget[];
+
+    if (deletionTargets.length > 0) {
+      await deleteR2Targets(deletionTargets);
+    }
+
+    if (expiredNotes.length > 0) {
+      purgedVoiceNotesCount = expiredNotes.length;
+      await VoiceNote.deleteMany({ _id: { $in: expiredNotes.map(note => note._id) } });
+    }
+
     if (expiredBroadcasts.length > 0) {
       purgedBroadcastsCount = expiredBroadcasts.length;
-
-      // Delete physical files from R2
-      const broadcastKeys = expiredBroadcasts.map(user => {
-        let key = user.broadcastContent;
-        if (key.includes('.com/')) key = key.split('.com/')[1];
-        return key;
-      });
-
-      await Promise.all(broadcastKeys.map(key => 
-        s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
-      ).map(p => p.catch(e => console.error('R2 Broadcast Deletion Error:', e.message))));
-
-      // Accumulate ledger refund and prepare bulk update to clear User fields
       const bulkOps = expiredBroadcasts.map(user => {
-        totalRefundBytes += (user.broadcastSize || 0);
         return {
           updateOne: {
             filter: { _id: user._id },
@@ -99,14 +86,9 @@ export async function GET(req: Request) {
       await User.bulkWrite(bulkOps);
     }
 
-    // ==========================================
-    // TASK 3: MASTER LEDGER REFUND
-    // ==========================================
+    const totalRefundBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
     if (totalRefundBytes > 0) {
-      await SystemConfig.findOneAndUpdate(
-        { configKey: 'storage' },
-        { $inc: { usedBytes: -totalRefundBytes } }
-      );
+      await decrementStorageLedger(totalRefundBytes);
     }
 
     const resultMessage = `🧹 Cron Cleanup: Purged ${purgedVoiceNotesCount} notes & ${purgedBroadcastsCount} broadcasts. Freed ${totalRefundBytes} bytes.`;
@@ -114,8 +96,8 @@ export async function GET(req: Request) {
     
     return NextResponse.json({ message: resultMessage }, { status: 200 });
 
-  } catch (error: any) {
-    console.error('Cron Cleanup Error:', error.message);
+  } catch (error: unknown) {
+    console.error('Cron Cleanup Error:', error);
     return NextResponse.json({ error: 'Failed to execute scheduled cleanup.' }, { status: 500 });
   }
 }

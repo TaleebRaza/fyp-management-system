@@ -4,9 +4,6 @@ import connectToDatabase from '../../../lib/mongodb';
 import Project from '../../../models/Project';
 import SystemConfig from '../../../models/SystemConfig';
 import VoiceNote from '../../../models/VoiceNote';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
-import mongoose from 'mongoose';
 
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +24,7 @@ function canAccessVoiceProject(
   );
 }
 
-// 1. FETCH & LAZY GARBAGE COLLECTION
+// 1. FETCH
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -55,62 +52,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    const activeNotes = await VoiceNote.find({ projectId })
+      .populate('senderId', 'name role')
+      .sort({ createdAt: 1 })
+      .lean();
 
-    try {
-      // --- LAZY GARBAGE COLLECTION ENGINE ---
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-
-      // Find expired notes for this project
-      const expiredNotes = await VoiceNote.find({
-        projectId,
-        isPlayed: true,
-        playedAt: { $lte: tenMinutesAgo }
-      }).session(session);
-
-      if (expiredNotes.length > 0) {
-        // 1. Sum the file sizes
-        const totalSize = expiredNotes.reduce((sum, note) => sum + (note.fileSize || 0), 0);
-
-        // 2. Delete physical files from R2
-        const urlsToDelete = expiredNotes.map(note => note.blobUrl);
-        await Promise.all(urlsToDelete.map(key => 
-          s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
-        ));
-
-        // 3. Delete the database documents
-        const idsToDelete = expiredNotes.map(note => note._id);
-        await VoiceNote.deleteMany({ _id: { $in: idsToDelete } }).session(session);
-
-        // 4. Decrement the storage ledger
-        if (totalSize > 0) {
-          await SystemConfig.findOneAndUpdate(
-            { configKey: 'storage' },
-            { $inc: { usedBytes: -totalSize } },
-            { session }
-          );
-        }
-
-        console.log(`🧹 Garbage Collection: Purged ${expiredNotes.length} expired voice notes, freed ${totalSize} bytes.`);
-      }
-
-      await session.commitTransaction();
-      session.endSession();
-
-      // Fetch the remaining valid notes
-      const activeNotes = await VoiceNote.find({ projectId })
-        .populate('senderId', 'name role')
-        .sort({ createdAt: 1 })
-        .lean();
-
-      return NextResponse.json({ notes: activeNotes }, { status: 200 });
-
-    } catch (transactionError) {
-      await session.abortTransaction();
-      session.endSession();
-      throw transactionError;
-    }
+    return NextResponse.json({ notes: activeNotes }, { status: 200 });
 
   } catch (error) {
     console.error('Voice Fetch Error:', error);

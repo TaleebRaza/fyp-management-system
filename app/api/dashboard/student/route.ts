@@ -8,9 +8,9 @@ import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
 import { reserveSupervisorCapacity } from '../../../../lib/supervisorCapacity';
 import { withTransactionRetry } from '../../../../lib/transactionUtils';
-import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
+import { assignStudentSupervisor, updateStudentProgramBatch } from '../../../../lib/studentDashboardActions';
+import { dedupeR2DeletionTargets, toR2DeletionTarget, type R2DeletionTarget } from '../../../../lib/r2Cleanup';
+import { deleteR2Targets } from '../../../../lib/r2Deletion';
 import SystemConfig from '../../../../models/SystemConfig';
 import { DEFAULT_PROJECT_STAGE, PROJECT_STAGES } from '../../../../config/appSettings';
 import {
@@ -20,48 +20,6 @@ import {
 } from '../../../../config/projectDomains';
 
 export const dynamic = 'force-dynamic';
-
-type DeletionTarget = {
-  key: string;
-  size: number;
-};
-
-function getR2ObjectKey(value: string) {
-  const trimmedValue = String(value || '').trim();
-  if (!trimmedValue) return '';
-
-  try {
-    const parsedUrl = new URL(trimmedValue);
-    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
-  } catch {
-    return trimmedValue.replace(/^\/+/, '');
-  }
-}
-
-function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = getR2ObjectKey(fileUrl || '');
-  if (!key) return null;
-
-  return {
-    key,
-    size: Math.max(Number(fileSize || 0), 0),
-  };
-}
-
-function mergeDeletionTargets(targets: DeletionTarget[]) {
-  const mergedTargets = new Map<string, DeletionTarget>();
-
-  targets.forEach((target) => {
-    const existingTarget = mergedTargets.get(target.key);
-
-    mergedTargets.set(target.key, {
-      key: target.key,
-      size: Math.max(existingTarget?.size || 0, target.size),
-    });
-  });
-
-  return Array.from(mergedTargets.values());
-}
 
 async function createFreshStudentProject(
   studentId: mongoose.Types.ObjectId,
@@ -203,30 +161,7 @@ export async function POST(req: NextRequest) {
     // ACTION: STUDENT PROGRAM/BATCH SELF UPDATE
     // ==========================================
     if (body.action === 'updateProgramBatch') {
-      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
-
-      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
-        return NextResponse.json({ error: 'Unauthorized Program/Batch update request.' }, { status: 401 });
-      }
-
-      try {
-        const result = await resetStudentAcademicInfo({
-          targetUserId: String(body.id || '').trim(),
-          newProgram: String(body.program || '').trim().toUpperCase(),
-          newBatch: String(body.batch || '').trim(),
-          actor: 'student',
-          enforceStudentCooldown: true,
-        });
-
-        return NextResponse.json(result, { status: 200 });
-      } catch (error: unknown) {
-        if (error instanceof AcademicResetError) {
-          return NextResponse.json({ error: error.message }, { status: error.statusCode });
-        }
-
-        console.error('Program/Batch Update Error:', error);
-        return NextResponse.json({ error: 'Failed to update Program/Batch.' }, { status: 500 });
-      }
+      return updateStudentProgramBatch(req, body);
     }
 
     // ==========================================
@@ -250,7 +185,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const result = await withTransactionRetry(session, async () => {
-        let deletionTargets: DeletionTarget[] = [];
+        let deletionTargets: R2DeletionTarget[] = [];
         let freedBytes = 0;
         let leftTeam = false;
         const student = await User.findById(studentId).session(session);
@@ -303,17 +238,18 @@ export async function POST(req: NextRequest) {
           if (isOnlyMember) {
             const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
 
-            deletionTargets = mergeDeletionTargets([
-              buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
+            deletionTargets = dedupeR2DeletionTargets([
+              toR2DeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
               String(student.pdfUrl || '') !== String(oldProject.pdfUrl || '')
-                ? buildDeletionTarget(student.pdfUrl, oldProject.pdfSize)
+                ? toR2DeletionTarget(student.pdfUrl, oldProject.pdfSize)
                 : null,
               ...voiceNotes
-                .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
+                .map((note: any) => toR2DeletionTarget(note.blobUrl, note.fileSize))
                 .filter(Boolean),
-            ].filter(Boolean) as DeletionTarget[]);
+            ].filter(Boolean) as R2DeletionTarget[]);
 
             freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
+            await deleteR2Targets(deletionTargets);
 
             if (voiceNotes.length > 0) {
               await VoiceNote.deleteMany({
@@ -369,7 +305,6 @@ export async function POST(req: NextRequest) {
         await student.save({ session });
 
         return {
-          deletionTargets,
           response: NextResponse.json({
             message: leftTeam
               ? 'Supervisor changed. You left your old team and started fresh under the new supervisor.'
@@ -380,16 +315,6 @@ export async function POST(req: NextRequest) {
         });
 
         if (result instanceof NextResponse) return result;
-
-        if (result.deletionTargets.length > 0) {
-          Promise.all(
-            result.deletionTargets.map((target) =>
-              s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
-            )
-          ).catch((error: any) => {
-            console.error('Supervisor change file cleanup failed:', error.message);
-          });
-        }
 
         return result.response;
       } catch (error: any) {
@@ -405,74 +330,7 @@ export async function POST(req: NextRequest) {
     // ACTION: ASSIGN SUPERVISOR (Transaction Lock)
     // ==========================================
     if (body.action === 'assignSupervisor') {
-      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
-
-      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
-        return NextResponse.json({ error: 'Unauthorized supervisor assignment request.' }, { status: 401 });
-      }
-
-      if (!mongoose.Types.ObjectId.isValid(String(body.id || '')) || !mongoose.Types.ObjectId.isValid(String(body.supervisorId || ''))) {
-        return NextResponse.json({ error: 'Invalid student or supervisor.' }, { status: 400 });
-      }
-
-      // 1. Start an Atomic Transaction Session to prevent race conditions
-      const session = await mongoose.startSession();
-
-      try {
-        return await withTransactionRetry(session, async () => {
-        const triggeringStudent = await User.findById(body.id).session(session);
-        if (!triggeringStudent) {
-          return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-        }
-
-        if (triggeringStudent.supervisorId && triggeringStudent.status !== 'Unassigned') {
-          return NextResponse.json(
-            { error: 'You already have a supervisor. Use the change supervisor option instead.' },
-            { status: 400 }
-          );
-        }
-
-        const capacity = await reserveSupervisorCapacity(body.supervisorId, session);
-
-        if (capacity.kind === 'missing') {
-          return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
-        }
-
-        if (capacity.kind === 'full') {
-          return NextResponse.json(
-            { error: `Cannot assign. The selected supervisor has reached maximum capacity (${capacity.maxSlots} slots).` },
-            { status: 409 } // 409 Conflict is the correct HTTP status for a race condition rejection
-          );
-        }
-
-        const supObjectId = new mongoose.Types.ObjectId(body.supervisorId);
-
-        // 4. Update Project and Team Members inside the locked session
-        if (triggeringStudent.projectId) {
-          await Project.findByIdAndUpdate(
-            triggeringStudent.projectId, 
-            { $set: { supervisorId: supObjectId } },
-            { session }
-          );
-
-          await User.updateMany(
-            { projectId: triggeringStudent.projectId },
-            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
-            { session }
-          );
-        } else {
-          await User.findByIdAndUpdate(
-            body.id, 
-            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
-            { session }
-          );
-        }
-
-        return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
-        });
-      } finally {
-        session.endSession();
-      }
+      return assignStudentSupervisor(req, body);
     }
 
     // ==========================================
@@ -582,14 +440,12 @@ export async function POST(req: NextRequest) {
     
     if (oldPdfUrl && body.pdfUrl && oldPdfUrl !== body.pdfUrl) {
       try {
-        let keyToDelete = oldPdfUrl;
-        if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
-        
-        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
-        
+        const target = toR2DeletionTarget(oldPdfUrl, targetProject?.pdfSize);
+        if (target) await deleteR2Targets([target]);
+
         // Subtract the exact size of the old PDF being wiped
         sizeDelta -= (targetProject?.pdfSize || 0);
-        console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${keyToDelete}`);
+        console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${target?.key || oldPdfUrl}`);
       } catch (blobError: any) {
         console.error('Failed to delete old PDF blob:', blobError.message);
       }

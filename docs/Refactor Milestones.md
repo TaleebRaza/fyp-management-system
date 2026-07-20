@@ -289,21 +289,25 @@ Gate: passed. Both slot modes and simulated concurrent boundary tests pass; regi
 
 ### Milestone 5 — Make storage behavior explicit
 
-5.1 Extract and test R2 key normalization and deletion-target deduplication.
+Status: complete. One R2-specific helper now normalizes/deduplicates existing cleanup targets; a separate read-only admin reconciliation report compares database references, R2 objects, and the storage ledger. Voice GET is read-only, and cleanup retries R2 deletion before metadata/ledger mutation. Failure-injection tests cover retry exhaustion without metadata or ledger changes. A residual MongoDB/R2 split remains observable through reconciliation rather than hidden by a speculative queue.
 
-5.2 Add a read-only storage reconciliation report/command; do not mutate production data.
+5.1 Extract and test R2 key normalization and deletion-target deduplication. Complete.
 
-5.3 Make voice GET read-only and rely on the secured cleanup path.
+5.2 Add a read-only storage reconciliation report/command; do not mutate production data. Complete.
 
-5.4 Standardize cleanup order, retry, and ledger adjustment one workflow at a time: voice, broadcast, stage approval, supervisor change, academic reset.
+5.3 Make voice GET read-only and rely on the secured cleanup path. Complete.
 
-5.5 Address abandoned presigned uploads only if reconciliation shows they are material; avoid adding a queue preemptively.
+5.4 Standardize cleanup order, retry, and ledger adjustment one workflow at a time: voice, broadcast, stage approval, supervisor change, academic reset. Complete.
+
+5.5 Address abandoned presigned uploads only if reconciliation shows they are material; avoid adding a queue preemptively. Complete: deferred because no production reconciliation has shown material abandoned uploads.
 
 Gate: failure-injection and idempotence tests pass; reconciliation totals match expected fixtures; no GET performs a mutation.
 
 ### Milestone 6 — Thin the route handlers
 
-6.1 Extract student actions one at a time behind the unchanged route contract.
+Status: in progress. Student program/batch and supervisor-assignment actions now live behind the unchanged dashboard route contract. The remaining student actions, supervisor actions, email builders, and structured action errors remain.
+
+6.1 Extract student actions one at a time behind the unchanged route contract. In progress: program/batch and assignment complete.
 
 6.2 Extract supervisor actions one at a time behind the unchanged route contract.
 

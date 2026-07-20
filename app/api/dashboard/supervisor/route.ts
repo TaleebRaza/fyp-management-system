@@ -4,9 +4,9 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { sendNotificationEmail } from '../../../../lib/mailer';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
-import SystemConfig from '../../../../models/SystemConfig';
+import { toR2DeletionTarget } from '../../../../lib/r2Cleanup';
+import { deleteR2Targets } from '../../../../lib/r2Deletion';
+import { decrementStorageLedger } from '../../../../lib/storageLedger';
 import { reserveSupervisorCapacity } from '../../../../lib/supervisorCapacity';
 import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import mongoose, { ClientSession } from 'mongoose';
@@ -19,49 +19,6 @@ import {
 export const dynamic = 'force-dynamic';
 
 const [PROPOSAL_STAGE, THESIS_DRAFT_STAGE, FINAL_DELIVERABLES_STAGE] = PROJECT_STAGES;
-
-type DeletionTarget = {
-  key: string;
-  size: number;
-};
-
-function getR2ObjectKey(value: string) {
-  const trimmedValue = String(value || '').trim();
-  if (!trimmedValue) return '';
-
-  try {
-    const parsedUrl = new URL(trimmedValue);
-    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
-  } catch {
-    return trimmedValue.replace(/^\/+/, '');
-  }
-}
-
-function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = getR2ObjectKey(fileUrl || '');
-  if (!key) return null;
-
-  return {
-    key,
-    size: Math.max(Number(fileSize || 0), 0),
-  };
-}
-
-async function decrementStorageLedger(bytes: number, session?: ClientSession) {
-  if (bytes <= 0) return;
-
-  await SystemConfig.findOneAndUpdate(
-    { configKey: 'storage' },
-    { $inc: { usedBytes: -bytes } },
-    { upsert: true, ...(session ? { session } : {}) }
-  );
-
-  await SystemConfig.updateOne(
-    { configKey: 'storage', usedBytes: { $lt: 0 } },
-    { $set: { usedBytes: 0 } },
-    session ? { session } : undefined
-  );
-}
 
 async function createProjectWithUniqueInviteCode(projectData: any, session: ClientSession) {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -230,20 +187,16 @@ export async function POST(req: NextRequest) {
 
           // --- Storage ledger fix for stage advance cleanup ---
           if (newStage && project.pdfUrl) {
-            const target = buildDeletionTarget(project.pdfUrl, project.pdfSize);
+            const target = toR2DeletionTarget(project.pdfUrl, project.pdfSize);
             const sameFileUsedElsewhere = await Project.exists({
               _id: { $ne: project._id },
               pdfUrl: project.pdfUrl,
             });
 
             if (target && !sameFileUsedElsewhere) {
-              try {
-                await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }));
-                await decrementStorageLedger(target.size);
-                console.log(`Timeline advance cleanup: deleted previous stage PDF -> ${target.key}`);
-              } catch (e: any) {
-                console.error('Failed to wipe old stage PDF:', e.message);
-              }
+              await deleteR2Targets([target]);
+              await decrementStorageLedger(target.size);
+              console.log(`Timeline advance cleanup: deleted previous stage PDF -> ${target.key}`);
             }
           }
         }

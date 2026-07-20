@@ -1,14 +1,14 @@
 import mongoose, { ClientSession } from 'mongoose';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 import connectToDatabase from './mongodb';
-import { s3Client, BUCKET_NAME } from './s3-client';
+import { dedupeR2DeletionTargets, toR2DeletionTarget, type R2DeletionTarget } from './r2Cleanup';
+import { deleteR2Targets } from './r2Deletion';
+import { decrementStorageLedger } from './storageLedger';
 import { DEFAULT_PROJECT_STAGE, MAX_TEAM_MEMBERS, PROGRAM_MAP } from '../config/appSettings';
 
 import User from '../models/User';
 import Project from '../models/Project';
 import VoiceNote from '../models/VoiceNote';
-import SystemConfig from '../models/SystemConfig';
 
 const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MIN_BATCH_YEAR = 2021;
@@ -20,11 +20,6 @@ const STUDENT_SELF_ACADEMIC_RESET_MESSAGE =
   'You changed your academic information and accepted the progress reset. Please choose a supervisor again or join a team to begin.';
 
 type AcademicResetActor = 'admin' | 'student';
-
-type DeletionTarget = {
-  key: string;
-  size: number;
-};
 
 type ResetStudentAcademicInfoParams = {
   targetUserId: string;
@@ -67,43 +62,6 @@ function formatCooldown(ms: number) {
   }
 
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-}
-
-function getR2ObjectKey(value: string) {
-  const trimmedValue = String(value || '').trim();
-  if (!trimmedValue) return '';
-
-  try {
-    const parsedUrl = new URL(trimmedValue);
-    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
-  } catch {
-    return trimmedValue.replace(/^\/+/, '');
-  }
-}
-
-function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = getR2ObjectKey(fileUrl || '');
-  if (!key) return null;
-
-  return {
-    key,
-    size: Math.max(Number(fileSize || 0), 0),
-  };
-}
-
-function mergeDeletionTargets(targets: DeletionTarget[]) {
-  const mergedTargets = new Map<string, DeletionTarget>();
-
-  targets.forEach((target) => {
-    const existingTarget = mergedTargets.get(target.key);
-
-    mergedTargets.set(target.key, {
-      key: target.key,
-      size: Math.max(existingTarget?.size || 0, target.size),
-    });
-  });
-
-  return Array.from(mergedTargets.values());
 }
 
 async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, session: ClientSession) {
@@ -231,20 +189,16 @@ export async function resetStudentAcademicInfo({
       if (isOnlyMember) {
         const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(mongoSession);
 
-        const deletionTargets = mergeDeletionTargets([
-          buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
-          buildDeletionTarget(student.pdfUrl, oldProject.pdfSize),
+        const deletionTargets = dedupeR2DeletionTargets([
+          toR2DeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
+          toR2DeletionTarget(student.pdfUrl, oldProject.pdfSize),
           ...voiceNotes
-            .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
+            .map((note: any) => toR2DeletionTarget(note.blobUrl, note.fileSize))
             .filter(Boolean),
-        ].filter(Boolean) as DeletionTarget[]);
+        ].filter(Boolean) as R2DeletionTarget[]);
 
         if (deletionTargets.length > 0) {
-          await Promise.all(
-            deletionTargets.map((target) =>
-              s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
-            )
-          );
+          await deleteR2Targets(deletionTargets);
 
           freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
         }
@@ -266,17 +220,7 @@ export async function resetStudentAcademicInfo({
     }
 
     if (freedBytes > 0) {
-      await SystemConfig.findOneAndUpdate(
-        { configKey: 'storage' },
-        { $inc: { usedBytes: -freedBytes } },
-        { upsert: true, session: mongoSession }
-      );
-
-      await SystemConfig.updateOne(
-        { configKey: 'storage', usedBytes: { $lt: 0 } },
-        { $set: { usedBytes: 0 } },
-        { session: mongoSession }
-      );
+      await decrementStorageLedger(freedBytes, mongoSession);
     }
 
     const newProject = await createFreshStudentProject(student._id, mongoSession);

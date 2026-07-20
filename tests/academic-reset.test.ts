@@ -182,6 +182,36 @@ describe('resetStudentAcademicInfo', () => {
     );
   });
 
+  it('aborts without refunding the ledger when R2 cleanup still fails after retries', async () => {
+    const currentStudent = student({ projectId: 'project-1' });
+    mocks.userFindById.mockReturnValue(sessionQuery(currentStudent));
+    mocks.projectFindById.mockReturnValue(
+      sessionQuery({
+        _id: 'project-1',
+        members: ['student-1'],
+        pdfUrl: 'proposals/project.pdf',
+        pdfSize: 100,
+      })
+    );
+    mocks.voiceFind.mockReturnValue(sessionQuery([]));
+    mocks.s3Send.mockRejectedValue(new Error('R2 unavailable'));
+
+    await expect(
+      resetStudentAcademicInfo({
+        targetUserId: 'student-1',
+        newProgram: 'BSAI',
+        newBatch: 'Fall 2026',
+        actor: 'student',
+        enforceStudentCooldown: true,
+      })
+    ).rejects.toThrow('R2 unavailable');
+
+    expect(mocks.s3Send).toHaveBeenCalledTimes(2);
+    expect(mocks.storageDecrement).not.toHaveBeenCalled();
+    expect(mocks.projectFindByIdAndDelete).not.toHaveBeenCalled();
+    expect(mocks.abortTransaction).toHaveBeenCalledOnce();
+  });
+
   it('leaves a team project without deleting shared files or refunding its storage', async () => {
     const currentStudent = student({ projectId: 'project-1' });
     mocks.userFindById.mockReturnValue(sessionQuery(currentStudent));
