@@ -1,11 +1,11 @@
 # Current Milestone
 
-Last updated: 2026-07-20 (Asia/Karachi)
+Last updated: 2026-07-21 (Asia/Karachi)
 
 ## Status
 
-- Current milestone: Milestone 6 — Thin the route handlers.
-- State: Milestone 5 is complete. Milestone 6.1 is in progress: the program/batch and supervisor-assignment actions are extracted behind their unchanged contracts; change-supervisor and project-submission remain in the route.
+- Current milestone: Milestone 7 — Split client features incrementally.
+- State: Milestone 6 is complete. Milestone 7.1 is complete; 7.2 has begun with the typed project-domain selector. Milestone 8 has only its independently safe cleanup/timeline/upload slices completed and must not be marked complete until Milestone 7 is finished.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
 - Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, centralized team/stage/program constants, and explicit R2 cleanup/reconciliation behavior; the NextAuth work is type-only.
@@ -49,7 +49,7 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 
 - Continue Milestone 5 one storage workflow at a time; do not start dashboard splitting.
 - Do not modify application behavior until characterization tests exist for the target workflow.
-- Vitest is installed as the only new direct development dependency. React Testing Library, jsdom, and the Vite React plugin remain deferred until the first concrete component test needs them.
+- React Testing Library, user-event, and jsdom are installed as direct development dependencies for the first concrete component/keyboard tests. The Vite React plugin and E2E tooling remain deferred.
 - E2E tooling remains deferred until a critical browser flow requires it.
 - Do not add a generic repository/service/manager layer. Add only small helpers with multiple real callers or cohesive use-case functions extracted from existing handlers.
 - Keep existing API paths during initial logic extraction.
@@ -60,10 +60,10 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 6.1 with the existing `changeSupervisor` action behind its unchanged API contract; characterize its success, capacity rejection, and cleanup failure behavior first.
-3. Do not split dashboard components or add React component tooling during route-handler extraction.
-4. Keep email delivery outside extracted transaction functions; do not alter user-visible message content in the first action extraction.
-5. Do not add a generic service layer, dependency, queue, or production-data migration.
+2. Continue Milestone 7.2 by extracting the student templates panel behind typed props and a component/keyboard test, without changing its fetch path or page URL.
+3. Complete 7.2, 7.3, 7.4, and 7.5 before treating Milestone 7 as complete; do not begin additional Milestone 8 work first.
+4. Keep API paths, user-visible messages, email content, and existing security checks unchanged.
+5. Do not add a generic service layer, dependency, queue, production-data migration, or E2E suite.
 6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
 
 ## Milestone 1 progress
@@ -104,12 +104,22 @@ Latest completed sub-step (2026-07-20, `Portal-Overhaul`):
 
 ## Milestone 6 progress
 
-Current sub-step (2026-07-20, `Portal-Overhaul`):
+Completed (2026-07-21, `Portal-Overhaul`):
 
-- Began 6.1 by moving the program/batch and supervisor-assignment actions from `POST /api/dashboard/student` into the cohesive `lib/studentDashboardActions.ts` module. The route still reads the body and dispatches by its existing action field; the extracted actions retain their JWT actor binding, validation, transaction/capacity reservation, response statuses, messages, and session cleanup.
-- Added `tests/student-assign-supervisor-route.test.ts`; it covers spoofed actor rejection and the valid transaction-backed assignment response. Existing program/batch and project-submission suites continue to protect their contracts.
-- Focused validation: the three student action suites passed (3 files, 9 tests); typecheck passed; the new module and tests are lint-clean; `git diff --check` passed. Full-suite/lint/build validation and the remaining student action extractions are still required before Milestone 6 can be complete.
-- No dependencies, API paths, payloads, or response contract changes were added. The next action is the characterized `changeSupervisor` extraction; email composition and typed structured errors remain intentionally deferred within Milestone 6.
+- Completed 6.1–6.4. `POST /api/dashboard/student` now only connects, parses, dispatches, and responds. Its program/batch, assignment, supervisor-change, and project-submission actions live in `lib/studentDashboardActions.ts`; `POST /api/dashboard/supervisor` similarly delegates its status, migration, and removal actions to `lib/supervisorDashboardActions.ts` after unchanged route-local authorization.
+- Added `tests/student-change-supervisor-route.test.ts` for spoofing, capacity rejection, successful cleanup, and cleanup failure. Expanded supervisor route coverage for removal and migration-code validation. Existing action response status/message/payload contracts, transactions, capacity reservations, and R2-before-metadata cleanup order were retained.
+- `lib/dashboardEmailTemplates.ts` owns the two existing dashboard email bodies and has direct tests. Typed action request shapes now replace action-local broad inputs; no API error response was changed to a new public code format because preserving clients takes priority.
+- Validation: `npm test` passed (34 files, 149 tests); `npm run typecheck` passed; focused lint for all new/changed helpers and tests passed; full `npm run lint` retains a pre-existing baseline of 158 problems (124 errors, 34 warnings), with no new findings in the new modules/tests; `git diff --check` passed; and the production build passed outside the sandbox after the sandbox build stalled. The existing Next.js `middleware.ts` deprecation warning remains. No production dependency, API path, payload, schema, or data migration was added.
+
+## Milestone 7 and 8 progress
+
+Current bounded slices (2026-07-21, `Portal-Overhaul`):
+
+- Completed 7.1: `lib/adminReports.ts` now owns typed report-row conversion, CSV generation, and escaped printable HTML. `components/dashboards/admin/ReportsDialog.tsx` owns the reports UI behind typed props. Pure and rendered-contract tests cover report contents and disabled exports.
+- Began 7.2: moved the project-submission domain picker into `components/dashboards/student/ProjectDomainSelector.tsx` with typed props. A jsdom keyboard test opens it with Space and selects a checkbox; the submitted domain payload is unchanged. Student templates, supervisor selection/change, academic settings, the supervisor feature splits, and `app/page.tsx` remain for Milestone 7.
+- Completed safe parts of 8.1, 8.3, 8.4, and 8.5: deleted verified unused timeline/mailer backup/starter SVGs and unused SharedUI exports; one shared `ProjectTimeline` replaces the student/supervisor duplicates; `uploadAudioBlob` deduplicates the presigned audio-upload handshake; and seven reference-checked global CSS selectors were deleted. `SharedUI` is not yet split into cohesive modules and recorder/timer state is not yet shared, so Milestone 8 remains incomplete.
+- Added React Testing Library, user-event, and jsdom as development-only dependencies when component keyboard coverage became concrete. `tests/dashboard-shell-interaction.test.tsx` verifies Escape closes the mobile menu and restores scroll state.
+- Known risk: the larger dashboard/page feature files still contain their existing broad types and mixed responsibilities. No visual light/dark/mobile manual smoke was run in this terminal-only environment.
 
 ## Milestone 4 progress
 

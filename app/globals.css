@@ -225,58 +225,11 @@ table {
   box-shadow: var(--shadow-card);
 }
 
-.portal-muted-card {
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.portal-dialog-overlay {
-  background: rgba(0, 0, 0, 0.56);
-}
-
 .portal-dialog {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-dialog);
-}
-
-.portal-divider {
-  border-color: var(--color-border);
-}
-
-.portal-primary-button {
-  background: var(--color-primary);
-  color: #ffffff;
-}
-
-.portal-primary-button:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
-.portal-accent-button {
-  background: var(--color-accent);
-  color: #000000;
-}
-
-.portal-accent-button:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-}
-
-.portal-outline-button {
-  background: transparent;
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-}
-
-.portal-outline-button:hover:not(:disabled) {
-  background: var(--color-surface-muted);
-}
-
-.portal-danger-button {
-  background: var(--color-danger);
-  color: #ffffff;
 }
 
 @media (max-width: 640px) {

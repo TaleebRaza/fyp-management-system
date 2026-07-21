@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Megaphone, Mic, Type, X, Square, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { uploadAudioBlob } from '../../lib/audioUpload';
 
 export default function BroadcastWidget({ isDarkMode, theme }: any) {
   const [mounted, setMounted] = useState(false);
@@ -92,24 +93,8 @@ export default function BroadcastWidget({ isDarkMode, theme }: any) {
       let finalSize = 0;
 
       if (mode === 'audio' && audioBlob) {
-        const uploadRes = await fetch('/api/voice/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contentType: audioBlob.type || 'audio/webm', fileSize: audioBlob.size })
-        });
-        const uploadData = await uploadRes.json();
-        
-        if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
-
-        const r2Res = await fetch(uploadData.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': audioBlob.type || 'audio/webm' },
-          body: audioBlob
-        });
-
-        if (!r2Res.ok) throw new Error('Cloud upload failed');
-
-        finalContent = uploadData.key;
+        const upload = await uploadAudioBlob(audioBlob);
+        finalContent = upload.key;
         finalSize = audioBlob.size;
       }
 

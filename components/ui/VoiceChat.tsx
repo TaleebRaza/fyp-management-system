@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Square, Send, Play, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { uploadAudioBlob } from '../../lib/audioUpload';
 
 export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -108,28 +109,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
 
     // --- BACKGROUND THREAD: Cloudflare R2 Upload & MongoDB Ledger ---
     try {
-      // 1. Ask the server for a secure upload URL and check the storage limit
-      const urlRes = await fetch('/api/voice/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentType: file.type, fileSize: file.size, projectId })
-      });
-      
-      if (!urlRes.ok) {
-        const errorData = await urlRes.json();
-        throw new Error(errorData.error || 'Failed to fetch upload URL');
-      }
-      
-      const { uploadUrl, key } = await urlRes.json();
-
-      // 2. Direct PUT request to Cloudflare R2 (Bypasses Vercel bandwidth limits)
-      const r2Res = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file
-      });
-
-      if (!r2Res.ok) throw new Error('Cloudflare R2 Upload rejected the file');
+      const { key } = await uploadAudioBlob(file, projectId);
 
       // 3. Save the transaction and file size to the MongoDB Ledger
       await fetch('/api/voice', {

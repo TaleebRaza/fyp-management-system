@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   connectToDatabase: vi.fn(),
   getToken: vi.fn(),
+  isValid: vi.fn(),
   userFindById: vi.fn(),
   userFind: vi.fn(),
+  userFindByIdAndUpdate: vi.fn(),
   userUpdateMany: vi.fn(),
   projectFindById: vi.fn(),
   projectFindByIdAndUpdate: vi.fn(),
@@ -16,6 +18,7 @@ vi.mock('../models/User', () => ({
   default: {
     findById: mocks.userFindById,
     find: mocks.userFind,
+    findByIdAndUpdate: mocks.userFindByIdAndUpdate,
     updateMany: mocks.userUpdateMany,
   },
 }));
@@ -29,7 +32,7 @@ vi.mock('../models/SystemConfig', () => ({ default: {} }));
 vi.mock('../lib/mailer', () => ({ sendNotificationEmail: vi.fn() }));
 vi.mock('../lib/s3-client', () => ({ BUCKET_NAME: 'test-bucket', s3Client: {} }));
 vi.mock('next-auth/jwt', () => ({ getToken: mocks.getToken }));
-vi.mock('mongoose', () => ({ default: {}, ClientSession: {} }));
+vi.mock('mongoose', () => ({ default: { Types: { ObjectId: { isValid: mocks.isValid } } }, ClientSession: {} }));
 
 import { POST } from '../app/api/dashboard/supervisor/route';
 
@@ -49,6 +52,7 @@ describe('POST /api/dashboard/supervisor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getToken.mockResolvedValue({ id: 'supervisor-1', role: 'supervisor' });
+    mocks.isValid.mockReturnValue(true);
     mocks.userFindById.mockResolvedValue(ownStudent());
     mocks.userFind.mockResolvedValue([]);
     mocks.userUpdateMany.mockResolvedValue({});
@@ -113,5 +117,24 @@ describe('POST /api/dashboard/supervisor', () => {
     });
 
     expect(response.status).toBe(200);
+  });
+
+  it('keeps a solo-student removal working', async () => {
+    mocks.userFindById.mockResolvedValue({ ...ownStudent(), projectId: null });
+
+    const response = await postAction({ action: 'removeStudent', studentId: 'student-1' });
+
+    expect(response.status).toBe(200);
+    expect(mocks.userFindByIdAndUpdate).toHaveBeenCalledWith(
+      'student-1',
+      expect.objectContaining({ $set: expect.objectContaining({ status: 'Unassigned' }) })
+    );
+  });
+
+  it('keeps migration-code validation before opening a transaction', async () => {
+    const response = await postAction({ action: 'migrate', studentId: 'student-1' });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'Migration code is required.' });
   });
 });

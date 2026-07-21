@@ -305,23 +305,25 @@ Gate: failure-injection and idempotence tests pass; reconciliation totals match 
 
 ### Milestone 6 — Thin the route handlers
 
-Status: in progress. Student program/batch and supervisor-assignment actions now live behind the unchanged dashboard route contract. The remaining student actions, supervisor actions, email builders, and structured action errors remain.
+Status: complete. Student and supervisor dashboard routes now authenticate/parse/dispatch/respond while action modules retain the unchanged contracts. Dashboard email bodies have direct builders/tests; action inputs are typed at the extracted boundaries without changing public error JSON.
 
-6.1 Extract student actions one at a time behind the unchanged route contract. In progress: program/batch and assignment complete.
+6.1 Extract student actions one at a time behind the unchanged route contract. Complete: program/batch, assignment, supervisor change, and project submission.
 
-6.2 Extract supervisor actions one at a time behind the unchanged route contract.
+6.2 Extract supervisor actions one at a time behind the unchanged route contract. Complete: status update, migration, and removal.
 
-6.3 Move email composition out of transaction functions into tested template/build functions.
+6.3 Move email composition out of transaction functions into tested template/build functions. Complete: dashboard submission/status emails have tested builders.
 
-6.4 Standardize typed action inputs and structured error codes.
+6.4 Standardize typed action inputs and structured error codes. Complete for internal action inputs; public error response shapes remain intentionally unchanged for client compatibility.
 
 Gate: route contract tests are unchanged; each handler reads as authorization, parse, call, respond.
 
 ### Milestone 7 — Split client features incrementally
 
-7.1 Extract Admin report transformations and file generation as pure functions, then its reports UI.
+Status: in progress. 7.1 is complete and the first 7.2 project-submission component is extracted with keyboard coverage. The remaining named features and page split must be completed before Milestone 8 is treated as a completed milestone.
 
-7.2 Extract Student templates, project submission, supervisor selection/change, and academic settings one feature per change.
+7.1 Extract Admin report transformations and file generation as pure functions, then its reports UI. Complete: typed report data/CSV/HTML functions and `ReportsDialog` have direct tests.
+
+7.2 Extract Student templates, project submission, supervisor selection/change, and academic settings one feature per change. In progress: typed project-domain selector extracted; the rest remains.
 
 7.3 Extract Supervisor queue/filter, review dialog, migration, and export one feature per change.
 
@@ -333,15 +335,17 @@ Gate for every substep: relevant component tests, keyboard/accessibility checks,
 
 ### Milestone 8 — Consolidate UI and browser infrastructure
 
-8.1 Delete verified unused SharedUI exports and dead files/assets.
+Status: in progress. Safe slices 8.1, 8.3, 8.4, and 8.5 are complete; 8.2 and shared recorder/timer state remain.
+
+8.1 Delete verified unused SharedUI exports and dead files/assets. Complete: unused table/card aliases, Timeline, commented mailer backup, and starter SVGs were reference-checked and deleted.
 
 8.2 Split SharedUI into a few cohesive modules, preserving import aliases temporarily if that keeps diffs small.
 
-8.3 Reuse the current Dialog and timeline where behavior matches.
+8.3 Reuse the current Dialog and timeline where behavior matches. Complete for timeline: both dashboards use the tested `ProjectTimeline`; existing Dialog remains the common dialog.
 
-8.4 Share MediaRecorder/timer/upload logic between the two concrete callers and add cleanup/error tests.
+8.4 Share MediaRecorder/timer/upload logic between the two concrete callers and add cleanup/error tests. In progress: the presigned upload/PUT handshake is shared and failure-tested; recorder/timer state remains duplicated.
 
-8.5 Remove unused CSS selectors in visual-smoke-sized batches; keep globals together unless ownership becomes clearly feature-specific.
+8.5 Remove unused CSS selectors in visual-smoke-sized batches; keep globals together unless ownership becomes clearly feature-specific. Complete for one verified batch: seven unreferenced selectors were deleted; manual visual smoke remains pending.
 
 Gate: component/accessibility tests and manual light/dark/mobile smoke pass; no visual behavior intentionally changes.
 
