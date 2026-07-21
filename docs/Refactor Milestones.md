@@ -319,15 +319,15 @@ Gate: route contract tests are unchanged; each handler reads as authorization, p
 
 ### Milestone 7 — Split client features incrementally
 
-Status: in progress. 7.1 is complete and the first 7.2 project-submission component is extracted with keyboard coverage. The remaining named features and page split must be completed before Milestone 8 is treated as a completed milestone.
+Status: in progress. 7.1–7.4 are complete: typed Student feature components, Supervisor queue/review/migration/export components, and whole login/reset/registration views are separated from their parent pages while keeping requests and business rules in place. 7.5 remains before Milestone 8 is treated as completed.
 
 7.1 Extract Admin report transformations and file generation as pure functions, then its reports UI. Complete: typed report data/CSV/HTML functions and `ReportsDialog` have direct tests.
 
-7.2 Extract Student templates, project submission, supervisor selection/change, and academic settings one feature per change. In progress: typed project-domain selector extracted; the rest remains.
+7.2 Extract Student templates, project submission, supervisor selection/change, and academic settings one feature per change. Complete.
 
-7.3 Extract Supervisor queue/filter, review dialog, migration, and export one feature per change.
+7.3 Extract Supervisor queue/filter, review dialog, migration, and export one feature per change. Complete.
 
-7.4 Split login, password reset, registration, and session routing in `app/page.tsx` without changing the page URL.
+7.4 Split login, password reset, registration, and session routing in `app/page.tsx` without changing the page URL. Complete.
 
 7.5 Type props and API responses as each feature moves; do not schedule a separate mass-typing rewrite.
 

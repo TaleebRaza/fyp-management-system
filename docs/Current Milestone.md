@@ -5,7 +5,7 @@ Last updated: 2026-07-21 (Asia/Karachi)
 ## Status
 
 - Current milestone: Milestone 7 — Split client features incrementally.
-- State: Milestone 6 is complete. Milestone 7.1 is complete; 7.2 has begun with the typed project-domain selector. Milestone 8 has only its independently safe cleanup/timeline/upload slices completed and must not be marked complete until Milestone 7 is finished.
+- State: Milestone 6 is complete. Milestones 7.1–7.4 are complete; 7.5 is the remaining Milestone 7 step. Milestone 8 has only its independently safe cleanup/timeline/upload slices completed and must not be marked complete until Milestone 7 is finished.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
 - Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, centralized team/stage/program constants, and explicit R2 cleanup/reconciliation behavior; the NextAuth work is type-only.
@@ -60,8 +60,8 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Continue Milestone 7.2 by extracting the student templates panel behind typed props and a component/keyboard test, without changing its fetch path or page URL.
-3. Complete 7.2, 7.3, 7.4, and 7.5 before treating Milestone 7 as complete; do not begin additional Milestone 8 work first.
+2. Complete Milestone 7.5 by typing the remaining moved Dashboard/API boundaries without a mass typing rewrite.
+3. Treat Milestone 7 as complete only after 7.5 validation; do not begin additional Milestone 8 work first.
 4. Keep API paths, user-visible messages, email content, and existing security checks unchanged.
 5. Do not add a generic service layer, dependency, queue, production-data migration, or E2E suite.
 6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
@@ -116,7 +116,8 @@ Completed (2026-07-21, `Portal-Overhaul`):
 Current bounded slices (2026-07-21, `Portal-Overhaul`):
 
 - Completed 7.1: `lib/adminReports.ts` now owns typed report-row conversion, CSV generation, and escaped printable HTML. `components/dashboards/admin/ReportsDialog.tsx` owns the reports UI behind typed props. Pure and rendered-contract tests cover report contents and disabled exports.
-- Began 7.2: moved the project-submission domain picker into `components/dashboards/student/ProjectDomainSelector.tsx` with typed props. A jsdom keyboard test opens it with Space and selects a checkbox; the submitted domain payload is unchanged. Student templates, supervisor selection/change, academic settings, the supervisor feature splits, and `app/page.tsx` remain for Milestone 7.
+- Completed 7.2–7.4 (2026-07-21, `Portal-Overhaul`): Student templates, submission, supervisor selection/change, and academic settings now render through typed feature components while their existing parent requests, validation, reset rules, and state remain unchanged. Supervisor queue/filter, review/migration dialog, and export controls have the same typed boundary. Login/reset and registration moved to `components/auth/AuthViews.tsx`; `app/page.tsx` now owns only root theme, intro, dialog, data-loading, and session selection.
+- Added focused rendered/interaction tests for every extracted feature. The focused suites passed, `npm run typecheck` passed, touched-file lint is clean except the Supervisor dashboard's one pre-existing effect error and one dependency warning, and `git diff --check` passed. The complete parallel Vitest run had a timing-only failure in the existing domain-selector keyboard test; it passes when rerun alone. Production build attempts were interrupted after Next.js began compiling and left a stale `.next/lock`; no successful build result is recorded for this slice.
 - Completed safe parts of 8.1, 8.3, 8.4, and 8.5: deleted verified unused timeline/mailer backup/starter SVGs and unused SharedUI exports; one shared `ProjectTimeline` replaces the student/supervisor duplicates; `uploadAudioBlob` deduplicates the presigned audio-upload handshake; and seven reference-checked global CSS selectors were deleted. `SharedUI` is not yet split into cohesive modules and recorder/timer state is not yet shared, so Milestone 8 remains incomplete.
 - Added React Testing Library, user-event, and jsdom as development-only dependencies when component keyboard coverage became concrete. `tests/dashboard-shell-interaction.test.tsx` verifies Escape closes the mobile menu and restores scroll state.
 - Known risk: the larger dashboard/page feature files still contain their existing broad types and mixed responsibilities. No visual light/dark/mobile manual smoke was run in this terminal-only environment.

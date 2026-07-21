@@ -3,27 +3,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
-  AlertCircle,
-  ArrowRight,
-  CheckCircle,
   ClipboardCheck,
   Copy,
   Download,
-  ExternalLink,
   FileText,
   GraduationCap,
   LayoutDashboard,
   Loader2,
-  Lock,
   LogIn,
   Megaphone,
-  RefreshCcw,
   Settings,
-  Upload,
   Volume2,
   UserCheck,
   Users,
-  Wrench,
   Mic,
   ChevronDown,
   ChevronUp,
@@ -36,18 +28,20 @@ import {
   DashboardGrid,
   DashboardPanel,
   DashboardShell,
-  Dialog,
   LinkifiedText,
   SectionHeader,
   StatCard,
-  StyledInput,
-  TextArea,
 } from '../ui/SharedUI';
 
 import { VoiceChat } from '../ui/VoiceChat';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
 import { ProjectTimeline } from '../ui/ProjectTimeline';
-import { ProjectDomainSelector } from './student/ProjectDomainSelector';
+import { AcademicSettingsDialog, AcademicSettingsPanel } from './student/AcademicSettings';
+import { ProjectSubmissionPanel } from './student/ProjectSubmissionPanel';
+import { SupervisorActionsPanel } from './student/SupervisorActionsPanel';
+import { SupervisorChangeDialog } from './student/SupervisorChangeDialog';
+import { TemplatePreviewDialog } from './student/TemplatePreviewDialog';
+import { TemplateResourcesPanel, type WordTemplate } from './student/TemplateResourcesPanel';
 import {
   DEFAULT_PROJECT_STAGE,
   MAX_TEAM_MEMBERS,
@@ -62,14 +56,6 @@ import {
 } from '../../config/projectDomains';
 
 type StudentTab = 'overview' | 'project' | 'team' | 'resources';
-
-type WordTemplate = {
-  id: string;
-  title: string;
-  filename: string;
-  format: 'word';
-  content: string;
-};
 
 const STAGE_LABELS: Record<ProjectStage, string> = {
   PROPOSAL: 'Proposal',
@@ -1115,115 +1101,27 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   );
 
   const renderProject = () => (
-    <DashboardPanel>
-      <SectionHeader
-        title="Project Submission"
-        description="Update your project details and submit the required PDF for supervisor review."
-        action={
-          pdfUrl ? (
-            <a
-              href={`/api/read-pdf?url=${encodeURIComponent(getSafePdfKey(pdfUrl))}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]"
-            >
-              <ExternalLink size={16} />
-              View PDF
-            </a>
-          ) : null
-        }
-      />
-
-      {!canSubmit && (
-        <div className="mb-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-          <div className="flex items-start gap-3">
-            <Lock size={18} className="mt-0.5 text-[var(--color-text-muted)]" />
-            <p className="text-sm leading-6 text-[var(--color-text-muted)]">
-              Submissions are closed while your project status is{' '}
-              <strong className="text-[var(--color-text)]">{me?.status}</strong>.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmitProject} className="space-y-5">
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-            Project Title
-          </label>
-          <StyledInput
-            value={title}
-            disabled={!canSubmit}
-            onChange={(event: any) => setTitle(event.target.value)}
-            required
-            placeholder="Enter project title"
-          />
-        </div>
-
-        <ProjectDomainSelector
-          selectedDomains={selectedDomains}
-          legacyDomain={legacyDomain}
-          disabled={!canSubmit}
-          onChange={(domains) => {
-            setSelectedDomains(domains);
-            if (domains.length > 0) setLegacyDomain('');
-          }}
-        />
-
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-            Tools and Technologies
-          </label>
-          <StyledInput
-            icon={Wrench}
-            value={tools}
-            disabled={!canSubmit}
-            onChange={(event: any) => setTools(event.target.value)}
-            required
-            placeholder="e.g. React, Python, TensorFlow"
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-            Description
-          </label>
-          <TextArea
-            value={desc}
-            disabled={!canSubmit}
-            onChange={(event: any) => setDesc(event.target.value)}
-            required
-            placeholder="Describe your project scope, goals, and expected outcome..."
-          />
-        </div>
-
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-          <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-            Project PDF
-          </label>
-          <input
-            type="file"
-            accept="application/pdf"
-            disabled={!canSubmit}
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
-            className="block w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text)] file:mr-4 file:rounded-lg file:border-0 file:bg-[var(--color-primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
-            PDF only. Maximum size 4MB.{' '}
-            {file
-              ? `Selected: ${file.name}`
-              : pdfUrl
-                ? 'Existing PDF will be reused if you do not select a new file.'
-                : 'A PDF is required for first submission.'}
-          </p>
-        </div>
-
-        <Button type="submit" disabled={isSubmitting || !canSubmit} className="w-full sm:w-auto">
-          {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
-          {isSubmitting ? 'Submitting...' : 'Submit For Review'}
-        </Button>
-      </form>
-    </DashboardPanel>
+    <ProjectSubmissionPanel
+      canSubmit={canSubmit}
+      projectStatus={me?.status}
+      pdfHref={pdfUrl ? `/api/read-pdf?url=${encodeURIComponent(getSafePdfKey(pdfUrl))}` : ''}
+      title={title}
+      description={desc}
+      selectedDomains={selectedDomains}
+      legacyDomain={legacyDomain}
+      tools={tools}
+      file={file}
+      isSubmitting={isSubmitting}
+      onSubmit={handleSubmitProject}
+      onTitleChange={(event) => setTitle(event.target.value)}
+      onDescriptionChange={(event) => setDesc(event.target.value)}
+      onDomainsChange={(domains) => {
+        setSelectedDomains(domains);
+        if (domains.length > 0) setLegacyDomain('');
+      }}
+      onToolsChange={(event) => setTools(event.target.value)}
+      onFileChange={(event) => setFile(event.target.files?.[0] || null)}
+    />
   );
 
   const renderTeam = () => (
@@ -1297,94 +1195,20 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         ) : null}
       </DashboardPanel>
 
-      <DashboardPanel>
-        <SectionHeader
-          title={isUnassigned ? 'Supervisor & Team Actions' : 'Team Actions'}
-          description={
-            isUnassigned
-              ? 'Choose a supervisor or join an existing team.'
-              : 'Manage your team or change your supervisor before proposal approval.'
-          }
-        />
-
-        {isUnassigned && (
-          <form onSubmit={handleAssignSupervisor} className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-                Available Supervisors
-              </label>
-              <select
-                value={selectedSupervisorId}
-                onChange={(event) => setSelectedSupervisorId(event.target.value)}
-                className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
-              >
-                <option value="">Select supervisor</option>
-                {supervisorOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={isSubmitting || supervisorOptions.length === 0}
-              className="w-full"
-            >
-              {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <UserCheck size={16} />}
-              Confirm Assignment
-            </Button>
-          </form>
-        )}
-
-        <div className={isUnassigned ? 'mt-6 border-t border-[var(--color-border)] pt-6' : ''}>
-          <form onSubmit={handleJoinTeam} className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-                Join Existing Team
-              </label>
-              <StyledInput
-                value={inviteCodeInput}
-                onChange={(event: any) => setInviteCodeInput(event.target.value.toUpperCase())}
-                placeholder="Enter invite code"
-              />
-            </div>
-
-            <Button type="submit" variant="outline" disabled={isSubmitting} className="w-full">
-              <ArrowRight size={16} />
-              Join Team
-            </Button>
-          </form>
-        </div>
-
-        {!isUnassigned && (
-          <div className="mt-6 border-t border-[var(--color-border)] pt-6">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={openSupervisorChangeDialog}
-              disabled={isSubmitting || isSupervisorChangeLocked || supervisorChangeOptions.length === 0}
-            >
-              {isSupervisorChangeLocked ? <Lock size={16} /> : <UserCheck size={16} />}
-              Change Supervisor
-            </Button>
-
-            {isSupervisorChangeLocked && (
-              <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
-                Supervisor changes are locked after proposal approval or once the project moves beyond the proposal stage.
-              </p>
-            )}
-
-            {!isSupervisorChangeLocked && supervisorChangeOptions.length === 0 && (
-              <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
-                No other supervisor currently has an available slot.
-              </p>
-            )}
-          </div>
-        )}
-      </DashboardPanel>
+      <SupervisorActionsPanel
+        isUnassigned={isUnassigned}
+        isSubmitting={isSubmitting}
+        isSupervisorChangeLocked={isSupervisorChangeLocked}
+        supervisorOptions={supervisorOptions}
+        supervisorChangeOptions={supervisorChangeOptions}
+        selectedSupervisorId={selectedSupervisorId}
+        inviteCodeInput={inviteCodeInput}
+        onSupervisorChange={(event) => setSelectedSupervisorId(event.target.value)}
+        onInviteCodeChange={(event) => setInviteCodeInput(event.target.value.toUpperCase())}
+        onAssign={handleAssignSupervisor}
+        onJoin={handleJoinTeam}
+        onOpenSupervisorChange={openSupervisorChangeDialog}
+      />
 
       {project?._id && (
         <div className="xl:col-span-2">
@@ -1404,82 +1228,15 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const renderResources = () => (
     <div className="grid gap-7 sm:gap-6 xl:grid-cols-[1fr_0.8fr]">
-      <DashboardPanel>
-        <SectionHeader
-          title="Templates & Resources"
-          description={`Templates for ${getStageLabel(currentStage)} stage.`}
-          action={
-            <Button variant="outline" onClick={fetchTemplatesByStage}>
-              {isFetchingTemplates ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <RefreshCcw size={16} />
-              )}
-              Load Word Templates
-            </Button>
-          }
-        />
+      <TemplateResourcesPanel
+        stageLabel={getStageLabel(currentStage)}
+        templates={visibleTemplates}
+        isLoading={isFetchingTemplates}
+        onLoad={fetchTemplatesByStage}
+        onOpen={handleOpenTemplate}
+      />
 
-        <div className="space-y-3">
-          {visibleTemplates.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-              <FileText className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
-              <p className="text-sm font-bold text-[var(--color-text)]">No templates loaded</p>
-              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                Load editable Word-format templates for the current project stage.
-              </p>
-            </div>
-          ) : (
-            visibleTemplates.map((template) => (
-              <button
-                key={template.id || template.filename}
-                type="button"
-                onClick={() => handleOpenTemplate(template)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-left transition-colors hover:bg-[var(--color-surface-muted)]"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-[var(--color-text)]">
-                    {template.title}
-                  </p>
-                  <p className="truncate text-xs text-[var(--color-text-muted)]">
-                    {template.filename}
-                  </p>
-                </div>
-                <ExternalLink size={16} className="shrink-0 text-[var(--color-text-muted)]" />
-              </button>
-            ))
-          )}
-        </div>
-      </DashboardPanel>
-
-      <DashboardPanel>
-        <SectionHeader title="Academic Settings" description="Program and batch are reset-sensitive fields." />
-
-        <div className="space-y-4">
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-              Program
-            </p>
-            <p className="mt-2 text-sm font-semibold text-[var(--color-text)]">
-              {currentProgramName}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-              Batch
-            </p>
-            <p className="mt-2 text-sm font-semibold text-[var(--color-text)]">
-              {me?.batch || 'No batch'}
-            </p>
-          </div>
-
-          <Button variant="outline" className="w-full" onClick={openAcademicEditor}>
-            <Settings size={16} />
-            Update Program / Batch
-          </Button>
-        </div>
-      </DashboardPanel>
+      <AcademicSettingsPanel programName={currentProgramName} batch={me?.batch} onOpen={openAcademicEditor} />
     </div>
   );
 
@@ -1555,271 +1312,43 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         {activeTab === 'resources' && renderResources()}
       </DashboardShell>
 
-      <Dialog
+      <SupervisorChangeDialog
         open={isSupervisorWarningOpen}
+        isSubmitting={isSubmitting}
+        isDarkMode={Boolean(isDarkMode)}
+        selectedSupervisorId={selectedSupervisorId}
+        selectedSupervisorName={selectedSupervisorName}
+        supervisorOptions={supervisorChangeOptions}
         onClose={closeSupervisorChangeDialog}
-        title="Change Supervisor"
-        description="Select a new available supervisor and review what will happen before confirming."
-        footer={
-          <>
-            <Button
-              variant="outline"
-              onClick={closeSupervisorChangeDialog}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
+        onConfirm={handleConfirmSupervisorChange}
+        onSupervisorChange={(event) => setSelectedSupervisorId(event.target.value)}
+      />
 
-            <Button
-              variant="danger"
-              onClick={handleConfirmSupervisorChange}
-              disabled={isSubmitting || !selectedSupervisorId}
-            >
-              {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <AlertCircle size={16} />}
-              Confirm Change
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-              New Supervisor
-            </label>
-            <select
-              value={selectedSupervisorId}
-              onChange={(event) => setSelectedSupervisorId(event.target.value)}
-              disabled={isSubmitting}
-              className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <option value="">Select a new supervisor</option>
-              {supervisorChangeOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-
-            {selectedSupervisorId && (
-              <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-                You selected <strong className="text-[var(--color-text)]">{selectedSupervisorName}</strong>.
-              </p>
-            )}
-          </div>
-
-          <div
-            className={`overflow-hidden rounded-lg border ${
-              isDarkMode
-                ? 'border-red-500/30 bg-red-500/10'
-                : 'border-red-200 bg-red-50'
-            }`}
-          >
-            <div className="flex items-start gap-3 p-4">
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  isDarkMode ? 'bg-red-500/15' : 'bg-red-100'
-                }`}
-              >
-                <AlertCircle
-                  size={19}
-                  className={isDarkMode ? 'text-red-300' : 'text-red-600'}
-                />
-              </div>
-
-              <div>
-                <p
-                  className={`text-sm font-semibold ${
-                    isDarkMode ? 'text-white' : 'text-black'
-                  }`}
-                >
-                  Your current workspace will be reset
-                </p>
-
-                <p
-                  className={`mt-1 text-sm leading-5 ${
-                    isDarkMode ? 'text-white/70' : 'text-slate-600'
-                  }`}
-                >
-                  This action affects your project data and team membership.
-                </p>
-              </div>
-            </div>
-
-            <div
-              className={`border-t px-4 ${
-                isDarkMode ? 'border-white/10' : 'border-red-200'
-              }`}
-            >
-              {[
-                'Your uploaded project details, files, and voice notes will be deleted.',
-                'If you are in a team, you will leave it. Your teammate will keep the existing project.',
-                'You will start with a new workspace under the selected supervisor.',
-                'This change cannot be undone from your dashboard.',
-              ].map((message) => (
-                <div
-                  key={message}
-                  className={`flex gap-3 border-b py-3 last:border-b-0 ${
-                    isDarkMode ? 'border-white/10' : 'border-red-200'
-                  }`}
-                >
-                  <span
-                    className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                      isDarkMode ? 'bg-red-300' : 'bg-red-500'
-                    }`}
-                  />
-
-                  <p
-                    className={`text-sm leading-6 ${
-                      isDarkMode ? 'text-white' : 'text-black'
-                    }`}
-                  >
-                    {message}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Dialog>
-
-      <Dialog
+      <AcademicSettingsDialog
         open={isAcademicDialogOpen}
+        isWarningStep={isAcademicWarningStep}
+        isUpdating={isAcademicUpdating}
+        form={academicForm}
+        programOptions={Object.keys(PROGRAM_MAP).map((program) => ({ value: program, label: getProgramName(program) }))}
+        batchOptions={batchOptions.map((batch) => ({ value: batch, label: batch }))}
         onClose={() => {
           setIsAcademicDialogOpen(false);
           setIsAcademicWarningStep(false);
         }}
-        title={isAcademicWarningStep ? 'Confirm academic reset' : 'Update academic information'}
-        description={
-          isAcademicWarningStep
-            ? 'Changing program or batch resets your project workspace and removes current team/supervisor assignment.'
-            : 'Select your correct program and batch. You will review the warning before saving.'
-        }
-        footer={
-          isAcademicWarningStep ? (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setIsAcademicWarningStep(false)}
-                disabled={isAcademicUpdating}
-              >
-                Back
-              </Button>
+        onProgramChange={(event) => setAcademicForm((previous) => ({ ...previous, program: event.target.value }))}
+        onBatchChange={(event) => setAcademicForm((previous) => ({ ...previous, batch: event.target.value }))}
+        onContinue={() => setIsAcademicWarningStep(true)}
+        onBack={() => setIsAcademicWarningStep(false)}
+        onConfirm={handleAcademicUpdate}
+      />
 
-              <Button variant="danger" onClick={handleAcademicUpdate} disabled={isAcademicUpdating}>
-                {isAcademicUpdating ? (
-                  <Loader2 className="animate-spin" size={16} />
-                ) : (
-                  <AlertCircle size={16} />
-                )}
-                Confirm Reset
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" onClick={() => setIsAcademicDialogOpen(false)}>
-                Cancel
-              </Button>
-
-              <Button onClick={() => setIsAcademicWarningStep(true)}>Continue</Button>
-            </>
-          )
-        }
-      >
-        {isAcademicWarningStep ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
-            <p className="text-sm font-bold text-red-700 dark:text-red-300">
-              This action will reset the student workspace.
-            </p>
-            <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
-              Project title, description, domains, tools, PDF, supervisor assignment, and team
-              membership can be cleared by this update.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-                Program
-              </label>
-              <select
-                value={academicForm.program}
-                onChange={(event) =>
-                  setAcademicForm((previous) => ({
-                    ...previous,
-                    program: event.target.value,
-                  }))
-                }
-                className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
-              >
-                {Object.keys(PROGRAM_MAP).map((program) => (
-                  <option key={program} value={program}>
-                    {getProgramName(program)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-                Batch
-              </label>
-              <select
-                value={academicForm.batch}
-                onChange={(event) =>
-                  setAcademicForm((previous) => ({
-                    ...previous,
-                    batch: event.target.value,
-                  }))
-                }
-                className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
-              >
-                <option value="">Select batch</option>
-                {batchOptions.map((batch) => (
-                  <option key={batch} value={batch}>
-                    {batch}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-      </Dialog>
-
-      <Dialog
-        open={!!selectedTemplate}
+      <TemplatePreviewDialog
+        template={selectedTemplate}
+        isCopying={isCopyingTemplate}
+        isCopied={isCopied}
         onClose={closeTemplateDialog}
-        title={selectedTemplate?.title || 'Template'}
-        description="Word preview · editable after pasting"
-        size="xl"
-        footer={
-          <>
-            <Button variant="outline" onClick={closeTemplateDialog} disabled={isCopyingTemplate}>
-              Close
-            </Button>
-
-            <Button onClick={handleCopyTemplate} disabled={isCopyingTemplate}>
-              {isCopyingTemplate ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : isCopied ? (
-                <CheckCircle size={16} />
-              ) : (
-                <Copy size={16} />
-              )}
-              {isCopyingTemplate ? 'Copying' : isCopied ? 'Copied for Word' : 'Copy for Word'}
-            </Button>
-          </>
-        }
-      >
-        <div className="portal-scrollbar max-h-[68vh] overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 sm:p-5">
-          <div
-            role="document"
-            aria-label={`${selectedTemplate?.title || 'Template'} Word preview`}
-            className="mx-auto min-h-[720px] w-full max-w-[816px] bg-white px-6 py-10 text-black shadow-sm sm:px-10 md:px-16"
-            // Trusted, allowlisted static HTML from word_templates/. Never use this for user HTML.
-            dangerouslySetInnerHTML={{ __html: selectedTemplate?.content || '' }}
-          />
-        </div>
-      </Dialog>
+        onCopy={handleCopyTemplate}
+      />
     </>
   );
 };
