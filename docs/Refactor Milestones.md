@@ -163,8 +163,8 @@ Other tracked files over 500 lines: `README.md` (529, documentation).
 
 ### F-15 — Naming and folder conventions obscure intent
 
-- Relevant files: `middleware.ts`; `app/api/export-pdf/route.ts`; `components/dashboards/SupervisorDashboard.tsx`; API folders at both `/api/*` and `/api/admin/*`; mixed CRLF/LF source files.
-- Why it is a problem: Next.js 16 renamed the `middleware.ts` convention to `proxy.ts`. The `export-pdf` route and `handleExportPDF` return an XLSX workbook. Admin supervisor endpoints live at the API root while other admin endpoints live under `/api/admin`. Mixed route nouns/actions and line endings make discovery and diffs harder.
+- Relevant files: `proxy.ts`; `app/api/export-excel/route.ts`; `components/dashboards/SupervisorDashboard.tsx`; API folders at both `/api/*` and `/api/admin/*`; mixed CRLF/LF source files.
+- Why it is a problem: Next.js 16 renamed the `middleware.ts` convention to `proxy.ts`. The former PDF-named export route returned an XLSX workbook; it is now correctly named `export-excel`. Admin supervisor endpoints live at the API root while other admin endpoints live under `/api/admin`. Mixed route nouns/actions and line endings make discovery and diffs harder.
 - Risk level: Medium.
 - Recommended improvement: after route-local authorization is in place, rename `middleware.ts` to `proxy.ts` and verify NextAuth compatibility. Rename the export route to reflect XLSX in a separate contract-preserving change (temporary redirect or coordinated client update). Gradually place admin-only endpoints under `/api/admin` when each caller is covered. Normalize line endings through editor settings in a dedicated mechanical change.
 - Tests needed before changing it: proxy matcher role matrix; build warning removed; every renamed route/client caller; download content type, filename, and workbook contents; no unrelated line-ending diff mixed with logic changes.
@@ -351,11 +351,11 @@ Gate: component/accessibility tests and manual light/dark/mobile smoke pass; no 
 
 ### Milestone 9 — Align naming and Next.js conventions
 
-Status: in progress. Steps 9.1–9.5 are implemented: the unchanged role boundary is `proxy.ts`, the XLSX route and client symbol use accurate names with legacy-path compatibility, admin-only supervisor mutations are grouped under `/api/admin`, redundant configuration is removed, and developer setup/runbook documentation is tracked. The final build and clean-clone gate remains open.
+Status: in progress. Steps 9.1–9.5 are implemented: the unchanged role boundary is `proxy.ts`, the Excel route and client symbol use accurate names, admin-only supervisor mutations are grouped under `/api/admin`, redundant configuration is removed, and developer setup/runbook documentation is tracked. The final build and clean-clone gate remains open.
 
 9.1 Rename `middleware.ts` to `proxy.ts` only after route-local authorization exists; verify NextAuth behavior. Complete.
 
-9.2 Rename XLSX export symbols/route in a coordinated, tested change. Complete: `export-xlsx` is the current client path and `handleExportXlsx` is the client symbol; the legacy `export-pdf` path remains a tested compatibility route.
+9.2 Rename Excel export symbols/route in a coordinated, tested change. Complete: `export-excel` is the only export route and `handleExportExcel` is the client symbol. The PDF-named route and redundant XLSX forwarder were removed because supervisors only export Excel files.
 
 9.3 Group admin-only routes consistently, one caller at a time. Complete: the Admin dashboard now uses `/api/admin/add-supervisor`, `/api/admin/delete-supervisor`, and `/api/admin/toggle-supervisor-notifications`; all three former paths remain tested compatibility routes.
 
@@ -367,9 +367,11 @@ Gate: proxy/route tests, clean build without deprecation warning, clean-clone se
 
 ### Milestone 10 — Canonicalize project data (explicit approval required)
 
-10.1 Write a read-only audit that categorizes matching, missing, conflicting, and orphaned `User`/`Project` state.
+Status: in progress. Step 10.1 is complete: an admin-only, read-only report categorizes reciprocal membership, duplicate-field mismatches, missing records, and empty projects. No audit has been run against production data and no data was changed.
 
-10.2 Agree on canonical field ownership and conflict-resolution rules using real audit counts.
+10.1 Write a read-only audit that categorizes matching, missing, conflicting, and orphaned `User`/`Project` state. Complete: `GET /api/admin/project-reconciliation` compares student `projectId` links and the duplicated supervisor, status, title, domain(s), and PDF fields with their `Project` records. It detects both directions of broken membership.
+
+10.2 Agree on canonical field ownership and conflict-resolution rules using real audit counts. Pending: the existing recommendation remains `Project` for team-level state and `User` for identity/membership, but actual audit counts must be reviewed before choosing any conflict treatment.
 
 10.3 Add dual-read reconciliation and idempotent dry-run migration tests.
 

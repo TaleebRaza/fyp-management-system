@@ -4,8 +4,8 @@ Last updated: 2026-07-21 (Asia/Karachi)
 
 ## Status
 
-- Current milestone: Milestone 9 — Align naming and Next.js conventions.
-- State: Milestones 0–7 are complete. Milestone 8 implementation is complete but its manual visual/build gate remains open; Milestone 9.1–9.5 implementation is complete, but its final production-build and clean-clone gate remains open. Milestone 9 was prioritized at the user's request.
+- Current milestone: Milestone 10 — Canonicalize project data (read-only audit).
+- State: Milestones 0–7 are complete. Milestone 8 implementation is complete but its manual visual/build gate remains open; Milestone 9.1–9.5 implementation is complete, but its final production-build and clean-clone gate remains open. Milestone 10.1 is complete; the audit must be run and reviewed before any data reconciliation decision or mutation.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
 - Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, centralized team/stage/program constants, and explicit R2 cleanup/reconciliation behavior; the NextAuth work is type-only.
@@ -61,7 +61,7 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 
 1. Re-read this file and `Refactor Milestones.md`.
 2. Re-run the Milestone 9 production build where it can complete, verify a clean clone using `.env.example`, and complete the deferred Milestone 8 manual light/dark/mobile smoke.
-3. Do not start Milestone 10 without explicit approval for its data-reconciliation scope.
+3. Run the read-only `GET /api/admin/project-reconciliation` report against an approved database, review its real counts, and agree on conflict resolution before any migration. Do not mutate production data without a backup, dry run, reconciliation evidence, and separate production-data approval.
 4. Keep API paths, user-visible messages, email content, and existing security checks unchanged.
 5. Do not add a generic service layer, dependency, queue, production-data migration, or E2E suite.
 
@@ -93,12 +93,23 @@ Completed 9.1–9.5 implementation (2026-07-21, `Portal-Overhaul`):
 
 - Renamed the Next.js request boundary from `middleware.ts` to `proxy.ts` without changing its role checks or matcher.
 - Removed redundant Next.js config for absent `pdfkit`, default compression, and default package import optimization. No package was added or removed.
-- Added `/api/export-xlsx` and renamed the Supervisor dashboard handler to `handleExportXlsx`; `/api/export-pdf` remains available and is covered by compatibility tests. Download contents, filename, authorization, and query parameters are unchanged.
+- Corrected the export naming at the user's request: `/api/export-excel` is now the single export route and `handleExportExcel` is the Supervisor dashboard handler. The wrongly named PDF route and redundant XLSX forwarder were removed; supervisors still export the same Excel file, while PDFs remain browser-only views.
 - Grouped the three Admin dashboard supervisor mutations under `/api/admin` while retaining the old paths as compatibility routes. Their request bodies, responses, transactions, and admin authorization are unchanged.
 - Added `.env.example` and `docs/Developer Setup.md`, then linked the setup/runbook from `README.md`. No real credentials, dependency, runtime configuration, or production data changed.
-- Validation: focused route suites passed (2 files, 11 tests); `npm test` passed (43 files, 160 tests); `npm run typecheck` passed; `git diff --check` passed. Full lint retains the existing baseline of 67 problems (48 errors, 19 warnings), with no new route/test/documentation findings. The touched dashboards retain only 3 existing effect-rule errors and 11 existing warnings; all new route and test files are clean.
-- Build: `npm run build` compiled successfully twice outside the restricted sandbox, but each attempt did not reach a clean completion before the execution limit and left a generated `.next/lock`. The Milestone 9 gate is therefore still open; remove only that stale generated lock after confirming no build process exists, then rerun the build in a completion-capable environment.
+- Validation: the focused Excel route suite passed (1 file, 4 tests); `npm test` passed (43 files, 159 tests); `npm run typecheck` passed; `git diff --check` passed. Full lint retains the existing baseline of 67 problems (48 errors, 19 warnings), with no new route/test/documentation findings. The touched Supervisor dashboard retains only 1 existing effect-rule error and 1 existing warning; the new route and test are clean.
+- Build: `npm run build` compiled successfully again outside the restricted sandbox and generated the new `/api/export-excel` type map, but did not reach a clean completion before the execution limit and left a generated `.next/lock`. The Milestone 9 gate is therefore still open; remove only that stale generated lock after confirming no build process exists, then rerun the build in a completion-capable environment.
 - Next action: complete the Milestone 9 build and clean-clone setup verification. Milestone 10 remains approval-gated.
+
+## Milestone 10 progress
+
+Completed 10.1 (2026-07-21, `Portal-Overhaul`):
+
+- Added the admin-only, read-only `GET /api/admin/project-reconciliation` report and a small pure reconciler. It compares student `projectId` links with `Project.members`, then compares duplicated supervisor, status, title, domain(s), and PDF URL values.
+- The report labels matching projects, missing project/student records, broken membership in either direction, duplicated-field conflicts, and projects with no members. It returns identifiers and field names only; it does not expose credentials or write to MongoDB/R2.
+- Added direct and route tests for matching, missing, conflicting, orphaned, reverse-link, and anonymous cases. Validation: `npm test` passed (45 files, 163 tests); `npm run typecheck` passed; lint on the new files passed; `git diff --check` passed. Full lint remains the existing 67-problem baseline (48 errors, 19 warnings), with no findings in the new files.
+- Milestone 9 gate attempt: the outside-sandbox build completed compilation, its production compile hook, and TypeScript, but the execution environment stopped before final completion. A clean clone was created and `.env.example` copied successfully, but `npm ci` was also stopped by the same execution limit before it completed. Neither gate is recorded as passed.
+- Decision: `Project` remains the proposed owner of team-level state and `User` of identity/membership, as already documented in the roadmap. No real audit counts, data migration, dual write, schema change, or fallback removal was performed.
+- Next action: run the read-only audit against an approved database, review the counts and conflict samples, then agree on exact resolution rules before starting 10.2. Milestone 11 is not started.
 
 Completed in the current session:
 
