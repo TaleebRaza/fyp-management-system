@@ -1,20 +1,25 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Send, Play, Loader2, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Mic, Square, Play, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { uploadAudioBlob } from '../../lib/audioUpload';
+import { useAudioRecorder } from './useAudioRecorder';
 
-export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) => {
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+type VoiceTheme = { bg?: string; text?: string };
+type VoiceMessage = {
+  _id: string;
+  senderId: { _id?: string; name?: string };
+  blobUrl: string;
+  isPlayed: boolean;
+  isUploading?: boolean;
+};
+
+export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: { projectId: string; currentUserId?: string; theme: VoiceTheme; isDarkMode: boolean }) => {
   const [isUploading, setIsUploading] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<VoiceMessage[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null); // NEW: Track active playback
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-  const timerIntervalRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // NEW: Inline audio player
 
   // 1. Fetch History & Trigger Lazy Garbage Collection on the Backend
@@ -25,66 +30,16 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
         const data = await res.json();
         setMessages(data.notes || []);
       }
-    } catch (err) {
-      console.error('Failed to fetch voice notes', err);
+    } catch (error) {
+      console.error('Failed to fetch voice notes', error);
     }
   };
 
   useEffect(() => {
     if (projectId) fetchMessages();
-    return () => clearInterval(timerIntervalRef.current);
   }, [projectId]);
-
-  // 2. Hardware Microphone Initialization
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // --- OPTIMIZATION: Ultra-low bitrate for instant upload speeds ---
-      const mediaRecorder = new MediaRecorder(stream, { 
-        mimeType: 'audio/webm',
-        audioBitsPerSecond: 16000 
-      });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
-      };
-
-      mediaRecorder.onstop = handleUpload;
-      
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-
-      // Strict 60-second hardware cutoff to prevent Vercel storage bloat
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => {
-          if (prev >= 59) {
-            stopRecording();
-            return 60;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-
-    } catch (err) {
-      alert('Microphone access denied or unavailable.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      setIsRecording(false);
-      clearInterval(timerIntervalRef.current);
-    }
-  };
-
-  // 3. Optimistic UI & Background Streaming Handshake
-  const handleUpload = async () => {
-    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+  // 2. Optimistic UI & background upload remain specific to voice notes.
+  const handleUpload = async (audioBlob: Blob) => {
     const file = new File([audioBlob], `voicenote-${Date.now()}.webm`, { type: 'audio/webm' });
 
     // --- OPTIMIZATION: The WhatsApp Illusion ---
@@ -104,9 +59,6 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
     
     // Unblock the recording UI instantly
     setIsUploading(false); 
-    setIsRecording(false);
-    setRecordingTime(0);
-
     // --- BACKGROUND THREAD: Cloudflare R2 Upload & MongoDB Ledger ---
     try {
       const { key } = await uploadAudioBlob(file, projectId);
@@ -127,6 +79,12 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       alert('Network interrupted. Voice note failed to send.');
     }
   };
+
+  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder({
+    onRecorded: handleUpload,
+    onError: () => alert('Microphone access denied or unavailable.'),
+    audioBitsPerSecond: 16000,
+  });
 
   // 4. Mark as Played (Starts the 10-min doom timer)
   const handlePlay = async (noteId: string, blobUrl: string, isPlayed: boolean) => {
@@ -163,7 +121,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
       <div className="flex justify-between items-center pb-2 border-b border-dashed border-neutral-500/20">
         <h4 className="text-xs font-black uppercase tracking-widest opacity-60 flex items-center gap-2">
-          <Mic size={14} className={theme.text} /> Voice Chat
+          <Mic size={14} className={theme.text || ''} /> Voice Chat
         </h4>
         <span className="text-[10px] font-bold opacity-40 uppercase">Auto-deletes after 10m</span>
       </div>

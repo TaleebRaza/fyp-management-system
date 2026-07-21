@@ -1,24 +1,23 @@
 // components/dashboards/BroadcastWidget.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Megaphone, Mic, Type, X, Square, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { uploadAudioBlob } from '../../lib/audioUpload';
+import { useAudioRecorder } from '../ui/useAudioRecorder';
 
-export default function BroadcastWidget({ isDarkMode, theme }: any) {
+type BroadcastTheme = { bg?: string; text?: string; lightBg?: string; ring?: string };
+
+export default function BroadcastWidget({ isDarkMode, theme }: { isDarkMode: boolean; theme?: BroadcastTheme; showDialog?: unknown }) {
   const [mounted, setMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'text' | 'audio'>('text');
   const [textContent, setTextContent] = useState('');
   
   // Audio State
-  const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Submit State
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,48 +28,10 @@ export default function BroadcastWidget({ isDarkMode, theme }: any) {
     setMounted(true);
   }, []);
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      
-      const chunks: BlobPart[] = [];
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-      
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          if (prev >= 59) {
-            stopRecording();
-            return 60;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } catch (err) {
-      alert("Microphone access denied or unavailable.");
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-  };
+  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder({
+    onRecorded: setAudioBlob,
+    onError: () => alert('Microphone access denied or unavailable.'),
+  });
 
   const handleClear = async () => {
     setIsSubmitting(true);
@@ -117,7 +78,7 @@ export default function BroadcastWidget({ isDarkMode, theme }: any) {
         setTextContent('');
         setAudioBlob(null);
       }, 1500);
-    } catch (err) {
+    } catch {
       alert('Error publishing broadcast. Please try again.');
     } finally {
       setIsSubmitting(false);

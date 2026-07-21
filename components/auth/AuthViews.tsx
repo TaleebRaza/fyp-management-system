@@ -7,7 +7,16 @@ import { AnimatePresence, motion } from 'framer-motion';
 
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 
-export type PortalDialogRequest = { title: string; message: string };
+export type PortalDialogRequest = {
+  type?: 'alert' | 'confirm' | 'prompt';
+  title: string;
+  message: string;
+  placeholder?: string;
+  onConfirm?: (value?: string) => void | Promise<void>;
+  defaultValue?: string;
+  inputType?: 'text' | 'email' | 'select';
+  inputOptions?: string[];
+};
 type AuthViewsProps = { setIsRegistering: (value: boolean) => void; showDialog: (request: PortalDialogRequest) => void };
 export type SupervisorOption = { _id: string; name?: string; isFull?: boolean; filledSlots?: number; maxSlots?: number };
 

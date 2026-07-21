@@ -19,7 +19,7 @@ import {
 type ProjectReviewDialogProps = {
   project: SupervisorProject | null;
   currentUserId?: string;
-  theme: unknown;
+  theme: { bg?: string; text?: string };
   isDarkMode: boolean;
   isProcessing: boolean;
   migrationStudentId: string;

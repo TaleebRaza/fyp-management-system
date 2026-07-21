@@ -4,8 +4,8 @@ Last updated: 2026-07-21 (Asia/Karachi)
 
 ## Status
 
-- Current milestone: Milestone 7 — Split client features incrementally.
-- State: Milestone 6 is complete. Milestones 7.1–7.4 are complete; 7.5 is the remaining Milestone 7 step. Milestone 8 has only its independently safe cleanup/timeline/upload slices completed and must not be marked complete until Milestone 7 is finished.
+- Current milestone: Milestone 8 — Consolidate UI and browser infrastructure.
+- State: Milestones 0–7 are complete. Milestone 8 has its safe cleanup/timeline/upload slices complete; 8.2 and shared recorder/timer state remain.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
 - Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, centralized team/stage/program constants, and explicit R2 cleanup/reconciliation behavior; the NextAuth work is type-only.
@@ -60,13 +60,33 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Complete Milestone 7.5 by typing the remaining moved Dashboard/API boundaries without a mass typing rewrite.
-3. Treat Milestone 7 as complete only after 7.5 validation; do not begin additional Milestone 8 work first.
+2. Complete Milestone 8.2 by splitting `SharedUI` only at cohesive component boundaries.
+3. Then complete the remaining Milestone 8.4 recorder/timer state extraction with focused cleanup/error tests.
 4. Keep API paths, user-visible messages, email content, and existing security checks unchanged.
 5. Do not add a generic service layer, dependency, queue, production-data migration, or E2E suite.
 6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
 
 ## Milestone 1 progress
+
+## Milestone 7 progress
+
+Completed 7.5 (2026-07-21, `Portal-Overhaul`):
+
+- Typed the remaining moved client boundaries: Student and Admin dashboard props, dashboard data/state, public supervisor and admin-list response shapes, and the shared portal-dialog request contract. Existing request URLs, response bodies, validation, messages, access checks, and UI behavior remain unchanged.
+- Removed only stale, unused `theme` props from the root-to-Student/Admin calls; neither component read them. No dependency, API path, or schema changed.
+- Validation: `npm test` passed (42 files, 157 tests); `npm run typecheck` passed; `git diff --check` passed. Touched-file lint retains pre-existing effect-rule errors in `app/page.tsx`, Student, Admin, and Supervisor dashboards plus existing unused-import/image warnings; this change introduced no new lint findings. Full lint was not clean for the same existing baseline reasons. The sandbox build stalled and left a generated `.next/lock`; after its removal, the outside-sandbox production build compiled successfully, completed its production compile hook, TypeScript, and page-data collection. The existing `middleware.ts` deprecation warning remains for Milestone 9.
+- Decision: one shared dialog-request type is necessary because the root and both dashboard callers exchange the same confirmation/prompt payload. It replaces duplicate, incompatible declarations; no generic UI layer was added.
+- Next action: complete Milestone 8.2, then the remaining recorder/timer portion of 8.4. Manual light/dark/mobile smoke remains required before Milestone 8 is complete.
+
+## Milestone 8 progress
+
+Completed the remaining code sub-steps (2026-07-21, `Portal-Overhaul`):
+
+- `Dialog` and `LinkifiedText` now live in their own cohesive UI modules while `SharedUI` preserves every existing import path by re-exporting them.
+- `useAudioRecorder` now owns the shared microphone, timer, auto-stop, and cleanup lifecycle for both voice notes and supervisor broadcasts. Their upload and save flows remain separate.
+- Added `tests/audio-recorder.test.tsx`, which verifies a stopped recording returns audio and microphone tracks are not stopped twice on cleanup.
+- Validation: focused UI tests passed (4 files, 4 tests); recorder test passed (1 file, 1 test); full `npm test` passed (43 files, 158 tests); `npm run typecheck` and `git diff --check` passed. Full lint remains the existing baseline failure (67 problems: 48 errors, 19 warnings); the touched voice/broadcast files retain only their pre-existing effect-rule findings, and the new hook/test are clean.
+- Remaining gate: manual light/dark/mobile visual smoke and a recorded successful production-build completion before Milestone 8 can be marked complete. Do not begin Milestone 9 until that gate is met.
 
 Completed in the current session:
 

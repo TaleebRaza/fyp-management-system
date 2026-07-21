@@ -319,7 +319,7 @@ Gate: route contract tests are unchanged; each handler reads as authorization, p
 
 ### Milestone 7 — Split client features incrementally
 
-Status: in progress. 7.1–7.4 are complete: typed Student feature components, Supervisor queue/review/migration/export components, and whole login/reset/registration views are separated from their parent pages while keeping requests and business rules in place. 7.5 remains before Milestone 8 is treated as completed.
+Status: complete. Typed Student/Admin dashboard props and response-state boundaries now replace the remaining broad feature-boundary types; the root and dashboard dialog callers share one typed request contract. Existing requests, messages, validation, permissions, and UI behavior remain unchanged.
 
 7.1 Extract Admin report transformations and file generation as pure functions, then its reports UI. Complete: typed report data/CSV/HTML functions and `ReportsDialog` have direct tests.
 
@@ -329,7 +329,7 @@ Status: in progress. 7.1–7.4 are complete: typed Student feature components, S
 
 7.4 Split login, password reset, registration, and session routing in `app/page.tsx` without changing the page URL. Complete.
 
-7.5 Type props and API responses as each feature moves; do not schedule a separate mass-typing rewrite.
+7.5 Type props and API responses as each feature moves; do not schedule a separate mass-typing rewrite. Complete: Student/Admin dashboard props, response state, and public list shapes are typed at their existing boundaries; no repository-wide type rewrite was added.
 
 Gate for every substep: relevant component tests, keyboard/accessibility checks, typecheck, lint non-regression, build.
 
@@ -339,11 +339,11 @@ Status: in progress. Safe slices 8.1, 8.3, 8.4, and 8.5 are complete; 8.2 and sh
 
 8.1 Delete verified unused SharedUI exports and dead files/assets. Complete: unused table/card aliases, Timeline, commented mailer backup, and starter SVGs were reference-checked and deleted.
 
-8.2 Split SharedUI into a few cohesive modules, preserving import aliases temporarily if that keeps diffs small.
+8.2 Split SharedUI into a few cohesive modules, preserving import aliases temporarily if that keeps diffs small. Complete in the current slice for the distinct dialog and link-rendering responsibilities; `SharedUI` re-exports both so callers did not change.
 
 8.3 Reuse the current Dialog and timeline where behavior matches. Complete for timeline: both dashboards use the tested `ProjectTimeline`; existing Dialog remains the common dialog.
 
-8.4 Share MediaRecorder/timer/upload logic between the two concrete callers and add cleanup/error tests. In progress: the presigned upload/PUT handshake is shared and failure-tested; recorder/timer state remains duplicated.
+8.4 Share MediaRecorder/timer/upload logic between the two concrete callers and add cleanup/error tests. Complete: `useAudioRecorder` owns recorder/timer/track cleanup for VoiceChat and BroadcastWidget; their concrete upload/save behavior remains local. A focused test verifies returned audio and one-time track cleanup.
 
 8.5 Remove unused CSS selectors in visual-smoke-sized batches; keep globals together unless ownership becomes clearly feature-specific. Complete for one verified batch: seven unreferenced selectors were deleted; manual visual smoke remains pending.
 

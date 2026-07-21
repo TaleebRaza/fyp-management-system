@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
+import type { Session } from 'next-auth';
 import {
   AlertCircle,
   BarChart3,
@@ -49,10 +50,42 @@ import {
 } from '../../lib/adminReports';
 import { MAX_EXTRA_SUPERVISOR_SLOTS } from '../../lib/supervisorSlots';
 import { ReportsDialog } from './admin/ReportsDialog';
+import type { PortalDialogRequest } from '../auth/AuthViews';
 
 type AdminTab = 'overview' | 'supervisors' | 'students';
+type AdminDashboardProps = {
+  session?: Session | null;
+  showDialog: (request: PortalDialogRequest) => void;
+};
+type AdminSupervisor = {
+  _id: string;
+  name?: string;
+  rollNo?: string;
+  email?: string;
+  migrationCode?: string;
+  notificationsEnabled?: boolean;
+  extraSlots?: number;
+  filledSlots?: number;
+  maxSlots?: number;
+  isFull?: boolean;
+};
+type AdminStudent = {
+  _id: string;
+  name?: string;
+  rollNo?: string;
+  email?: string;
+  program?: string;
+  batch?: string;
+  semester?: string;
+  status?: string;
+  isActive?: boolean;
+  monthlyLoginCount?: number;
+};
+type StudentPagination = { page: number; limit: number; total: number; totalPages: number };
+type BadgeVariant = 'success' | 'danger' | 'muted' | 'warning';
+const EMPTY_REPORT_TOTALS: Record<string, unknown> = {};
 
-const getStatusVariant = (status?: string) => {
+const getStatusVariant = (status?: string): BadgeVariant => {
   if (status === 'Approved') return 'success';
   if (status === 'Rejected') return 'danger';
   if (status === 'Unassigned') return 'muted';
@@ -78,7 +111,7 @@ const downloadTextFile = (content: string, filename: string, mimeType: string) =
   URL.revokeObjectURL(url);
 };
 
-const AdminDashboard = ({ session, showDialog }: any) => {
+const AdminDashboard = ({ session, showDialog }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
   const [newSupName, setNewSupName] = useState('');
@@ -86,10 +119,10 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   const [newSupRollNo, setNewSupRollNo] = useState('');
   const [newSupPassword, setNewSupPassword] = useState('');
 
-  const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
+  const [adminSupervisors, setAdminSupervisors] = useState<AdminSupervisor[]>([]);
   const [supervisorSearch, setSupervisorSearch] = useState('');
 
-  const [adminStudents, setAdminStudents] = useState<any[]>([]);
+  const [adminStudents, setAdminStudents] = useState<AdminStudent[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [debouncedStudentSearch, setDebouncedStudentSearch] = useState('');
   const [studentPage, setStudentPage] = useState(1);
@@ -108,12 +141,12 @@ const AdminDashboard = ({ session, showDialog }: any) => {
   const [batchFilter, setBatchFilter] = useState('All');
 
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
-  const [reportsData, setReportsData] = useState<any>(null);
+  const [reportsData, setReportsData] = useState<Record<string, unknown> | null>(null);
   const [isReportsLoading, setIsReportsLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<ReportId>('studentsPerSupervisor');
 
 
-  const [slotEditorSupervisor, setSlotEditorSupervisor] = useState<any>(null);
+  const [slotEditorSupervisor, setSlotEditorSupervisor] = useState<AdminSupervisor | null>(null);
   const [slotEditorValue, setSlotEditorValue] = useState('0');
   const [isSlotEditorSaving, setIsSlotEditorSaving] = useState(false);
 
@@ -180,7 +213,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       const response = await fetch('/api/supervisors', { cache: 'no-store' });
       const data = await response.json();
 
-      setAdminSupervisors(Array.isArray(data) ? data : []);
+      setAdminSupervisors(Array.isArray(data) ? data as AdminSupervisor[] : []);
     } catch (error) {
       console.error('Supervisor fetch error:', error);
     }
@@ -216,14 +249,14 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         throw new Error(data.error || 'Failed to fetch students');
       }
 
-      setAdminStudents(Array.isArray(data.students) ? data.students : []);
+      setAdminStudents(Array.isArray(data.students) ? data.students as AdminStudent[] : []);
 
       if (data.pagination) {
-        setStudentPagination(data.pagination);
+        setStudentPagination(data.pagination as StudentPagination);
       }
 
       if (Array.isArray(data.filterMeta?.batches)) {
-        setStudentBatches(data.filterMeta.batches);
+        setStudentBatches(data.filterMeta.batches as string[]);
       }
     } catch (error) {
       console.error('Student fetch error:', error);
@@ -248,7 +281,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         throw new Error(data.error || 'Failed to load reports');
       }
 
-      setReportsData(data);
+      setReportsData(data as Record<string, unknown>);
     } catch (error) {
       console.error('Reports error:', error);
       showDialog({
@@ -498,7 +531,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
     }
   };
 
-  const openSupervisorSlotEditor = (supervisor: any) => {
+  const openSupervisorSlotEditor = (supervisor: AdminSupervisor) => {
     const currentExtraSlots = Math.min(
       Math.max(Number(supervisor.extraSlots || 0), 0),
       MAX_EXTRA_SUPERVISOR_SLOTS
@@ -577,7 +610,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       title: 'Update email',
       message: `Enter a new email address for ${name}.`,
       defaultValue: currentEmail || '',
-      onConfirm: async (newEmail: string) => {
+      onConfirm: async (newEmail = '') => {
         const cleanedEmail = String(newEmail || '').trim().toLowerCase();
         const cleanedCurrentEmail = String(currentEmail || '').trim().toLowerCase();
 
@@ -639,7 +672,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       title: 'Update program',
       message: `Select a new program for ${name}. This will reset this student and remove them from their current team.`,
       defaultValue: currentProgram || 'BSCS',
-      onConfirm: async (newProgram: string) => {
+      onConfirm: async (newProgram = '') => {
         if (!newProgram || newProgram === currentProgram) return;
 
         showDialog({
@@ -689,7 +722,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       title: 'Update batch',
       message: `Select a new batch for ${name}. This will reset this student and remove them from their current team.`,
       defaultValue: currentBatch || '',
-      onConfirm: async (newBatch: string) => {
+      onConfirm: async (newBatch = '') => {
         if (!newBatch || newBatch === currentBatch) return;
 
         showDialog({
@@ -895,7 +928,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         <form onSubmit={handleBroadcastHeadline} className="grid gap-3 lg:grid-cols-[1fr_auto]">
           <StyledInput
             value={headlineInput}
-            onChange={(event: any) => setHeadlineInput(event.target.value)}
+            onChange={(event) => setHeadlineInput(event.target.value)}
             placeholder="Write a concise portal announcement..."
           />
 
@@ -940,28 +973,28 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         <form onSubmit={handleAddSupervisor} className="space-y-4">
           <StyledInput
             value={newSupName}
-            onChange={(event: any) => setNewSupName(event.target.value)}
+            onChange={(event) => setNewSupName(event.target.value)}
             type="text"
             required
             placeholder="Full name"
           />
           <StyledInput
             value={newSupRollNo}
-            onChange={(event: any) => setNewSupRollNo(event.target.value)}
+            onChange={(event) => setNewSupRollNo(event.target.value)}
             type="text"
             required
             placeholder="Username ID"
           />
           <StyledInput
             value={newSupEmail}
-            onChange={(event: any) => setNewSupEmail(event.target.value)}
+            onChange={(event) => setNewSupEmail(event.target.value)}
             type="email"
             required
             placeholder="Supervisor email"
           />
           <StyledInput
             value={newSupPassword}
-            onChange={(event: any) => setNewSupPassword(event.target.value)}
+            onChange={(event) => setNewSupPassword(event.target.value)}
             type="text"
             required
             placeholder="Assign password"
@@ -986,7 +1019,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
           <StyledInput
             icon={Search}
             value={supervisorSearch}
-            onChange={(event: any) => setSupervisorSearch(event.target.value)}
+            onChange={(event) => setSupervisorSearch(event.target.value)}
             type="search"
             placeholder="Search by name, ID, email, or migration code..."
           />
@@ -1034,7 +1067,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
                           <button
                             type="button"
                             onClick={() =>
-                              handleUpdateEmail(supervisor._id, supervisor.email, supervisor.name)
+                              handleUpdateEmail(supervisor._id, supervisor.email || '', supervisor.name || 'Supervisor')
                             }
                             className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
                           >
@@ -1063,7 +1096,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
                         <Button
                           variant="outline"
                           onClick={() =>
-                            handleToggleNotifications(supervisor._id, supervisor.notificationsEnabled)
+                            handleToggleNotifications(supervisor._id, Boolean(supervisor.notificationsEnabled))
                           }
                           title="Toggle notifications"
                         >
@@ -1073,7 +1106,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
 
                         <Button
                           variant="danger"
-                          onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name)}
+                          onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name || 'this supervisor')}
                         >
                           <Trash2 size={16} />
                           Delete
@@ -1111,7 +1144,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
             <StyledInput
               icon={Search}
               value={studentSearch}
-              onChange={(event: any) => setStudentSearch(event.target.value)}
+            onChange={(event) => setStudentSearch(event.target.value)}
               type="search"
               placeholder="Search students by name, ID, or email..."
             />
@@ -1195,7 +1228,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
                           {student.name || 'Unnamed student'}
                         </h3>
 
-                        <Badge variant={getStatusVariant(student.status) as any}>
+                        <Badge variant={getStatusVariant(student.status)}>
                           {student.status || 'N/A'}
                         </Badge>
 
@@ -1204,7 +1237,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
 
                       <button
                         type="button"
-                        onClick={() => handleUpdateEmail(student._id, student.email, student.name)}
+                        onClick={() => handleUpdateEmail(student._id, student.email || '', student.name || 'Student')}
                         className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
                       >
                         ID: {student.rollNo || 'N/A'} · {student.email || 'Assign email'}
@@ -1214,7 +1247,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
                         <button
                           type="button"
                           onClick={() =>
-                            handleUpdateProgram(student._id, student.program, student.name)
+                            handleUpdateProgram(student._id, student.program || '', student.name || 'Student')
                           }
                           className="rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--color-accent)]"
                           title={`${getProgramName(student.program)} — click to edit`}
@@ -1224,14 +1257,14 @@ const AdminDashboard = ({ session, showDialog }: any) => {
 
                         <button
                           type="button"
-                          onClick={() => handleUpdateBatch(student._id, student.batch, student.name)}
+                          onClick={() => handleUpdateBatch(student._id, student.batch || '', student.name || 'Student')}
                           className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                           title="Click to edit batch"
                         >
                           {student.batch || 'No batch'} · {student.semester || '7th Sem'}
                         </button>
 
-                        {student.monthlyLoginCount > 0 && (
+                        {Number(student.monthlyLoginCount || 0) > 0 && (
                           <Badge variant="accent">{student.monthlyLoginCount} logins this month</Badge>
                         )}
                       </div>
@@ -1410,7 +1443,7 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         onClose={() => setIsReportsModalOpen(false)}
         isLoading={isReportsLoading}
         hasReports={Boolean(reportsData)}
-        totals={reportsData?.totals || {}}
+        totals={reportsData?.totals && typeof reportsData.totals === 'object' && !Array.isArray(reportsData.totals) ? reportsData.totals as Record<string, unknown> : EMPTY_REPORT_TOTALS}
         generatedAt={reportsData?.generatedAt}
         reportOptions={REPORT_OPTIONS}
         selectedReport={selectedReport}

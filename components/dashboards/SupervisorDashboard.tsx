@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import type { Session } from 'next-auth';
+import type { PortalDialogRequest } from '../auth/AuthViews';
 import {
   CheckCircle,
   ChevronDown,
@@ -58,19 +59,12 @@ const FALLBACK_THEME = {
 };
 
 type DashboardTheme = typeof FALLBACK_THEME & { gradient?: string };
-type DialogRequest = {
-  type?: 'alert' | 'confirm' | 'prompt';
-  title: string;
-  message: string;
-  placeholder?: string;
-  onConfirm?: (value: string) => Promise<void> | void;
-};
 type SupervisorDirectoryEntry = { rollNo?: string; migrationCode?: string };
 type SupervisorDashboardProps = {
   isDarkMode?: boolean;
   theme?: DashboardTheme;
   session?: Session | null;
-  showDialog?: (request: DialogRequest) => void;
+  showDialog?: (request: PortalDialogRequest) => void;
 };
 
 const SupervisorDashboard = ({
@@ -114,7 +108,7 @@ const SupervisorDashboard = ({
         type: 'confirm',
         title,
         message,
-        onConfirm,
+        onConfirm: () => onConfirm(),
       });
       return;
     }
@@ -131,7 +125,7 @@ const SupervisorDashboard = ({
         title,
         message,
         placeholder: 'Write remarks for this team...',
-        onConfirm,
+        onConfirm: (remarks = '') => onConfirm(remarks),
       });
       return;
     }
