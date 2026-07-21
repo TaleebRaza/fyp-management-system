@@ -351,17 +351,17 @@ Gate: component/accessibility tests and manual light/dark/mobile smoke pass; no 
 
 ### Milestone 9 — Align naming and Next.js conventions
 
-Status: in progress. 9.1 renamed the unchanged role boundary to `proxy.ts`; 9.4 removed only redundant Next.js configuration after confirming the listed packages are absent and unused.
+Status: in progress. Steps 9.1–9.5 are implemented: the unchanged role boundary is `proxy.ts`, the XLSX route and client symbol use accurate names with legacy-path compatibility, admin-only supervisor mutations are grouped under `/api/admin`, redundant configuration is removed, and developer setup/runbook documentation is tracked. The final build and clean-clone gate remains open.
 
 9.1 Rename `middleware.ts` to `proxy.ts` only after route-local authorization exists; verify NextAuth behavior. Complete.
 
-9.2 Rename XLSX export symbols/route in a coordinated, tested change.
+9.2 Rename XLSX export symbols/route in a coordinated, tested change. Complete: `export-xlsx` is the current client path and `handleExportXlsx` is the client symbol; the legacy `export-pdf` path remains a tested compatibility route.
 
-9.3 Group admin-only routes consistently, one caller at a time.
+9.3 Group admin-only routes consistently, one caller at a time. Complete: the Admin dashboard now uses `/api/admin/add-supervisor`, `/api/admin/delete-supervisor`, and `/api/admin/toggle-supervisor-notifications`; all three former paths remain tested compatibility routes.
 
 9.4 Remove redundant Next.js configuration and normalize line endings in a mechanical-only change. Complete for redundant configuration; line-ending normalization remains deferred to avoid mixing a mechanical whole-repository diff with this change.
 
-9.5 Add tracked developer setup, `.env.example`, debugging, and runbook documentation.
+9.5 Add tracked developer setup, `.env.example`, debugging, and runbook documentation. Complete: `.env.example` and `docs/Developer Setup.md` record required variables, local startup, checks, debugging, and safe operational boundaries.
 
 Gate: proxy/route tests, clean build without deprecation warning, clean-clone setup verification.
 

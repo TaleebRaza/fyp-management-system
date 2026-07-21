@@ -365,12 +365,12 @@ const SupervisorDashboard = ({
     );
   };
 
-  const handleExportPDF = async () => {
+  const handleExportXlsx = async () => {
     setIsExporting(true);
 
     try {
       const response = await fetch(
-        `/api/export-pdf?id=${encodeURIComponent(supervisorId || '')}&name=${encodeURIComponent(supervisorName)}&batch=${encodeURIComponent(batchFilter)}&program=${encodeURIComponent(programFilter || 'All')}`
+        `/api/export-xlsx?id=${encodeURIComponent(supervisorId || '')}&name=${encodeURIComponent(supervisorName)}&batch=${encodeURIComponent(batchFilter)}&program=${encodeURIComponent(programFilter || 'All')}`
       );
 
       if (!response.ok) {
@@ -549,7 +549,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
             <div className="grid gap-2">
               <BroadcastWidget isDarkMode={isDarkMode} theme={theme} showDialog={showDialog} />
 
-              <ExportProjectsButton isExporting={isExporting} label="Export Filtered Excel" onExport={handleExportPDF} />
+              <ExportProjectsButton isExporting={isExporting} label="Export Filtered Excel" onExport={handleExportXlsx} />
             </div>
           </div>
         </DashboardPanel>
@@ -571,7 +571,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
       onSearchChange={(event) => setProjectSearch(event.target.value)}
       onBatchChange={(event) => setBatchFilter(event.target.value)}
       onClearQueueFilter={() => setProjectQueueFilter('all')}
-      onExport={handleExportPDF}
+      onExport={handleExportXlsx}
       onSelectProject={(project) => {
         setSelectedProject(project);
         setMigrationStudentId(project.members?.[0]?._id || project.triggerStudentId || '');
@@ -664,7 +664,7 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
           <div className="grid gap-2 sm:flex">
             <BroadcastWidget isDarkMode={isDarkMode} theme={theme} showDialog={showDialog} />
 
-            <ExportProjectsButton isExporting={isExporting} label="Export" onExport={handleExportPDF} />
+            <ExportProjectsButton isExporting={isExporting} label="Export" onExport={handleExportXlsx} />
 
             <Button variant="danger" onClick={() => signOut({ redirect: false })}>
               <LogIn size={16} className="rotate-180" />

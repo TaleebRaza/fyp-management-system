@@ -17,13 +17,16 @@ vi.mock('../models/User', () => ({ default: { find: mocks.find } }));
 vi.mock('next-auth/jwt', () => ({ getToken: mocks.getToken }));
 vi.mock('exceljs', () => ({ default: { Workbook: mocks.workbookConstructor } }));
 
-import { GET } from '../app/api/export-pdf/route';
+import { GET as exportPdfCompatibilityReport } from '../app/api/export-pdf/route';
+import { GET as exportXlsxReport } from '../app/api/export-xlsx/route';
 
-function exportReport(supervisorId = 'supervisor-1') {
-  return GET(new NextRequest(`http://localhost/api/export-pdf?id=${supervisorId}`));
+function exportReport(supervisorId = 'supervisor-1', legacy = false) {
+  const GET = legacy ? exportPdfCompatibilityReport : exportXlsxReport;
+  const route = legacy ? 'export-pdf' : 'export-xlsx';
+  return GET(new NextRequest(`http://localhost/api/${route}?id=${supervisorId}`));
 }
 
-describe('GET /api/export-pdf', () => {
+describe('GET /api/export-xlsx', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getToken.mockResolvedValue({ id: 'supervisor-1', role: 'supervisor' });
@@ -70,5 +73,9 @@ describe('GET /api/export-pdf', () => {
     expect(mocks.find).toHaveBeenCalledWith(expect.objectContaining({
       $or: [{ supervisorId: 'supervisor-2' }, { supervisorId: 'supervisor-2' }],
     }));
+  });
+
+  it('keeps the legacy PDF-named path compatible', async () => {
+    expect((await exportReport('supervisor-1', true)).status).toBe(200);
   });
 });

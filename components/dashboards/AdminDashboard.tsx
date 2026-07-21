@@ -437,7 +437,7 @@ const AdminDashboard = ({ session, showDialog }: AdminDashboardProps) => {
     }
 
     try {
-      const response = await fetch('/api/add-supervisor', {
+      const response = await fetch('/api/admin/add-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -482,7 +482,7 @@ const AdminDashboard = ({ session, showDialog }: AdminDashboardProps) => {
       message: `This will permanently delete ${name}. Their assigned students will be marked as unassigned.`,
       onConfirm: async () => {
         try {
-          const response = await fetch('/api/delete-supervisor', {
+          const response = await fetch('/api/admin/delete-supervisor', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id }),
@@ -509,7 +509,7 @@ const AdminDashboard = ({ session, showDialog }: AdminDashboardProps) => {
 
   const handleToggleNotifications = async (id: string, currentStatus: boolean) => {
     try {
-      const response = await fetch('/api/supervisors/toggle-notifications', {
+      const response = await fetch('/api/admin/toggle-supervisor-notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, enabled: !currentStatus }),

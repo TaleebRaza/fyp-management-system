@@ -32,12 +32,15 @@ vi.mock('bcryptjs', () => ({ default: { hash: mocks.bcryptHash } }));
 vi.mock('next-auth/jwt', () => ({ getToken: mocks.getToken }));
 vi.mock('mongoose', () => ({ default: { startSession: mocks.startSession } }));
 
-import { POST as addSupervisor } from '../app/api/add-supervisor/route';
-import { POST as deleteSupervisor } from '../app/api/delete-supervisor/route';
-import { POST as toggleNotifications } from '../app/api/supervisors/toggle-notifications/route';
+import { POST as addSupervisor } from '../app/api/admin/add-supervisor/route';
+import { POST as deleteSupervisor } from '../app/api/admin/delete-supervisor/route';
+import { POST as toggleNotifications } from '../app/api/admin/toggle-supervisor-notifications/route';
+import { POST as legacyAddSupervisor } from '../app/api/add-supervisor/route';
+import { POST as legacyDeleteSupervisor } from '../app/api/delete-supervisor/route';
+import { POST as legacyToggleNotifications } from '../app/api/supervisors/toggle-notifications/route';
 
-function add() {
-  return addSupervisor(new NextRequest('http://localhost/api/add-supervisor', {
+function add(legacy = false) {
+  return (legacy ? legacyAddSupervisor : addSupervisor)(new NextRequest(`http://localhost/api/${legacy ? 'add-supervisor' : 'admin/add-supervisor'}`, {
     method: 'POST',
     body: JSON.stringify({
       name: 'Dr Ada',
@@ -50,16 +53,16 @@ function add() {
   }));
 }
 
-function remove() {
-  return deleteSupervisor(new NextRequest('http://localhost/api/delete-supervisor', {
+function remove(legacy = false) {
+  return (legacy ? legacyDeleteSupervisor : deleteSupervisor)(new NextRequest(`http://localhost/api/${legacy ? 'delete-supervisor' : 'admin/delete-supervisor'}`, {
     method: 'POST',
     body: JSON.stringify({ id: 'supervisor-1' }),
     headers: { 'Content-Type': 'application/json' },
   }));
 }
 
-function toggle() {
-  return toggleNotifications(new NextRequest('http://localhost/api/supervisors/toggle-notifications', {
+function toggle(legacy = false) {
+  return (legacy ? legacyToggleNotifications : toggleNotifications)(new NextRequest(`http://localhost/api/${legacy ? 'supervisors/toggle-notifications' : 'admin/toggle-supervisor-notifications'}`, {
     method: 'POST',
     body: JSON.stringify({ id: 'supervisor-1', enabled: false }),
     headers: { 'Content-Type': 'application/json' },
@@ -143,5 +146,11 @@ describe('admin-only supervisor mutations', () => {
       'supervisor-1',
       { notificationsEnabled: false }
     );
+  });
+
+  it('keeps the legacy paths compatible', async () => {
+    expect((await add(true)).status).toBe(201);
+    expect((await remove(true)).status).toBe(200);
+    expect((await toggle(true)).status).toBe(200);
   });
 });

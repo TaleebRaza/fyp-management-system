@@ -324,6 +324,12 @@ The public architecture intentionally remains high-level to present the system w
 
 ---
 
+## Developer setup
+
+For local setup, required environment variables, checks, debugging, and safe operational procedures, read [Developer Setup](docs/Developer%20Setup.md). Copy `.env.example` to `.env.local`; do not commit real credentials.
+
+---
+
 ## 🚀 Engineering Highlights
 
 This project demonstrates experience in:
