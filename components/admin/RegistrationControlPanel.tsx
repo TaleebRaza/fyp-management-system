@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Banknote,
@@ -16,6 +16,37 @@ import {
   type RegistrationPolicyDto,
   type RegistrationPunishmentCategory,
 } from '../../types/registrationPolicy';
+import {
+  clearBrowserDraft,
+  readBrowserDraft,
+  writeBrowserDraft,
+} from '../../lib/browserDraftStorage';
+
+
+type RegistrationPolicyDraft = Pick<RegistrationPolicyDto, 'isOpen' | 'closedMessage'> & {
+  punishment: RegistrationPolicyDto['punishment'];
+};
+
+const REGISTRATION_POLICY_DRAFT_KEY = 'fyp-portal:admin-registration-policy-draft:v1';
+
+const toEditablePolicy = (policy: RegistrationPolicyDto): RegistrationPolicyDraft => ({
+  isOpen: policy.isOpen,
+  closedMessage: policy.closedMessage,
+  punishment: { ...policy.punishment },
+});
+
+const mergePolicyDraft = (
+  policy: RegistrationPolicyDto,
+  draft: RegistrationPolicyDraft
+): RegistrationPolicyDto => ({
+  ...policy,
+  isOpen: draft.isOpen,
+  closedMessage: draft.closedMessage,
+  punishment: {
+    ...policy.punishment,
+    ...draft.punishment,
+  },
+});
 
 type Props = {
   initialPolicy?: RegistrationPolicyDto;
@@ -27,12 +58,42 @@ export default function RegistrationControlPanel({
   onPolicyChange,
 }: Props) {
   const [policy, setPolicy] = useState<RegistrationPolicyDto>(initialPolicy);
+  const [savedPolicy, setSavedPolicy] = useState<RegistrationPolicyDraft>(() =>
+    toEditablePolicy(initialPolicy)
+  );
+  const [isDraftReady, setIsDraftReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const initialPolicySignature = useMemo(
+    () => JSON.stringify(toEditablePolicy(initialPolicy)),
+    [initialPolicy]
+  );
+
   useEffect(() => {
-    setPolicy(initialPolicy);
-  }, [initialPolicy]);
+    const baseline = toEditablePolicy(initialPolicy);
+    const draft = readBrowserDraft<RegistrationPolicyDraft>(REGISTRATION_POLICY_DRAFT_KEY);
+
+    setSavedPolicy(baseline);
+    setPolicy(draft ? mergePolicyDraft(initialPolicy, draft) : initialPolicy);
+    setIsDraftReady(true);
+  }, [initialPolicy, initialPolicySignature]);
+
+  useEffect(() => {
+    if (!isDraftReady) return;
+
+    const editablePolicy = toEditablePolicy(policy);
+    const saveTimer = window.setTimeout(() => {
+      if (JSON.stringify(editablePolicy) === JSON.stringify(savedPolicy)) {
+        clearBrowserDraft(REGISTRATION_POLICY_DRAFT_KEY);
+        return;
+      }
+
+      writeBrowserDraft(REGISTRATION_POLICY_DRAFT_KEY, editablePolicy);
+    }, 300);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [isDraftReady, policy, savedPolicy]);
 
   const updatePunishment = <K extends keyof RegistrationPolicyDto['punishment'],>(
     key: K,
@@ -76,6 +137,8 @@ export default function RegistrationControlPanel({
       }
 
       const nextPolicy = data.policy as RegistrationPolicyDto;
+      clearBrowserDraft(REGISTRATION_POLICY_DRAFT_KEY);
+      setSavedPolicy(toEditablePolicy(nextPolicy));
       setPolicy(nextPolicy);
       onPolicyChange?.(nextPolicy);
       setFeedback({ type: 'success', message: data.message || 'Registration policy updated.' });
@@ -289,7 +352,10 @@ export default function RegistrationControlPanel({
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-[var(--color-text-soft)]">
+            Unsaved changes are stored only in this browser and are removed after a successful save.
+          </p>
           <button
             type="button"
             disabled={isSaving}

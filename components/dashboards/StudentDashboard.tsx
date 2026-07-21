@@ -50,6 +50,14 @@ import { VoiceChat } from '../ui/VoiceChat';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
 import { PROGRAM_MAP } from '../../config/appSettings';
 import {
+  clearBrowserDraft,
+  clearBrowserFileDraft,
+  readBrowserDraft,
+  readBrowserFileDraft,
+  writeBrowserDraft,
+  writeBrowserFileDraft,
+} from '../../lib/browserDraftStorage';
+import {
   PROJECT_DOMAIN_GROUPS,
   formatProjectDomainLabels,
   getProjectDomainLabel,
@@ -65,6 +73,26 @@ type WordTemplate = {
   filename: string;
   format: 'word';
   content: string;
+};
+
+
+type StudentProjectDraft = {
+  title: string;
+  desc: string;
+  selectedDomains: string[];
+  legacyDomain: string;
+  tools: string;
+};
+
+const getStudentProjectDraftKey = (userId: string) =>
+  `fyp-portal:student-project-draft:v1:${userId}`;
+
+const hasStudentProjectDraftChanges = (
+  draft: StudentProjectDraft,
+  baseline: StudentProjectDraft | null
+) => {
+  if (!baseline) return true;
+  return JSON.stringify(draft) !== JSON.stringify(baseline);
 };
 
 const STAGES = [
@@ -361,6 +389,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const [legacyDomain, setLegacyDomain] = useState('');
   const [tools, setTools] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [projectDraftBaseline, setProjectDraftBaseline] =
+    useState<StudentProjectDraft | null>(null);
+  const [isProjectDraftReady, setIsProjectDraftReady] = useState(false);
 
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
@@ -382,6 +413,10 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const [isCopied, setIsCopied] = useState(false);
 
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
+
+  const currentUserId = String((session?.user as any)?.id || '');
+  const projectDraftKey = currentUserId ? getStudentProjectDraftKey(currentUserId) : '';
+  const projectFileDraftKey = projectDraftKey ? `${projectDraftKey}:pdf` : '';
 
   const me = data?.student;
   const supervisor = data?.supervisor;
@@ -503,20 +538,43 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       }
 
       setData(json);
-
       if (json?.student) {
-        setTitle(json.student.projectTitle || '');
-        setDesc(json.student.projectDesc || '');
         const domainSource =
           Array.isArray(json.project?.domains) && json.project.domains.length > 0
             ? json.project.domains
             : json.student.domains;
         const previousDomainText = json.project?.domain || json.student.domain || '';
         const restoredDomains = normalizeProjectDomainIds(domainSource, previousDomainText);
+        const serverProjectDraft: StudentProjectDraft = {
+          title: json.student.projectTitle || '',
+          desc: json.student.projectDesc || '',
+          selectedDomains: restoredDomains,
+          legacyDomain: restoredDomains.length === 0 ? previousDomainText : '',
+          tools: json.student.tools || '',
+        };
+        const savedProjectDraft = readBrowserDraft<StudentProjectDraft>(
+          getStudentProjectDraftKey(String(userId))
+        );
+        const nextProjectDraft = savedProjectDraft || serverProjectDraft;
 
-        setSelectedDomains(restoredDomains);
-        setLegacyDomain(restoredDomains.length === 0 ? previousDomainText : '');
-        setTools(json.student.tools || '');
+        setProjectDraftBaseline(serverProjectDraft);
+        setTitle(nextProjectDraft.title);
+        setDesc(nextProjectDraft.desc);
+        setSelectedDomains(nextProjectDraft.selectedDomains);
+        setLegacyDomain(nextProjectDraft.legacyDomain);
+        setTools(nextProjectDraft.tools);
+
+        try {
+          const savedFile = await readBrowserFileDraft(
+            `${getStudentProjectDraftKey(String(userId))}:pdf`
+          );
+          setFile(savedFile);
+        } catch (error) {
+          console.warn('Unable to restore the selected project PDF:', error);
+          setFile(null);
+        }
+
+        setIsProjectDraftReady(true);
         setAcademicForm({
           program: json.student.program || 'BSCS',
           batch: json.student.batch || '',
@@ -597,6 +655,38 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
     fetchSupervisors();
   }, [session]);
 
+  useEffect(() => {
+    if (!projectDraftKey || !isProjectDraftReady) return;
+
+    const currentDraft: StudentProjectDraft = {
+      title,
+      desc,
+      selectedDomains,
+      legacyDomain,
+      tools,
+    };
+
+    const saveTimer = window.setTimeout(() => {
+      if (!hasStudentProjectDraftChanges(currentDraft, projectDraftBaseline)) {
+        clearBrowserDraft(projectDraftKey);
+        return;
+      }
+
+      writeBrowserDraft(projectDraftKey, currentDraft);
+    }, 300);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [
+    title,
+    desc,
+    selectedDomains,
+    legacyDomain,
+    tools,
+    projectDraftKey,
+    projectDraftBaseline,
+    isProjectDraftReady,
+  ]);
+
   const uploadPdf = async (selectedFile: File) => {
     if (selectedFile.type !== 'application/pdf') {
       throw new Error('Only PDF documents are allowed.');
@@ -637,6 +727,21 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       fileSize: selectedFile.size,
     };
   };
+  const handleProjectFileChange = async (nextFile: File | null) => {
+    setFile(nextFile);
+    if (!projectFileDraftKey) return;
+
+    try {
+      if (nextFile) {
+        await writeBrowserFileDraft(projectFileDraftKey, nextFile);
+      } else {
+        await clearBrowserFileDraft(projectFileDraftKey);
+      }
+    } catch (error) {
+      console.warn('Unable to save the selected project PDF in this browser:', error);
+    }
+  };
+
 
   const handleSubmitProject = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -690,6 +795,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         throw new Error(json.error || 'Failed to submit project.');
       }
 
+      if (projectDraftKey) clearBrowserDraft(projectDraftKey);
+      if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
       setFile(null);
       await fetchData();
 
@@ -731,6 +838,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       setIsSupervisorWarningOpen(false);
 
       if (action === 'changeSupervisor') {
+        if (projectDraftKey) clearBrowserDraft(projectDraftKey);
+        if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
         setTitle('');
         setDesc('');
         setSelectedDomains([]);
@@ -908,6 +1017,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
       setIsAcademicDialogOpen(false);
       setIsAcademicWarningStep(false);
+      if (projectDraftKey) clearBrowserDraft(projectDraftKey);
+      if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
       setTitle('');
       setDesc('');
       setSelectedDomains([]);
@@ -1416,7 +1527,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
             type="file"
             accept="application/pdf"
             disabled={!canSubmit}
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
+            onChange={(event) => {
+              void handleProjectFileChange(event.target.files?.[0] || null);
+            }}
             className="block w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text)] file:mr-4 file:rounded-lg file:border-0 file:bg-[var(--color-primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
           />
           <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
