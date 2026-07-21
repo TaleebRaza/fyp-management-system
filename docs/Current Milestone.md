@@ -4,8 +4,8 @@ Last updated: 2026-07-21 (Asia/Karachi)
 
 ## Status
 
-- Current milestone: Milestone 8 — Consolidate UI and browser infrastructure.
-- State: Milestones 0–7 are complete. Milestone 8 has its safe cleanup/timeline/upload slices complete; 8.2 and shared recorder/timer state remain.
+- Current milestone: Milestone 9 — Align naming and Next.js conventions.
+- State: Milestones 0–8 are complete. Milestone 9.1 and 9.4 are complete; the XLSX route naming, admin-route grouping, and developer runbook remain.
 - Current branch: `Portal-Overhaul`.
 - Safety-net status: the test infrastructure and tests needed for this route are complete. The broader Milestone 1 authorization and transaction suites remain prerequisites before their corresponding protected workflows are changed.
 - Application runtime source changes made in the current session: bounded route-local security changes, one shared academic-reset call, shared supervisor-capacity query/reservation, centralized team/stage/program constants, and explicit R2 cleanup/reconciliation behavior; the NextAuth work is type-only.
@@ -60,8 +60,8 @@ Resolved in the current slices: public `/api/supervisors` no longer returns whol
 ## Exact next-session starting point
 
 1. Re-read this file and `Refactor Milestones.md`.
-2. Complete Milestone 8.2 by splitting `SharedUI` only at cohesive component boundaries.
-3. Then complete the remaining Milestone 8.4 recorder/timer state extraction with focused cleanup/error tests.
+2. Complete Milestone 9.2 by renaming the XLSX export route and client symbol with compatibility coverage.
+3. Do not start Milestone 10 without explicit approval for its data-reconciliation scope.
 4. Keep API paths, user-visible messages, email content, and existing security checks unchanged.
 5. Do not add a generic service layer, dependency, queue, production-data migration, or E2E suite.
 6. Run tests, typecheck, touched-file lint, full lint baseline comparison, and production build; record results here.
@@ -87,6 +87,15 @@ Completed the remaining code sub-steps (2026-07-21, `Portal-Overhaul`):
 - Added `tests/audio-recorder.test.tsx`, which verifies a stopped recording returns audio and microphone tracks are not stopped twice on cleanup.
 - Validation: focused UI tests passed (4 files, 4 tests); recorder test passed (1 file, 1 test); full `npm test` passed (43 files, 158 tests); `npm run typecheck` and `git diff --check` passed. Full lint remains the existing baseline failure (67 problems: 48 errors, 19 warnings); the touched voice/broadcast files retain only their pre-existing effect-rule findings, and the new hook/test are clean.
 - Remaining gate: manual light/dark/mobile visual smoke and a recorded successful production-build completion before Milestone 8 can be marked complete. Do not begin Milestone 9 until that gate is met.
+
+## Milestone 9 progress
+
+Completed 9.1 and 9.4 (2026-07-21, `Portal-Overhaul`):
+
+- Renamed the Next.js request boundary from `middleware.ts` to `proxy.ts` without changing its role checks or matcher.
+- Removed redundant Next.js config for absent `pdfkit`, default compression, and default package import optimization. No package was added or removed.
+- `npm run typecheck`, focused export tests (2 files, 5 tests), lint for `proxy.ts`/`next.config.ts`, and `git diff --check` passed.
+- Next action: rename the XLSX export route/symbol behind a compatibility path. Milestone 10 remains approval-gated.
 
 Completed in the current session:
 

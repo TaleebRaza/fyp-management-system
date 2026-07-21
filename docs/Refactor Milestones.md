@@ -351,13 +351,15 @@ Gate: component/accessibility tests and manual light/dark/mobile smoke pass; no 
 
 ### Milestone 9 — Align naming and Next.js conventions
 
-9.1 Rename `middleware.ts` to `proxy.ts` only after route-local authorization exists; verify NextAuth behavior.
+Status: in progress. 9.1 renamed the unchanged role boundary to `proxy.ts`; 9.4 removed only redundant Next.js configuration after confirming the listed packages are absent and unused.
+
+9.1 Rename `middleware.ts` to `proxy.ts` only after route-local authorization exists; verify NextAuth behavior. Complete.
 
 9.2 Rename XLSX export symbols/route in a coordinated, tested change.
 
 9.3 Group admin-only routes consistently, one caller at a time.
 
-9.4 Remove redundant Next.js configuration and normalize line endings in a mechanical-only change.
+9.4 Remove redundant Next.js configuration and normalize line endings in a mechanical-only change. Complete for redundant configuration; line-ending normalization remains deferred to avoid mixing a mechanical whole-repository diff with this change.
 
 9.5 Add tracked developer setup, `.env.example`, debugging, and runbook documentation.
 

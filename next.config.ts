@@ -1,15 +1,7 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  serverExternalPackages: ['pdfkit'],
-  
-  compress: true, // ✅ Added
-  
-  experimental: {
-    optimizePackageImports: ['lucide-react', 'date-fns'], // ✅ Added
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default withSentryConfig(nextConfig, {
   org: "sen-cl",
