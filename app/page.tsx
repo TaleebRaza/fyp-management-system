@@ -8,6 +8,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { GlassCard, StyledInput } from '../components/ui/SharedUI';
 import SessionIntro from '../components/ui/SessionIntro';
+import {
+  DEFAULT_REGISTRATION_POLICY,
+  type RegistrationPolicyDto,
+} from '../types/registrationPolicy';
 import { PROGRAM_MAP } from '../config/appSettings';
 
 // ✅ Lazy load dashboards
@@ -670,11 +674,41 @@ const LoginView = ({ setIsRegistering, showDialog }: any) => {
   );
 };
 
-const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) => {
+const RegisterView = ({ setIsRegistering, supervisorsList, showDialog, registrationPolicy, refreshRegistrationPolicy }: any) => {
   const [program, setProgram] = useState('BSCS');
   const [batch, setBatch] = useState('');
   const [supervisor, setSupervisor] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  if (registrationPolicy?.isOpen === false) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.16 }} className="grid min-h-[calc(100vh-7rem)] items-center py-6 lg:py-10">
+        <section className="mx-auto w-full max-w-xl">
+          <GlassCard className="w-full p-0">
+            <div className="px-6 py-8 text-center sm:px-8 sm:py-10">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--color-danger-soft)] text-[var(--color-danger)]">
+                <Lock size={25} />
+              </div>
+              <h2 className="mt-5 text-2xl font-bold tracking-tight text-[var(--color-text)]">
+                Student registration is closed
+              </h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--color-text-muted)]">
+                {registrationPolicy.closedMessage}
+              </p>
+              <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                <button type="button" onClick={() => setIsRegistering(false)} className="min-h-11 rounded-xl bg-[var(--color-primary)] px-5 py-2 text-sm font-semibold text-white hover:bg-[var(--color-primary-hover)]">
+                  Return to sign in
+                </button>
+                <button type="button" onClick={refreshRegistrationPolicy} className="min-h-11 rounded-xl border border-[var(--color-border)] px-5 py-2 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]">
+                  Check again
+                </button>
+              </div>
+            </div>
+          </GlassCard>
+        </section>
+      </motion.div>
+    );
+  }
 
   const START_YEAR = 2021;
   const currentYear = new Date().getFullYear();
@@ -726,10 +760,13 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
         body: JSON.stringify({ name, email, rollNo, password, supervisorId: supervisor, program, batch }),
       });
       const data = await response.json();
-      if (!response.ok) {
-        showDialog({ title: 'Registration failed', message: data.error || 'Unable to create your account.' });
-        return;
+          if (!response.ok) {
+      if (data.code === 'REGISTRATION_CLOSED') {
+        await refreshRegistrationPolicy();
       }
+      showDialog({ title: 'Registration failed', message: data.error || 'Unable to create your account.' });
+      return;
+    }
       showDialog({ title: 'Registration successful', message: data.message || 'Your account is ready. You can now sign in.' });
       setIsRegistering(false);
     } catch {
@@ -747,8 +784,26 @@ const RegisterView = ({ setIsRegistering, supervisorsList, showDialog }: any) =>
             <h2 className="text-xl font-bold tracking-tight text-[var(--color-text)]">Create student account</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Register immediately with your email address. No registration verification code is required.</p>
           </div>
-          <div className="px-5 py-5 sm:px-6">
-            <form onSubmit={handleRegister} className="space-y-5">
+                <div className="px-5 py-5 sm:px-6">
+        {registrationPolicy?.punishment?.enabled && (
+          <div className="mb-5 flex items-start gap-3 rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent-soft)] px-4 py-3">
+            <AlertTriangle className="mt-0.5 shrink-0 text-[var(--color-accent)]" size={19} />
+            <div>
+              <p className="text-sm font-bold text-[var(--color-text)]">
+                {registrationPolicy.punishment.category === 'fine'
+                  ? `${registrationPolicy.punishment.title}: PKR ${Number(registrationPolicy.punishment.amount || 0).toLocaleString()}`
+                  : registrationPolicy.punishment.title}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
+                {registrationPolicy.punishment.description}
+              </p>
+              <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
+                This will be recorded on accounts created while the policy is active.
+              </p>
+            </div>
+          </div>
+        )}
+        <form onSubmit={handleRegister} className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Full name</label><StyledInput icon={User} name="name" required placeholder="Your full name" autoComplete="name" /></div>
                 <div><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Roll No / Student ID</label><StyledInput name="rollNo" required placeholder="e.g. F23-0201" autoComplete="username" /></div>
@@ -773,6 +828,9 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [supervisorsList, setSupervisorsList] = useState<any[]>([]);
+  const [registrationPolicy, setRegistrationPolicy] = useState<RegistrationPolicyDto>(
+    DEFAULT_REGISTRATION_POLICY
+  );
   const [isMounted, setIsMounted] = useState(false);
   const [introState, setIntroState] = useState<IntroState>('checking');
   const [dialog, setDialog] = useState({
@@ -847,11 +905,33 @@ export default function App() {
     setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue, inputType, inputOptions, placeholder });
   }, []);
 
-  const closeDialog = useCallback(() => setDialog(prev => ({ ...prev, isOpen: false })), []);
+    const closeDialog = useCallback(() => setDialog(prev => ({ ...prev, isOpen: false })), []);
+
+  const loadRegistrationPolicy = useCallback(async () => {
+    try {
+      const response = await fetch('/api/registration-policy', { cache: 'no-store' });
+      if (!response.ok) return null;
+      const nextPolicy = await response.json();
+      setRegistrationPolicy(nextPolicy);
+      return nextPolicy;
+    } catch (error) {
+      console.error('Unable to load registration policy:', error);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
-    if (isRegistering) fetch('/api/supervisors').then(res => res.json()).then(data => setSupervisorsList(Array.isArray(data) ? data : [])).catch(console.error);
-  }, [isRegistering]);
+    void loadRegistrationPolicy();
+    const handleFocus = () => void loadRegistrationPolicy();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [loadRegistrationPolicy]);
+
+  useEffect(() => {
+    if (isRegistering && registrationPolicy.isOpen) {
+      fetch('/api/supervisors').then(res => res.json()).then(data => setSupervisorsList(Array.isArray(data) ? data : [])).catch(console.error);
+    }
+  }, [isRegistering, registrationPolicy.isOpen]);
 
   // ✅ useCallback - only recreated when dependencies change
   const renderView = useCallback(() => {
@@ -859,14 +939,16 @@ export default function App() {
   const role = (session.user as any).role;
 
   if (role === 'admin') {
-    return (
-      <AdminDashboard
-        isDarkMode={isDarkMode}
-        theme={PORTAL_THEME}
-        session={session}
-        showDialog={showDialog}
-      />
-    );
+          return (
+        <AdminDashboard
+          isDarkMode={isDarkMode}
+          theme={PORTAL_THEME}
+          session={session}
+          showDialog={showDialog}
+          registrationPolicy={registrationPolicy}
+          onRegistrationPolicyChange={setRegistrationPolicy}
+        />
+      );
   }
 
   if (role === 'supervisor') {
@@ -924,6 +1006,8 @@ export default function App() {
         setIsRegistering={setIsRegistering}
         supervisorsList={supervisorsList}
         showDialog={showDialog}
+        registrationPolicy={registrationPolicy}
+        refreshRegistrationPolicy={loadRegistrationPolicy}
       />
     ) : (
       <LoginView
@@ -931,7 +1015,7 @@ export default function App() {
         showDialog={showDialog}
       />
     );
-  }, [status, session, isDarkMode, isRegistering, supervisorsList, showDialog]);
+  }, [status, session, isDarkMode, isRegistering, supervisorsList, showDialog, registrationPolicy, loadRegistrationPolicy]);
 
   if (!isMounted || status === 'loading') {
     return (

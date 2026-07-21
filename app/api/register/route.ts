@@ -10,6 +10,13 @@ import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/student
 import { APP_SETTINGS, PROGRAM_MAP } from '../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 import { calculateLateRegistrationFine } from '../../../lib/lateRegistrationFine';
+import RegistrationPolicy from '../../../models/RegistrationPolicy';
+import {
+  REGISTRATION_POLICY_KEY,
+  buildRegistrationPunishmentSnapshot,
+  getOrCreateRegistrationPolicy,
+  serializeRegistrationPolicy,
+} from '../../../lib/registrationPolicy';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -39,9 +46,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid program selected.' }, { status: 400 });
     }
 
-    await connectToDatabase();
+      await connectToDatabase();
 
-    const existingUser = await User.findOne({
+  // The client-side lock is only informational. This server check is authoritative.
+  const currentPolicyDocument = await getOrCreateRegistrationPolicy();
+  const currentPolicy = serializeRegistrationPolicy(currentPolicyDocument);
+  if (!currentPolicy.isOpen) {
+    return NextResponse.json(
+      {
+        code: 'REGISTRATION_CLOSED',
+        error: currentPolicy.closedMessage,
+        policy: currentPolicy,
+      },
+      { status: 403 }
+    );
+  }
+
+  const existingUser = await User.findOne({
       $or: [
         { email: normalizedEmail },
         { rollNo: normalizedRollNo },
@@ -87,9 +108,26 @@ export async function POST(req: Request) {
     const session = await mongoose.startSession();
 
     try {
-      session.startTransaction();
+          session.startTransaction();
 
-      const newStudent = new User({
+    // Atomically claim permission to register inside the same transaction.
+    // Closing registration concurrently updates this document and prevents a stale form from succeeding.
+    const transactionPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
+      { policyKey: REGISTRATION_POLICY_KEY, isOpen: true },
+      { $inc: { registrationsAccepted: 1 } },
+      { new: true, session }
+    );
+
+    if (!transactionPolicyDocument) {
+      const closedError: any = new Error('Registration is currently closed.');
+      closedError.code = 'REGISTRATION_CLOSED';
+      throw closedError;
+    }
+
+    const transactionPolicy = serializeRegistrationPolicy(transactionPolicyDocument);
+    const registrationPunishment = buildRegistrationPunishmentSnapshot(transactionPolicy);
+
+    const newStudent = new User({
         name: normalizedName,
         email: normalizedEmail,
         rollNo: normalizedRollNo,
@@ -101,9 +139,10 @@ export async function POST(req: Request) {
         supervisorId: supervisorId || null,
         status: supervisorId ? 'Pending' : 'Unassigned',
         remarks: '',
-        lateRegistrationDays: lateRegistrationAssessment.daysLate,
-        lateRegistrationFine: lateRegistrationAssessment.fineAmount,
-      });
+              lateRegistrationDays: lateRegistrationAssessment.daysLate,
+      lateRegistrationFine: lateRegistrationAssessment.fineAmount,
+      registrationPunishment,
+    });
       await newStudent.save({ session });
 
       const newProject = new Project({
@@ -117,13 +156,36 @@ export async function POST(req: Request) {
       await newStudent.save({ session });
 
       await session.commitTransaction();
-      return NextResponse.json({ message: 'Registration successful! You can now sign in.' }, { status: 201 });
+      const punishmentMessage = registrationPunishment.active
+      ? registrationPunishment.category === 'fine'
+        ? ` An admin fine of PKR ${registrationPunishment.amount.toLocaleString()} has been attached to this registration.`
+        : ` The following admin requirement has been attached: ${registrationPunishment.title}.`
+      : '';
+
+    return NextResponse.json(
+      {
+        message: `Registration successful! You can now sign in.${punishmentMessage}`,
+        punishment: registrationPunishment.active ? registrationPunishment : null,
+      },
+      { status: 201 }
+    );
     } catch (transactionError: any) {
       if (session.inTransaction()) await session.abortTransaction();
 
-      if (transactionError?.code === 11000) {
-        return NextResponse.json({ error: 'This roll number or email is already registered.' }, { status: 400 });
-      }
+          if (transactionError?.code === 'REGISTRATION_CLOSED') {
+      const latestPolicy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
+      return NextResponse.json(
+        {
+          code: 'REGISTRATION_CLOSED',
+          error: latestPolicy.closedMessage,
+          policy: latestPolicy,
+        },
+        { status: 403 }
+      );
+    }
+    if (transactionError?.code === 11000) {
+      return NextResponse.json({ error: 'This roll number or email is already registered.' }, { status: 400 });
+    }
 
       throw transactionError;
     } finally {

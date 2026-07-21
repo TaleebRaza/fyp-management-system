@@ -12,6 +12,7 @@ import {
   Filter,
   GraduationCap,
   LayoutDashboard,
+  LockKeyhole,
   Loader2,
   LogIn,
   Mail,
@@ -44,8 +45,9 @@ import {
 
 import { APP_SETTINGS, PROGRAM_MAP } from '../../config/appSettings';
 import { MAX_EXTRA_SUPERVISOR_SLOTS } from '../../lib/supervisorSlots';
+import RegistrationControlPanel from '../admin/RegistrationControlPanel';
 
-type AdminTab = 'overview' | 'supervisors' | 'students';
+type AdminTab = 'overview' | 'supervisors' | 'students' | 'registration';
 
 const getStatusVariant = (status?: string) => {
   if (status === 'Approved') return 'success';
@@ -316,7 +318,12 @@ const buildReportHtml = (data: any, report: ReportOption, rows: ReportRow[]) => 
 </html>`;
 };
 
-const AdminDashboard = ({ session, showDialog }: any) => {
+const AdminDashboard = ({
+  session,
+  showDialog,
+  registrationPolicy,
+  onRegistrationPolicyChange,
+}: any) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
   const [newSupName, setNewSupName] = useState('');
@@ -1549,6 +1556,26 @@ const AdminDashboard = ({ session, showDialog }: any) => {
       onClick: () => setActiveTab('students'),
     },
     {
+      id: 'registration',
+      label: 'Registration',
+      icon: <LockKeyhole size={18} />,
+      active: activeTab === 'registration',
+      badge: registrationPolicy?.isOpen === false ? 'Closed' : 'Open',
+      className:
+        registrationPolicy?.isOpen === false
+          ? 'border border-red-500/40 !bg-red-300/50 !text-red-950 hover:!bg-red-300/50 dark:!text-red-50'
+          : 'border border-emerald-500/40 !bg-emerald-300/50 !text-emerald-950 hover:!bg-emerald-300/50 dark:!text-emerald-50',
+      iconClassName:
+        registrationPolicy?.isOpen === false
+          ? '!text-red-900 dark:!text-red-100'
+          : '!text-emerald-900 dark:!text-emerald-100',
+      badgeClassName:
+        registrationPolicy?.isOpen === false
+          ? '!bg-red-950/10 !text-red-950 dark:!bg-red-50/10 dark:!text-red-50'
+          : '!bg-emerald-950/10 !text-emerald-950 dark:!bg-emerald-50/10 dark:!text-emerald-50',
+      onClick: () => setActiveTab('registration'),
+    },
+    {
       id: 'reports',
       label: 'Reports',
       icon: <BarChart3 size={18} />,
@@ -1591,6 +1618,12 @@ const AdminDashboard = ({ session, showDialog }: any) => {
         )}
         {activeTab === 'students' && (
           <div className="min-h-0 lg:h-full">{renderStudents()}</div>
+        )}
+        {activeTab === 'registration' && (
+          <RegistrationControlPanel
+            initialPolicy={registrationPolicy}
+            onPolicyChange={onRegistrationPolicyChange}
+          />
         )}
       </DashboardShell>
 

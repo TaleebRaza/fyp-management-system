@@ -502,6 +502,9 @@ export type DashboardNavItem = {
   icon?: React.ReactNode;
   active?: boolean;
   badge?: React.ReactNode;
+  className?: string;
+  iconClassName?: string;
+  badgeClassName?: string;
   onClick?: () => void;
 };
 
@@ -616,7 +619,8 @@ React.useEffect(() => {
         "portal-nav-item flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors",
         item.active
           ? "portal-nav-item-active bg-[var(--color-accent-soft)] text-[var(--color-text)]"
-          : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]"
+          : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]",
+        item.className
       )}
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -626,7 +630,8 @@ React.useEffect(() => {
               "shrink-0",
               item.active
                 ? "text-[var(--color-accent)]"
-                : "text-[var(--color-text-soft)]"
+                : "text-[var(--color-text-soft)]",
+                  item.iconClassName
             )}
           >
             {item.icon}
@@ -636,7 +641,12 @@ React.useEffect(() => {
       </span>
 
       {item.badge && (
-        <span className="ml-2 shrink-0 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs font-bold text-[var(--color-text-muted)]">
+        <span
+            className={cn(
+              "ml-2 shrink-0 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs font-bold text-[var(--color-text-muted)]",
+              item.badgeClassName
+            )}
+          >
           {item.badge}
         </span>
       )}

@@ -47,10 +47,23 @@ const UserSchema = new Schema({
   // Limits student Program/Batch self-editing to once per 24 hours.
   lastProgramBatchChangeAt: { type: Date, required: false },
 
-  // Final late-registration assessment. Calculated only once when registration becomes effective.
+    // Final automatic date-based assessment. Calculated only once at registration.
   lateRegistrationDays: { type: Number, default: 0, min: 0 },
   lateRegistrationFine: { type: Number, default: 0, min: 0 },
-  
+
+  // Snapshot of the admin-controlled punishment active when this student registered.
+  // This is intentionally separate from the automatic late-registration fine above.
+  registrationPunishment: {
+    active: { type: Boolean, default: false },
+    category: { type: String, enum: ['fine', 'other'], default: null },
+    title: { type: String, trim: true, maxlength: 120, default: '' },
+    description: { type: String, trim: true, maxlength: 1000, default: '' },
+    amount: { type: Number, default: 0, min: 0 },
+    status: { type: String, enum: ['pending', 'resolved', 'waived'], default: 'pending' },
+    policyVersion: { type: Number, default: 0, min: 0 },
+    imposedAt: { type: Date, default: null },
+    resolvedAt: { type: Date, default: null },
+  },
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
 
   // --- NEW: Supervisor Broadcast Fields ---
