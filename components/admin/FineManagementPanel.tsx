@@ -8,7 +8,9 @@ import {
   Pause,
   Play,
   RefreshCcw,
+  Search,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import {
   Badge,
@@ -24,7 +26,10 @@ const formatMoney = (value: unknown) => `PKR ${Math.max(Number(value) || 0, 0).t
 export default function FineManagementPanel({ showDialog }: any) {
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isListLoading, setIsListLoading] = useState(false);
   const [busyAction, setBusyAction] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
   const [payment, setPayment] = useState({
     methodLabel: '',
     accountTitle: '',
@@ -33,19 +38,26 @@ export default function FineManagementPanel({ showDialog }: any) {
   });
 
   const applyPayload = (payload: any) => {
-    setData(payload);
-    setPayment({
-      methodLabel: payload?.finePayment?.methodLabel || '',
-      accountTitle: payload?.finePayment?.accountTitle || '',
-      accountNumber: payload?.finePayment?.accountNumber || '',
-      instructions: payload?.finePayment?.instructions || '',
-    });
+    setData((previous: any) => ({ ...(previous || {}), ...payload }));
+    setActiveSearch(payload?.search || '');
+
+    if (payload?.finePayment) {
+      setPayment({
+        methodLabel: payload.finePayment.methodLabel || '',
+        accountTitle: payload.finePayment.accountTitle || '',
+        accountNumber: payload.finePayment.accountNumber || '',
+        instructions: payload.finePayment.instructions || '',
+      });
+    }
   };
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = async (searchTerm = '') => {
+    if (data) setIsListLoading(true);
+    else setIsLoading(true);
+
     try {
-      const response = await fetch('/api/admin/fines', { cache: 'no-store' });
+      const query = searchTerm ? `?q=${encodeURIComponent(searchTerm)}` : '';
+      const response = await fetch(`/api/admin/fines${query}`, { cache: 'no-store' });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || 'Unable to load fine management.');
       applyPayload(json);
@@ -56,6 +68,7 @@ export default function FineManagementPanel({ showDialog }: any) {
       });
     } finally {
       setIsLoading(false);
+      setIsListLoading(false);
     }
   };
 
@@ -75,7 +88,34 @@ export default function FineManagementPanel({ showDialog }: any) {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || 'Unable to update fine management.');
-      applyPayload(json);
+
+      if (json.finePayment) {
+        setPayment({
+          methodLabel: json.finePayment.methodLabel || '',
+          accountTitle: json.finePayment.accountTitle || '',
+          accountNumber: json.finePayment.accountNumber || '',
+          instructions: json.finePayment.instructions || '',
+        });
+        setData((previous: any) => ({ ...previous, finePayment: json.finePayment }));
+      }
+
+      if (json.lateFineAccrual || json.currentLateFine) {
+        setData((previous: any) => ({
+          ...previous,
+          ...(json.lateFineAccrual ? { lateFineAccrual: json.lateFineAccrual } : {}),
+          ...(json.currentLateFine ? { currentLateFine: json.currentLateFine } : {}),
+        }));
+      }
+
+      if (json.studentId) {
+        setData((previous: any) => ({
+          ...previous,
+          students: (previous?.students || []).filter(
+            (student: any) => student.id !== json.studentId
+          ),
+        }));
+      }
+
       showDialog({ title: 'Fine management updated', message: json.message });
     } catch (error: any) {
       showDialog({
@@ -90,6 +130,33 @@ export default function FineManagementPanel({ showDialog }: any) {
   const savePayment = (event: FormEvent) => {
     event.preventDefault();
     void runAction('updatePaymentDetails', { finePayment: payment });
+  };
+
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault();
+    const searchTerm = searchInput.trim();
+
+    if (!searchTerm) {
+      setSearchInput('');
+      void fetchData('');
+      return;
+    }
+
+    if (searchTerm.length < 2) {
+      showDialog({
+        title: 'Search is too short',
+        message: 'Enter at least two characters from the student name or the complete roll number.',
+      });
+      return;
+    }
+
+    setSearchInput(searchTerm);
+    void fetchData(searchTerm);
+  };
+
+  const clearSearch = () => {
+    setSearchInput('');
+    void fetchData('');
   };
 
   const confirmClear = (student: any) => {
@@ -118,6 +185,9 @@ export default function FineManagementPanel({ showDialog }: any) {
   const students = data?.students || [];
   const accrual = data?.lateFineAccrual || {};
   const currentLateFine = data?.currentLateFine || { daysLate: 0, fineAmount: 0 };
+  const listDescription = activeSearch
+    ? `${students.length} matching restricted student${students.length === 1 ? '' : 's'} for “${activeSearch}”.`
+    : `Showing up to ${data?.limit || 20} most recently registered students with outstanding fines.`;
 
   return (
     <div className="space-y-6">
@@ -126,7 +196,11 @@ export default function FineManagementPanel({ showDialog }: any) {
           title="Late Fine Compounding"
           description="Pause without counting the paused calendar days, then resume from the frozen amount."
           action={
-            <Button variant="outline" onClick={() => void fetchData()} disabled={Boolean(busyAction)}>
+            <Button
+              variant="outline"
+              onClick={() => void fetchData(activeSearch)}
+              disabled={Boolean(busyAction) || isListLoading}
+            >
               <RefreshCcw size={16} />
               Refresh
             </Button>
@@ -259,15 +333,53 @@ export default function FineManagementPanel({ showDialog }: any) {
       </DashboardPanel>
 
       <DashboardPanel>
-        <SectionHeader
-          title="Restricted Students"
-          description={`${students.length} student${students.length === 1 ? '' : 's'} currently blocked from new project uploads.`}
-        />
+        <SectionHeader title="Restricted Students" description={listDescription} />
 
-        {students.length === 0 ? (
+        <form
+          onSubmit={submitSearch}
+          className="mb-5 flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 sm:flex-row"
+        >
+          <div className="min-w-0 flex-1">
+            <StyledInput
+              value={searchInput}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setSearchInput(event.target.value)}
+              placeholder="Search by student name or exact roll number"
+              aria-label="Search fined students"
+            />
+          </div>
+          <Button type="submit" disabled={isListLoading || Boolean(busyAction)}>
+            {isListLoading ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+            Search
+          </Button>
+          {activeSearch && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={clearSearch}
+              disabled={isListLoading || Boolean(busyAction)}
+            >
+              <X size={16} />
+              Clear
+            </Button>
+          )}
+        </form>
+
+        {isListLoading ? (
+          <div className="flex min-h-44 items-center justify-center gap-3 text-[var(--color-text-muted)]">
+            <Loader2 className="animate-spin" size={20} />
+            Searching restricted students...
+          </div>
+        ) : students.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
             <CircleDollarSign className="mx-auto text-[var(--color-text-muted)]" size={34} />
-            <p className="mt-3 font-bold text-[var(--color-text)]">No outstanding monetary fines</p>
+            <p className="mt-3 font-bold text-[var(--color-text)]">
+              {activeSearch ? 'No matching fined student' : 'No outstanding monetary fines'}
+            </p>
+            {activeSearch && (
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                Try the complete roll number or another part of the student name.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-3">

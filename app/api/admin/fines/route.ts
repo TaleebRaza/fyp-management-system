@@ -14,58 +14,87 @@ import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationF
 
 export const dynamic = 'force-dynamic';
 
+const STUDENT_LIMIT = 20;
+
 const normalizeText = (value: unknown, maximumLength: number) =>
   String(value || '').trim().slice(0, maximumLength);
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 async function requireAdmin(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   return token && token.role === 'admin' ? token : null;
 }
 
-async function buildResponsePayload() {
-  const [policyDocument, studentDocuments] = await Promise.all([
+const outstandingFineFilter = {
+  role: 'student',
+  $or: [
+    {
+      lateRegistrationFine: { $gt: 0 },
+      lateRegistrationFineStatus: { $nin: ['resolved', 'waived'] },
+    },
+    {
+      'registrationPunishment.active': true,
+      'registrationPunishment.category': 'fine',
+      'registrationPunishment.amount': { $gt: 0 },
+      'registrationPunishment.status': { $nin: ['resolved', 'waived'] },
+    },
+  ],
+};
+
+const serializeStudent = (student: any) => {
+  const restriction = buildFineRestriction(student);
+  if (!restriction) return null;
+
+  return {
+    id: String(student._id),
+    name: student.name || 'Unnamed student',
+    rollNo: student.rollNo || 'N/A',
+    program: student.program || 'N/A',
+    batch: student.batch || 'N/A',
+    projectStatus: student.status || 'Pending',
+    restriction,
+  };
+};
+
+async function findRestrictedStudents(searchTerm = '') {
+  const escapedSearch = searchTerm ? escapeRegExp(searchTerm) : '';
+  const studentFilter = searchTerm
+    ? {
+        $and: [
+          outstandingFineFilter,
+          {
+            $or: [
+              { rollNo: { $regex: `^${escapedSearch}$`, $options: 'i' } },
+              { name: { $regex: escapedSearch, $options: 'i' } },
+            ],
+          },
+        ],
+      }
+    : outstandingFineFilter;
+
+  const studentDocuments = await User.find(studentFilter)
+    .select(
+      '_id name rollNo program batch status projectId lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
+    )
+    .sort({ createdAt: -1 })
+    .limit(STUDENT_LIMIT)
+    .lean();
+
+  return studentDocuments.map(serializeStudent).filter(Boolean);
+}
+
+async function buildInitialResponsePayload() {
+  const [policyDocument, students] = await Promise.all([
     getOrCreateRegistrationPolicy(),
-    User.find({
-      role: 'student',
-      $or: [
-        {
-          lateRegistrationFine: { $gt: 0 },
-          lateRegistrationFineStatus: { $nin: ['resolved', 'waived'] },
-        },
-        {
-          'registrationPunishment.active': true,
-          'registrationPunishment.category': 'fine',
-          'registrationPunishment.amount': { $gt: 0 },
-          'registrationPunishment.status': { $nin: ['resolved', 'waived'] },
-        },
-      ],
-    })
-      .select(
-        '_id name rollNo program batch status projectId lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
-      )
-      .sort({ createdAt: -1 })
-      .lean(),
+    findRestrictedStudents(),
   ]);
 
   const policy = serializeRegistrationPolicy(policyDocument);
-  const students = studentDocuments
-    .map((student: any) => {
-      const restriction = buildFineRestriction(student);
-      if (!restriction) return null;
-      return {
-        id: String(student._id),
-        name: student.name || 'Unnamed student',
-        rollNo: student.rollNo || 'N/A',
-        program: student.program || 'N/A',
-        batch: student.batch || 'N/A',
-        projectStatus: student.status || 'Pending',
-        restriction,
-      };
-    })
-    .filter(Boolean);
-
   return {
     students,
+    search: '',
+    limit: STUDENT_LIMIT,
     finePayment: policy.finePayment,
     lateFineAccrual: policy.lateFineAccrual,
     currentLateFine: calculateLateRegistrationFine(new Date(), policy.lateFineAccrual),
@@ -77,8 +106,25 @@ export async function GET(req: NextRequest) {
     if (!(await requireAdmin(req))) {
       return NextResponse.json({ error: 'Administrator access is required.' }, { status: 403 });
     }
+
+    const searchTerm = normalizeText(req.nextUrl.searchParams.get('q'), 80);
+    if (searchTerm && searchTerm.length < 2) {
+      return NextResponse.json(
+        { error: 'Enter at least two characters to search for a student.' },
+        { status: 400 }
+      );
+    }
+
     await connectToDatabase();
-    return NextResponse.json(await buildResponsePayload(), {
+    const payload = searchTerm
+      ? {
+          students: await findRestrictedStudents(searchTerm),
+          search: searchTerm,
+          limit: STUDENT_LIMIT,
+        }
+      : await buildInitialResponsePayload();
+
+    return NextResponse.json(payload, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
   } catch (error) {
@@ -108,26 +154,31 @@ export async function PATCH(req: NextRequest) {
         accountNumber: normalizeText(body?.finePayment?.accountNumber, 120),
         instructions: normalizeText(body?.finePayment?.instructions, 1500),
       };
-      await RegistrationPolicy.findOneAndUpdate(
+      const updatedPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
         { policyKey: REGISTRATION_POLICY_KEY },
         {
           $set: { finePayment, updatedBy },
           $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
           $inc: { version: 1 },
         },
-        { upsert: true, setDefaultsOnInsert: true }
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       );
+      const updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument);
+
       return NextResponse.json({
         message: 'Fine payment details saved.',
-        ...(await buildResponsePayload()),
+        finePayment: updatedPolicy.finePayment,
       });
     }
 
     if (action === 'pauseAccrual') {
-      const policy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
+      const policyDocument = await getOrCreateRegistrationPolicy();
+      const policy = serializeRegistrationPolicy(policyDocument);
+      let updatedPolicy = policy;
+
       if (!policy.lateFineAccrual.paused) {
-        const current = calculateLateRegistrationFine(new Date(), policy.lateFineAccrual);
-        await RegistrationPolicy.findOneAndUpdate(
+        const current = calculateLateRegistrationFine(now, policy.lateFineAccrual);
+        const updatedPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
           { policyKey: REGISTRATION_POLICY_KEY },
           {
             $set: {
@@ -139,19 +190,26 @@ export async function PATCH(req: NextRequest) {
               updatedBy,
             },
             $inc: { version: 1 },
-          }
+          },
+          { new: true }
         );
+        updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument || policyDocument);
       }
+
       return NextResponse.json({
         message: 'Late-registration fine compounding is paused.',
-        ...(await buildResponsePayload()),
+        lateFineAccrual: updatedPolicy.lateFineAccrual,
+        currentLateFine: calculateLateRegistrationFine(now, updatedPolicy.lateFineAccrual),
       });
     }
 
     if (action === 'resumeAccrual') {
-      const policy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
+      const policyDocument = await getOrCreateRegistrationPolicy();
+      const policy = serializeRegistrationPolicy(policyDocument);
+      let updatedPolicy = policy;
+
       if (policy.lateFineAccrual.paused) {
-        await RegistrationPolicy.findOneAndUpdate(
+        const updatedPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
           { policyKey: REGISTRATION_POLICY_KEY },
           {
             $set: {
@@ -160,12 +218,16 @@ export async function PATCH(req: NextRequest) {
               updatedBy,
             },
             $inc: { version: 1 },
-          }
+          },
+          { new: true }
         );
+        updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument || policyDocument);
       }
+
       return NextResponse.json({
         message: 'Late-registration fine compounding has resumed from the frozen amount.',
-        ...(await buildResponsePayload()),
+        lateFineAccrual: updatedPolicy.lateFineAccrual,
+        currentLateFine: calculateLateRegistrationFine(now, updatedPolicy.lateFineAccrual),
       });
     }
 
@@ -191,15 +253,12 @@ export async function PATCH(req: NextRequest) {
         resolvedFields['registrationPunishment.resolvedAt'] = now;
       }
       if (Object.keys(resolvedFields).length > 0) {
-        await User.updateOne(
-          { _id: student._id, role: 'student' },
-          { $set: resolvedFields }
-        );
+        await User.updateOne({ _id: student._id, role: 'student' }, { $set: resolvedFields });
       }
 
       return NextResponse.json({
         message: 'Payment verified and the student upload restriction was removed.',
-        ...(await buildResponsePayload()),
+        studentId,
       });
     }
 
