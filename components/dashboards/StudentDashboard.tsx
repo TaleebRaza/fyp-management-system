@@ -6,6 +6,7 @@ import {
   AlertCircle,
   ArrowRight,
   CheckCircle,
+  CircleDollarSign,
   ClipboardCheck,
   Copy,
   Download,
@@ -48,6 +49,7 @@ import {
 
 import { VoiceChat } from '../ui/VoiceChat';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
+import FinePaymentPanel from '../student/FinePaymentPanel';
 import { PROGRAM_MAP } from '../../config/appSettings';
 import {
   clearBrowserDraft,
@@ -65,7 +67,7 @@ import {
   normalizeProjectDomainIds,
 } from '../../config/projectDomains';
 
-type StudentTab = 'overview' | 'project' | 'team' | 'resources';
+type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources';
 
 type WordTemplate = {
   id: string;
@@ -422,6 +424,14 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const supervisor = data?.supervisor;
   const project = data?.project;
   const supervisorBroadcast = data?.supervisorBroadcast || null;
+  const fineRestriction = data?.fineRestriction || null;
+  const isFineRestricted = Boolean(fineRestriction?.active);
+
+  useEffect(() => {
+    if (activeTab === 'fine' && !fineRestriction) {
+      setActiveTab('project');
+    }
+  }, [activeTab, fineRestriction]);
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
   const isLegacyThreeMemberTeam = projectMembers.length > 2;
@@ -451,7 +461,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const pdfUrl = me?.pdfUrl || project?.pdfUrl;
 
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
-  const canSubmit = ['Pending', 'Rejected', 'Changes Requested'].includes(me?.status);
+  const canSubmitByStatus = ['Pending', 'Rejected', 'Changes Requested'].includes(me?.status);
+  const canSubmit = canSubmitByStatus && !isFineRestricted;
   const isSupervisorChangeLocked =
     !isUnassigned && (project?.status === 'Approved' || currentStage !== 'PROPOSAL');
 
@@ -746,7 +757,16 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const handleSubmitProject = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!canSubmit) {
+    if (isFineRestricted) {
+      setActiveTab('fine');
+      showDialog({
+        title: 'Fine payment required',
+        message:
+          'Project uploads are locked until the administrator verifies and clears your outstanding fine.',
+      });
+      return;
+    }
+    if (!canSubmitByStatus) {
       showDialog({
         title: 'Submission closed',
         message: `Submissions are closed while your project status is ${me?.status}.`,
@@ -1456,7 +1476,20 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         }
       />
 
-      {!canSubmit && (
+      {isFineRestricted && (
+        <div className="mb-5 rounded-xl border border-red-300 bg-red-100/70 p-4 text-sm text-red-950 dark:border-red-800 dark:bg-red-950/50 dark:text-red-50">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="font-semibold">
+              New project uploads are locked until your fine is verified by the administrator.
+            </p>
+            <Button type="button" variant="outline" onClick={() => setActiveTab('fine')}>
+              <CircleDollarSign size={16} />
+              View Fine Details
+            </Button>
+          </div>
+        </div>
+      )}
+      {!canSubmitByStatus && (
         <div className="mb-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
           <div className="flex items-start gap-3">
             <Lock size={18} className="mt-0.5 text-[var(--color-text-muted)]" />
@@ -1833,9 +1866,21 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       active: activeTab === 'project',
       onClick: () => setActiveTab('project'),
     },
-    {
-      id: 'team',
-      label: 'Team & Supervisor',
+    ...(fineRestriction
+      ? [
+          {
+            id: 'fine',
+            label: 'Fine Payment',
+            icon: <CircleDollarSign size={18} />,
+            active: activeTab === 'fine',
+            badge: 'Due',
+            className:
+              'border border-red-500/35 !bg-red-200/50 !text-red-950 hover:!bg-red-200/60 dark:!text-red-50',
+            onClick: () => setActiveTab('fine'),
+          },
+        ]
+      : []),
+    { id: 'team', label: 'Team & Supervisor',
       icon: <Users size={18} />,
       active: activeTab === 'team',
       onClick: () => setActiveTab('team'),
@@ -1875,7 +1920,10 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       >
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'project' && renderProject()}
-        {activeTab === 'team' && renderTeam()}
+        {activeTab === 'fine' && fineRestriction && (
+        <FinePaymentPanel restriction={fineRestriction} onRefresh={fetchData} />
+      )}
+      {activeTab === 'team' && renderTeam()}
         {activeTab === 'resources' && renderResources()}
       </DashboardShell>
 

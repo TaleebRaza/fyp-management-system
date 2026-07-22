@@ -16,6 +16,8 @@ export async function getOrCreateRegistrationPolicy() {
         isOpen: DEFAULT_REGISTRATION_POLICY.isOpen,
         closedMessage: DEFAULT_REGISTRATION_POLICY.closedMessage,
         punishment: DEFAULT_REGISTRATION_POLICY.punishment,
+        finePayment: DEFAULT_REGISTRATION_POLICY.finePayment,
+        lateFineAccrual: DEFAULT_REGISTRATION_POLICY.lateFineAccrual,
         version: DEFAULT_REGISTRATION_POLICY.version,
       },
     },
@@ -33,6 +35,8 @@ export function serializeRegistrationPolicy(policy: any): RegistrationPolicyDto 
   if (!policy) return { ...DEFAULT_REGISTRATION_POLICY };
 
   const punishment = policy.punishment || {};
+  const finePayment = policy.finePayment || {};
+  const lateFineAccrual = policy.lateFineAccrual || {};
 
   return {
     isOpen: policy.isOpen !== false,
@@ -47,6 +51,23 @@ export function serializeRegistrationPolicy(policy: any): RegistrationPolicyDto 
         Number.isFinite(Number(punishment.amount)) && Number(punishment.amount) > 0
           ? Math.round(Number(punishment.amount))
           : 0,
+    },
+    finePayment: {
+      methodLabel: String(finePayment.methodLabel || '').trim(),
+      accountTitle: String(finePayment.accountTitle || '').trim(),
+      accountNumber: String(finePayment.accountNumber || '').trim(),
+      instructions: String(finePayment.instructions || '').trim(),
+    },
+    lateFineAccrual: {
+      paused: lateFineAccrual.paused === true,
+      frozenDays: Math.max(Math.trunc(Number(lateFineAccrual.frozenDays) || 0), 0),
+      frozenAmount: Math.max(Math.round(Number(lateFineAccrual.frozenAmount) || 0), 0),
+      pausedAt: lateFineAccrual.pausedAt
+        ? new Date(lateFineAccrual.pausedAt).toISOString()
+        : null,
+      resumedAt: lateFineAccrual.resumedAt
+        ? new Date(lateFineAccrual.resumedAt).toISOString()
+        : null,
     },
     version: Number.isFinite(Number(policy.version)) ? Number(policy.version) : 0,
     updatedAt: policy.updatedAt ? new Date(policy.updatedAt).toISOString() : null,

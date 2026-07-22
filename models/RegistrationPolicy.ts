@@ -11,6 +11,27 @@ const RegistrationPunishmentPolicySchema = new Schema(
   { _id: false }
 );
 
+const FinePaymentSchema = new Schema(
+  {
+    methodLabel: { type: String, trim: true, maxlength: 100, default: '' },
+    accountTitle: { type: String, trim: true, maxlength: 120, default: '' },
+    accountNumber: { type: String, trim: true, maxlength: 120, default: '' },
+    instructions: { type: String, trim: true, maxlength: 1500, default: '' },
+  },
+  { _id: false }
+);
+
+const LateFineAccrualSchema = new Schema(
+  {
+    paused: { type: Boolean, default: false },
+    frozenDays: { type: Number, min: 0, default: 0 },
+    frozenAmount: { type: Number, min: 0, default: 0 },
+    pausedAt: { type: Date, default: null },
+    resumedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const RegistrationPolicySchema = new Schema(
   {
     policyKey: {
@@ -38,6 +59,25 @@ const RegistrationPolicySchema = new Schema(
         amount: 0,
       }),
     },
+    finePayment: {
+      type: FinePaymentSchema,
+      default: () => ({
+        methodLabel: '',
+        accountTitle: '',
+        accountNumber: '',
+        instructions: '',
+      }),
+    },
+    lateFineAccrual: {
+      type: LateFineAccrualSchema,
+      default: () => ({
+        paused: false,
+        frozenDays: 0,
+        frozenAmount: 0,
+        pausedAt: null,
+        resumedAt: null,
+      }),
+    },
     version: { type: Number, min: 0, default: 0 },
     registrationsAccepted: { type: Number, min: 0, default: 0 },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
@@ -47,5 +87,6 @@ const RegistrationPolicySchema = new Schema(
   { timestamps: true }
 );
 
-export default mongoose.models.RegistrationPolicy ||
+export default
+  mongoose.models.RegistrationPolicy ||
   mongoose.model('RegistrationPolicy', RegistrationPolicySchema);

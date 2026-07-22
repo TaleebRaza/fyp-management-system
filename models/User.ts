@@ -50,6 +50,12 @@ const UserSchema = new Schema({
     // Final automatic date-based assessment. Calculated only once at registration.
   lateRegistrationDays: { type: Number, default: 0, min: 0 },
   lateRegistrationFine: { type: Number, default: 0, min: 0 },
+  lateRegistrationFineStatus: {
+    type: String,
+    enum: ['pending', 'resolved', 'waived'],
+    default: 'pending',
+  },
+  lateRegistrationFineResolvedAt: { type: Date, default: null },
 
   // Snapshot of the admin-controlled punishment active when this student registered.
   // This is intentionally separate from the automatic late-registration fine above.

@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileText,
   CheckCircle,
+  CircleDollarSign,
   Filter,
   GraduationCap,
   LayoutDashboard,
@@ -46,8 +47,9 @@ import {
 import { APP_SETTINGS, PROGRAM_MAP } from '../../config/appSettings';
 import { MAX_EXTRA_SUPERVISOR_SLOTS } from '../../lib/supervisorSlots';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
+import FineManagementPanel from '../admin/FineManagementPanel';
 
-type AdminTab = 'overview' | 'supervisors' | 'students' | 'registration';
+type AdminTab = 'overview' | 'supervisors' | 'students' | 'registration' | 'fines';
 
 const getStatusVariant = (status?: string) => {
   if (status === 'Approved') return 'success';
@@ -1576,8 +1578,13 @@ const AdminDashboard = ({
       onClick: () => setActiveTab('registration'),
     },
     {
-      id: 'reports',
-      label: 'Reports',
+      id: 'fines',
+      label: 'Fines',
+      icon: <CircleDollarSign size={18} />,
+      active: activeTab === 'fines',
+      onClick: () => setActiveTab('fines'),
+    },
+    { id: 'reports', label: 'Reports',
       icon: <BarChart3 size={18} />,
       onClick: openReportsModal,
     },
@@ -1619,7 +1626,8 @@ const AdminDashboard = ({
         {activeTab === 'students' && (
           <div className="min-h-0 lg:h-full">{renderStudents()}</div>
         )}
-        {activeTab === 'registration' && (
+        {activeTab === 'fines' && <FineManagementPanel showDialog={showDialog} />}
+      {activeTab === 'registration' && (
           <RegistrationControlPanel
             initialPolicy={registrationPolicy}
             onPolicyChange={onRegistrationPolicyChange}

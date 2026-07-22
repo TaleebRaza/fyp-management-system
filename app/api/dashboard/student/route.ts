@@ -17,6 +17,9 @@ import {
   validateProjectDomainIds,
 } from '../../../../config/projectDomains';
 
+import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
+import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
+
 export const dynamic = 'force-dynamic';
 
 const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -144,12 +147,22 @@ export async function GET(req: Request) {
     // Use the authenticated student's ID and return only dashboard-safe fields.
     const student = await User.findOne({ _id: studentId, role: 'student' })
       .select(
-        '_id name email rollNo role program batch semester supervisorId status remarks projectTitle pdfUrl projectDesc domain domains tools notificationsEnabled isActive projectId lateRegistrationDays lateRegistrationFine'
+        '_id name email rollNo role program batch semester supervisorId status remarks projectTitle pdfUrl projectDesc domain domains tools notificationsEnabled isActive projectId lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus lateRegistrationFineResolvedAt registrationPunishment'
       )
       .lean();
 
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
+
+    const fineRestriction = buildFineRestriction(student);
+    let fineRestrictionResponse: any = null;
+    if (fineRestriction) {
+      const policy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
+      fineRestrictionResponse = {
+        ...fineRestriction,
+        payment: policy.finePayment,
+      };
     }
 
     // Fetch the supervisor and project in parallel without adding another fine-related query.
@@ -193,6 +206,8 @@ export async function GET(req: Request) {
 
     const studentResponse = {
       ...studentRecord,
+      lateRegistrationDays: fineRestriction?.lateRegistrationFine?.daysLate || 0,
+      lateRegistrationFine: fineRestriction?.lateRegistrationFine?.amount || 0,
       domains: normalizedDomains,
       domain: normalizedDomainText,
     };
@@ -211,6 +226,7 @@ export async function GET(req: Request) {
         supervisor,
         project: projectResponse,
         supervisorBroadcast,
+        fineRestriction: fineRestrictionResponse,
       },
       { status: 200 }
     );
@@ -704,8 +720,35 @@ export async function POST(req: Request) {
     // ==========================================
     // ACTION: PROJECT SUBMISSION
     // ==========================================
-    const triggeringStudent = await User.findById(body.id);
-    if (!triggeringStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    const submissionToken = (await getToken({
+      req: req as any,
+      secret: process.env.NEXTAUTH_SECRET,
+    })) as any;
+    const submissionStudentId = String(submissionToken?.id || '');
+    if (submissionToken?.role !== 'student' || !mongoose.Types.ObjectId.isValid(submissionStudentId)) {
+      return NextResponse.json({ error: 'Unauthorized student submission.' }, { status: 401 });
+    }
+
+    const triggeringStudent = await User.findOne({
+      _id: submissionStudentId,
+      role: 'student',
+    });
+    if (!triggeringStudent) {
+      return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
+
+    const submissionFineRestriction = buildFineRestriction(triggeringStudent);
+    if (submissionFineRestriction) {
+      return NextResponse.json(
+        {
+          code: FINE_RESTRICTION_CODE,
+          error:
+            'Project submission is locked until the administrator verifies and clears your outstanding fine.',
+          fineRestriction: submissionFineRestriction,
+        },
+        { status: 403 }
+      );
+    }
 
     const hasDomainArrayPayload = Object.prototype.hasOwnProperty.call(body, 'domains');
     const legacyDomainText = String(body.domain || '').trim();
@@ -848,9 +891,9 @@ export async function POST(req: Request) {
           { $set: submissionData }
         )
       ]);
-      updatedStudent = await User.findById(body.id); // Re-fetch to get supervisor ID
+      updatedStudent = await User.findById(triggeringStudent._id); // Re-fetch to get supervisor ID
     } else {
-      updatedStudent = await User.findByIdAndUpdate(body.id, { $set: submissionData }, { returnDocument: 'after' });
+      updatedStudent = await User.findByIdAndUpdate(triggeringStudent._id, { $set: submissionData }, { returnDocument: 'after' });
     }
 
     // Trigger Supervisor Email Notification (Kept identical to prevent UI changes)

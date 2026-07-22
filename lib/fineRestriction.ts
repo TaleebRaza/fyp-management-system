@@ -1,0 +1,64 @@
+export const FINE_RESTRICTION_CODE = 'FINE_RESTRICTION';
+
+export type FinePaymentDetails = {
+  methodLabel: string;
+  accountTitle: string;
+  accountNumber: string;
+  instructions: string;
+};
+
+export type FineRestrictionSummary = {
+  active: true;
+  lateRegistrationFine: {
+    amount: number;
+    daysLate: number;
+    status: 'pending';
+  } | null;
+  adminFine: {
+    amount: number;
+    title: string;
+    description: string;
+    status: 'pending';
+  } | null;
+  totalAmount: number;
+};
+
+const isOutstanding = (status: unknown) => status !== 'resolved' && status !== 'waived';
+
+export function buildFineRestriction(user: any): FineRestrictionSummary | null {
+  if (!user) return null;
+
+  const lateAmount = Math.max(Math.round(Number(user.lateRegistrationFine) || 0), 0);
+  const lateRegistrationFine =
+    lateAmount > 0 && isOutstanding(user.lateRegistrationFineStatus)
+      ? {
+          amount: lateAmount,
+          daysLate: Math.max(Math.trunc(Number(user.lateRegistrationDays) || 0), 0),
+          status: 'pending' as const,
+        }
+      : null;
+
+  const punishment = user.registrationPunishment || {};
+  const adminAmount = Math.max(Math.round(Number(punishment.amount) || 0), 0);
+  const adminFine =
+    punishment.active === true &&
+    punishment.category === 'fine' &&
+    adminAmount > 0 &&
+    isOutstanding(punishment.status)
+      ? {
+          amount: adminAmount,
+          title: String(punishment.title || 'Administrative fine').trim() || 'Administrative fine',
+          description: String(punishment.description || '').trim(),
+          status: 'pending' as const,
+        }
+      : null;
+
+  if (!lateRegistrationFine && !adminFine) return null;
+
+  return {
+    active: true,
+    lateRegistrationFine,
+    adminFine,
+    totalAmount: (lateRegistrationFine?.amount || 0) + (adminFine?.amount || 0),
+  };
+}

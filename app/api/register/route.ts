@@ -104,7 +104,6 @@ export async function POST(req: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
-    const lateRegistrationAssessment = calculateLateRegistrationFine(new Date());
     const session = await mongoose.startSession();
 
     try {
@@ -125,6 +124,10 @@ export async function POST(req: Request) {
     }
 
     const transactionPolicy = serializeRegistrationPolicy(transactionPolicyDocument);
+      const lateRegistrationAssessment = calculateLateRegistrationFine(
+        new Date(),
+        transactionPolicy.lateFineAccrual
+      );
     const registrationPunishment = buildRegistrationPunishmentSnapshot(transactionPolicy);
 
     const newStudent = new User({

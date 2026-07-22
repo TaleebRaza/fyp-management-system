@@ -8,10 +8,27 @@ export interface RegistrationPunishmentPolicy {
   amount: number;
 }
 
+export interface FinePaymentPolicy {
+  methodLabel: string;
+  accountTitle: string;
+  accountNumber: string;
+  instructions: string;
+}
+
+export interface LateFineAccrualPolicy {
+  paused: boolean;
+  frozenDays: number;
+  frozenAmount: number;
+  pausedAt: string | null;
+  resumedAt: string | null;
+}
+
 export interface RegistrationPolicyDto {
   isOpen: boolean;
   closedMessage: string;
   punishment: RegistrationPunishmentPolicy;
+  finePayment: FinePaymentPolicy;
+  lateFineAccrual: LateFineAccrualPolicy;
   version: number;
   updatedAt: string | null;
   closedAt: string | null;
@@ -30,6 +47,19 @@ export const DEFAULT_REGISTRATION_POLICY: RegistrationPolicyDto = {
     title: 'Late registration fine',
     description: '',
     amount: 0,
+  },
+  finePayment: {
+    methodLabel: '',
+    accountTitle: '',
+    accountNumber: '',
+    instructions: '',
+  },
+  lateFineAccrual: {
+    paused: false,
+    frozenDays: 0,
+    frozenAmount: 0,
+    pausedAt: null,
+    resumedAt: null,
   },
   version: 0,
   updatedAt: null,
