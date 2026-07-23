@@ -541,7 +541,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       const userId = (session?.user as any)?.id;
       if (!userId) return;
 
-      const response = await fetch(`/api/dashboard/student?id=${userId}`);
+      const response = await fetch(`/api/dashboard/student?id=${userId}`, { cache: 'no-store' });
       const json = await response.json();
 
       if (!response.ok) {
@@ -665,6 +665,21 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
     fetchData();
     fetchSupervisors();
   }, [session]);
+
+  // No polling: only re-check a restricted account when the browser tab becomes visible again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isFineRestricted) return;
+
+    const refreshFineStatus = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', refreshFineStatus);
+    return () => document.removeEventListener('visibilitychange', refreshFineStatus);
+  }, [isFineRestricted]);
 
   useEffect(() => {
     if (!projectDraftKey || !isProjectDraftReady) return;

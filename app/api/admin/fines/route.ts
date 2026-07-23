@@ -9,7 +9,10 @@ import {
   getOrCreateRegistrationPolicy,
   serializeRegistrationPolicy,
 } from '../../../../lib/registrationPolicy';
-import { buildFineRestriction } from '../../../../lib/fineRestriction';
+import {
+  buildFineRestriction,
+  OUTSTANDING_STUDENT_FINE_FILTER,
+} from '../../../../lib/fineRestriction';
 import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationFine';
 
 export const dynamic = 'force-dynamic';
@@ -25,22 +28,6 @@ async function requireAdmin(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   return token && token.role === 'admin' ? token : null;
 }
-
-const outstandingFineFilter = {
-  role: 'student',
-  $or: [
-    {
-      lateRegistrationFine: { $gt: 0 },
-      lateRegistrationFineStatus: { $nin: ['resolved', 'waived'] },
-    },
-    {
-      'registrationPunishment.active': true,
-      'registrationPunishment.category': 'fine',
-      'registrationPunishment.amount': { $gt: 0 },
-      'registrationPunishment.status': { $nin: ['resolved', 'waived'] },
-    },
-  ],
-};
 
 const serializeStudent = (student: any) => {
   const restriction = buildFineRestriction(student);
@@ -62,7 +49,7 @@ async function findRestrictedStudents(searchTerm = '') {
   const studentFilter = searchTerm
     ? {
         $and: [
-          outstandingFineFilter,
+          OUTSTANDING_STUDENT_FINE_FILTER,
           {
             $or: [
               { rollNo: { $regex: `^${escapedSearch}$`, $options: 'i' } },
@@ -71,7 +58,7 @@ async function findRestrictedStudents(searchTerm = '') {
           },
         ],
       }
-    : outstandingFineFilter;
+    : OUTSTANDING_STUDENT_FINE_FILTER;
 
   const studentDocuments = await User.find(studentFilter)
     .select(
@@ -252,13 +239,39 @@ export async function PATCH(req: NextRequest) {
         resolvedFields['registrationPunishment.status'] = 'resolved';
         resolvedFields['registrationPunishment.resolvedAt'] = now;
       }
+      let updatedStudent = student;
       if (Object.keys(resolvedFields).length > 0) {
-        await User.updateOne({ _id: student._id, role: 'student' }, { $set: resolvedFields });
+        const savedStudent = await User.findOneAndUpdate(
+          { _id: student._id, role: 'student' },
+          { $set: resolvedFields },
+          { new: true }
+        ).select(
+          'lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus lateRegistrationFineResolvedAt registrationPunishment'
+        );
+
+        if (!savedStudent) {
+          return NextResponse.json(
+            { error: 'The student fine record could not be updated.' },
+            { status: 409 }
+          );
+        }
+        updatedStudent = savedStudent;
+      }
+
+      if (buildFineRestriction(updatedStudent)) {
+        return NextResponse.json(
+          {
+            error:
+              'The payment was not marked as resolved. Refresh the student record and try again.',
+          },
+          { status: 409 }
+        );
       }
 
       return NextResponse.json({
         message: 'Payment verified and the student upload restriction was removed.',
         studentId,
+        clearedAmount: currentRestriction?.totalAmount || 0,
       });
     }
 

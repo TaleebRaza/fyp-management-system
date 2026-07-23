@@ -3,6 +3,10 @@ import { getToken } from 'next-auth/jwt';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
+import {
+  buildFineRestriction,
+  OUTSTANDING_STUDENT_FINE_FILTER,
+} from '../../../../lib/fineRestriction';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,9 +116,11 @@ export async function GET(req: NextRequest) {
         { $sort: { total: -1 } },
       ]),
 
-      User.find({ role: 'student', lateRegistrationFine: { $gt: 0 } })
-        .select('name rollNo program batch lateRegistrationDays lateRegistrationFine')
-        .sort({ lateRegistrationFine: -1 })
+      User.find(OUTSTANDING_STUDENT_FINE_FILTER)
+        .select(
+          'name rollNo program batch lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
+        )
+        .sort({ createdAt: -1 })
         .lean(),
 
       Project.aggregate([
@@ -242,13 +248,32 @@ export async function GET(req: NextRequest) {
     const studentTotals = Array.isArray(studentTotalsRaw) && studentTotalsRaw.length > 0
       ? studentTotalsRaw[0]
       : { students: 0, activeStudents: 0, deactivatedStudents: 0, assignedStudents: 0, unassignedStudents: 0 };
-    const finedStudents = finedStudentsRaw.map((student: any) => ({
-      label: `${student.name || 'Unknown Student'} (${student.rollNo || 'No Roll No'})`,
-      fineAmount: Number(student.lateRegistrationFine || 0),
-      daysLate: Number(student.lateRegistrationDays || 0),
-      program: student.program || 'No Program',
-      batch: student.batch || 'No Batch',
-    }));
+    const finedStudents = finedStudentsRaw.flatMap((student: any) => {
+      const restriction = buildFineRestriction(student);
+      if (!restriction) return [];
+
+      const breakdown = [
+        restriction.lateRegistrationFine
+          ? `Late registration: PKR ${restriction.lateRegistrationFine.amount.toLocaleString()}`
+          : '',
+        restriction.adminFine
+          ? `Admin fine: PKR ${restriction.adminFine.amount.toLocaleString()}`
+          : '',
+      ].filter(Boolean);
+
+      return [
+        {
+          label: `${student.name || 'Unknown Student'} (${student.rollNo || 'No Roll No'})`,
+          fineAmount: restriction.totalAmount,
+          daysLate: restriction.lateRegistrationFine?.daysLate || 0,
+          lateFineAmount: restriction.lateRegistrationFine?.amount || 0,
+          adminFineAmount: restriction.adminFine?.amount || 0,
+          fineBreakdown: breakdown.join(' + '),
+          program: student.program || 'No Program',
+          batch: student.batch || 'No Batch',
+        },
+      ];
+    });
     const totalFineAmount = finedStudents.reduce((sum: number, student: any) => sum + student.fineAmount, 0);
 
     const students = Number(studentTotals.students || 0);

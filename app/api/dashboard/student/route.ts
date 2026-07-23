@@ -228,7 +228,10 @@ export async function GET(req: Request) {
         supervisorBroadcast,
         fineRestriction: fineRestrictionResponse,
       },
-      { status: 200 }
+      {
+        status: 200,
+        headers: { 'Cache-Control': 'no-store, max-age=0' },
+      }
     );
   } catch (error) {
     console.error('Student Dashboard GET Error:', error);

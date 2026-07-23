@@ -1,5 +1,21 @@
 export const FINE_RESTRICTION_CODE = 'FINE_RESTRICTION';
 
+export const OUTSTANDING_STUDENT_FINE_FILTER = {
+  role: 'student',
+  $or: [
+    {
+      lateRegistrationFine: { $gt: 0 },
+      lateRegistrationFineStatus: { $nin: ['resolved', 'waived'] },
+    },
+    {
+      'registrationPunishment.active': true,
+      'registrationPunishment.category': 'fine',
+      'registrationPunishment.amount': { $gt: 0 },
+      'registrationPunishment.status': { $nin: ['resolved', 'waived'] },
+    },
+  ],
+};
+
 export type FinePaymentDetails = {
   methodLabel: string;
   accountTitle: string;

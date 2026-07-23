@@ -129,7 +129,7 @@ const REPORT_OPTIONS: ReportOption[] = [
   {
     id: 'finedStudents',
     label: 'Students Fined',
-    description: 'Shows every student charged a late-registration fine and the amount charged.',
+    description: 'Shows students with outstanding monetary fines and the amount still due.',
   },
 ];
 
@@ -198,7 +198,7 @@ const toReportRows = (data: any, reportId: ReportOption['id']): ReportRow[] => {
     return (data.finedStudents || []).map((item: any) => ({
       label: item.label || 'Unknown Student',
       value: Number(item.fineAmount || 0),
-      note: `${Number(item.daysLate || 0)} day(s) late · ${item.program || 'No Program'} · ${item.batch || 'No Batch'}`,
+      note: `${item.fineBreakdown || `${Number(item.daysLate || 0)} day(s) late`} · ${item.program || 'No Program'} · ${item.batch || 'No Batch'}`,
     }));
   }
 
