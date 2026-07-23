@@ -1,4 +1,5 @@
 import mongoose, { ClientSession } from 'mongoose';
+import { createInviteCode } from './security/inviteCode';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 import connectToDatabase from './mongodb';
@@ -109,7 +110,7 @@ function mergeDeletionTargets(targets: DeletionTarget[]) {
 async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, session: ClientSession) {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const inviteCode = createInviteCode();
 
       const newProject = new Project({
         supervisorId: null,

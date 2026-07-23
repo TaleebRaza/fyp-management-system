@@ -2,13 +2,16 @@ import { NextRequest } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import ExcelJS from 'exceljs';
+import { requireCurrentUser } from '../../../lib/security/auth';
 
 export async function GET(req: NextRequest) {
   try {
+    const currentUser = await requireCurrentUser(req, ['supervisor', 'admin']);
+    if (!currentUser) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     await connectToDatabase();
 
     const url = new URL(req.url);
-    const supervisorId = url.searchParams.get('id');
+    const supervisorId = currentUser.role === 'admin' ? url.searchParams.get('id') : currentUser.id;
     const supervisorName = url.searchParams.get('name') || 'Supervisor';
     const batchFilter = url.searchParams.get('batch') || 'All';
     const programFilter = url.searchParams.get('program') || 'All';

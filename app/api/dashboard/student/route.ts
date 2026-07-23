@@ -1,5 +1,4 @@
-import { NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+import { NextRequest, NextResponse } from 'next/server';
 import mongoose, { ClientSession } from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
@@ -8,7 +7,7 @@ import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
 import { APP_SETTINGS, PROGRAM_MAP } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
 import {
@@ -19,6 +18,9 @@ import {
 
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
+import { requireCurrentUser } from '../../../../lib/security/auth';
+import { createInviteCode } from '../../../../lib/security/inviteCode';
+import { escapeHtml } from '../../../../lib/security/input';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +101,7 @@ async function createFreshStudentProject(
 ) {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const inviteCode = createInviteCode();
 
       const newProject = new Project({
         supervisorId,
@@ -125,18 +127,14 @@ async function createFreshStudentProject(
   throw new Error('Failed to generate a unique project invite code.');
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const token = await getToken({
-      req: req as any,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
-
-    if (!token || token.role !== 'student' || !(token as any).id) {
+    const currentUser = await requireCurrentUser(req, ['student']);
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized student request.' }, { status: 401 });
     }
 
-    const studentId = String((token as any).id);
+    const studentId = currentUser.id;
 
     if (!mongoose.Types.ObjectId.isValid(studentId)) {
       return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
@@ -239,8 +237,13 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const currentUser = await requireCurrentUser(req, ['student']);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Unauthorized student request.' }, { status: 401 });
+    }
+
     await connectToDatabase();
     const body = await req.json();
 
@@ -248,9 +251,7 @@ export async function POST(req: Request) {
     // ACTION: STUDENT PROGRAM/BATCH SELF UPDATE
     // ==========================================
     if (body.action === 'updateProgramBatch') {
-      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
-
-      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
+      if (String(currentUser.id) !== String(body.id)) {
         return NextResponse.json({ error: 'Unauthorized Program/Batch update request.' }, { status: 401 });
       }
 
@@ -409,9 +410,7 @@ export async function POST(req: Request) {
     // ACTION: CHANGE SUPERVISOR (student starts fresh)
     // ==========================================
     if (body.action === 'changeSupervisor') {
-      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
-
-      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
+      if (String(currentUser.id) !== String(body.id)) {
         return NextResponse.json({ error: 'Unauthorized supervisor change request.' }, { status: 401 });
       }
 
@@ -610,9 +609,7 @@ export async function POST(req: Request) {
     // ACTION: ASSIGN SUPERVISOR (Transaction Lock)
     // ==========================================
     if (body.action === 'assignSupervisor') {
-      const token = (await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET })) as any;
-
-      if (!token || token.role !== 'student' || String(token.id) !== String(body.id)) {
+      if (String(currentUser.id) !== String(body.id)) {
         return NextResponse.json({ error: 'Unauthorized supervisor assignment request.' }, { status: 401 });
       }
 
@@ -723,12 +720,8 @@ export async function POST(req: Request) {
     // ==========================================
     // ACTION: PROJECT SUBMISSION
     // ==========================================
-    const submissionToken = (await getToken({
-      req: req as any,
-      secret: process.env.NEXTAUTH_SECRET,
-    })) as any;
-    const submissionStudentId = String(submissionToken?.id || '');
-    if (submissionToken?.role !== 'student' || !mongoose.Types.ObjectId.isValid(submissionStudentId)) {
+    const submissionStudentId = currentUser.id;
+    if (!mongoose.Types.ObjectId.isValid(submissionStudentId)) {
       return NextResponse.json({ error: 'Unauthorized student submission.' }, { status: 401 });
     }
 
@@ -824,9 +817,32 @@ export async function POST(req: Request) {
       }
     }
     
-    // --- NEW: PDF Exact-Byte Ledger & Orphan Prevention ---
+    // Use storage metadata, not browser metadata, for a newly supplied PDF.
     const oldPdfUrl = triggeringStudent.pdfUrl;
     let sizeDelta = 0;
+    const isNewPdf = Boolean(body.pdfUrl && body.pdfUrl !== oldPdfUrl);
+    let uploadedPdfSize = 0;
+
+    if (isNewPdf) {
+      const uploadedKey = getR2ObjectKey(String(body.pdfUrl));
+      if (!uploadedKey.startsWith(`proposals/${submissionStudentId}/`)) {
+        return NextResponse.json({ error: 'Invalid uploaded PDF.' }, { status: 400 });
+      }
+
+      try {
+        const uploadedObject = await s3Client.send(
+          new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: uploadedKey })
+        );
+        uploadedPdfSize = Number(uploadedObject.ContentLength || 0);
+        if (uploadedPdfSize <= 0 || uploadedPdfSize > 4 * 1024 * 1024 || !uploadedObject.ContentType?.startsWith('application/pdf')) {
+          await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: uploadedKey }));
+          return NextResponse.json({ error: 'Uploaded PDF is invalid.' }, { status: 400 });
+        }
+      } catch (error) {
+        console.error('Uploaded PDF verification failed:', error);
+        return NextResponse.json({ error: 'Uploaded PDF could not be verified.' }, { status: 400 });
+      }
+    }
     
     let targetProject = null;
     if (triggeringStudent.projectId) {
@@ -848,10 +864,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Add the exact size of the incoming PDF
-    if (body.fileSize && body.fileSize > 0) {
-      sizeDelta += body.fileSize;
-    }
+    if (isNewPdf) sizeDelta += uploadedPdfSize;
 
     // Atomically sync the global ledger
     if (sizeDelta !== 0) {
@@ -884,7 +897,7 @@ export async function POST(req: Request) {
         pdfUrl: body.pdfUrl,
         status: 'Submitted For Review',
       };
-      if (body.fileSize && body.fileSize > 0) projectUpdates.pdfSize = body.fileSize;
+      if (isNewPdf) projectUpdates.pdfSize = uploadedPdfSize;
 
       // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time
       const [_, updatedUsers] = await Promise.all([
@@ -914,9 +927,9 @@ export async function POST(req: Request) {
                 <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">New Project Submission</h2>
                 <p style="color: #71717a; margin-bottom: 24px;">A new Final Year Project proposal has been submitted.</p>
                 <div style="background-color: #f4f4f5; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
-                  <p style="margin: 0 0 12px 0;"><strong>Submitted By:</strong> ${updatedStudent.name}</p>
-                  <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${normalizedDomainText}</p>
-                  <p style="margin: 0;"><strong>Title:</strong> ${body.title}</p>
+                  <p style="margin: 0 0 12px 0;"><strong>Submitted By:</strong> ${escapeHtml(updatedStudent.name)}</p>
+                  <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${escapeHtml(normalizedDomainText)}</p>
+                  <p style="margin: 0;"><strong>Title:</strong> ${escapeHtml(body.title)}</p>
                 </div>
               </div>
             </div>

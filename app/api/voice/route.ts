@@ -1,53 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
-import VoiceNote from '../../../models/VoiceNote';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
 import mongoose from 'mongoose';
-
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import connectToDatabase from '../../../lib/mongodb';
+import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
+import SystemConfig from '../../../models/SystemConfig';
+import VoiceNote from '../../../models/VoiceNote';
+import { hasProjectAccess, requireCurrentUser } from '../../../lib/security/auth';
+import { isOwnedVoiceKey } from '../../../lib/security/voice';
 
 export const dynamic = 'force-dynamic';
 
-// 1. FETCH & LAZY GARBAGE COLLECTION
+const MAX_VOICE_NOTE_BYTES = 1024 * 1024;
+
 export async function GET(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req);
+  if (!currentUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const projectId = req.nextUrl.searchParams.get('projectId');
+  if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+    return NextResponse.json({ error: 'Project ID required' }, { status: 400 });
+  }
+
   try {
     await connectToDatabase();
-    const url = new URL(req.url);
-    const projectId = url.searchParams.get('projectId');
-    
-    if (!projectId) {
-      return NextResponse.json({ error: 'Project ID required' }, { status: 400 });
+    if (!await hasProjectAccess(currentUser, projectId)) {
+      return NextResponse.json({ error: 'Project not found or access denied.' }, { status: 403 });
     }
 
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      // --- LAZY GARBAGE COLLECTION ENGINE ---
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-
-      // Find expired notes for this project
       const expiredNotes = await VoiceNote.find({
         projectId,
         isPlayed: true,
-        playedAt: { $lte: tenMinutesAgo }
+        playedAt: { $lte: tenMinutesAgo },
       }).session(session);
 
       if (expiredNotes.length > 0) {
-        // 1. Sum the file sizes
         const totalSize = expiredNotes.reduce((sum, note) => sum + (note.fileSize || 0), 0);
-
-        // 2. Delete physical files from R2
-        const urlsToDelete = expiredNotes.map(note => note.blobUrl);
-        await Promise.all(urlsToDelete.map(key => 
-          s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
+        await Promise.all(expiredNotes.map((note) =>
+          s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: note.blobUrl }))
         ));
+        await VoiceNote.deleteMany({ _id: { $in: expiredNotes.map((note) => note._id) } }).session(session);
 
-        // 3. Delete the database documents
-        const idsToDelete = expiredNotes.map(note => note._id);
-        await VoiceNote.deleteMany({ _id: { $in: idsToDelete } }).session(session);
-
-        // 4. Decrement the storage ledger
         if (totalSize > 0) {
           await SystemConfig.findOneAndUpdate(
             { configKey: 'storage' },
@@ -55,82 +52,93 @@ export async function GET(req: NextRequest) {
             { session }
           );
         }
-
-        console.log(`🧹 Garbage Collection: Purged ${expiredNotes.length} expired voice notes, freed ${totalSize} bytes.`);
       }
 
       await session.commitTransaction();
       session.endSession();
 
-      // Fetch the remaining valid notes
-      const activeNotes = await VoiceNote.find({ projectId })
+      const notes = await VoiceNote.find({ projectId })
         .populate('senderId', 'name role')
         .sort({ createdAt: 1 })
         .lean();
-
-      return NextResponse.json({ notes: activeNotes }, { status: 200 });
-
-    } catch (transactionError) {
+      return NextResponse.json({ notes });
+    } catch (error) {
       await session.abortTransaction();
       session.endSession();
-      throw transactionError;
+      throw error;
     }
-
   } catch (error) {
     console.error('Voice Fetch Error:', error);
     return NextResponse.json({ error: 'Failed to fetch notes' }, { status: 500 });
   }
 }
 
-import SystemConfig from '../../../models/SystemConfig';
-
-// 2. SAVE NEW NOTE LEDGER
-// app/api/voice/route.ts (POST handler only – replace the whole POST function)
-
 export async function POST(req: NextRequest) {
-  try {
-    await connectToDatabase();
-    const { projectId, senderId, blobUrl, fileSize } = await req.json();
+  const currentUser = await requireCurrentUser(req);
+  if (!currentUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Validate all required fields, including fileSize
-    if (!projectId || !senderId || !blobUrl || typeof fileSize !== 'number') {
-      return NextResponse.json(
-        { error: 'Missing required fields: projectId, senderId, blobUrl, fileSize (must be a number)' },
-        { status: 400 }
-      );
+  try {
+    const { projectId, blobUrl } = await req.json();
+    if (!projectId || !mongoose.Types.ObjectId.isValid(String(projectId)) ||
+      !isOwnedVoiceKey(blobUrl, currentUser.id, String(projectId))) {
+      return NextResponse.json({ error: 'Invalid voice note upload.' }, { status: 400 });
     }
 
-    const newNote = new VoiceNote({ projectId, senderId, blobUrl, fileSize });
-    await newNote.save();
+    await connectToDatabase();
+    if (!await hasProjectAccess(currentUser, String(projectId))) {
+      return NextResponse.json({ error: 'Project not found or access denied.' }, { status: 403 });
+    }
 
-    // Increment the storage ledger
+    const object = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: blobUrl }));
+    const fileSize = object.ContentLength;
+    if (!fileSize || fileSize > MAX_VOICE_NOTE_BYTES || !object.ContentType?.startsWith('audio/webm')) {
+      return NextResponse.json({ error: 'Uploaded voice note is invalid.' }, { status: 400 });
+    }
+
+    const note = await new VoiceNote({
+      projectId,
+      senderId: currentUser.id,
+      blobUrl,
+      fileSize,
+    }).save();
+
     await SystemConfig.findOneAndUpdate(
       { configKey: 'storage' },
       { $inc: { usedBytes: fileSize } },
       { upsert: true }
     );
 
-    return NextResponse.json({ message: 'Voice note ledger saved', note: newNote }, { status: 201 });
+    return NextResponse.json({ message: 'Voice note saved', note }, { status: 201 });
   } catch (error) {
     console.error('Voice POST Error:', error);
     return NextResponse.json({ error: 'Failed to save note' }, { status: 500 });
   }
 }
 
-// 3. MARK AS PLAYED (Starts the 10-Minute Timer)
 export async function PATCH(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req);
+  if (!currentUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   try {
-    await connectToDatabase();
     const { noteId } = await req.json();
+    if (!mongoose.Types.ObjectId.isValid(String(noteId))) {
+      return NextResponse.json({ error: 'Invalid voice note.' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    const note = await VoiceNote.findById(noteId).select('projectId').lean();
+    if (!note || !await hasProjectAccess(currentUser, note.projectId.toString())) {
+      return NextResponse.json({ error: 'Voice note not found or access denied.' }, { status: 403 });
+    }
 
     const updatedNote = await VoiceNote.findByIdAndUpdate(
       noteId,
       { isPlayed: true, playedAt: new Date() },
       { new: true }
     );
-
-    return NextResponse.json({ message: 'Note marked as played', note: updatedNote }, { status: 200 });
+    return NextResponse.json({ message: 'Note marked as played', note: updatedNote });
   } catch (error) {
+    console.error('Voice PATCH Error:', error);
     return NextResponse.json({ error: 'Failed to update note' }, { status: 500 });
   }
 }

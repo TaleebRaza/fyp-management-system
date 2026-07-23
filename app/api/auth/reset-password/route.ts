@@ -5,9 +5,9 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import { buildRollNoRegex, normalizeRollNo } from '../../../../lib/rollNo';
 import { consumeRateLimit } from '../../../../lib/rateLimit';
+import { validatePassword } from '../../../../lib/security/password';
 
 const PASSWORD_RESET_ATTEMPT_LIMIT = 10;
-const MIN_PASSWORD_LENGTH = 6;
 
 export async function POST(req: Request) {
   try {
@@ -18,9 +18,9 @@ export async function POST(req: Request) {
     const normalizedCode = String(code || '').trim();
     const normalizedPassword = String(newPassword || '');
 
-    if (!normalizedRollNo || !/^\d{6}$/.test(normalizedCode) || normalizedPassword.length < MIN_PASSWORD_LENGTH) {
+    if (!normalizedRollNo || !/^\d{6}$/.test(normalizedCode) || !validatePassword(normalizedPassword)) {
       return NextResponse.json(
-        { error: `Roll number, a valid 6-digit code, and a password of at least ${MIN_PASSWORD_LENGTH} characters are required.` },
+        { error: 'Roll number, a valid 6-digit code, and a password of 10 to 128 characters are required.' },
         { status: 400 }
       );
     }

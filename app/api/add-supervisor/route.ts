@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import bcrypt from 'bcryptjs'; // NEW: Import secure hashing library
+import { validatePassword } from '../../../lib/security/password';
 
 export async function POST(req: Request) {
   try {
@@ -10,6 +11,9 @@ export async function POST(req: Request) {
     // 1. Basic validation to prevent empty payloads reaching the database
     if (!name || !email || !rollNo || !password) {
       return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
+    }
+    if (!validatePassword(String(password))) {
+      return NextResponse.json({ error: 'Password must be 10 to 128 characters.' }, { status: 400 });
     }
 
     await connectToDatabase();

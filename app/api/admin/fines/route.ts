@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { getToken } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
@@ -14,6 +13,7 @@ import {
   OUTSTANDING_STUDENT_FINE_FILTER,
 } from '../../../../lib/fineRestriction';
 import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationFine';
+import { requireCurrentUser } from '../../../../lib/security/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,8 +25,7 @@ const normalizeText = (value: unknown, maximumLength: number) =>
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 async function requireAdmin(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  return token && token.role === 'admin' ? token : null;
+  return requireCurrentUser(req, ['admin']);
 }
 
 const serializeStudent = (student: any) => {

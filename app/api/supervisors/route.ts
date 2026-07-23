@@ -9,8 +9,10 @@ export async function GET() {
   try {
     await connectToDatabase();
     
-    // 1. Fetch all users with the role of supervisor (Query 1)
-    const supervisors = await User.find({ role: 'supervisor' }).lean();
+    // This route is used before sign-in, so its response must stay public-safe.
+    const supervisors = await User.find({ role: 'supervisor' })
+      .select('_id name extraSlots')
+      .lean();
     
     // If no supervisors exist, return early to save processing time
     if (!supervisors.length) {
@@ -47,9 +49,10 @@ export async function GET() {
       const filledSlots = countsMap.get(sup._id.toString()) || 0;
       const extraSlots = getSupervisorExtraSlots(sup);
       const maxSlots = getSupervisorMaxSlots(sup);
-      
+
       return {
-        ...sup,
+        _id: sup._id,
+        name: sup.name,
         extraSlots,
         filledSlots,
         isFull: filledSlots >= maxSlots,
@@ -59,8 +62,11 @@ export async function GET() {
 
     return NextResponse.json(supervisorsWithSlots, { status: 200 });
     
-  } catch (error: any) {
-    console.error('API Error [supervisor-fetch]:', error.message);
+  } catch (error) {
+    console.error(
+      'API Error [supervisor-fetch]:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
     return NextResponse.json({ error: 'Failed to fetch supervisors' }, { status: 500 });
   }
 }

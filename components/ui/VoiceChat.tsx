@@ -112,7 +112,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       const urlRes = await fetch('/api/voice/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentType: file.type, fileSize: file.size })
+        body: JSON.stringify({ contentType: file.type, fileSize: file.size, projectId })
       });
       
       if (!urlRes.ok) {
@@ -135,7 +135,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, senderId: currentUserId, blobUrl: key, fileSize: file.size })
+        body: JSON.stringify({ projectId, blobUrl: key })
       });
 
       // Silently sync the database to swap the local URL for the secure cloud URL

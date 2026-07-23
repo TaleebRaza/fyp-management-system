@@ -14,6 +14,12 @@ const SUPERVISOR_ROUTES = [
   "/api/export-pdf",
 ];
 
+const AUTHENTICATED_ROUTES = [
+  "/api/voice",
+  "/api/read-pdf",
+  "/api/templates",
+];
+
 const STUDENT_ROUTES = [
   "/api/dashboard/student",
   "/api/project/join",
@@ -53,6 +59,11 @@ export default withAuth(
       );
     }
 
+    const isAuthenticatedRoute = AUTHENTICATED_ROUTES.some(route => path.startsWith(route));
+    if (isAuthenticatedRoute && !role) {
+      return NextResponse.json({ error: "Security Checkpoint: Sign in required." }, { status: 401 });
+    }
+
     return NextResponse.next();
   },
   {
@@ -79,6 +90,11 @@ export const config = {
     /* Student & File Routes (Newly Secured) */
     "/api/dashboard/student",
     "/api/project/join",
-    "/api/upload"
+    "/api/upload",
+    "/api/read-pdf",
+    "/api/templates",
+
+    /* Voice routes */
+    "/api/voice/:path*"
   ],
 };

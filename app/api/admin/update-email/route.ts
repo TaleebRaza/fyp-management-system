@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import { requireCurrentUser } from '../../../../lib/security/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +11,7 @@ function isValidEmail(value: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-
-    if (!token || token.role !== 'admin') {
+    if (!await requireCurrentUser(req, ['admin'])) {
       return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
     }
 

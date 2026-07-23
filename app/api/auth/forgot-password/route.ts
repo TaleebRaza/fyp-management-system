@@ -34,8 +34,8 @@ export async function POST(req: Request) {
       user = await User.findOne({ rollNo: buildRollNoRegex(normalizedRollNo) });
     }
 
-    if (!user) {
-      return NextResponse.json({ error: 'No account was found with that roll number.' }, { status: 404 });
+    if (!user || normalizeGmailAddress(user.email) !== resetRecipientEmail) {
+      return NextResponse.json({ message: 'If the account details match, a reset code will be sent shortly.' }, { status: 200 });
     }
 
     if (user.lastPasswordChange) {
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed to send reset code. Please try again later.' }, { status: 500 });
     }
 
-    return NextResponse.json({ message: 'Reset code sent to the Gmail address you entered.' }, { status: 200 });
+    return NextResponse.json({ message: 'If the account details match, a reset code will be sent shortly.' }, { status: 200 });
   } catch (error) {
     console.error('Forgot Password Error:', error);
     return NextResponse.json({ error: 'Failed to process request.' }, { status: 500 });

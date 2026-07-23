@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import Headline from '../../../models/Headline';
-import { getToken } from 'next-auth/jwt'; // NEW: Secure token verification
+import { requireCurrentUser } from '../../../lib/security/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,11 +21,11 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     // 1. Strict Security Check: Extract the cryptographic JWT token
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    const currentUser = await requireCurrentUser(req, ['admin']);
     
     // 2. Enforce Admin-Only Privileges
-    if (!token || token.role !== 'admin') {
-      console.warn(`Unauthorized headline broadcast attempt by User ID: ${token?.id || 'Unknown IP'}`);
+    if (!currentUser) {
+      console.warn('Unauthorized headline broadcast attempt blocked.');
       return NextResponse.json(
         { error: 'Forbidden: Only administrators can broadcast headlines.' }, 
         { status: 403 }

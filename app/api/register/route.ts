@@ -17,29 +17,30 @@ import {
   getOrCreateRegistrationPolicy,
   serializeRegistrationPolicy,
 } from '../../../lib/registrationPolicy';
-
-const MIN_PASSWORD_LENGTH = 6;
+import { validatePassword } from '../../../lib/security/password';
+import { createInviteCode } from '../../../lib/security/inviteCode';
+import { normalizeText } from '../../../lib/security/input';
 
 export async function POST(req: Request) {
   try {
     const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
-    const normalizedName = String(name || '').trim();
+    const normalizedName = normalizeText(name, 100);
     const normalizedEmail = normalizeEmailAddress(email);
     const normalizedRollNo = normalizeRollNo(rollNo);
     const normalizedPassword = String(password || '');
     const normalizedProgram = String(program || 'BSCS').trim().toUpperCase();
-    const normalizedBatch = String(batch || '').trim();
+    const normalizedBatch = normalizeText(batch, 20);
 
     if (!normalizedName || !normalizedEmail || !normalizedRollNo || !normalizedPassword || !normalizedBatch) {
       return NextResponse.json({ error: 'Name, email, roll number, password, and batch are required.' }, { status: 400 });
     }
 
-    if (!isValidEmailAddress(normalizedEmail)) {
+    if (normalizedEmail.length > 254 || !isValidEmailAddress(normalizedEmail) || normalizedRollNo.length > 40) {
       return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
     }
 
-    if (normalizedPassword.length < MIN_PASSWORD_LENGTH) {
-      return NextResponse.json({ error: `Password must contain at least ${MIN_PASSWORD_LENGTH} characters.` }, { status: 400 });
+    if (!validatePassword(normalizedPassword)) {
+      return NextResponse.json({ error: 'Password must be 10 to 128 characters.' }, { status: 400 });
     }
 
     if (!Object.prototype.hasOwnProperty.call(PROGRAM_MAP, normalizedProgram)) {
@@ -72,6 +73,14 @@ export async function POST(req: Request) {
 
     if (existingUser) {
       return NextResponse.json({ error: 'This roll number or email is already registered.' }, { status: 400 });
+    }
+
+    const matchingStudent = await User.exists({
+      role: 'student', name: normalizedName, rollNo: normalizedRollNo,
+      program: normalizedProgram, batch: normalizedBatch,
+    });
+    if (matchingStudent) {
+      return NextResponse.json({ error: 'This student is already registered.' }, { status: 400 });
     }
 
     if (supervisorId) {
@@ -151,7 +160,7 @@ export async function POST(req: Request) {
       const newProject = new Project({
         supervisorId: supervisorId || null,
         members: [newStudent._id],
-        inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
+        inviteCode: createInviteCode(),
       });
       await newProject.save({ session });
 

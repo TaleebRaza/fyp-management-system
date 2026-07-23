@@ -1,8 +1,10 @@
 // app/api/templates/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import fs from 'fs/promises';
 import path from 'path';
+import { requireCurrentUser } from '../../../lib/security/auth';
+import User from '../../../models/User';
+import Project from '../../../models/Project';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -137,9 +139,8 @@ async function readWordTemplate(template: TemplateDefinition) {
 
 export async function GET(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-
-    if (!token) {
+    const currentUser = await requireCurrentUser(req);
+    if (!currentUser) {
       return NextResponse.json(
         { error: 'Unauthorized', code: 'UNAUTHORIZED' },
         { status: 401 }
@@ -153,6 +154,14 @@ export async function GET(req: NextRequest) {
         { error: 'Invalid stage.', code: 'INVALID_STAGE' },
         { status: 400 }
       );
+    }
+
+    if (currentUser.role === 'student') {
+      const student = await User.findById(currentUser.id).select('projectId').lean();
+      const project = student?.projectId ? await Project.findById(student.projectId).select('stage').lean() : null;
+      if (!project || project.stage !== stageParam) {
+        return NextResponse.json({ error: 'Template is not available for your current project stage.' }, { status: 403 });
+      }
     }
 
     // LaTeX and individual-format requests are deliberately unsupported.

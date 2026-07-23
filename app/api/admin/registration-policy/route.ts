@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { getToken } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import {
@@ -9,6 +8,7 @@ import {
 } from '../../../../lib/registrationPolicy';
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import { DEFAULT_REGISTRATION_CLOSED_MESSAGE } from '../../../../types/registrationPolicy';
+import { requireCurrentUser } from '../../../../lib/security/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +19,7 @@ function normalizeText(value: unknown, maximumLength: number) {
 }
 
 async function requireAdmin(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  return token && token.role === 'admin' ? token : null;
+  return requireCurrentUser(req, ['admin']);
 }
 
 export async function GET(req: NextRequest) {

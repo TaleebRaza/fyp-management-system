@@ -424,7 +424,7 @@ const AdminDashboard = ({
 
   const fetchSupervisors = async () => {
     try {
-      const response = await fetch('/api/supervisors', { cache: 'no-store' });
+      const response = await fetch('/api/admin/supervisors', { cache: 'no-store' });
       const data = await response.json();
 
       setAdminSupervisors(Array.isArray(data) ? data : []);

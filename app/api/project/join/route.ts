@@ -1,5 +1,5 @@
 // app/api/project/join/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
@@ -11,27 +11,60 @@ import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
+import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
+import { consumeRateLimit, refundRateLimit } from '../../../../lib/rateLimit';
+import { requireCurrentUser } from '../../../../lib/security/auth';
 
 const MAX_TEAM_MEMBERS = 2;
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req, ['student']);
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized student request.' }, { status: 401 });
+  }
+
   try {
-    const { studentId, inviteCode } = await req.json();
+    const { inviteCode } = await req.json();
+    const normalizedInviteCode = String(inviteCode || '').trim().toUpperCase();
+    if (!normalizedInviteCode) {
+      return NextResponse.json({ error: 'Invite code is required.' }, { status: 400 });
+    }
+
     await connectToDatabase();
 
-    // Fetch the joining student OUTSIDE the transaction because their core identity doesn't change
-    const student = await User.findById(studentId);
+    // The target student is always the signed-in student, never a browser-supplied ID.
+    const student = await User.findOne({ _id: currentUser.id, role: 'student' });
     if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+
+    const fineRestriction = buildFineRestriction(student);
+    if (fineRestriction) {
+      return NextResponse.json(
+        {
+          code: FINE_RESTRICTION_CODE,
+          error: 'Project changes are locked until the administrator clears your outstanding fine.',
+          fineRestriction,
+        },
+        { status: 403 }
+      );
+    }
+
+    const rateLimitKey = `project-join:${currentUser.id}`;
+    const attempt = await consumeRateLimit(rateLimitKey, 10);
+    if (!attempt.allowed) {
+      return NextResponse.json({ error: 'Too many failed invite-code attempts. Try again later.' }, { status: 429 });
+    }
+
+    const studentId = student._id.toString();
 
     // Initialize the formal MongoDB Session
     const session = await mongoose.startSession();
 
     try {
       // Execute the logic inside our robust retry wrapper
-      return await withTransactionRetry(session, async () => {
+      const response = await withTransactionRetry(session, async () => {
         
         // 1. Find the target project (Locking it inside the transaction)
-        const targetProject = await Project.findOne({ inviteCode: inviteCode.toUpperCase() }).session(session);
+        const targetProject = await Project.findOne({ inviteCode: normalizedInviteCode }).session(session);
         if (!targetProject) {
           return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
         }
@@ -168,6 +201,9 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
       });
+
+      if (response.status === 200) await refundRateLimit(rateLimitKey);
+      return response;
     } finally {
       // Ensure the session is always closed to prevent memory leaks
       session.endSession();

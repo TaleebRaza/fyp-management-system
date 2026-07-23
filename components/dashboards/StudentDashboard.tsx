@@ -972,10 +972,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
       const response = await fetch('/api/project/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: (session?.user as any)?.id,
-          inviteCode,
-        }),
+        body: JSON.stringify({ inviteCode }),
       });
 
       const json = await response.json();

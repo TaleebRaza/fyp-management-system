@@ -1,21 +1,24 @@
 // Replace entire file with:
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
+import { requireCurrentUser } from '../../../lib/security/auth';
+import { canAccessStoredObject, normalizeStorageKey } from '../../../lib/security/storage';
 
 export async function GET(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-    
-    if (!token) {
-      console.warn('Unauthorized PDF access attempt blocked.');
+    const currentUser = await requireCurrentUser(req);
+    if (!currentUser) {
       return new NextResponse('Unauthorized: You must be logged in to view secure university documents.', { status: 401 });
     }
 
-    const key = req.nextUrl.searchParams.get('url');
-    if (!key) return new NextResponse('Missing Document URL', { status: 400 });
+    const key = normalizeStorageKey(req.nextUrl.searchParams.get('url'));
+    if (!key) return new NextResponse('Missing or invalid document URL', { status: 400 });
+
+    if (!await canAccessStoredObject(currentUser, key)) {
+      return new NextResponse('File not found or access denied', { status: 404 });
+    }
 
     const command = new GetObjectCommand({
       Bucket: BUCKET_NAME,
@@ -37,8 +40,8 @@ export async function GET(req: NextRequest) {
       },
     });
 
-  } catch (error: any) {
-    console.error('Error fetching private blob:', error.message);
+  } catch (error) {
+    console.error('Error fetching private blob:', error instanceof Error ? error.message : 'Unknown error');
     return new NextResponse('File not found or access denied', { status: 404 });
   }
 }

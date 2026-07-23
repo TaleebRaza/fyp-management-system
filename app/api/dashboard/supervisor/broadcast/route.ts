@@ -1,19 +1,19 @@
 // app/api/dashboard/supervisor/broadcast/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import connectToDatabase from '../../../../../lib/mongodb';
 import User from '../../../../../models/User';
 import SystemConfig from '../../../../../models/SystemConfig';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../../lib/s3-client';
+import { requireCurrentUser } from '../../../../../lib/security/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
     // 1. Strict Authentication
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-    if (!token || token.role !== 'supervisor') {
+    const currentUser = await requireCurrentUser(req, ['supervisor']);
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized: Supervisor access required.' }, { status: 401 });
     }
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required broadcast fields.' }, { status: 400 });
     }
 
-    const supervisor = await User.findById(token.id);
+    const supervisor = await User.findById(currentUser.id);
     if (!supervisor) {
       return NextResponse.json({ error: 'Supervisor not found.' }, { status: 404 });
     }
@@ -75,14 +75,14 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-    if (!token || token.role !== 'supervisor') {
+    const currentUser = await requireCurrentUser(req, ['supervisor']);
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized: Supervisor access required.' }, { status: 401 });
     }
 
     await connectToDatabase();
     
-    const supervisor = await User.findById(token.id);
+    const supervisor = await User.findById(currentUser.id);
     if (!supervisor) {
       return NextResponse.json({ error: 'Supervisor not found.' }, { status: 404 });
     }

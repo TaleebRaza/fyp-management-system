@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
@@ -13,6 +13,9 @@ import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
+import { requireCurrentUser } from '../../../../lib/security/auth';
+import { createInviteCode } from '../../../../lib/security/inviteCode';
+import { escapeHtml } from '../../../../lib/security/input';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +65,7 @@ async function decrementStorageLedger(bytes: number, session?: ClientSession) {
 async function createProjectWithUniqueInviteCode(projectData: any, session: ClientSession) {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const inviteCode = createInviteCode();
       const project = new Project({ ...projectData, inviteCode });
       await project.save({ session });
       return project;
@@ -74,13 +77,16 @@ async function createProjectWithUniqueInviteCode(projectData: any, session: Clie
   throw new Error('Failed to generate a unique project invite code.');
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req, ['supervisor']);
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized supervisor request.' }, { status: 401 });
+  }
+
   try {
     await connectToDatabase();
-    const url = new URL(req.url);
-    const id = url.searchParams.get("id");
-    
-    const students = await User.find({ role: 'student', supervisorId: id }).lean();
+    const students = await User.find({ role: 'student', supervisorId: currentUser.id }).lean();
+    const supervisor = await User.findById(currentUser.id).select('migrationCode').lean();
 
     // Fetch associated projects to get the timeline stage.
     const projectIds = students.map(s => s.projectId).filter(Boolean);
@@ -141,14 +147,22 @@ export async function GET(req: Request) {
       });
     });
 
-    return NextResponse.json({ projects: Array.from(projectMap.values()) }, { status: 200 });
+    return NextResponse.json(
+      { projects: Array.from(projectMap.values()), migrationCode: supervisor?.migrationCode || '' },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Supervisor Dashboard GET Error:', error);
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req, ['supervisor']);
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized supervisor request.' }, { status: 401 });
+  }
+
   try {
     await connectToDatabase();
     
@@ -156,11 +170,19 @@ export async function POST(req: Request) {
     const { action, studentId, status, remarks, migrationCode } = await req.json();
 
     if (action === 'updateStatus') {
-      const triggerStudent = await User.findById(studentId);
+      const triggerStudent = await User.findOne({
+        _id: studentId,
+        role: 'student',
+        supervisorId: currentUser.id,
+      });
       if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
-      const teamMembers = triggerStudent.projectId 
-        ? await User.find({ projectId: triggerStudent.projectId }) 
+      const teamMembers = triggerStudent.projectId
+        ? await User.find({
+            projectId: triggerStudent.projectId,
+            role: 'student',
+            supervisorId: currentUser.id,
+          })
         : [triggerStudent];
 
       let finalStatus = status;
@@ -169,7 +191,10 @@ export async function POST(req: Request) {
 
       // --- NEW: Timeline Progression Logic ---
       if (status === 'Approved' && triggerStudent.projectId) {
-        const project = await Project.findById(triggerStudent.projectId);
+        const project = await Project.findOne({
+          _id: triggerStudent.projectId,
+          supervisorId: currentUser.id,
+        });
         
         if (project) {
           if (project.stage === 'PROPOSAL') {
@@ -221,7 +246,7 @@ export async function POST(req: Request) {
 
       // 2. Update the Project Document
       if (triggerStudent.projectId) {
-        await Project.findByIdAndUpdate(triggerStudent.projectId, { 
+        await Project.findOneAndUpdate({ _id: triggerStudent.projectId, supervisorId: currentUser.id }, {
           $set: { 
             status: finalStatus,
             // Wipe the URL and reset the size tracking to 0 so the next upload starts clean
@@ -247,15 +272,15 @@ export async function POST(req: Request) {
                   </div>
                   <div style="padding: 32px;">
                     <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">Project Updated</h2>
-                    <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${supervisor.name}</strong>, has reviewed your submission.</p>
+                    <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${escapeHtml(supervisor.name)}</strong>, has reviewed your submission.</p>
                     <div style="text-align: center; margin-bottom: 24px;">
                       <span style="display: inline-block; background-color: ${bgColor}; color: ${primaryColor}; padding: 8px 16px; border-radius: 999px; font-weight: bold;">
-                        ${notificationMessage}
+                        ${escapeHtml(notificationMessage)}
                       </span>
                     </div>
                     <div style="background-color: #f8fafc; border-left: 4px solid ${primaryColor}; padding: 20px;">
                       <p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Supervisor Remarks</p>
-                      <p style="margin: 0; font-size: 15px; color: #334155; font-style: italic;">"${remarks || 'Proceed to the next stage.'}"</p>
+                      <p style="margin: 0; font-size: 15px; color: #334155; font-style: italic;">"${escapeHtml(remarks || 'Proceed to the next stage.')}"</p>
                     </div>
                   </div>
                 </div>
@@ -304,8 +329,12 @@ export async function POST(req: Request) {
           return await fail('Invalid Migration Code!', 400);
         }
 
-        const studentInTx = await User.findById(requestedStudentId).session(session);
-        if (!studentInTx || studentInTx.role !== 'student') {
+        const studentInTx = await User.findOne({
+          _id: requestedStudentId,
+          role: 'student',
+          supervisorId: currentUser.id,
+        }).session(session);
+        if (!studentInTx) {
           return await fail('Student not found.', 404);
         }
 
@@ -326,8 +355,12 @@ export async function POST(req: Request) {
         }
 
         const oldProject = studentInTx.projectId
-          ? await Project.findById(studentInTx.projectId).session(session)
+          ? await Project.findOne({ _id: studentInTx.projectId, supervisorId: currentUser.id }).session(session)
           : null;
+
+        if (studentInTx.projectId && !oldProject) {
+          return await fail('Project not found.', 404);
+        }
 
         if (!oldProject) {
           const inheritedDomainIds = normalizeProjectDomainIds(
@@ -453,14 +486,21 @@ export async function POST(req: Request) {
     }
 
     if (action === 'removeStudent') {
-      const triggerStudent = await User.findById(studentId);
+      const triggerStudent = await User.findOne({
+        _id: studentId,
+        role: 'student',
+        supervisorId: currentUser.id,
+      });
       if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
       // --- Team-Aware Removal ---
       if (triggerStudent.projectId) {
-        await Project.findByIdAndUpdate(triggerStudent.projectId, { $set: { supervisorId: null } });
+        await Project.findOneAndUpdate(
+          { _id: triggerStudent.projectId, supervisorId: currentUser.id },
+          { $set: { supervisorId: null } }
+        );
         await User.updateMany(
-          { projectId: triggerStudent.projectId },
+          { projectId: triggerStudent.projectId, role: 'student', supervisorId: currentUser.id },
           { $set: {
               supervisorId: null,
               status: 'Unassigned',
@@ -472,7 +512,7 @@ export async function POST(req: Request) {
           }
         );
       } else {
-        await User.findByIdAndUpdate(studentId, {
+        await User.findOneAndUpdate({ _id: studentId, role: 'student', supervisorId: currentUser.id }, {
           $set: { supervisorId: null, status: 'Unassigned', projectTitle: '', projectDesc: '', pdfUrl: '', remarks: 'You were removed.' }
         });
       }

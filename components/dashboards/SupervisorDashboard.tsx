@@ -225,7 +225,6 @@ const SupervisorDashboard = ({
 
   const supervisorName = session?.user?.name || 'Supervisor';
   const supervisorId = (session?.user as any)?.id;
-  const supervisorRollNo = (session?.user as any)?.rollNo;
 
   const notify = (title: string, message: string) => {
     if (showDialog) {
@@ -278,7 +277,7 @@ const SupervisorDashboard = ({
 
       setIsLoading(true);
 
-      const response = await fetch(`/api/dashboard/supervisor?id=${encodeURIComponent(supervisorId)}`);
+      const response = await fetch('/api/dashboard/supervisor');
       const json = await response.json();
 
       if (!response.ok) {
@@ -286,18 +285,7 @@ const SupervisorDashboard = ({
       }
 
       setMyProjects(Array.isArray(json.projects) ? json.projects : []);
-
-      try {
-        const supervisorResponse = await fetch('/api/supervisors');
-        const supervisorData = await supervisorResponse.json();
-        const supervisors = Array.isArray(supervisorData) ? supervisorData : [];
-        const currentSupervisor = supervisors.find((supervisor: any) => supervisor.rollNo === supervisorRollNo);
-
-        setMyMigrationCode(currentSupervisor?.migrationCode || 'N/A');
-      } catch (error) {
-        console.error('Migration code fetch error:', error);
-        setMyMigrationCode('Unavailable');
-      }
+      setMyMigrationCode(json.migrationCode || 'N/A');
     } catch (error: any) {
       console.error('Supervisor dashboard fetch error:', error);
       notify(

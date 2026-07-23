@@ -1,8 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import { requireCurrentUser } from '../../../../lib/security/auth';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  if (!await requireCurrentUser(req, ['admin'])) {
+    return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
+  }
+
   try {
     await connectToDatabase();
     const { id, enabled } = await req.json();

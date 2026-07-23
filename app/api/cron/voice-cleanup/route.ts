@@ -6,6 +6,7 @@ import User from '../../../../models/User';
 import SystemConfig from '../../../../models/SystemConfig';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
+import { hasValidCronAuthorization } from '../../../../lib/security/cron';
 
 // Ensure Vercel never caches this route
 export const dynamic = 'force-dynamic';
@@ -14,8 +15,7 @@ export async function GET(req: Request) {
   // 1. Strict Security Firewall: Only allow Vercel's Cron engine to execute this
   const authHeader = req.headers.get('authorization');
   
-  // In local development, you might not have CRON_SECRET set, so we fail securely
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!hasValidCronAuthorization(authHeader, process.env.CRON_SECRET)) {
     console.warn('Unauthorized cron execution attempt blocked.');
     return NextResponse.json({ error: 'Unauthorized access.' }, { status: 401 });
   }

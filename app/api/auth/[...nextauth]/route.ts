@@ -4,19 +4,16 @@ import connectToDatabase from "../../../../lib/mongodb";
 import User from "../../../../models/User";
 import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
 import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
+import { isBcryptHash } from "../../../../lib/security/password";
+import { consumeRateLimit } from "../../../../lib/rateLimit";
 
 // --- HELPER: Backward-Compatible Verification ---
 async function verifyPassword(inputPassword: string, storedPassword: string) {
-  // Standard bcrypt hashes always start with "$2a$", "$2b$", or "$2y$" and are 60 chars long.
-  const isHashed = storedPassword.startsWith('$2') && storedPassword.length === 60;
-  
-  if (isHashed) {
-    // If securely hashed, use cryptographic comparison
-    return await bcrypt.compare(inputPassword, storedPassword);
-  } else {
-    // Legacy Fallback: Allow existing plaintext users to still log in
-    return inputPassword === storedPassword;
+  if (isBcryptHash(storedPassword)) {
+    return { matches: await bcrypt.compare(inputPassword, storedPassword), isLegacy: false };
   }
+
+  return { matches: inputPassword === storedPassword, isLegacy: true };
 }
 
 const handler = NextAuth({
@@ -31,10 +28,13 @@ const handler = NextAuth({
         await connectToDatabase();
 
         const normalizedRollNo = normalizeRollNo(credentials?.rollNo);
+        const password = credentials?.password || "";
 
-        if (!normalizedRollNo) {
-          throw new Error("Roll Number is required");
+        if (!normalizedRollNo || !password) {
+          throw new Error("Invalid roll number or password.");
         }
+        const rateLimit = await consumeRateLimit(`login:${normalizedRollNo}`, 10);
+        if (!rateLimit.allowed) throw new Error("Too many login attempts. Please try again later.");
         
         let user = await User.findOne({ rollNo: normalizedRollNo });
 
@@ -44,19 +44,24 @@ const handler = NextAuth({
         }
         
         if (!user) {
-          throw new Error("No user found with this Roll Number");
+          throw new Error("Invalid roll number or password.");
         }
         
         // Security Lockout Check
         if (user.isActive === false) {
-          throw new Error("Your account has been deactivated. Contact administration.");
+          throw new Error("Invalid roll number or password.");
         }
         
         // NEW: Utilize our smart verifier instead of direct string comparison
-        const isPasswordMatch = await verifyPassword(credentials?.password || "", user.password);
-        
-        if (!isPasswordMatch) {
-          throw new Error("Incorrect password");
+        const passwordCheck = await verifyPassword(password, user.password);
+
+        if (!passwordCheck.matches) {
+          throw new Error("Invalid roll number or password.");
+        }
+
+        if (passwordCheck.isLegacy) {
+          user.password = await bcrypt.hash(password, 10);
+          await user.save();
         }
         
         // --- OPTIMIZATION: Lazy Login Counter ---

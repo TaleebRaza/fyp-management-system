@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import { requireCurrentUser } from '../../../../lib/security/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,10 @@ function parsePositiveInteger(value: string | null, fallback: number) {
 
 export async function GET(req: NextRequest) {
   const startedAt = Date.now();
+
+  if (!await requireCurrentUser(req, ['admin'])) {
+    return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
+  }
 
   try {
     await connectToDatabase();

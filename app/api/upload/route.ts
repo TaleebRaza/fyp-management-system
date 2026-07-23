@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
@@ -8,13 +7,14 @@ import connectToDatabase from '../../../lib/mongodb';
 import SystemConfig from '../../../models/SystemConfig';
 import User from '../../../models/User';
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../lib/fineRestriction';
+import { requireCurrentUser } from '../../../lib/security/auth';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-    if (!token || !token.id) {
+    const currentUser = await requireCurrentUser(req);
+    if (!currentUser) {
       return NextResponse.json(
         { error: 'Unauthorized: Authentication token missing or invalid.' },
         { status: 401 }
@@ -23,8 +23,8 @@ export async function POST(req: NextRequest) {
 
     await connectToDatabase();
 
-    if (token.role === 'student') {
-      const student = await User.findOne({ _id: String(token.id), role: 'student' })
+    if (currentUser.role === 'student') {
+      const student = await User.findOne({ _id: currentUser.id, role: 'student' })
         .select(
           'lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
         )
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const sanitizedCleanName =
       String(filename || 'document.pdf').replace(/[^a-zA-Z0-9.-]/g, '_') || 'document.pdf';
-    const key = `proposals/${crypto.randomUUID()}-${sanitizedCleanName}`;
+    const key = `proposals/${currentUser.id}/${crypto.randomUUID()}-${sanitizedCleanName}`;
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
