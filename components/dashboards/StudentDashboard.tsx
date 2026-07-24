@@ -426,7 +426,17 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const project = data?.project;
   const supervisorBroadcast = data?.supervisorBroadcast || null;
   const fineRestriction = data?.fineRestriction || null;
-  const isFineRestricted = Boolean(fineRestriction?.active);
+  const teamFineRestriction = data?.teamFineRestriction || fineRestriction;
+  const isOwnFineRestricted = Boolean(fineRestriction?.active);
+  const isFineRestricted = Boolean(teamFineRestriction?.active);
+  const restrictedMember = teamFineRestriction?.member;
+  const restrictedMemberLabel = `${restrictedMember?.name || 'A team member'}${
+    restrictedMember?.rollNo ? ` (${restrictedMember.rollNo})` : ''
+  }`;
+  const teamFineMessage =
+    teamFineRestriction?.isCurrentStudent !== false
+      ? 'Project uploads are locked until the administrator verifies and clears your outstanding fine.'
+      : `Project uploads are locked because ${restrictedMemberLabel} has an outstanding fine. The administrator must clear it before any team member can upload the proposal.`;
 
   useEffect(() => {
     if (activeTab === 'fine' && !fineRestriction) {
@@ -775,14 +785,14 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
     event.preventDefault();
 
     if (isFineRestricted) {
-      setActiveTab('fine');
+      if (isOwnFineRestricted) setActiveTab('fine');
       showDialog({
-        title: 'Fine payment required',
-        message:
-          'Project uploads are locked until the administrator verifies and clears your outstanding fine.',
+        title: isOwnFineRestricted ? 'Fine payment required' : 'Team fine pending',
+        message: teamFineMessage,
       });
       return;
     }
+
     if (!canSubmitByStatus) {
       showDialog({
         title: 'Submission closed',
@@ -1494,12 +1504,14 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         <div className="mb-5 rounded-xl border border-red-300 bg-red-100/70 p-4 text-sm text-red-950 dark:border-red-800 dark:bg-red-950/50 dark:text-red-50">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="font-semibold">
-              New project uploads are locked until your fine is verified by the administrator.
+              {teamFineMessage}
             </p>
-            <Button type="button" variant="outline" onClick={() => setActiveTab('fine')}>
+            {isOwnFineRestricted && (
+              <Button type="button" variant="outline" onClick={() => setActiveTab('fine')}>
               <CircleDollarSign size={16} />
               View Fine Details
             </Button>
+            )}
           </div>
         </div>
       )}

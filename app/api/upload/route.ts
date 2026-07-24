@@ -7,6 +7,10 @@ import connectToDatabase from '../../../lib/mongodb';
 import SystemConfig from '../../../models/SystemConfig';
 import User from '../../../models/User';
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../lib/fineRestriction';
+import {
+  getTeamFineRestriction,
+  getTeamFineRestrictionMessage,
+} from '../../../lib/teamFineRestriction';
 import { requireCurrentUser } from '../../../lib/security/auth';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
@@ -24,30 +28,31 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
 
     if (currentUser.role === 'student') {
-      const student = await User.findOne({ _id: currentUser.id, role: 'student' })
-        .select(
-          'lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
-        )
-        .lean();
-      if (!student) {
-        return NextResponse.json({ error: 'Student account not found.' }, { status: 404 });
-      }
-
-      const fineRestriction = buildFineRestriction(student);
-      if (fineRestriction) {
-        return NextResponse.json(
-          {
-            code: FINE_RESTRICTION_CODE,
-            error:
-              'Project uploads are locked until the administrator verifies and clears your outstanding fine.',
-            fineRestriction,
-          },
-          { status: 403 }
-        );
-      }
+    const student = await User.findOne({ _id: currentUser.id, role: 'student' })
+      .select(
+        '_id projectId lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
+      )
+      .lean();
+    if (!student) {
+      return NextResponse.json({ error: 'Student account not found.' }, { status: 404 });
     }
 
-    const config = await SystemConfig.findOne({ configKey: 'storage' });
+    const fineRestriction = buildFineRestriction(student);
+    const teamFineRestriction = await getTeamFineRestriction(student.projectId, student._id);
+    if (teamFineRestriction) {
+      return NextResponse.json(
+        {
+          code: FINE_RESTRICTION_CODE,
+          error: getTeamFineRestrictionMessage(teamFineRestriction, 'uploads'),
+          fineRestriction,
+          teamFineRestriction,
+        },
+        { status: 403 }
+      );
+    }
+  }
+
+  const config = await SystemConfig.findOne({ configKey: 'storage' });
     if (config && config.usedBytes >= MAX_STORAGE_BYTES) {
       return NextResponse.json({ error: 'System storage capacity reached.' }, { status: 403 });
     }

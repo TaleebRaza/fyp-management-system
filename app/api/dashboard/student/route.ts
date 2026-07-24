@@ -17,6 +17,10 @@ import {
 } from '../../../../config/projectDomains';
 
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
+import {
+  getTeamFineRestriction,
+  getTeamFineRestrictionMessage,
+} from '../../../../lib/teamFineRestriction';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
@@ -163,8 +167,8 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    // Fetch the supervisor and project in parallel without adding another fine-related query.
-    const [supervisor, project] = await Promise.all([
+    // Fetch dashboard relationships and the team restriction in parallel.
+    const [supervisor, project, teamFineRestriction] = await Promise.all([
       student.supervisorId
         ? User.findById(student.supervisorId)
             .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
@@ -175,6 +179,7 @@ export async function GET(req: NextRequest) {
             .populate('members', 'name rollNo email')
             .lean()
         : null,
+    getTeamFineRestriction(student.projectId, student._id),
     ]);
 
     const supervisorBroadcast = supervisor?.broadcastType && supervisor?.broadcastContent
@@ -225,6 +230,7 @@ export async function GET(req: NextRequest) {
         project: projectResponse,
         supervisorBroadcast,
         fineRestriction: fineRestrictionResponse,
+      teamFineRestriction,
       },
       {
         status: 200,
@@ -734,19 +740,23 @@ export async function POST(req: NextRequest) {
     }
 
     const submissionFineRestriction = buildFineRestriction(triggeringStudent);
-    if (submissionFineRestriction) {
-      return NextResponse.json(
-        {
-          code: FINE_RESTRICTION_CODE,
-          error:
-            'Project submission is locked until the administrator verifies and clears your outstanding fine.',
-          fineRestriction: submissionFineRestriction,
-        },
-        { status: 403 }
-      );
-    }
+  const submissionTeamFineRestriction = await getTeamFineRestriction(
+    triggeringStudent.projectId,
+    triggeringStudent._id
+  );
+  if (submissionTeamFineRestriction) {
+    return NextResponse.json(
+      {
+        code: FINE_RESTRICTION_CODE,
+        error: getTeamFineRestrictionMessage(submissionTeamFineRestriction, 'submission'),
+        fineRestriction: submissionFineRestriction,
+        teamFineRestriction: submissionTeamFineRestriction,
+      },
+      { status: 403 }
+    );
+  }
 
-    const hasDomainArrayPayload = Object.prototype.hasOwnProperty.call(body, 'domains');
+  const hasDomainArrayPayload = Object.prototype.hasOwnProperty.call(body, 'domains');
     const legacyDomainText = String(body.domain || '').trim();
     let selectedDomainIds: string[] = [];
 
