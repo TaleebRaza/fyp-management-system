@@ -16,6 +16,7 @@ import {
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
 import { escapeHtml } from '../../../../lib/security/input';
+import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../lib/teamCapacity';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,6 +97,7 @@ export async function GET(req: NextRequest) {
 
       acc[p._id.toString()] = {
         stage: p.stage,
+        maxTeamSize: getTeamCapacity(p.maxTeamSize),
         domains: domainIds,
         domain: formatProjectDomainLabels(domainIds, p.domain),
       };
@@ -131,6 +133,7 @@ export async function GET(req: NextRequest) {
           status: student.status,
           remarks: student.remarks,
           stage: projectMetadata[pId]?.stage || 'PROPOSAL',
+          maxTeamSize: projectMetadata[pId]?.maxTeamSize || DEFAULT_TEAM_SIZE,
           program: student.program || 'N/A',
           batch: student.batch || 'N/A',
           semester: student.semester || '7th Semester',
@@ -167,7 +170,7 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     
     // Read the body once only. Reading req.json() twice breaks migration.
-    const { action, studentId, status, remarks, migrationCode } = await req.json();
+    const { action, studentId, status, remarks, migrationCode, projectId } = await req.json();
 
     if (action === 'updateStatus') {
       const triggerStudent = await User.findOne({
@@ -517,6 +520,28 @@ export async function POST(req: NextRequest) {
         });
       }
       return NextResponse.json({ message: 'Team removed successfully!' }, { status: 200 });
+    }
+
+    if (action === 'expandTeam') {
+      const requestedProjectId = String(projectId || '').trim();
+      if (!mongoose.Types.ObjectId.isValid(requestedProjectId)) {
+        return NextResponse.json({ error: 'Invalid project selected.' }, { status: 400 });
+      }
+
+      const expandedProject = await Project.findOneAndUpdate(
+        { _id: requestedProjectId, supervisorId: currentUser.id },
+        { $set: { maxTeamSize: EXPANDED_TEAM_SIZE } },
+        { new: true }
+      );
+
+      if (!expandedProject) {
+        return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
+      }
+
+      return NextResponse.json(
+        { message: 'This team can now add a third member.' },
+        { status: 200 }
+      );
     }
 
     return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });

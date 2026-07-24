@@ -30,6 +30,7 @@ import {
   getProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../config/projectDomains';
+import { EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../lib/teamCapacity';
 
 import {
   AvatarBadge,
@@ -450,6 +451,35 @@ const SupervisorDashboard = ({
     setIsProcessingAction(false);
   }
 };
+
+  const handleExpandTeam = (projectId: string) => {
+    requestConfirmation(
+      'Allow a third team member?',
+      'This team will be allowed to share its invite code with one additional student.',
+      async () => {
+        setIsProcessingAction(true);
+        try {
+          const response = await fetch('/api/dashboard/supervisor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'expandTeam', projectId }),
+          });
+          const json = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(json.error || 'Failed to update team capacity.');
+          }
+
+          setSelectedProject(null);
+          await fetchProjects();
+          notify('Three-member team approved', json.message || 'The team can now add a third member.');
+        } catch (error: any) {
+          notify('Capacity update failed', error.message || 'Unable to update this team right now.');
+        } finally {
+          setIsProcessingAction(false);
+        }
+      }
+    );
+  };
 
   const handleRemoveTeam = (triggerStudentId: string, teamNames: string) => {
     requestConfirmation(
@@ -1036,16 +1066,14 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
                   Team Size
                 </p>
                 <p className="mt-2 text-sm font-bold text-[var(--color-text)]">
-                  {Array.isArray(selectedProject.members) ? selectedProject.members.length : 0}{' '}
-                  {Array.isArray(selectedProject.members) && selectedProject.members.length === 1
-                    ? 'student'
-                    : 'students'}
+                  {Array.isArray(selectedProject.members) ? selectedProject.members.length : 0}{' / '}
+                {getTeamCapacity(selectedProject.maxTeamSize)} students
                 </p>
-                {Array.isArray(selectedProject.members) && selectedProject.members.length > 2 ? (
-                  <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
-                    Legacy 3-member team · all existing members preserved
-                  </p>
-                ) : null}
+                {getTeamCapacity(selectedProject.maxTeamSize) === EXPANDED_TEAM_SIZE ? (
+                <p className="mt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+                  Three-member team approved
+                </p>
+              ) : null}
               </div>
             </div>
 
@@ -1197,7 +1225,17 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
                     Migrate Student
                   </Button>
 
-                  <Button
+                  {getTeamCapacity(selectedProject.maxTeamSize) < EXPANDED_TEAM_SIZE && (
+                <Button
+                  variant="outline"
+                  disabled={isProcessingAction}
+                  onClick={() => handleExpandTeam(selectedProject._id)}
+                >
+                  <Users size={16} />
+                  Allow 3 Members
+                </Button>
+              )}
+              <Button
                     variant="danger"
                     disabled={isProcessingAction}
                     onClick={() =>

@@ -14,9 +14,7 @@ import {
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
 import { consumeRateLimit, refundRateLimit } from '../../../../lib/rateLimit';
 import { requireCurrentUser } from '../../../../lib/security/auth';
-
-const MAX_TEAM_MEMBERS = 2;
-
+import { getTeamCapacity } from '../../../../lib/teamCapacity';
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
   if (!currentUser) {
@@ -69,12 +67,13 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
         }
 
-        // 2. Fixed two-student limit and redundancy checks.
-        // Existing three-member teams are preserved, but no future join may create or restore one.
-        if (targetProject.members.length >= MAX_TEAM_MEMBERS) {
+        const teamCapacity = getTeamCapacity(targetProject.maxTeamSize);
+
+        // 2. Capacity and redundancy checks.
+        if (targetProject.members.length >= teamCapacity) {
           return NextResponse.json(
             {
-              error: `This team is already full (maximum ${MAX_TEAM_MEMBERS} students).`,
+              error: `This team is already full (maximum ${teamCapacity} students).`,
               code: 'TEAM_FULL',
             },
             { status: 409 }
@@ -144,7 +143,7 @@ export async function POST(req: NextRequest) {
           {
             _id: targetProject._id,
             members: { $ne: studentId },
-            'members.1': { $exists: false },
+            [`members.${teamCapacity - 1}`]: { $exists: false },
           },
           {
             $addToSet: { members: studentId },
@@ -159,7 +158,7 @@ export async function POST(req: NextRequest) {
         if (!joinedProject) {
           return NextResponse.json(
             {
-              error: `This team is already full (maximum ${MAX_TEAM_MEMBERS} students).`,
+              error: `This team is already full (maximum ${teamCapacity} students).`,
               code: 'TEAM_FULL',
             },
             { status: 409 }

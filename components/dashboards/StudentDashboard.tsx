@@ -66,6 +66,7 @@ import {
   getProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../config/projectDomains';
+import { EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../lib/teamCapacity';
 
 type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources';
 
@@ -434,8 +435,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   }, [activeTab, fineRestriction]);
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
-  const isLegacyThreeMemberTeam = projectMembers.length > 2;
-  const canShareInviteCode = Boolean(project?.inviteCode) && projectMembers.length < 2;
+  const maxTeamSize = getTeamCapacity(project?.maxTeamSize);
+  const canShareInviteCode =
+    Boolean(project?.inviteCode) && projectMembers.length < maxTeamSize;
   const currentStage = project?.stage || 'PROPOSAL';
   const visibleTemplates = cachedTemplateStage === currentStage ? cachedTemplates : [];
   const currentProgramName = getProgramName(me?.program);
@@ -1601,12 +1603,12 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         <SectionHeader
           title="Team Members"
           description={
-            isLegacyThreeMemberTeam
-              ? 'Legacy 3-member team. All existing members remain active, but no new members can join.'
-              : projectMembers.length >= 2
-                ? 'Your team is full. FYP teams can contain a maximum of 2 students.'
-                : 'FYP teams can contain a maximum of 2 students. Share the invite code with one teammate.'
-          }
+          projectMembers.length >= maxTeamSize
+            ? `Your team is full. This team can contain a maximum of ${maxTeamSize} students.`
+            : maxTeamSize === EXPANDED_TEAM_SIZE
+              ? 'Your supervisor approved a 3-member team. Share the invite code with one more teammate.'
+              : 'FYP teams can contain a maximum of 2 students. Share the invite code with one teammate.'
+        }
           action={
             canShareInviteCode ? (
               <Button variant="outline" onClick={handleCopyInviteCode}>
@@ -1652,15 +1654,13 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
               {project.inviteCode}
             </p>
           </div>
-        ) : projectMembers.length >= 2 ? (
+        ) : projectMembers.length >= maxTeamSize ? (
           <div className="mt-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
               Team Capacity
             </p>
             <p className="mt-2 text-sm font-semibold leading-6 text-[var(--color-text)]">
-              {isLegacyThreeMemberTeam
-                ? `Legacy team preserved with all ${projectMembers.length} existing students. New members cannot join.`
-                : 'Team full with 2 students. New members cannot join.'}
+              {`Team full with ${projectMembers.length} of ${maxTeamSize} students. New members cannot join.`}
             </p>
           </div>
         ) : null}
