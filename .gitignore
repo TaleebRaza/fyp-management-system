@@ -11,3 +11,6 @@ AGENTS.md
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# TypeScript incremental build cache
+*.tsbuildinfo
