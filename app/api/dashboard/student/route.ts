@@ -123,8 +123,8 @@ async function createFreshStudentProject(
 
       await newProject.save({ session });
       return newProject;
-    } catch (error: any) {
-      if (error?.code !== 11000) throw error;
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== 11000) throw error;
     }
   }
 
@@ -158,7 +158,9 @@ export async function GET(req: NextRequest) {
     }
 
     const fineRestriction = buildFineRestriction(student);
-    let fineRestrictionResponse: any = null;
+    let fineRestrictionResponse: NonNullable<ReturnType<typeof buildFineRestriction>> & {
+      payment: ReturnType<typeof serializeRegistrationPolicy>['finePayment'];
+    } | null = null;
     if (fineRestriction) {
       const policy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
       fineRestrictionResponse = {
@@ -192,8 +194,8 @@ export async function GET(req: NextRequest) {
         }
       : null;
 
-    const projectRecord = project as any;
-    const studentRecord = student as any;
+    const projectRecord = project as { domains?: unknown; domain?: unknown } | null;
+    const studentRecord = student as { domains?: unknown; domain?: unknown };
     const storedDomainIds =
       Array.isArray(projectRecord?.domains) && projectRecord.domains.length > 0
         ? projectRecord.domains
@@ -322,7 +324,7 @@ export async function POST(req: NextRequest) {
           const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
           const isOnlyMember =
             oldProjectMembers.length <= 1 ||
-            oldProjectMembers.every((member: any) => String(member) === String(student._id));
+            oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
 
           if (isOnlyMember) {
             const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
@@ -331,7 +333,7 @@ export async function POST(req: NextRequest) {
               buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
               buildDeletionTarget(student.pdfUrl, oldProject.pdfSize),
               ...voiceNotes
-                .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
+                .map((note) => buildDeletionTarget(note.blobUrl, note.fileSize))
                 .filter(Boolean),
             ].filter(Boolean) as DeletionTarget[]);
 
@@ -347,7 +349,7 @@ export async function POST(req: NextRequest) {
 
             if (voiceNotes.length > 0) {
               await VoiceNote.deleteMany({
-                _id: { $in: voiceNotes.map((note: any) => note._id) },
+                _id: { $in: voiceNotes.map((note) => note._id) },
               }).session(session);
             }
 
@@ -403,11 +405,11 @@ export async function POST(req: NextRequest) {
           },
           { status: 200 }
         );
-      } catch (error: any) {
+      } catch (error) {
         await session.abortTransaction();
         session.endSession();
 
-        console.error('Program/Batch Update Error:', error.message);
+        console.error('Program/Batch Update Error:', error instanceof Error ? error.message : error);
         return NextResponse.json({ error: 'Failed to update Program/Batch.' }, { status: 500 });
       }
     }
@@ -510,7 +512,7 @@ export async function POST(req: NextRequest) {
           const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
           const isOnlyMember =
             oldProjectMembers.length <= 1 ||
-            oldProjectMembers.every((member: any) => String(member) === String(student._id));
+            oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
 
           if (isOnlyMember) {
             const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
@@ -521,7 +523,7 @@ export async function POST(req: NextRequest) {
                 ? buildDeletionTarget(student.pdfUrl, oldProject.pdfSize)
                 : null,
               ...voiceNotes
-                .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
+                .map((note) => buildDeletionTarget(note.blobUrl, note.fileSize))
                 .filter(Boolean),
             ].filter(Boolean) as DeletionTarget[]);
 
@@ -529,7 +531,7 @@ export async function POST(req: NextRequest) {
 
             if (voiceNotes.length > 0) {
               await VoiceNote.deleteMany({
-                _id: { $in: voiceNotes.map((note: any) => note._id) },
+                _id: { $in: voiceNotes.map((note) => note._id) },
               }).session(session);
             }
 
@@ -588,8 +590,8 @@ export async function POST(req: NextRequest) {
             deletionTargets.map((target) =>
               s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
             )
-          ).catch((error: any) => {
-            console.error('Supervisor change file cleanup failed:', error.message);
+          ).catch((error: unknown) => {
+            console.error('Supervisor change file cleanup failed:', error instanceof Error ? error.message : error);
           });
         }
 
@@ -602,11 +604,11 @@ export async function POST(req: NextRequest) {
           },
           { status: 200 }
         );
-      } catch (error: any) {
+      } catch (error) {
         await session.abortTransaction();
         session.endSession();
 
-        console.error('Supervisor Change Error:', error.message);
+        console.error('Supervisor Change Error:', error instanceof Error ? error.message : error);
         return NextResponse.json({ error: 'Failed to change supervisor.' }, { status: 500 });
       }
     }
@@ -869,8 +871,8 @@ export async function POST(req: NextRequest) {
         // Subtract the exact size of the old PDF being wiped
         sizeDelta -= (targetProject?.pdfSize || 0);
         console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${keyToDelete}`);
-      } catch (blobError: any) {
-        console.error('Failed to delete old PDF blob:', blobError.message);
+      } catch (blobError) {
+        console.error('Failed to delete old PDF blob:', blobError instanceof Error ? blobError.message : blobError);
       }
     }
 
@@ -899,7 +901,7 @@ export async function POST(req: NextRequest) {
 
     if (triggeringStudent.projectId) {
       // Prepare dynamic payload: only update pdfSize if a new file was actually sent
-      const projectUpdates: any = {
+      const projectUpdates: Record<string, unknown> = {
         title: body.title,
         titleFingerprint: fingerprint,
         domain: normalizedDomainText,
@@ -910,7 +912,7 @@ export async function POST(req: NextRequest) {
       if (isNewPdf) projectUpdates.pdfSize = uploadedPdfSize;
 
       // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time
-      const [_, updatedUsers] = await Promise.all([
+      await Promise.all([
         Project.findByIdAndUpdate(triggeringStudent.projectId, { $set: projectUpdates }),
         User.updateMany(
           { projectId: triggeringStudent.projectId },

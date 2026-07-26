@@ -11,6 +11,7 @@ import {
 import {
   buildFineRestriction,
   OUTSTANDING_STUDENT_FINE_FILTER,
+  type FineRestrictedUser,
 } from '../../../../lib/fineRestriction';
 import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationFine';
 import { requireCurrentUser } from '../../../../lib/security/auth';
@@ -28,7 +29,16 @@ async function requireAdmin(req: NextRequest) {
   return requireCurrentUser(req, ['admin']);
 }
 
-const serializeStudent = (student: any) => {
+type RestrictedStudentRecord = FineRestrictedUser & {
+  _id?: unknown;
+  name?: string;
+  rollNo?: string;
+  program?: string;
+  batch?: string;
+  status?: string;
+};
+
+const serializeStudent = (student: RestrictedStudentRecord) => {
   const restriction = buildFineRestriction(student);
   if (!restriction) return null;
 

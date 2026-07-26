@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        if (targetProject.members.some((memberId: any) => String(memberId) === String(studentId))) {
+        if (targetProject.members.some((memberId: unknown) => String(memberId) === String(studentId))) {
           return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
         }
 
@@ -126,15 +126,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        const projectDomains = (targetProject as { domains?: unknown }).domains;
+        const memberDomains = (firstMember as { domains?: unknown } | null)?.domains;
+        const memberDomain = (firstMember as { domain?: string } | null)?.domain;
         const inheritedDomainIds = normalizeProjectDomainIds(
-          Array.isArray((targetProject as any).domains) && (targetProject as any).domains.length > 0
-            ? (targetProject as any).domains
-            : (firstMember as any)?.domains,
-          targetProject.domain || (firstMember as any)?.domain
+          Array.isArray(projectDomains) && projectDomains.length > 0
+            ? projectDomains
+            : memberDomains,
+          targetProject.domain || memberDomain
         );
         const inheritedDomainText = formatProjectDomainLabels(
           inheritedDomainIds,
-          targetProject.domain || (firstMember as any)?.domain
+          targetProject.domain || memberDomain
         );
 
         // 4. Guard the final write as well as the read-time check.

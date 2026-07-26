@@ -41,7 +41,21 @@ export type FineRestrictionSummary = {
 
 const isOutstanding = (status: unknown) => status !== 'resolved' && status !== 'waived';
 
-export function buildFineRestriction(user: any): FineRestrictionSummary | null {
+export type FineRestrictedUser = {
+  lateRegistrationFine?: unknown;
+  lateRegistrationFineStatus?: unknown;
+  lateRegistrationDays?: unknown;
+  registrationPunishment?: {
+    amount?: unknown;
+    active?: boolean;
+    category?: unknown;
+    status?: unknown;
+    title?: unknown;
+    description?: unknown;
+  } | null;
+};
+
+export function buildFineRestriction(user: FineRestrictedUser | null | undefined): FineRestrictionSummary | null {
   if (!user) return null;
 
   const lateAmount = Math.max(Math.round(Number(user.lateRegistrationFine) || 0), 0);

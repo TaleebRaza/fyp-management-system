@@ -39,15 +39,15 @@ export async function POST(req: Request) {
     
     return NextResponse.json({ message: 'Supervisor added successfully!' }, { status: 201 });
     
-  } catch (error: any) {
+  } catch (error) {
     // 5. Catch the atomic MongoDB Duplicate Key Error (E11000)
     // This perfectly handles race conditions if two requests hit at the exact same time.
-    if (error.code === 11000) {
+    if ((error as { code?: unknown }).code === 11000) {
       return NextResponse.json({ error: 'This Username/ID or Email already exists!' }, { status: 400 });
     }
     
     // Log the actual error for debugging, but hide it from the client
-    console.error("API Error [add-supervisor]:", error.message);
+    console.error("API Error [add-supervisor]:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Failed to add supervisor.' }, { status: 500 });
   }
 }

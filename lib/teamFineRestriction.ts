@@ -30,8 +30,7 @@ export async function getTeamFineRestriction(
     .select(TEAM_FINE_FIELDS)
     .lean();
 
-  const member = (members.find((item: any) => String(item._id) === currentId) ||
-    members[0]) as any;
+  const member = members.find((item) => String(item._id) === currentId) || members[0];
   if (!member || !buildFineRestriction(member)) return null;
 
   return {

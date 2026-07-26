@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 1. Build the dynamic query based on the batch filter
-    const query: any = {
+    const query: Record<string, unknown> = {
       role: 'student',
       $or: [
         { supervisorId: supervisorId },
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
 
     // 4. Add each student as a single row
     if (students && students.length > 0) {
-      students.forEach((student: any) => {
+      students.forEach((student) => {
         worksheet.addRow({
           name: student.name,
           rollNo: student.rollNo,

@@ -31,7 +31,19 @@ export async function readRegistrationPolicy(session?: ClientSession) {
   return query;
 }
 
-export function serializeRegistrationPolicy(policy: any): RegistrationPolicyDto {
+type RegistrationPolicyRecord = {
+  isOpen?: boolean;
+  closedMessage?: unknown;
+  punishment?: Record<string, unknown> | null;
+  finePayment?: Record<string, unknown> | null;
+  lateFineAccrual?: Record<string, unknown> | null;
+  version?: unknown;
+  updatedAt?: string | number | Date | null;
+  closedAt?: string | number | Date | null;
+  reopenedAt?: string | number | Date | null;
+};
+
+export function serializeRegistrationPolicy(policy: RegistrationPolicyRecord | null | undefined): RegistrationPolicyDto {
   if (!policy) return { ...DEFAULT_REGISTRATION_POLICY };
 
   const punishment = policy.punishment || {};
@@ -63,10 +75,10 @@ export function serializeRegistrationPolicy(policy: any): RegistrationPolicyDto 
       frozenDays: Math.max(Math.trunc(Number(lateFineAccrual.frozenDays) || 0), 0),
       frozenAmount: Math.max(Math.round(Number(lateFineAccrual.frozenAmount) || 0), 0),
       pausedAt: lateFineAccrual.pausedAt
-        ? new Date(lateFineAccrual.pausedAt).toISOString()
+        ? new Date(lateFineAccrual.pausedAt as string | number | Date).toISOString()
         : null,
       resumedAt: lateFineAccrual.resumedAt
-        ? new Date(lateFineAccrual.resumedAt).toISOString()
+        ? new Date(lateFineAccrual.resumedAt as string | number | Date).toISOString()
         : null,
     },
     version: Number.isFinite(Number(policy.version)) ? Number(policy.version) : 0,

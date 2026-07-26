@@ -128,8 +128,8 @@ async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, ses
 
       await newProject.save({ session });
       return newProject;
-    } catch (error: any) {
-      if (error?.code !== 11000) throw error;
+    } catch (error) {
+      if ((error as { code?: unknown })?.code !== 11000) throw error;
     }
   }
 
@@ -212,7 +212,7 @@ export async function resetStudentAcademicInfo({
 
       const isOnlyMember =
         oldProjectMembers.length <= 1 ||
-        oldProjectMembers.every((member: any) => String(member) === String(student._id));
+        oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
 
       if (isOnlyMember) {
         const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(mongoSession);
@@ -221,7 +221,7 @@ export async function resetStudentAcademicInfo({
           buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
           buildDeletionTarget(student.pdfUrl, oldProject.pdfSize),
           ...voiceNotes
-            .map((note: any) => buildDeletionTarget(note.blobUrl, note.fileSize))
+            .map((note) => buildDeletionTarget(note.blobUrl, note.fileSize))
             .filter(Boolean),
         ].filter(Boolean) as DeletionTarget[]);
 
@@ -237,7 +237,7 @@ export async function resetStudentAcademicInfo({
 
         if (voiceNotes.length > 0) {
           await VoiceNote.deleteMany({
-            _id: { $in: voiceNotes.map((note: any) => note._id) },
+            _id: { $in: voiceNotes.map((note) => note._id) },
           }).session(mongoSession);
         }
 

@@ -1,5 +1,5 @@
 // lib/transactionUtils.ts
-import mongoose, { ClientSession } from 'mongoose';
+import { ClientSession } from 'mongoose';
 
 /**
  * Executes a MongoDB transaction with automatic retries for transient concurrency locks.
@@ -25,15 +25,19 @@ export async function withTransactionRetry<T>(
       await session.commitTransaction();
       return result;
       
-    } catch (error: any) {
+    } catch (error) {
       // Always abort the current failed transaction safely
       if (session.inTransaction()) {
         await session.abortTransaction();
       }
 
       // Check if this is a TransientTransactionError or a WriteConflict (112)
-      const isTransient = error.hasErrorLabel && error.hasErrorLabel('TransientTransactionError');
-      const isWriteConflict = error.code === 112;
+      const transactionError = error as {
+        code?: unknown;
+        hasErrorLabel?: (label: string) => boolean;
+      };
+      const isTransient = transactionError.hasErrorLabel?.('TransientTransactionError') === true;
+      const isWriteConflict = transactionError.code === 112;
 
       if ((isTransient || isWriteConflict) && attempt < maxRetries - 1) {
         attempt++;

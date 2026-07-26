@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { useSession, signOut } from "next-auth/react";
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import { Moon, Sun, Loader2, AlertTriangle } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 
@@ -37,6 +38,18 @@ type IntroState = 'checking' | 'showing' | 'complete';
 
 const INTRO_SESSION_KEY = 'fyp_intro_seen';
 const INTRO_SAFETY_TIMEOUT_MS = 7000;
+const subscribeToClient = () => () => {};
+
+async function fetchRegistrationPolicy(): Promise<RegistrationPolicyDto | null> {
+  try {
+    const response = await fetch('/api/registration-policy', { cache: 'no-store' });
+    if (!response.ok) return null;
+    return response.json();
+  } catch (error) {
+    console.error('Unable to load registration policy:', error);
+    return null;
+  }
+}
 
 const PORTAL_THEME = {
   name: 'Professional',
@@ -56,7 +69,8 @@ export default function App() {
   const [registrationPolicy, setRegistrationPolicy] = useState<RegistrationPolicyDto>(
     DEFAULT_REGISTRATION_POLICY
   );
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useSyncExternalStore(subscribeToClient, () => true, () => false);
+  const [isThemeReady, setIsThemeReady] = useState(false);
   const [introState, setIntroState] = useState<IntroState>('checking');
   const [dialog, setDialog] = useState<PortalDialogState>({
     isOpen: false,
@@ -68,14 +82,36 @@ export default function App() {
     inputType: 'text',
     inputOptions: [],
     placeholder: '',
+    instanceId: 0,
   });
 
   const { data: session, status } = useSession();
 
-  useEffect(() => {
-    setIsMounted(true);
+  if (isMounted && !isThemeReady) {
+    setIsThemeReady(true);
     setIsDarkMode(localStorage.getItem('fyp_theme') === 'dark');
-  }, []);
+  }
+
+  if (isMounted && status === 'authenticated' && introState !== 'complete') {
+    setIntroState('complete');
+  }
+
+  if (isMounted && status === 'unauthenticated' && introState === 'checking') {
+    let nextIntroState: IntroState = 'showing';
+
+    try {
+      if (sessionStorage.getItem(INTRO_SESSION_KEY) === '1') {
+        nextIntroState = 'complete';
+      } else {
+        // Mark it before playback so a refresh during the intro does not replay it.
+        sessionStorage.setItem(INTRO_SESSION_KEY, '1');
+      }
+    } catch (error) {
+      console.warn('Session intro storage is unavailable:', error);
+    }
+
+    setIntroState(nextIntroState);
+  }
 
   useEffect(() => {
     if (!isMounted) return;
@@ -84,31 +120,6 @@ export default function App() {
     document.documentElement.classList.toggle('dark', isDarkMode);
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
   }, [isDarkMode, isMounted]);
-
-  useEffect(() => {
-    if (!isMounted || status === 'loading') return;
-
-    if (status === 'authenticated') {
-      setIntroState('complete');
-      return;
-    }
-
-    if (status !== 'unauthenticated') return;
-
-    try {
-      if (sessionStorage.getItem(INTRO_SESSION_KEY) === '1') {
-        setIntroState('complete');
-        return;
-      }
-
-      // Mark it before playback so a refresh during the intro does not replay it.
-      sessionStorage.setItem(INTRO_SESSION_KEY, '1');
-    } catch (error) {
-      console.warn('Session intro storage is unavailable:', error);
-    }
-
-    setIntroState('showing');
-  }, [isMounted, status]);
 
   const handleIntroComplete = useCallback(() => {
     setIntroState('complete');
@@ -127,26 +138,32 @@ export default function App() {
 
   // ✅ useCallback - stable function references
   const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '', inputType = 'text', inputOptions = [], placeholder = '' }: DialogOptions) => {
-    setDialog({ isOpen: true, type, title, message, onConfirm, defaultValue, inputType, inputOptions, placeholder });
+    setDialog((previous) => ({
+      isOpen: true,
+      type,
+      title,
+      message,
+      onConfirm,
+      defaultValue,
+      inputType,
+      inputOptions,
+      placeholder,
+      instanceId: previous.instanceId + 1,
+    }));
   }, []);
 
     const closeDialog = useCallback(() => setDialog(prev => ({ ...prev, isOpen: false })), []);
 
   const loadRegistrationPolicy = useCallback(async (): Promise<RegistrationPolicyDto | null> => {
-    try {
-      const response = await fetch('/api/registration-policy', { cache: 'no-store' });
-      if (!response.ok) return null;
-      const nextPolicy: RegistrationPolicyDto = await response.json();
-      setRegistrationPolicy(nextPolicy);
-      return nextPolicy;
-    } catch (error) {
-      console.error('Unable to load registration policy:', error);
-      return null;
-    }
+    const nextPolicy = await fetchRegistrationPolicy();
+    if (nextPolicy) setRegistrationPolicy(nextPolicy);
+    return nextPolicy;
   }, []);
 
   useEffect(() => {
-    void loadRegistrationPolicy();
+    void fetchRegistrationPolicy().then((nextPolicy) => {
+      if (nextPolicy) setRegistrationPolicy(nextPolicy);
+    });
     const handleFocus = () => void loadRegistrationPolicy();
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
@@ -264,13 +281,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] transition-colors">
-      <PortalDialog dialog={dialog} closeDialog={closeDialog} />
+      <PortalDialog key={dialog.instanceId} dialog={dialog} closeDialog={closeDialog} />
 
       <nav className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="mx-auto flex w-full items-center justify-between px-4 py-3 md:w-[90vw] md:px-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-[var(--color-border)] bg-white">
-              <img src="/logo.png" alt="University Logo" className="h-full w-full object-contain p-1" />
+              <Image src="/logo.png" alt="University Logo" width={40} height={40} className="h-full w-full object-contain p-1" />
             </div>
 
             <h1 className="hidden text-lg font-bold tracking-tight text-[var(--color-text)] sm:block">

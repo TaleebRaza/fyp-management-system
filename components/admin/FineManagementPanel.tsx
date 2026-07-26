@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   CircleDollarSign,
   Clock3,
@@ -20,25 +20,56 @@ import {
   StyledInput,
   TextArea,
 } from '../ui/SharedUI';
+import type { ShowDialog } from '../../app/_components/PortalDialog';
+import type { FineRestrictionSummary } from '../../lib/fineRestriction';
+
+type RestrictedStudent = {
+  id: string;
+  name: string;
+  rollNo: string;
+  program: string;
+  batch: string;
+  projectStatus: string;
+  restriction: FineRestrictionSummary;
+};
+
+type FineManagementData = {
+  students?: RestrictedStudent[];
+  search?: string;
+  limit?: number;
+  finePayment?: typeof EMPTY_PAYMENT;
+  lateFineAccrual?: { paused?: boolean };
+  currentLateFine?: { daysLate: number; fineAmount: number };
+};
+
+const EMPTY_PAYMENT = {
+  methodLabel: '',
+  accountTitle: '',
+  accountNumber: '',
+  instructions: '',
+};
 
 const formatMoney = (value: unknown) => `PKR ${Math.max(Number(value) || 0, 0).toLocaleString()}`;
 
-export default function FineManagementPanel({ showDialog }: any) {
-  const [data, setData] = useState<any>(null);
+async function loadFineData(searchTerm = ''): Promise<FineManagementData> {
+  const query = searchTerm ? `?q=${encodeURIComponent(searchTerm)}` : '';
+  const response = await fetch(`/api/admin/fines${query}`, { cache: 'no-store' });
+  const json = await response.json();
+  if (!response.ok) throw new Error(json.error || 'Unable to load fine management.');
+  return json;
+}
+
+export default function FineManagementPanel({ showDialog }: { showDialog: ShowDialog }) {
+  const [data, setData] = useState<FineManagementData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isListLoading, setIsListLoading] = useState(false);
   const [busyAction, setBusyAction] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
-  const [payment, setPayment] = useState({
-    methodLabel: '',
-    accountTitle: '',
-    accountNumber: '',
-    instructions: '',
-  });
+  const [payment, setPayment] = useState(EMPTY_PAYMENT);
 
-  const applyPayload = (payload: any) => {
-    setData((previous: any) => ({ ...(previous || {}), ...payload }));
+  const applyPayload = useCallback((payload: FineManagementData) => {
+    setData((previous) => ({ ...(previous || {}), ...payload }));
     setActiveSearch(payload?.search || '');
 
     if (payload?.finePayment) {
@@ -49,22 +80,18 @@ export default function FineManagementPanel({ showDialog }: any) {
         instructions: payload.finePayment.instructions || '',
       });
     }
-  };
+  }, []);
 
   const fetchData = async (searchTerm = '') => {
     if (data) setIsListLoading(true);
     else setIsLoading(true);
 
     try {
-      const query = searchTerm ? `?q=${encodeURIComponent(searchTerm)}` : '';
-      const response = await fetch(`/api/admin/fines${query}`, { cache: 'no-store' });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Unable to load fine management.');
-      applyPayload(json);
-    } catch (error: any) {
+      applyPayload(await loadFineData(searchTerm));
+    } catch (error) {
       showDialog({
         title: 'Fine management unavailable',
-        message: error.message || 'Unable to load fine management.',
+        message: error instanceof Error ? error.message : 'Unable to load fine management.',
       });
     } finally {
       setIsLoading(false);
@@ -73,10 +100,16 @@ export default function FineManagementPanel({ showDialog }: any) {
   };
 
   useEffect(() => {
-    void fetchData();
-    // Fine data should load only when this tab is mounted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void loadFineData()
+      .then(applyPayload)
+      .catch((error: unknown) => {
+        showDialog({
+          title: 'Fine management unavailable',
+          message: error instanceof Error ? error.message : 'Unable to load fine management.',
+        });
+      })
+      .finally(() => setIsLoading(false));
+  }, [applyPayload, showDialog]);
 
   const runAction = async (action: string, extra: Record<string, unknown> = {}) => {
     setBusyAction(action + String(extra.studentId || ''));
@@ -96,31 +129,31 @@ export default function FineManagementPanel({ showDialog }: any) {
           accountNumber: json.finePayment.accountNumber || '',
           instructions: json.finePayment.instructions || '',
         });
-        setData((previous: any) => ({ ...previous, finePayment: json.finePayment }));
+        setData((previous) => ({ ...(previous || {}), finePayment: json.finePayment }));
       }
 
       if (json.lateFineAccrual || json.currentLateFine) {
-        setData((previous: any) => ({
-          ...previous,
+        setData((previous) => ({
+          ...(previous || {}),
           ...(json.lateFineAccrual ? { lateFineAccrual: json.lateFineAccrual } : {}),
           ...(json.currentLateFine ? { currentLateFine: json.currentLateFine } : {}),
         }));
       }
 
       if (json.studentId) {
-        setData((previous: any) => ({
-          ...previous,
+        setData((previous) => ({
+          ...(previous || {}),
           students: (previous?.students || []).filter(
-            (student: any) => student.id !== json.studentId
+            (student) => student.id !== json.studentId
           ),
         }));
       }
 
       showDialog({ title: 'Fine management updated', message: json.message });
-    } catch (error: any) {
+    } catch (error) {
       showDialog({
         title: 'Update failed',
-        message: error.message || 'Unable to update fine management.',
+        message: error instanceof Error ? error.message : 'Unable to update fine management.',
       });
     } finally {
       setBusyAction('');
@@ -159,7 +192,7 @@ export default function FineManagementPanel({ showDialog }: any) {
     void fetchData('');
   };
 
-  const confirmClear = (student: any) => {
+  const confirmClear = (student: RestrictedStudent) => {
     showDialog({
       type: 'confirm',
       title: `Verify payment for ${student.name}?`,
@@ -383,7 +416,7 @@ export default function FineManagementPanel({ showDialog }: any) {
           </div>
         ) : (
           <div className="space-y-3">
-            {students.map((student: any) => (
+            {students.map((student) => (
               <div
                 key={student.id}
                 className="grid gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-5 lg:grid-cols-[1fr_auto] lg:items-center"

@@ -1,13 +1,27 @@
 // components/dashboards/BroadcastWidget.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Megaphone, Mic, Type, X, Square, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { ShowDialog } from '../../app/_components/PortalDialog';
 
-export default function BroadcastWidget({ isDarkMode, theme }: any) {
-  const [mounted, setMounted] = useState(false);
+type BroadcastWidgetProps = {
+  isDarkMode: boolean;
+  showDialog?: ShowDialog;
+  theme?: {
+    lightBg?: string;
+    text?: string;
+    ring?: string;
+    bg?: string;
+  };
+};
+
+const subscribeToClient = () => () => {};
+
+export default function BroadcastWidget({ isDarkMode, theme }: BroadcastWidgetProps) {
+  const mounted = useSyncExternalStore(subscribeToClient, () => true, () => false);
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'text' | 'audio'>('text');
   const [textContent, setTextContent] = useState('');
@@ -22,11 +36,6 @@ export default function BroadcastWidget({ isDarkMode, theme }: any) {
   // Submit State
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-
-  // Ensure portal only renders on the client to prevent SSR hydration errors
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const startRecording = async () => {
     try {
@@ -58,7 +67,7 @@ export default function BroadcastWidget({ isDarkMode, theme }: any) {
           return prev + 1;
         });
       }, 1000);
-    } catch (err) {
+    } catch {
       alert("Microphone access denied or unavailable.");
     }
   };
@@ -132,7 +141,7 @@ export default function BroadcastWidget({ isDarkMode, theme }: any) {
         setTextContent('');
         setAudioBlob(null);
       }, 1500);
-    } catch (err) {
+    } catch {
       alert('Error publishing broadcast. Please try again.');
     } finally {
       setIsSubmitting(false);

@@ -5,17 +5,36 @@ import Project from '../../../../models/Project';
 import {
   buildFineRestriction,
   OUTSTANDING_STUDENT_FINE_FILTER,
+  type FineRestrictedUser,
 } from '../../../../lib/fineRestriction';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 
 export const dynamic = 'force-dynamic';
 
 type CountRow = {
-  _id: any;
+  _id: unknown;
   total: number;
 };
 
-const normalizeLabel = (value: any, fallback: string) => {
+type SupervisorRow = {
+  _id: unknown;
+  name?: string;
+  rollNo?: string;
+};
+
+type SupervisorCountRow = CountRow & {
+  active?: number;
+  deactivated?: number;
+};
+
+type FinedStudentRecord = FineRestrictedUser & {
+  name?: string;
+  rollNo?: string;
+  program?: string;
+  batch?: string;
+};
+
+const normalizeLabel = (value: unknown, fallback: string) => {
   const label = String(value || '').trim();
   return label || fallback;
 };
@@ -205,14 +224,14 @@ export async function GET(req: NextRequest) {
     ]);
 
     const supervisorMap = new Map(
-      supervisors.map((supervisor: any) => [
+      (supervisors as SupervisorRow[]).map((supervisor) => [
         String(supervisor._id),
         supervisor.name || supervisor.rollNo || 'Unknown Supervisor',
       ])
     );
 
-    const supervisorRows = supervisors.map((supervisor: any) => {
-      const raw = studentsPerSupervisorRaw.find((item: any) => String(item._id) === String(supervisor._id));
+    const supervisorRows = (supervisors as SupervisorRow[]).map((supervisor) => {
+      const raw = (studentsPerSupervisorRaw as SupervisorCountRow[]).find((item) => String(item._id) === String(supervisor._id));
 
       return {
         supervisorId: String(supervisor._id),
@@ -223,12 +242,12 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const extraRows = studentsPerSupervisorRaw
-      .filter((item: any) => {
+    const extraRows = (studentsPerSupervisorRaw as SupervisorCountRow[])
+      .filter((item) => {
         const id = String(item._id || 'unassigned');
         return id === 'unassigned' || !supervisorMap.has(id);
       })
-      .map((item: any) => {
+      .map((item) => {
         const id = String(item._id || 'unassigned');
 
         return {
@@ -246,7 +265,7 @@ export async function GET(req: NextRequest) {
     const studentTotals = Array.isArray(studentTotalsRaw) && studentTotalsRaw.length > 0
       ? studentTotalsRaw[0]
       : { students: 0, activeStudents: 0, deactivatedStudents: 0, assignedStudents: 0, unassignedStudents: 0 };
-    const finedStudents = finedStudentsRaw.flatMap((student: any) => {
+    const finedStudents = (finedStudentsRaw as FinedStudentRecord[]).flatMap((student) => {
       const restriction = buildFineRestriction(student);
       if (!restriction) return [];
 
@@ -272,7 +291,7 @@ export async function GET(req: NextRequest) {
         },
       ];
     });
-    const totalFineAmount = finedStudents.reduce((sum: number, student: any) => sum + student.fineAmount, 0);
+    const totalFineAmount = finedStudents.reduce((sum, student) => sum + student.fineAmount, 0);
 
     const students = Number(studentTotals.students || 0);
     const activeStudents = Number(studentTotals.activeStudents || 0);

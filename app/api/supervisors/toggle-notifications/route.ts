@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     await User.findByIdAndUpdate(id, { notificationsEnabled: enabled });
     
     return NextResponse.json({ message: 'Notification settings updated' }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
   }
 }

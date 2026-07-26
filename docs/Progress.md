@@ -4,11 +4,11 @@
 
 - Date: 2026-07-26
 - Branch: `fyp-v2`
-- Status: Milestones 0–9 complete; refactoring roadmap complete
+- Status: Milestones 0–9 complete; post-roadmap repository lint cleanup complete
 - Roadmap progress: 100% (10 of 10 milestones complete)
-- Current milestone: Milestone 9 — complete
-- Current sub-step: final audit, validation, and documentation complete
-- Working tree: contains only the planned Milestones 6–9 refactor and documentation changes
+- Current milestone: post-roadmap lint cleanup — complete
+- Current sub-step: all 140 fresh lint findings resolved and validated
+- Working tree: contains only the post-roadmap lint cleanup and its documentation updates
 
 ## Objective
 
@@ -68,6 +68,19 @@ Database- and storage-related duplication was observed during the audit but is e
 | 9. Final product-quality pass | Complete | Audited residue and completed the final automated validation baseline. |
 
 ## Completed work
+
+### 2026-07-26 — Post-roadmap repository lint cleanup
+
+- Fresh baseline: `npm run lint` reported 140 findings (110 errors and 30 warnings) across 42 files.
+- Result: `npm run lint` passes with zero errors and zero warnings; no lint rule or TypeScript strictness was disabled.
+- Fixes: replaced explicit `any` at API, Mongoose-result, session, component-prop, and browser-timer boundaries; removed unused bindings; corrected hook dependencies and effect/state patterns; replaced three logo `<img>` elements with `next/image`; added the feature-specific NextAuth session/JWT augmentation in `types/next-auth.d.ts`.
+- Behavior protected: API routes, methods, payloads, responses, status codes, database and storage operations, authentication/authorization/ownership checks, transaction handling, dialog defaults, browser drafts, theme/intro behavior, dashboard refreshes, microphone/broadcast flows, wording, and accessibility remain unchanged.
+- Validation: `npm run lint` passed with no findings; `npx tsc --noEmit` passed with no output; the production build passed with a non-production localhost MongoDB placeholder and generated all 21 static pages; a local production request to `/` returned HTTP 200; `git diff --check` passed.
+- Environment evidence: the sandboxed build retained the known Turbopack internal-port failure. An outside-sandbox build without `MONGODB_URI` compiled and passed TypeScript before route-data collection stopped; supplying only a localhost placeholder allowed full build validation. Missing R2 credential notices and the middleware deprecation notice are pre-existing environment/framework warnings.
+- Tests: no tracked automated test suite exists; no production database or storage write was performed.
+- New failures: none.
+- Ponytail review: reused existing feature types, `ShowDialog`, `FineRestrictionSummary`, React state primitives, and installed Next/React capabilities. Added no dependency, service, generic helper module, state library, or lint suppression. The only new abstraction is the NextAuth module augmentation needed to type the existing session contract once. Security checks, validation, transactional cleanup, storage accounting, and error responses remain intact.
+- Next action: review and commit this lint-cleanup diff, then run the authenticated staging checklist when admin, supervisor, and student staging credentials are available.
 
 ### 2026-07-26 — Milestone 9: final product-quality pass
 
@@ -257,7 +270,7 @@ Database- and storage-related duplication was observed during the audit but is e
 
 ## Exact next action
 
-Review and commit the validated Milestones 6–9 diff, then run the documented authenticated staging checklist when admin, supervisor, and student staging credentials are available.
+Review and commit the validated lint-cleanup and refactor diff, then run the documented authenticated staging checklist when admin, supervisor, and student staging credentials are available.
 
 ## Explicitly deferred
 

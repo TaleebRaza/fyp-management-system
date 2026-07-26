@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
       session.endSession();
       throw transactionError;
     }
-  } catch (error: any) {
-    console.error('Delete Supervisor Error:', error.message);
+  } catch (error) {
+    console.error('Delete Supervisor Error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Failed to delete supervisor' }, { status: 500 });
   }
 }

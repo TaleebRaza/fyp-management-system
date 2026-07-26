@@ -12,7 +12,7 @@ export async function GET() {
     // Fetch the most recently created active headline
     const latestHeadline = await Headline.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ headline: latestHeadline }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch headline' }, { status: 500 });
   }
 }
@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
     }
     
     return NextResponse.json({ message: 'Headline updated successfully!' }, { status: 200 });
-  } catch (error: any) {
-    console.error('Headline API Error:', error.message);
+  } catch (error) {
+    console.error('Headline API Error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Failed to update headline' }, { status: 500 });
   }
 }

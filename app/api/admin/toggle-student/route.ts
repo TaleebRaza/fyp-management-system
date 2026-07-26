@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ 
         message: `Student account ${isActive ? 'restored' : 'deactivated'} successfully` 
     }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to update student status' }, { status: 500 });
   }
 }

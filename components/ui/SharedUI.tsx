@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 
 type IconComponent = React.ComponentType<{
   size?: number;
@@ -619,7 +620,7 @@ React.useEffect(() => {
     <>
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--color-border)] bg-white">
-          <img src={logoSrc} alt="University Logo" className="h-full w-full object-contain p-1" />
+          <Image src={logoSrc} alt="University Logo" width={44} height={44} className="h-full w-full object-contain p-1" />
         </div>
 
         <div className="min-w-0">

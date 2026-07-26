@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown, Globe, X } from 'lucide-react';
 import {
   PROJECT_DOMAIN_GROUPS,
@@ -22,9 +22,7 @@ export default function ProjectDomainSelector({
 }: ProjectDomainSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  useEffect(() => {
-    if (disabled) setIsOpen(false);
-  }, [disabled]);
+  if (disabled && isOpen) setIsOpen(false);
 
   const toggleDomain = (domainId: string) => {
     if (disabled) return;

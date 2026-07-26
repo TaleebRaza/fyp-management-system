@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle, FileText, XCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -17,6 +17,7 @@ export type DialogOptions = {
 
 export type PortalDialogState = Required<DialogOptions> & {
   isOpen: boolean;
+  instanceId: number;
 };
 
 export type ShowDialog = (options: DialogOptions) => void;
@@ -29,10 +30,6 @@ export default function PortalDialog({
   closeDialog: () => void;
 }) {
   const [inputValue, setInputValue] = useState(dialog.defaultValue);
-
-  useEffect(() => {
-    if (dialog.isOpen) setInputValue(dialog.defaultValue || '');
-  }, [dialog.isOpen, dialog.defaultValue]);
 
   const isDanger =
     dialog.type === 'confirm' ||

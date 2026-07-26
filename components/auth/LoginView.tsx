@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { signIn } from 'next-auth/react';
 import { ArrowRight, Loader2, Lock, LogIn, User } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import PasswordResetFlow from './PasswordResetFlow';
@@ -69,7 +70,7 @@ export default function LoginView({
       <section className="hidden lg:block">
         <div className="flex max-w-xl flex-col items-start justify-center">
           <div className="mb-8 flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.75rem] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)]">
-            <img src="/logo.png" alt="University Of Haripur logo" className="h-full w-full object-contain p-3" />
+            <Image src="/logo.png" alt="University Of Haripur logo" width={112} height={112} className="h-full w-full object-contain p-3" />
           </div>
 
           <h1 className="max-w-lg text-5xl font-black leading-tight tracking-tight text-[var(--color-text)] xl:text-6xl">

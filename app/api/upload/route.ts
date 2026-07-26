@@ -81,8 +81,8 @@ export async function POST(req: NextRequest) {
     });
     const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 });
     return NextResponse.json({ uploadUrl, url: key });
-  } catch (error: any) {
-    console.error('Client Upload Token Generation Handshake Error:', error.message);
+  } catch (error) {
+    console.error('Client Upload Token Generation Handshake Error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: 'Server token generation routing aborted.' },
       { status: 500 }

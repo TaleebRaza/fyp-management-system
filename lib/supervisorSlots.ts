@@ -13,10 +13,10 @@ export function normalizeExtraSupervisorSlots(value: unknown) {
   );
 }
 
-export function getSupervisorExtraSlots(supervisor: any) {
+export function getSupervisorExtraSlots(supervisor: { extraSlots?: unknown } | null | undefined) {
   return normalizeExtraSupervisorSlots(supervisor?.extraSlots ?? 0);
 }
 
-export function getSupervisorMaxSlots(supervisor: any) {
+export function getSupervisorMaxSlots(supervisor: { extraSlots?: unknown } | null | undefined) {
   return APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR + getSupervisorExtraSlots(supervisor);
 }

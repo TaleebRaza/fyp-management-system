@@ -63,15 +63,15 @@ async function decrementStorageLedger(bytes: number, session?: ClientSession) {
   );
 }
 
-async function createProjectWithUniqueInviteCode(projectData: any, session: ClientSession) {
+async function createProjectWithUniqueInviteCode(projectData: Record<string, unknown>, session: ClientSession) {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const inviteCode = createInviteCode();
       const project = new Project({ ...projectData, inviteCode });
       await project.save({ session });
       return project;
-    } catch (error: any) {
-      if (error?.code !== 11000) throw error;
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== 11000) throw error;
     }
   }
 
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
     // Fetch associated projects to get the timeline stage.
     const projectIds = students.map(s => s.projectId).filter(Boolean);
     const projects = await Project.find({ _id: { $in: projectIds } }).lean();
-    const projectMetadata = projects.reduce((acc: any, p: any) => {
+    const projectMetadata = projects.reduce<Record<string, { stage: string; maxTeamSize: number; domains: string[]; domain: string }>>((acc, p) => {
       const domainIds = normalizeProjectDomainIds(p.domains, p.domain);
 
       acc[p._id.toString()] = {
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
 
     const projectMap = new Map();
 
-    students.forEach((student: any) => {
+    students.forEach((student) => {
       const pId = student.projectId ? student.projectId.toString() : `legacy-${student._id.toString()}`;
       
       if (!projectMap.has(pId)) {
@@ -226,8 +226,8 @@ export async function POST(req: NextRequest) {
                 await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }));
                 await decrementStorageLedger(target.size);
                 console.log(`Timeline advance cleanup: deleted previous stage PDF -> ${target.key}`);
-              } catch (e: any) {
-                console.error('Failed to wipe old stage PDF:', e.message);
+              } catch (error) {
+                console.error('Failed to wipe old stage PDF:', error instanceof Error ? error.message : error);
               }
             }
           }
@@ -402,7 +402,7 @@ export async function POST(req: NextRequest) {
           const projectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
           const isOnlyMember =
             projectMembers.length <= 1 ||
-            projectMembers.every((member: any) => String(member) === String(studentInTx._id));
+            projectMembers.every((member: unknown) => String(member) === String(studentInTx._id));
 
           if (isOnlyMember) {
             const inheritedDomainIds = normalizeProjectDomainIds(

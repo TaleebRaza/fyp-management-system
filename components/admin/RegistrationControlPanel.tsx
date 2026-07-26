@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle,
   Banknote,
@@ -28,6 +28,7 @@ type RegistrationPolicyDraft = Pick<RegistrationPolicyDto, 'isOpen' | 'closedMes
 };
 
 const REGISTRATION_POLICY_DRAFT_KEY = 'fyp-portal:admin-registration-policy-draft:v1';
+const subscribeToClient = () => () => {};
 
 const toEditablePolicy = (policy: RegistrationPolicyDto): RegistrationPolicyDraft => ({
   isOpen: policy.isOpen,
@@ -62,6 +63,7 @@ export default function RegistrationControlPanel({
     toEditablePolicy(initialPolicy)
   );
   const [isDraftReady, setIsDraftReady] = useState(false);
+  const [loadedPolicySignature, setLoadedPolicySignature] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -69,15 +71,17 @@ export default function RegistrationControlPanel({
     () => JSON.stringify(toEditablePolicy(initialPolicy)),
     [initialPolicy]
   );
+  const isMounted = useSyncExternalStore(subscribeToClient, () => true, () => false);
 
-  useEffect(() => {
+  if (isMounted && (!isDraftReady || loadedPolicySignature !== initialPolicySignature)) {
     const baseline = toEditablePolicy(initialPolicy);
     const draft = readBrowserDraft<RegistrationPolicyDraft>(REGISTRATION_POLICY_DRAFT_KEY);
 
     setSavedPolicy(baseline);
     setPolicy(draft ? mergePolicyDraft(initialPolicy, draft) : initialPolicy);
     setIsDraftReady(true);
-  }, [initialPolicy, initialPolicySignature]);
+    setLoadedPolicySignature(initialPolicySignature);
+  }
 
   useEffect(() => {
     if (!isDraftReady) return;

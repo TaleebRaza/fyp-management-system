@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
-    console.error('Update Supervisor Slots Error:', error.message);
+  } catch (error) {
+    console.error('Update Supervisor Slots Error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Failed to update supervisor slots.' }, { status: 500 });
   }
 }

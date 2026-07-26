@@ -127,8 +127,9 @@ export async function POST(req: Request) {
     );
 
     if (!transactionPolicyDocument) {
-      const closedError: any = new Error('Registration is currently closed.');
-      closedError.code = 'REGISTRATION_CLOSED';
+      const closedError = Object.assign(new Error('Registration is currently closed.'), {
+        code: 'REGISTRATION_CLOSED',
+      });
       throw closedError;
     }
 
@@ -181,10 +182,12 @@ export async function POST(req: Request) {
       },
       { status: 201 }
     );
-    } catch (transactionError: any) {
+    } catch (transactionError) {
       if (session.inTransaction()) await session.abortTransaction();
 
-          if (transactionError?.code === 'REGISTRATION_CLOSED') {
+      const errorCode = (transactionError as { code?: unknown }).code;
+
+          if (errorCode === 'REGISTRATION_CLOSED') {
       const latestPolicy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
       return NextResponse.json(
         {
@@ -195,7 +198,7 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
-    if (transactionError?.code === 11000) {
+    if (errorCode === 11000) {
       return NextResponse.json({ error: 'This roll number or email is already registered.' }, { status: 400 });
     }
 
@@ -203,8 +206,8 @@ export async function POST(req: Request) {
     } finally {
       await session.endSession();
     }
-  } catch (error: any) {
-    console.error('Registration error:', error?.message || error);
+  } catch (error) {
+    console.error('Registration error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
   }
 }

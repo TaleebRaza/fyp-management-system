@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
   CircleDollarSign,
@@ -156,11 +156,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
       ? 'Project uploads are locked until the administrator verifies and clears your outstanding fine.'
       : `Project uploads are locked because ${restrictedMemberLabel} has an outstanding fine. The administrator must clear it before any team member can upload the proposal.`;
 
-  useEffect(() => {
-    if (activeTab === 'fine' && !fineRestriction) {
-      setActiveTab('project');
-    }
-  }, [activeTab, fineRestriction]);
+  if (activeTab === 'fine' && !fineRestriction) setActiveTab('project');
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
   const maxTeamSize = getTeamCapacity(project?.maxTeamSize);
@@ -255,7 +251,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     localSups.find((supervisorItem) => String(supervisorItem._id) === String(selectedSupervisorId))?.name ||
     'the selected supervisor';
 
-  const fetchHeadline = async () => {
+  const fetchHeadline = useCallback(async () => {
     try {
       const response = await fetch('/api/headline');
       const json = await response.json();
@@ -264,9 +260,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     } catch (error) {
       console.error('Failed to fetch headline:', error);
     }
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const userId = (session.user as { id?: string }).id;
       if (!userId) return;
@@ -330,9 +326,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [session.user, showDialog]);
 
-  const fetchSupervisors = async () => {
+  const fetchSupervisors = useCallback(async () => {
     try {
       const response = await fetch('/api/supervisors');
       const json = await response.json();
@@ -341,7 +337,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     } catch (error) {
       console.error('Supervisor fetch error:', error);
     }
-  };
+  }, []);
 
   const fetchTemplatesByStage = async () => {
     if (cachedTemplateStage === currentStage && cachedTemplates.length > 0) return;
@@ -391,13 +387,14 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   };
 
   useEffect(() => {
-    fetchHeadline();
-    fetchData();
-    fetchSupervisors();
-  }, [session]);
+    void Promise.resolve().then(() => {
+      void fetchHeadline();
+      void fetchData();
+      void fetchSupervisors();
+    });
+  }, [fetchData, fetchHeadline, fetchSupervisors]);
 
   // No polling: only re-check a restricted account when the browser tab becomes visible again.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!isFineRestricted) return;
 
@@ -409,7 +406,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
     document.addEventListener('visibilitychange', refreshFineStatus);
     return () => document.removeEventListener('visibilitychange', refreshFineStatus);
-  }, [isFineRestricted]);
+  }, [fetchData, isFineRestricted]);
 
   useEffect(() => {
     if (!projectDraftKey || !isProjectDraftReady) return;

@@ -388,3 +388,16 @@ These audit findings are not milestones under the current authorization:
 - Database migrations, schema cleanup, index changes, or data repair.
 
 They may be reconsidered only as separately approved work with staging coverage and an explicit production-risk review.
+
+## 2026-07-26 — Post-roadmap repository lint cleanup
+
+- Branch: `fyp-v2`.
+- Completed sub-step: resolved the fresh repository lint baseline of 140 findings (110 errors and 30 warnings) without changing lint configuration.
+- Files changed: 22 API route files, 12 frontend files, 7 existing library files, `types/next-auth.d.ts`, and the two milestone documents.
+- Tests and checks: no tracked automated test suite exists. `npm run lint` passed with zero findings; `npx tsc --noEmit` passed with no output; `env MONGODB_URI=mongodb://127.0.0.1:27017/fyp npm run build` passed and generated all 21 static pages; a local production landing-page request returned HTTP 200; `git diff --check` passed.
+- Existing baseline failures: the first sandboxed build hit the recorded Turbopack internal-port restriction; an outside-sandbox build without a MongoDB variable compiled and type-checked but could not collect route data. The final build used a non-production localhost placeholder and passed. Missing R2 credential notices and the Next.js middleware deprecation warning remain environmental/baseline warnings.
+- New failures: none.
+- Decisions: replaced explicit `any` with narrow local or shared types; added one NextAuth module augmentation; removed unused bindings; used `next/image` for the three logo renderers; made effect-driven state synchronization lint-safe without disabling rules; preserved API routes, payloads, status codes, authorization, ownership checks, database/storage operations, dialog behavior, drafts, and dashboard refresh behavior.
+- Known risk: authenticated role workflows still require the documented staging credentials for full manual coverage.
+- Exact next action: review and commit the lint-cleanup diff, then run the authenticated staging checklist when role credentials are available.
+- Explicitly deferred: middleware migration, dependency upgrades, and any database/storage/API behavior refactor.

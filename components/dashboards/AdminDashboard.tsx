@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
   BarChart3,
@@ -136,7 +136,7 @@ const AdminDashboard = ({
     return toReportRows(reportsData, selectedReportId);
   }, [reportsData, selectedReportId]);
 
-  const fetchHeadline = async () => {
+  const fetchHeadline = useCallback(async () => {
     try {
       const response = await fetch('/api/headline');
       const data = await response.json();
@@ -145,9 +145,9 @@ const AdminDashboard = ({
     } catch (error) {
       console.error('Headline fetch error:', error);
     }
-  };
+  }, []);
 
-  const fetchSupervisors = async () => {
+  const fetchSupervisors = useCallback(async () => {
     try {
       const response = await fetch('/api/admin/supervisors', { cache: 'no-store' });
       const data = await response.json();
@@ -156,9 +156,9 @@ const AdminDashboard = ({
     } catch (error) {
       console.error('Supervisor fetch error:', error);
     }
-  };
+  }, []);
 
-  const fetchStudents = async (pageToFetch = studentPage) => {
+  const fetchStudents = useCallback(async (pageToFetch = studentPage) => {
     try {
       setIsStudentsLoading(true);
 
@@ -206,7 +206,7 @@ const AdminDashboard = ({
     } finally {
       setIsStudentsLoading(false);
     }
-  };
+  }, [batchFilter, debouncedStudentSearch, showDialog, studentFilter, studentPage, studentPagination.limit]);
 
 
   const fetchReportsData = async () => {
@@ -270,9 +270,11 @@ const AdminDashboard = ({
   };
 
   useEffect(() => {
-    fetchSupervisors();
-    fetchHeadline();
-  }, []);
+    void Promise.resolve().then(() => {
+      void fetchSupervisors();
+      void fetchHeadline();
+    });
+  }, [fetchHeadline, fetchSupervisors]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -284,8 +286,8 @@ const AdminDashboard = ({
   }, [studentSearch]);
 
   useEffect(() => {
-    fetchStudents(studentPage);
-  }, [studentPage, studentFilter, batchFilter, debouncedStudentSearch]);
+    void Promise.resolve().then(() => fetchStudents(studentPage));
+  }, [fetchStudents, studentPage]);
 
   const handleBroadcastHeadline = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -322,7 +324,7 @@ const AdminDashboard = ({
           message: data.error || 'Failed to update the headline announcement.',
         });
       }
-    } catch (error) {
+    } catch {
       showDialog({
         title: 'Connection error',
         message: 'Unable to publish the announcement right now.',
@@ -352,7 +354,7 @@ const AdminDashboard = ({
           message: data.error || 'Failed to clear the headline announcement.',
         });
       }
-    } catch (error) {
+    } catch {
       showDialog({
         title: 'Connection error',
         message: 'Unable to clear the announcement right now.',
@@ -406,7 +408,7 @@ const AdminDashboard = ({
           message: data.error || 'Failed to add the supervisor.',
         });
       }
-    } catch (error) {
+    } catch {
       showDialog({
         title: 'Connection error',
         message: 'Unable to create supervisor right now.',
@@ -436,7 +438,7 @@ const AdminDashboard = ({
               message: 'Failed to delete the supervisor.',
             });
           }
-        } catch (error) {
+        } catch {
           showDialog({
             title: 'Connection error',
             message: 'Unable to delete supervisor right now.',
@@ -462,7 +464,7 @@ const AdminDashboard = ({
           message: 'Failed to update supervisor notification settings.',
         });
       }
-    } catch (error) {
+    } catch {
       showDialog({
         title: 'Connection error',
         message: 'Unable to update notification settings right now.',
@@ -532,7 +534,7 @@ const AdminDashboard = ({
           message: data.error || 'Failed to update supervisor extra slots.',
         });
       }
-    } catch (error) {
+    } catch {
       showDialog({
         title: 'Connection error',
         message: 'Unable to update supervisor slots right now.',
@@ -593,7 +595,7 @@ const AdminDashboard = ({
               message: data.error || 'Failed to update email.',
             });
           }
-        } catch (error) {
+        } catch {
           showDialog({
             title: 'Connection error',
             message: 'Unable to update email right now.',
@@ -752,7 +754,7 @@ const AdminDashboard = ({
           message: 'Failed to update student account status.',
         });
       }
-    } catch (error) {
+    } catch {
       showDialog({
         title: 'Connection error',
         message: 'Unable to update student status right now.',

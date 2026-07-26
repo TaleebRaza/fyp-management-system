@@ -114,8 +114,8 @@ export async function GET(req: Request) {
     
     return NextResponse.json({ message: resultMessage }, { status: 200 });
 
-  } catch (error: any) {
-    console.error('Cron Cleanup Error:', error.message);
+  } catch (error) {
+    console.error('Cron Cleanup Error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Failed to execute scheduled cleanup.' }, { status: 500 });
   }
 }

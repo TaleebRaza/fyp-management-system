@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
         await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
         sizeDelta -= (supervisor.broadcastSize || 0); // Refund the bytes
         console.log(`🧹 Broadcast Overwrite: Wiped old audio -> ${keyToDelete}`);
-      } catch (e: any) {
-        console.error('Failed to wipe old broadcast audio:', e.message);
+      } catch (error) {
+        console.error('Failed to wipe old broadcast audio:', error instanceof Error ? error.message : error);
       }
     }
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ message: 'Broadcast published successfully!' }, { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Broadcast POST Error:', error);
     return NextResponse.json({ error: 'Failed to publish broadcast.' }, { status: 500 });
   }
@@ -98,8 +98,8 @@ export async function DELETE(req: NextRequest) {
         await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
         sizeRefund = supervisor.broadcastSize || 0;
         console.log(`🧹 Broadcast Clear: Wiped audio -> ${keyToDelete}`);
-      } catch (e: any) {
-        console.error('Failed to wipe broadcast audio during clear:', e.message);
+      } catch (error) {
+        console.error('Failed to wipe broadcast audio during clear:', error instanceof Error ? error.message : error);
       }
     }
 
@@ -120,7 +120,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     return NextResponse.json({ message: 'Broadcast cleared.' }, { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Broadcast DELETE Error:', error);
     return NextResponse.json({ error: 'Failed to clear broadcast.' }, { status: 500 });
   }

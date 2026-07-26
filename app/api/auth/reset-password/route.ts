@@ -53,8 +53,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ message: 'Password successfully updated! You can now log in.' }, { status: 200 });
-  } catch (error: any) {
-    console.error('Password reset error:', error?.message || error);
+  } catch (error) {
+    console.error('Password reset error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Failed to reset password.' }, { status: 500 });
   }
 }

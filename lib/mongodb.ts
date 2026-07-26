@@ -8,12 +8,16 @@ if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
 }
 
-// Memory cache to prevent reconnecting thousands of times in Next.js
-let cached = (global as any).mongoose;
+type MongooseCache = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+};
 
-if (!cached) {
-  cached = (global as any).mongoose = { conn: null, promise: null };
-}
+// Memory cache to prevent reconnecting thousands of times in Next.js
+const globalWithMongoose = global as typeof globalThis & { mongoose?: MongooseCache };
+const cached: MongooseCache =
+  globalWithMongoose.mongoose ||
+  (globalWithMongoose.mongoose = { conn: null, promise: null });
 
 async function connectToDatabase() {
   // If we are already connected, just return the existing connection

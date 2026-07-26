@@ -90,16 +90,16 @@ const handler = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
-        token.rollNo = (user as any).rollNo;
+        token.role = user.role;
+        token.rollNo = user.rollNo;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).role = token.role;
-        (session.user as any).rollNo = token.rollNo;
+        session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        session.user.rollNo = token.rollNo as string;
       }
       return session;
     }
@@ -134,12 +134,18 @@ function enforceBrowserSession(response: Response) {
 }
 
 // We must pass the "context" object so NextAuth knows the exact route parameters
-export async function GET(req: Request, context: any) {
-  const response = await handler(req as any, context);
+export async function GET(
+  req: Parameters<typeof handler>[0],
+  context: Parameters<typeof handler>[1]
+) {
+  const response = await handler(req, context);
   return enforceBrowserSession(response);
 }
 
-export async function POST(req: Request, context: any) {
-  const response = await handler(req as any, context);
+export async function POST(
+  req: Parameters<typeof handler>[0],
+  context: Parameters<typeof handler>[1]
+) {
+  const response = await handler(req, context);
   return enforceBrowserSession(response);
 }

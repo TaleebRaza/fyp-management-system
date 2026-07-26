@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ 
       message: `Successfully promoted ${result.modifiedCount} students in ${targetBatch} to 8th Semester!` 
     }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to promote batch' }, { status: 500 });
   }
 }

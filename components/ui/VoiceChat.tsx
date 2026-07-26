@@ -1,38 +1,55 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Send, Play, Loader2, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { Mic, Square, Play, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
-export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) => {
+type VoiceMessage = {
+  _id: string;
+  senderId: { _id: string; name: string };
+  blobUrl: string;
+  isPlayed: boolean;
+  isUploading?: boolean;
+};
+
+type VoiceChatProps = {
+  projectId: string;
+  currentUserId: string;
+  theme: { text?: string; bg?: string };
+  isDarkMode: boolean;
+};
+
+export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: VoiceChatProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<VoiceMessage[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null); // NEW: Track active playback
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
-  const timerIntervalRef = useRef<any>(null);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // NEW: Inline audio player
 
   // 1. Fetch History & Trigger Lazy Garbage Collection on the Backend
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
       const res = await fetch(`/api/voice?projectId=${projectId}`);
       if (res.ok) {
         const data = await res.json();
         setMessages(data.notes || []);
       }
-    } catch (err) {
-      console.error('Failed to fetch voice notes', err);
+    } catch (error) {
+      console.error('Failed to fetch voice notes', error);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
-    if (projectId) fetchMessages();
-    return () => clearInterval(timerIntervalRef.current);
-  }, [projectId]);
+    if (projectId) void Promise.resolve().then(fetchMessages);
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
+  }, [fetchMessages, projectId]);
 
   // 2. Hardware Microphone Initialization
   const startRecording = async () => {
@@ -67,7 +84,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
         });
       }, 1000);
 
-    } catch (err) {
+    } catch {
       alert('Microphone access denied or unavailable.');
     }
   };
@@ -77,7 +94,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: any) 
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       setIsRecording(false);
-      clearInterval(timerIntervalRef.current);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     }
   };
 

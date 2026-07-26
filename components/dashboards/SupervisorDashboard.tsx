@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
   ChevronDown,
@@ -76,14 +76,14 @@ const SupervisorDashboard = ({
   const supervisorName = session?.user?.name || 'Supervisor';
   const supervisorId = String((session.user as { id?: string }).id || '');
 
-  const notify = (title: string, message: string) => {
+  const notify = useCallback((title: string, message: string) => {
     if (showDialog) {
       showDialog({ title, message });
       return;
     }
 
     window.alert(`${title}\n\n${message}`);
-  };
+  }, [showDialog]);
 
   const requestConfirmation = (title: string, message: string, onConfirm: () => Promise<void> | void) => {
     if (showDialog) {
@@ -119,7 +119,7 @@ const SupervisorDashboard = ({
     }
   };
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       if (!supervisorId) {
         throw new Error('Supervisor session is missing. Please sign in again.');
@@ -145,11 +145,11 @@ const SupervisorDashboard = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [notify, supervisorId]);
 
   useEffect(() => {
-    void fetchProjects();
-  }, [supervisorId]);
+    void Promise.resolve().then(fetchProjects);
+  }, [fetchProjects]);
 
   const uniqueBatches = useMemo(() => {
     return Array.from(

@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')?.trim();
     const search = searchParams.get('search')?.trim();
 
-    const query: any = { role: 'student' };
+    const query: Record<string, unknown> = { role: 'student' };
 
     if (program && program !== 'All') {
       query.program = program;
