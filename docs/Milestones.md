@@ -264,7 +264,7 @@ Keep data fetching, mutation handlers, draft persistence, and top-level state in
 
 ## Milestone 6 — Split the admin dashboard
 
-Status: Not started
+Status: Complete
 
 Risk: Medium
 
@@ -297,7 +297,7 @@ Keep existing request handlers and endpoint contracts unchanged. Similar program
 
 ## Milestone 7 — Split the supervisor dashboard
 
-Status: Not started
+Status: Complete
 
 Risk: Medium
 
@@ -328,7 +328,7 @@ Keep action handlers, confirmation flows, fetching, and selected-project state i
 
 ## Milestone 8 — Strengthen frontend type boundaries
 
-Status: Not started
+Status: Complete
 
 Risk: Medium
 
@@ -351,7 +351,7 @@ Purpose: make refactored modules safer to change without altering runtime behavi
 
 ## Milestone 9 — Final product-quality pass
 
-Status: Not started
+Status: Complete
 
 Risk: Low
 

@@ -31,9 +31,8 @@ const AdminDashboard = dynamic(() => import('../components/dashboards/AdminDashb
   loading: () => <div className="flex justify-center items-center min-h-[80vh]"><Loader2 className="animate-spin" size={40}/></div>
 });
 
-// Temporary compatibility adapter for old dashboard/auth props.
-// This is not a theme engine. It is a fixed professional palette bridge
-// until the dashboard components are fully redesigned in later milestones.
+// Fixed compatibility adapter for the existing dashboard/auth theme props.
+// This is not a theme engine.
 type IntroState = 'checking' | 'showing' | 'complete';
 
 const INTRO_SESSION_KEY = 'fyp_intro_seen';

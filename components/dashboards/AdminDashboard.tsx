@@ -3,329 +3,54 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
-  AlertCircle,
   BarChart3,
-  Download,
-  ExternalLink,
-  FileText,
-  CheckCircle,
   CircleDollarSign,
-  Filter,
   GraduationCap,
   LayoutDashboard,
   LockKeyhole,
-  Loader2,
   LogIn,
-  Mail,
-  MailX,
-  Megaphone,
-  Network,
-  PlusCircle,
-  Search,
-  ShieldCheck,
-  Trash2,
-  User,
-  UserCheck,
   Users,
 } from 'lucide-react';
 
 import {
-  AvatarBadge,
-  Badge,
   Button,
-  DashboardGrid,
-  DashboardPanel,
   DashboardShell,
-  Dialog,
-  LinkifiedText,
-  SectionHeader,
-  Select,
-  StatCard,
-  StyledInput,
 } from '../ui/SharedUI';
 
-import { APP_SETTINGS, PROGRAM_MAP } from '../../config/appSettings';
+import { PROGRAM_MAP } from '../../config/appSettings';
 import { MAX_EXTRA_SUPERVISOR_SLOTS } from '../../lib/supervisorSlots';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
 import FineManagementPanel from '../admin/FineManagementPanel';
+import AdminOverviewSection from '../admin/AdminOverviewSection';
+import AdminHeadlineSection from '../admin/AdminHeadlineSection';
+import AdminStudentsSection from '../admin/AdminStudentsSection';
+import AdminSupervisorsSection, {
+  SupervisorSlotEditorDialog,
+} from '../admin/AdminSupervisorsSection';
+import {
+  AdminReportsDialog,
+  REPORT_OPTIONS,
+  buildCsv,
+  buildReportHtml,
+  downloadTextFile,
+  toReportRows,
+  type ReportOption,
+} from '../admin/AdminReports';
+import type {
+  AdminDashboardProps,
+  AdminReportsData,
+  AdminStudent,
+  AdminSupervisor,
+} from '../admin/adminDashboardTypes';
 
 type AdminTab = 'overview' | 'supervisors' | 'students' | 'registration' | 'fines';
-
-const getStatusVariant = (status?: string) => {
-  if (status === 'Approved') return 'success';
-  if (status === 'Rejected') return 'danger';
-  if (status === 'Unassigned') return 'muted';
-  return 'warning';
-};
-
-const getProgramName = (program?: string) => {
-  if (!program) return 'No program';
-  return PROGRAM_MAP[program as keyof typeof PROGRAM_MAP] || program;
-};
-
-
-type ReportOption = {
-  id:
-    | 'studentsPerSupervisor'
-    | 'studentStatusSummary'
-    | 'studentActivitySummary'
-    | 'programSummary'
-    | 'batchSummary'
-    | 'projectStatusSummary'
-    | 'projectStageSummary'
-    | 'pdfReviewSummary'
-    | 'finedStudents';
-  label: string;
-  description: string;
-};
-
-type ReportRow = {
-  label: string;
-  value: number;
-  note?: string;
-};
-
-const REPORT_OPTIONS: ReportOption[] = [
-  {
-    id: 'studentsPerSupervisor',
-    label: 'Students per Supervisor',
-    description: 'Bar chart showing how many students are assigned to each supervisor.',
-  },
-  {
-    id: 'studentStatusSummary',
-    label: 'Student Status Summary',
-    description: 'Counts students by portal status such as Pending, Approved, or Unassigned.',
-  },
-  {
-    id: 'studentActivitySummary',
-    label: 'Active vs Deactivated Students',
-    description: 'Shows active and deactivated student account totals.',
-  },
-  {
-    id: 'programSummary',
-    label: 'Students by Program',
-    description: 'Shows the student distribution across programs.',
-  },
-  {
-    id: 'batchSummary',
-    label: 'Students by Batch',
-    description: 'Shows the student distribution across academic batches.',
-  },
-  {
-    id: 'projectStatusSummary',
-    label: 'Project Status Report',
-    description: 'Shows project counts by current status.',
-  },
-  {
-    id: 'projectStageSummary',
-    label: 'Project Stage Report',
-    description: 'Shows project counts by Proposal, Thesis Draft, and Final Deliverables.',
-  },
-  {
-    id: 'pdfReviewSummary',
-    label: 'PDF Submission and Review Queue',
-    description: 'Shows uploaded PDFs, projects waiting for review, and approved projects.',
-  },
-  {
-    id: 'finedStudents',
-    label: 'Students Fined',
-    description: 'Shows students with outstanding monetary fines and the amount still due.',
-  },
-];
-
-const escapeHtml = (value: unknown) =>
-  String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-
-const toReportRows = (data: any, reportId: ReportOption['id']): ReportRow[] => {
-  if (!data) return [];
-
-  if (reportId === 'studentsPerSupervisor') {
-    return (data.studentsPerSupervisor || []).map((item: any) => ({
-      label: item.label || 'Unknown Supervisor',
-      value: Number(item.total || 0),
-      note: `${Number(item.active || 0)} active, ${Number(item.deactivated || 0)} deactivated`,
-    }));
-  }
-
-  if (reportId === 'studentStatusSummary') {
-    return (data.studentStatusSummary || []).map((item: any) => ({
-      label: item.label || 'No Status',
-      value: Number(item.total || 0),
-    }));
-  }
-
-  if (reportId === 'studentActivitySummary') {
-    return (data.studentActivitySummary || []).map((item: any) => ({
-      label: item.label || 'Unknown',
-      value: Number(item.total || 0),
-    }));
-  }
-
-  if (reportId === 'programSummary') {
-    return (data.programSummary || []).map((item: any) => ({
-      label: getProgramName(item.label || 'No Program'),
-      value: Number(item.total || 0),
-    }));
-  }
-
-  if (reportId === 'batchSummary') {
-    return (data.batchSummary || []).map((item: any) => ({
-      label: item.label || 'No Batch',
-      value: Number(item.total || 0),
-    }));
-  }
-
-  if (reportId === 'projectStatusSummary') {
-    return (data.projectStatusSummary || []).map((item: any) => ({
-      label: item.label || 'Pending',
-      value: Number(item.total || 0),
-    }));
-  }
-
-  if (reportId === 'projectStageSummary') {
-    return (data.projectStageSummary || []).map((item: any) => ({
-      label: item.label || 'PROPOSAL',
-      value: Number(item.total || 0),
-    }));
-  }
-
-  if (reportId === 'finedStudents') {
-    return (data.finedStudents || []).map((item: any) => ({
-      label: item.label || 'Unknown Student',
-      value: Number(item.fineAmount || 0),
-      note: `${item.fineBreakdown || `${Number(item.daysLate || 0)} day(s) late`} · ${item.program || 'No Program'} · ${item.batch || 'No Batch'}`,
-    }));
-  }
-
-  return (data.pdfReviewSummary || []).map((item: any) => ({
-    label: item.label || 'Unknown',
-    value: Number(item.total || 0),
-  }));
-};
-
-const buildCsv = (rows: ReportRow[]) => {
-  const header = ['Label', 'Value', 'Note'];
-  const body = rows.map((row) => [row.label, row.value, row.note || '']);
-
-  return [header, ...body]
-    .map((line) =>
-      line
-        .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
-        .join(',')
-    )
-    .join('\n');
-};
-
-const downloadTextFile = (content: string, filename: string, mimeType: string) => {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-const buildReportHtml = (data: any, report: ReportOption, rows: ReportRow[]) => {
-  const generatedAt = data?.generatedAt
-    ? new Date(data.generatedAt).toLocaleString()
-    : new Date().toLocaleString();
-  const maxValue = Math.max(...rows.map((row) => row.value), 1);
-  const totals = data?.totals || {};
-  const chartRows = rows
-    .map((row) => {
-      const width = Math.max((row.value / maxValue) * 100, row.value > 0 ? 4 : 0);
-
-      return `
-        <div class="bar-row">
-          <div class="bar-label">${escapeHtml(row.label)}</div>
-          <div class="bar-track">
-            <div class="bar-fill" style="width:${width}%"></div>
-          </div>
-          <div class="bar-value">${row.value}</div>
-        </div>
-        ${row.note ? `<div class="bar-note">${escapeHtml(row.note)}</div>` : ''}
-      `;
-    })
-    .join('');
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(report.label)} - FYP Portal Report</title>
-  <style>
-    :root { color-scheme: light; }
-    body { margin: 0; background: #f4f4f5; color: #18181b; font-family: Arial, sans-serif; }
-    .page { max-width: 1040px; margin: 0 auto; padding: 32px 18px; }
-    .header { border-radius: 22px; background: #18181b; color: #fff; padding: 28px; }
-    .eyebrow { margin: 0 0 8px; color: #a1a1aa; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
-    h1 { margin: 0; font-size: 30px; line-height: 1.2; }
-    .description { margin: 10px 0 0; color: #d4d4d8; font-size: 14px; line-height: 1.6; }
-    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
-    .card { border: 1px solid #e4e4e7; background: #fff; border-radius: 18px; padding: 16px; }
-    .card-label { margin: 0; color: #71717a; font-size: 12px; font-weight: 700; }
-    .card-value { margin: 6px 0 0; font-size: 26px; font-weight: 900; }
-    .chart { border: 1px solid #e4e4e7; background: #fff; border-radius: 22px; padding: 18px; }
-    .bar-row { display: grid; grid-template-columns: 220px 1fr 60px; gap: 12px; align-items: center; margin-top: 12px; }
-    .bar-label { font-size: 13px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar-track { height: 20px; border-radius: 999px; background: #f4f4f5; overflow: hidden; }
-    .bar-fill { height: 100%; border-radius: 999px; background: #2563eb; }
-    .bar-value { font-size: 13px; font-weight: 900; text-align: right; }
-    .bar-note { margin: 3px 0 0 232px; color: #71717a; font-size: 12px; }
-    .table { width: 100%; border-collapse: collapse; margin-top: 18px; overflow: hidden; border-radius: 16px; }
-    th, td { border-bottom: 1px solid #e4e4e7; padding: 11px 10px; text-align: left; font-size: 13px; }
-    th { background: #fafafa; color: #3f3f46; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
-    @media (max-width: 760px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bar-row { grid-template-columns: 1fr; gap: 6px; } .bar-value { text-align: left; } .bar-note { margin-left: 0; } }
-  </style>
-</head>
-<body>
-  <main class="page">
-    <section class="header">
-      <p class="eyebrow">FYP Portal Report</p>
-      <h1>${escapeHtml(report.label)}</h1>
-      <p class="description">${escapeHtml(report.description)}</p>
-      <p class="description">Generated on ${escapeHtml(generatedAt)}. This report was created in the browser and was not saved to portal storage.</p>
-    </section>
-    <section class="summary">
-      <div class="card"><p class="card-label">Students</p><p class="card-value">${Number(totals.students || 0)}</p></div>
-      <div class="card"><p class="card-label">Supervisors</p><p class="card-value">${Number(totals.supervisors || 0)}</p></div>
-      <div class="card"><p class="card-label">Projects</p><p class="card-value">${Number(totals.projects || 0)}</p></div>
-      <div class="card"><p class="card-label">Review Queue</p><p class="card-value">${Number(totals.reviewQueue || 0)}</p></div>
-    </section>
-    <section class="chart">
-      ${rows.length === 0 ? '<p>No data available for this report.</p>' : chartRows}
-      <table class="table">
-        <thead><tr><th>Label</th><th>Value</th><th>Note</th></tr></thead>
-        <tbody>
-          ${rows
-            .map(
-              (row) => `<tr><td>${escapeHtml(row.label)}</td><td>${row.value}</td><td>${escapeHtml(row.note || '')}</td></tr>`
-            )
-            .join('')}
-        </tbody>
-      </table>
-    </section>
-  </main>
-</body>
-</html>`;
-};
 
 const AdminDashboard = ({
   session,
   showDialog,
   registrationPolicy,
   onRegistrationPolicyChange,
-}: any) => {
+}: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
   const [newSupName, setNewSupName] = useState('');
@@ -333,10 +58,10 @@ const AdminDashboard = ({
   const [newSupRollNo, setNewSupRollNo] = useState('');
   const [newSupPassword, setNewSupPassword] = useState('');
 
-  const [adminSupervisors, setAdminSupervisors] = useState<any[]>([]);
+  const [adminSupervisors, setAdminSupervisors] = useState<AdminSupervisor[]>([]);
   const [supervisorSearch, setSupervisorSearch] = useState('');
 
-  const [adminStudents, setAdminStudents] = useState<any[]>([]);
+  const [adminStudents, setAdminStudents] = useState<AdminStudent[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [debouncedStudentSearch, setDebouncedStudentSearch] = useState('');
   const [studentPage, setStudentPage] = useState(1);
@@ -355,12 +80,12 @@ const AdminDashboard = ({
   const [batchFilter, setBatchFilter] = useState('All');
 
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
-  const [reportsData, setReportsData] = useState<any>(null);
+  const [reportsData, setReportsData] = useState<AdminReportsData | null>(null);
   const [isReportsLoading, setIsReportsLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<ReportOption['id']>('studentsPerSupervisor');
 
 
-  const [slotEditorSupervisor, setSlotEditorSupervisor] = useState<any>(null);
+  const [slotEditorSupervisor, setSlotEditorSupervisor] = useState<AdminSupervisor | null>(null);
   const [slotEditorValue, setSlotEditorValue] = useState('0');
   const [isSlotEditorSaving, setIsSlotEditorSaving] = useState(false);
 
@@ -745,7 +470,7 @@ const AdminDashboard = ({
     }
   };
 
-  const openSupervisorSlotEditor = (supervisor: any) => {
+  const openSupervisorSlotEditor = (supervisor: AdminSupervisor) => {
     const currentExtraSlots = Math.min(
       Math.max(Number(supervisor.extraSlots || 0), 0),
       MAX_EXTRA_SUPERVISOR_SLOTS
@@ -824,7 +549,7 @@ const AdminDashboard = ({
       title: 'Update email',
       message: `Enter a new email address for ${name}.`,
       defaultValue: currentEmail || '',
-      onConfirm: async (newEmail: string) => {
+      onConfirm: async (newEmail = '') => {
         const cleanedEmail = String(newEmail || '').trim().toLowerCase();
         const cleanedCurrentEmail = String(currentEmail || '').trim().toLowerCase();
 
@@ -886,7 +611,7 @@ const AdminDashboard = ({
       title: 'Update program',
       message: `Select a new program for ${name}. This will reset this student and remove them from their current team.`,
       defaultValue: currentProgram || 'BSCS',
-      onConfirm: async (newProgram: string) => {
+      onConfirm: async (newProgram = '') => {
         if (!newProgram || newProgram === currentProgram) return;
 
         showDialog({
@@ -936,7 +661,7 @@ const AdminDashboard = ({
       title: 'Update batch',
       message: `Select a new batch for ${name}. This will reset this student and remove them from their current team.`,
       defaultValue: currentBatch || '',
-      onConfirm: async (newBatch: string) => {
+      onConfirm: async (newBatch = '') => {
         if (!newBatch || newBatch === currentBatch) return;
 
         showDialog({
@@ -1050,489 +775,6 @@ const AdminDashboard = ({
     setStudentPage(nextPage);
   };
 
-  const renderOverview = () => (
-    <div className="space-y-7 sm:space-y-6">
-      <DashboardGrid columns="four">
-        <StatCard
-          label="Total Students"
-          value={stats.totalStudents}
-          hint={`${stats.loadedStudents} visible in current view`}
-          icon={<Users size={18} />}
-        />
-        <StatCard
-          label="Supervisors"
-          value={stats.supervisors}
-          hint="Active supervisor accounts"
-          icon={<UserCheck size={18} />}
-        />
-        <StatCard
-          label="Active Students"
-          value={stats.activeStudents}
-          hint="Based on loaded student records"
-          icon={<ShieldCheck size={18} />}
-        />
-        <StatCard
-          label="Pending Items"
-          value={stats.pendingStudents}
-          hint="Students not marked approved"
-          icon={<AlertCircle size={18} />}
-        />
-      </DashboardGrid>
-
-      <section>
-        <SectionHeader
-          title="Management"
-          description="Core administration areas for accounts, students, and reports."
-        />
-
-        <DashboardGrid columns="three">
-          <DashboardPanel>
-            <div className="flex h-full flex-col">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
-                <Users size={20} />
-              </div>
-              <h3 className="text-base font-bold text-[var(--color-text)]">Supervisor Management</h3>
-              <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
-                Create supervisor accounts, manage email, notification status, and access.
-              </p>
-              <Button className="mt-5 w-full" onClick={() => setActiveTab('supervisors')}>
-                Open Supervisors
-              </Button>
-            </div>
-          </DashboardPanel>
-
-          <DashboardPanel>
-            <div className="flex h-full flex-col">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
-                <GraduationCap size={20} />
-              </div>
-              <h3 className="text-base font-bold text-[var(--color-text)]">Student Management</h3>
-              <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
-                Search students, update batch/program/email, and manage account status.
-              </p>
-              <Button className="mt-5 w-full" onClick={() => setActiveTab('students')}>
-                Open Students
-              </Button>
-            </div>
-          </DashboardPanel>
-
-          <DashboardPanel>
-            <div className="flex h-full flex-col">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
-                <BarChart3 size={20} />
-              </div>
-              <h3 className="text-base font-bold text-[var(--color-text)]">Reports</h3>
-              <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
-                Generate charts for supervisors, students, projects, and review queues without using storage.
-              </p>
-              <Button className="mt-5 w-full" onClick={openReportsModal}>
-                Generate Reports
-              </Button>
-            </div>
-          </DashboardPanel>
-        </DashboardGrid>
-      </section>
-
-      <DashboardPanel>
-        <SectionHeader
-          title="Announcement Center"
-          description="Publish a headline announcement visible to students."
-        />
-
-        <form onSubmit={handleBroadcastHeadline} className="grid gap-3 lg:grid-cols-[1fr_auto]">
-          <StyledInput
-            value={headlineInput}
-            onChange={(event: any) => setHeadlineInput(event.target.value)}
-            placeholder="Write a concise portal announcement..."
-          />
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:flex">
-            <Button type="submit">
-              <Megaphone size={16} />
-              Broadcast
-            </Button>
-            <Button type="button" variant="outline" onClick={clearHeadline}>
-              <Trash2 size={16} />
-              Clear
-            </Button>
-          </div>
-        </form>
-
-        {currentHeadline ? (
-          <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-              Current announcement
-            </p>
-            <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
-              <LinkifiedText text={currentHeadline} />
-            </p>
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-[var(--color-text-muted)]">
-            No active announcement is currently published.
-          </p>
-        )}
-      </DashboardPanel>
-    </div>
-  );
-
-  const renderSupervisors = () => (
-    <div className="grid gap-7 sm:gap-6 xl:h-full xl:min-h-0 xl:grid-cols-[0.8fr_1.2fr]">
-      <DashboardPanel className="h-fit xl:sticky xl:top-0">
-        <SectionHeader
-          title="Add Supervisor"
-          description="Create a supervisor account with login credentials."
-        />
-
-        <form onSubmit={handleAddSupervisor} className="space-y-4">
-          <StyledInput
-            value={newSupName}
-            onChange={(event: any) => setNewSupName(event.target.value)}
-            type="text"
-            required
-            placeholder="Full name"
-          />
-          <StyledInput
-            value={newSupRollNo}
-            onChange={(event: any) => setNewSupRollNo(event.target.value)}
-            type="text"
-            required
-            placeholder="Username ID"
-          />
-          <StyledInput
-            value={newSupEmail}
-            onChange={(event: any) => setNewSupEmail(event.target.value)}
-            type="email"
-            required
-            placeholder="Supervisor email"
-          />
-          <StyledInput
-            value={newSupPassword}
-            onChange={(event: any) => setNewSupPassword(event.target.value)}
-            type="text"
-            required
-            placeholder="Assign password"
-          />
-
-          <Button type="submit" className="w-full">
-            <PlusCircle size={16} />
-            Create Account
-          </Button>
-        </form>
-      </DashboardPanel>
-
-      <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
-        <div className="shrink-0">
-          <SectionHeader
-            title="Active Supervisors"
-            description={`${filteredSupervisors.length}${
-              supervisorSearch.trim() ? ` of ${adminSupervisors.length}` : ''
-            } supervisor accounts`}
-          />
-
-          <StyledInput
-            icon={Search}
-            value={supervisorSearch}
-            onChange={(event: any) => setSupervisorSearch(event.target.value)}
-            type="search"
-            placeholder="Search by name, ID, email, or migration code..."
-          />
-        </div>
-
-        <div className="portal-scrollbar mt-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
-          {filteredSupervisors.length === 0 ? (
-            <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-              <Users className="mb-3 text-[var(--color-text-muted)]" size={28} />
-              <p className="text-sm font-semibold text-[var(--color-text)]">
-                No supervisors found
-              </p>
-              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                Try another search term or create a new supervisor account.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredSupervisors.map((supervisor) => {
-                const filledSlots = Math.max(Number(supervisor.filledSlots || 0), 0);
-                const extraSlots = Math.min(
-                  Math.max(Number(supervisor.extraSlots || 0), 0),
-                  MAX_EXTRA_SUPERVISOR_SLOTS
-                );
-                const maxSlots = Math.max(
-                  Number(supervisor.maxSlots || APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR),
-                  APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR
-                );
-
-                return (
-                  <div
-                    key={supervisor._id}
-                    className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <AvatarBadge name={supervisor.name} />
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
-                            <Badge variant="muted">{supervisor.rollNo || 'No ID'}</Badge>
-                            {supervisor.isFull ? <Badge variant="danger">Full</Badge> : null}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateEmail(supervisor._id, supervisor.email, supervisor.name)
-                            }
-                            className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-                          >
-                            {supervisor.email || 'Assign email'}
-                          </button>
-
-                          <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
-                            Migration Code:{' '}
-                            <span className="font-mono text-[var(--color-text)]">
-                              {supervisor.migrationCode || 'N/A'}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => openSupervisorSlotEditor(supervisor)}
-                          title={`Edit extra slots. Current usage: ${filledSlots} / ${maxSlots}`}
-                        >
-                          <PlusCircle size={16} />
-                          Extra Slots: {extraSlots}/{MAX_EXTRA_SUPERVISOR_SLOTS}
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          onClick={() =>
-                            handleToggleNotifications(supervisor._id, supervisor.notificationsEnabled)
-                          }
-                          title="Toggle notifications"
-                        >
-                          {supervisor.notificationsEnabled ? <Mail size={16} /> : <MailX size={16} />}
-                          {supervisor.notificationsEnabled ? 'Notifications On' : 'Notifications Off'}
-                        </Button>
-
-                        <Button
-                          variant="danger"
-                          onClick={() => handleDeleteSupervisor(supervisor._id, supervisor.name)}
-                        >
-                          <Trash2 size={16} />
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </DashboardPanel>
-    </div>
-  );
-
-
-  const renderStudents = () => (
-    <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
-      <div className="shrink-0">
-        <SectionHeader
-          title="Students"
-          description="Search, filter, and manage student academic records."
-          action={
-            batchFilter !== 'All' ? (
-              <Button variant="accent" onClick={handlePromoteBatch}>
-                Promote {batchFilter}
-              </Button>
-            ) : null
-          }
-        />
-
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
-          <div className="grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_12rem_12rem]">
-            <StyledInput
-              icon={Search}
-              value={studentSearch}
-              onChange={(event: any) => setStudentSearch(event.target.value)}
-              type="search"
-              placeholder="Search students by name, ID, or email..."
-            />
-
-            <Select
-              value={studentFilter}
-              onChange={(event) => handleStudentFilterChange(event.target.value)}
-              aria-label="Filter students by program or status"
-            >
-              {filterOptions.map((option) => (
-                <option key={option} value={option}>
-                  {Object.keys(PROGRAM_MAP).includes(option) ? option : option}
-                </option>
-              ))}
-            </Select>
-
-            <Select
-              value={batchFilter}
-              onChange={(event) => handleBatchFilterChange(event.target.value)}
-              aria-label="Filter students by batch"
-            >
-              <option value="All">All Batches</option>
-              {studentBatches.map((batch) => (
-                <option key={batch} value={batch}>
-                  {batch}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--color-text-muted)]">
-            <span className="inline-flex items-center gap-1 uppercase tracking-wide">
-              <Filter size={13} />
-              Active filters
-            </span>
-            <Badge variant={studentFilter === 'All' ? 'muted' : 'accent'}>
-              {studentFilter === 'All' ? 'All Programs & Statuses' : studentFilter}
-            </Badge>
-            <Badge variant={batchFilter === 'All' ? 'muted' : 'accent'}>
-              {batchFilter === 'All' ? 'All Batches' : batchFilter}
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      <div className="portal-scrollbar mt-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
-        {isStudentsLoading ? (
-          <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-            <Loader2 size={32} className="mb-3 animate-spin text-[var(--color-accent)]" />
-            <p className="text-sm font-bold text-[var(--color-text)]">Loading students...</p>
-          </div>
-        ) : filteredStudents.length === 0 ? (
-          <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-            <User size={32} className="mb-3 text-[var(--color-text-muted)]" />
-            <p className="text-sm font-bold text-[var(--color-text)]">No students found</p>
-            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-              Adjust your search or filters and try again.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredStudents.map((student) => (
-              <div
-                key={student._id}
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-              >
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <AvatarBadge
-                      name={student.name}
-                      className={student.isActive === false ? 'opacity-50' : ''}
-                    />
-
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3
-                          className={`font-bold text-[var(--color-text)] ${
-                            student.isActive === false ? 'line-through opacity-60' : ''
-                          }`}
-                        >
-                          {student.name || 'Unnamed student'}
-                        </h3>
-
-                        <Badge variant={getStatusVariant(student.status) as any}>
-                          {student.status || 'N/A'}
-                        </Badge>
-
-                        {student.isActive === false && <Badge variant="danger">Deactivated</Badge>}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateEmail(student._id, student.email, student.name)}
-                        className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-                      >
-                        ID: {student.rollNo || 'N/A'} · {student.email || 'Assign email'}
-                      </button>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleUpdateProgram(student._id, student.program, student.name)
-                          }
-                          className="rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--color-accent)]"
-                          title={`${getProgramName(student.program)} — click to edit`}
-                        >
-                          {student.program || 'No program'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateBatch(student._id, student.batch, student.name)}
-                          className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                          title="Click to edit batch"
-                        >
-                          {student.batch || 'No batch'} · {student.semester || '7th Sem'}
-                        </button>
-
-                        {student.monthlyLoginCount > 0 && (
-                          <Badge variant="accent">{student.monthlyLoginCount} logins this month</Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant={student.isActive !== false ? 'danger' : 'success'}
-                      onClick={() =>
-                        handleToggleStudentStatus(student._id, student.isActive !== false)
-                      }
-                    >
-                      {student.isActive !== false ? <Trash2 size={16} /> : <CheckCircle size={16} />}
-                      {student.isActive !== false ? 'Deactivate' : 'Restore'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-5 flex shrink-0 flex-col gap-3 border-t border-[var(--color-border)] pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <p className="font-semibold text-[var(--color-text-muted)]">
-          Showing {filteredStudents.length} of {studentPagination.total} students
-        </p>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            disabled={isStudentsLoading || studentPage <= 1}
-            onClick={() => handleStudentPageChange(studentPage - 1)}
-          >
-            Previous
-          </Button>
-
-          <span className="text-sm font-bold text-[var(--color-text-muted)]">
-            Page {studentPagination.total === 0 ? 0 : studentPage} of {studentPagination.totalPages}
-          </span>
-
-          <Button
-            variant="outline"
-            disabled={isStudentsLoading || studentPage >= studentPagination.totalPages}
-            onClick={() => handleStudentPageChange(studentPage + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
-    </DashboardPanel>
-  );
-
   const navItems = [
     {
       id: 'overview',
@@ -1619,15 +861,71 @@ const AdminDashboard = ({
           </div>
         }
       >
-        {activeTab === 'overview' && renderOverview()}
+        {activeTab === 'overview' && (
+          <div className="space-y-7 sm:space-y-6">
+            <AdminOverviewSection
+              stats={stats}
+              onOpenSupervisors={() => setActiveTab('supervisors')}
+              onOpenStudents={() => setActiveTab('students')}
+              onOpenReports={openReportsModal}
+            />
+            <AdminHeadlineSection
+              headlineInput={headlineInput}
+              onHeadlineInputChange={setHeadlineInput}
+              currentHeadline={currentHeadline}
+              onBroadcast={handleBroadcastHeadline}
+              onClear={clearHeadline}
+            />
+          </div>
+        )}
         {activeTab === 'supervisors' && (
-          <div className="min-h-0 lg:h-full">{renderSupervisors()}</div>
+          <div className="min-h-0 lg:h-full">
+            <AdminSupervisorsSection
+              newSupervisor={{ name: newSupName, rollNo: newSupRollNo, email: newSupEmail, password: newSupPassword }}
+              onNewSupervisorChange={(field, value) => {
+                if (field === 'name') setNewSupName(value);
+                if (field === 'rollNo') setNewSupRollNo(value);
+                if (field === 'email') setNewSupEmail(value);
+                if (field === 'password') setNewSupPassword(value);
+              }}
+              onAddSupervisor={handleAddSupervisor}
+              supervisors={filteredSupervisors}
+              totalSupervisors={adminSupervisors.length}
+              search={supervisorSearch}
+              onSearchChange={setSupervisorSearch}
+              onUpdateEmail={handleUpdateEmail}
+              onEditSlots={openSupervisorSlotEditor}
+              onToggleNotifications={handleToggleNotifications}
+              onDelete={handleDeleteSupervisor}
+            />
+          </div>
         )}
         {activeTab === 'students' && (
-          <div className="min-h-0 lg:h-full">{renderStudents()}</div>
+          <div className="min-h-0 lg:h-full">
+            <AdminStudentsSection
+              students={filteredStudents}
+              search={studentSearch}
+              onSearchChange={setStudentSearch}
+              studentFilter={studentFilter}
+              onStudentFilterChange={handleStudentFilterChange}
+              filterOptions={filterOptions}
+              batchFilter={batchFilter}
+              onBatchFilterChange={handleBatchFilterChange}
+              batches={studentBatches}
+              isLoading={isStudentsLoading}
+              pagination={studentPagination}
+              page={studentPage}
+              onPageChange={handleStudentPageChange}
+              onPromoteBatch={handlePromoteBatch}
+              onUpdateEmail={handleUpdateEmail}
+              onUpdateProgram={handleUpdateProgram}
+              onUpdateBatch={handleUpdateBatch}
+              onToggleStatus={handleToggleStudentStatus}
+            />
+          </div>
         )}
         {activeTab === 'fines' && <FineManagementPanel showDialog={showDialog} />}
-      {activeTab === 'registration' && (
+        {activeTab === 'registration' && (
           <RegistrationControlPanel
             initialPolicy={registrationPolicy}
             onPolicyChange={onRegistrationPolicyChange}
@@ -1636,195 +934,29 @@ const AdminDashboard = ({
       </DashboardShell>
 
 
-      <Dialog
-        open={Boolean(slotEditorSupervisor)}
+      <SupervisorSlotEditorDialog
+        supervisor={slotEditorSupervisor}
+        value={slotEditorValue}
+        onValueChange={setSlotEditorValue}
+        isSaving={isSlotEditorSaving}
         onClose={closeSupervisorSlotEditor}
-        title="Edit Extra Slots"
-        description={
-          slotEditorSupervisor
-            ? `Set total extra slots for ${slotEditorSupervisor.name}. Default capacity stays ${APP_SETTINGS.MAX_SLOTS_PER_SUPERVISOR}.`
-            : undefined
-        }
-        size="sm"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={closeSupervisorSlotEditor} disabled={isSlotEditorSaving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveSupervisorExtraSlots} disabled={isSlotEditorSaving}>
-              {isSlotEditorSaving ? <Loader2 className="animate-spin" size={16} /> : null}
-              Save Slots
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">
-            Enter total extra slots from 0 to {MAX_EXTRA_SUPERVISOR_SLOTS}. For example, if current extra slots are 4, the maximum future increase is 6.
-          </div>
+        onSave={handleSaveSupervisorExtraSlots}
+      />
 
-          <div>
-            <label className="mb-2 block text-sm font-bold text-[var(--color-text)]">
-              Extra Slots
-            </label>
-            <input
-              autoFocus
-              type="number"
-              min={0}
-              max={MAX_EXTRA_SUPERVISOR_SLOTS}
-              step={1}
-              value={slotEditorValue}
-              onChange={(event) => setSlotEditorValue(event.target.value)}
-              className="h-11 w-24 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-center text-sm font-black text-[var(--color-text)] outline-none transition-colors focus:border-[var(--color-accent)]"
-            />
-            <p className="mt-2 text-xs font-semibold text-[var(--color-text-muted)]">
-              Allowed range: 0 to {MAX_EXTRA_SUPERVISOR_SLOTS}
-            </p>
-          </div>
-        </div>
-      </Dialog>
-
-      <Dialog
+      <AdminReportsDialog
         open={isReportsModalOpen}
         onClose={() => setIsReportsModalOpen(false)}
-        title="Admin Reports"
-        description="Open reports in a temporary browser tab, or download HTML/CSV only when needed. Nothing is saved to portal storage."
-        size="xl"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <Button variant="outline" onClick={() => setIsReportsModalOpen(false)}>
-              Close
-            </Button>
-            <Button variant="outline" disabled={!reportsData || selectedReportRows.length === 0} onClick={handleDownloadCsvReport}>
-              <Download size={16} />
-              CSV
-            </Button>
-            <Button variant="outline" disabled={!reportsData || selectedReportRows.length === 0} onClick={handleDownloadHtmlReport}>
-              <FileText size={16} />
-              HTML
-            </Button>
-            <Button disabled={!reportsData || selectedReportRows.length === 0} onClick={handleOpenReportInNewTab}>
-              <ExternalLink size={16} />
-              Open Report
-            </Button>
-          </div>
-        }
-      >
-        {isReportsLoading ? (
-          <div className="flex min-h-80 flex-col items-center justify-center">
-            <Loader2 className="mb-3 animate-spin text-[var(--color-accent)]" size={36} />
-            <p className="text-sm font-bold text-[var(--color-text)]">Loading reports...</p>
-          </div>
-        ) : !reportsData ? (
-          <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-            <BarChart3 className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
-            <p className="text-sm font-bold text-[var(--color-text)]">No report data loaded</p>
-            <Button className="mt-4" onClick={fetchReportsData}>
-              Load Reports
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-              <Select
-                value={selectedReportId}
-                onChange={(event) => setSelectedReportId(event.target.value as ReportOption['id'])}
-                aria-label="Select report type"
-              >
-                {REPORT_OPTIONS.map((report) => (
-                  <option key={report.id} value={report.id}>
-                    {report.label}
-                  </option>
-                ))}
-              </Select>
-
-              <Button variant="outline" onClick={fetchReportsData} disabled={isReportsLoading}>
-                {isReportsLoading ? <Loader2 className="animate-spin" size={16} /> : <BarChart3 size={16} />}
-                Refresh Data
-              </Button>
-            </div>
-
-            <DashboardGrid columns="four">
-              <StatCard
-                label="Students"
-                value={reportsData.totals?.students || 0}
-                hint="Total student accounts"
-                icon={<Users size={18} />}
-              />
-              <StatCard
-                label="Supervisors"
-                value={reportsData.totals?.supervisors || 0}
-                hint="Total supervisor accounts"
-                icon={<UserCheck size={18} />}
-              />
-              <StatCard
-                label="Projects"
-                value={reportsData.totals?.projects || 0}
-                hint="Total project records"
-                icon={<FileText size={18} />}
-              />
-              <StatCard
-                label="Review Queue"
-                value={reportsData.totals?.reviewQueue || 0}
-                hint="PDF projects not approved"
-                icon={<AlertCircle size={18} />}
-              />
-              <StatCard
-                label="Students Fined"
-                value={reportsData.totals?.finedStudents || 0}
-                hint={`Total amount: PKR ${Number(reportsData.totals?.totalFineAmount || 0).toLocaleString()}`}
-                icon={<AlertCircle size={18} />}
-              />
-            </DashboardGrid>
-
-            <DashboardPanel className="bg-[var(--color-surface-muted)]">
-              <SectionHeader
-                title={selectedReport.label}
-                description={`${selectedReport.description} Generated ${new Date(reportsData.generatedAt).toLocaleString()}.`}
-              />
-
-              {selectedReportRows.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center">
-                  <BarChart3 className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
-                  <p className="text-sm font-bold text-[var(--color-text)]">No data available for this report</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {selectedReportRows.map((row) => {
-                    const maxValue = Math.max(...selectedReportRows.map((item) => item.value), 1);
-                    const width = Math.max((row.value / maxValue) * 100, row.value > 0 ? 4 : 0);
-
-                    return (
-                      <div key={row.label} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-[var(--color-text)]">{row.label}</p>
-                            {row.note && (
-                              <p className="truncate text-xs font-semibold text-[var(--color-text-muted)]">{row.note}</p>
-                            )}
-                          </div>
-                          <span className="text-sm font-black text-[var(--color-text)]">{row.value}</span>
-                        </div>
-
-                        <div className="h-3 overflow-hidden rounded-full bg-[var(--color-border)]">
-                          <div
-                            className="h-full rounded-full bg-[var(--color-primary)]"
-                            style={{ width: `${width}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </DashboardPanel>
-
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">
-              Reports are generated from aggregated counts returned by the API. Downloaded HTML and CSV files are created in your browser with Blob URLs, so they do not consume R2 storage or create saved report files on Vercel.
-            </div>
-          </div>
-        )}
-      </Dialog>
+        isLoading={isReportsLoading}
+        data={reportsData}
+        selectedReportId={selectedReportId}
+        onSelectedReportChange={setSelectedReportId}
+        selectedReport={selectedReport}
+        rows={selectedReportRows}
+        onRefresh={fetchReportsData}
+        onDownloadCsv={handleDownloadCsvReport}
+        onDownloadHtml={handleDownloadHtmlReport}
+        onOpenReport={handleOpenReportInNewTab}
+      />
     </>
   );
 };

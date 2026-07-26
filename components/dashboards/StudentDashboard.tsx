@@ -29,6 +29,9 @@ import {
 } from '../student/StudentDashboardDialogs';
 import type {
   AnnouncementItem,
+  AvailableSupervisor,
+  StudentDashboardData,
+  StudentDashboardProps,
   WordTemplate,
 } from '../student/studentDashboardTypes';
 import { PROGRAM_MAP } from '../../config/appSettings';
@@ -90,10 +93,13 @@ const splitTools = (tools?: string) => {
     .filter(Boolean);
 };
 
-const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDashboardProps) => {
   const [activeTab, setActiveTab] = useState<StudentTab>('overview');
-  const [data, setData] = useState<any>(null);
-  const [localSups, setLocalSups] = useState<any[]>([]);
+  const [data, setData] = useState<StudentDashboardData | null>(null);
+  const [localSups, setLocalSups] = useState<AvailableSupervisor[]>([]);
   const [headline, setHeadline] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -129,7 +135,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
 
-  const currentUserId = String((session?.user as any)?.id || '');
+  const currentUserId = String((session.user as { id?: string }).id || '');
   const projectDraftKey = currentUserId ? getStudentProjectDraftKey(currentUserId) : '';
   const projectFileDraftKey = projectDraftKey ? `${projectDraftKey}:pdf` : '';
 
@@ -185,7 +191,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
   const pdfUrl = me?.pdfUrl || project?.pdfUrl;
 
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
-  const canSubmitByStatus = ['Pending', 'Rejected', 'Changes Requested'].includes(me?.status);
+  const canSubmitByStatus = ['Pending', 'Rejected', 'Changes Requested'].includes(me?.status || '');
   const canSubmit = canSubmitByStatus && !isFineRestricted;
   const isSupervisorChangeLocked =
     !isUnassigned && (project?.status === 'Approved' || currentStage !== 'PROPOSAL');
@@ -262,7 +268,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
 
   const fetchData = async () => {
     try {
-      const userId = (session?.user as any)?.id;
+      const userId = (session.user as { id?: string }).id;
       if (!userId) return;
 
       const response = await fetch(`/api/dashboard/student?id=${userId}`, { cache: 'no-store' });
@@ -538,7 +544,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: (session?.user as any)?.id,
+          id: currentUserId,
           title: title.trim(),
           desc: desc.trim(),
           domains: selectedDomains,
@@ -563,10 +569,10 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         title: 'Project submitted',
         message: json.message || 'Your project has been submitted for supervisor review.',
       });
-    } catch (error: any) {
+    } catch (error) {
       showDialog({
         title: 'Submission failed',
-        message: error.message || 'Unable to submit project right now.',
+        message: getErrorMessage(error, 'Unable to submit project right now.'),
       });
     } finally {
       setIsSubmitting(false);
@@ -582,7 +588,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
-          id: (session?.user as any)?.id,
+          id: currentUserId,
           supervisorId: selectedSupervisorId,
         }),
       });
@@ -620,10 +626,10 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
             ? 'You have started fresh under the new supervisor.'
             : 'Your supervisor has been assigned.'),
       });
-    } catch (error: any) {
+    } catch (error) {
       showDialog({
         title: action === 'changeSupervisor' ? 'Supervisor change failed' : 'Assignment failed',
-        message: error.message || 'Unable to update supervisor right now.',
+        message: getErrorMessage(error, 'Unable to update supervisor right now.'),
       });
     } finally {
       setIsSubmitting(false);
@@ -712,10 +718,10 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         title: 'Team joined',
         message: json.message || 'You have joined the team successfully.',
       });
-    } catch (error: any) {
+    } catch (error) {
       showDialog({
         title: 'Join failed',
-        message: error.message || 'Unable to join the team right now.',
+        message: getErrorMessage(error, 'Unable to join the team right now.'),
       });
     } finally {
       setIsSubmitting(false);
@@ -759,7 +765,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'updateProgramBatch',
-          id: (session?.user as any)?.id,
+          id: currentUserId,
           program: academicForm.program,
           batch: academicForm.batch,
         }),
@@ -791,10 +797,10 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: any) => {
         title: 'Academic info updated',
         message: json.message || 'Program and batch updated successfully.',
       });
-    } catch (error: any) {
+    } catch (error) {
       showDialog({
         title: 'Update blocked',
-        message: error.message || 'Could not update program and batch.',
+        message: getErrorMessage(error, 'Could not update program and batch.'),
       });
     } finally {
       setIsAcademicUpdating(false);

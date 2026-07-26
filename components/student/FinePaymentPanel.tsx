@@ -2,15 +2,16 @@
 
 import { AlertTriangle, CircleDollarSign, RefreshCcw } from 'lucide-react';
 import { Button, DashboardPanel, SectionHeader } from '../ui/SharedUI';
+import type { FineRestriction } from './studentDashboardTypes';
 
 const formatMoney = (value: unknown) => `PKR ${Math.max(Number(value) || 0, 0).toLocaleString()}`;
 
 type Props = {
-  restriction: any;
+  restriction: FineRestriction;
   onRefresh: () => Promise<void> | void;
 };
 
-const DetailRow = ({ label, value }: { label: string; value: string }) => (
+const DetailRow = ({ label, value }: { label: string; value?: string }) => (
   <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
     <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">{label}</p>
     <p className="mt-2 break-words text-sm font-bold text-[var(--color-text)]">{value || 'Not provided'}</p>

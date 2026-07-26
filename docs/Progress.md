@@ -4,11 +4,11 @@
 
 - Date: 2026-07-26
 - Branch: `fyp-v2`
-- Status: Milestones 0–5 complete; Milestone 6 ready
-- Roadmap progress: 60% (6 of 10 milestones complete)
-- Current milestone: Milestone 6 — split the admin dashboard
-- Current sub-step: characterize the report formatting and download presentation boundary before extraction
-- Working tree: contains only the planned Milestones 3–5 refactor and documentation changes
+- Status: Milestones 0–9 complete; refactoring roadmap complete
+- Roadmap progress: 100% (10 of 10 milestones complete)
+- Current milestone: Milestone 9 — complete
+- Current sub-step: final audit, validation, and documentation complete
+- Working tree: contains only the planned Milestones 6–9 refactor and documentation changes
 
 ## Objective
 
@@ -62,12 +62,76 @@ Database- and storage-related duplication was observed during the audit but is e
 | 3. Shared project timeline | Complete | One behavior-equivalent timeline serves both dashboards. |
 | 4. Landing and authentication page | Complete | Extracted dialog and authentication screens by responsibility. |
 | 5. Student dashboard | Complete | Extracted six presentational boundaries; parent retains workflow state and side effects. |
-| 6. Admin dashboard | Next | Extract reports and management views incrementally. |
-| 7. Supervisor dashboard | Pending | Extract project list/card/detail views incrementally. |
-| 8. UI type boundaries | Pending | Replace touched `any` boundaries without runtime changes. |
-| 9. Final product-quality pass | Pending | Validate the complete refactor and remove leftovers. |
+| 6. Admin dashboard | Complete | Extracted report, overview, supervisor, student, slot-editor, and headline presentation. |
+| 7. Supervisor dashboard | Complete | Extracted typed project card, list/filter, overview, and detail-dialog presentation. |
+| 8. UI type boundaries | Complete | Added narrow feature-owned types across the refactored frontend surface. |
+| 9. Final product-quality pass | Complete | Audited residue and completed the final automated validation baseline. |
 
 ## Completed work
+
+### 2026-07-26 — Milestone 9: final product-quality pass
+
+- Scope: audited all new files and exports for callers, active compatibility aliases, stale comments, duplicate pure helpers, generic module names, dependency changes, forbidden server/config changes, and the complete Milestones 6–9 diff.
+- Caller evidence: every new admin and supervisor component has a direct caller. `GlassCard` remains required by all three authentication flows. `Timeline` remains shared by student and supervisor presentation. No empty or zero-caller new file was found.
+- Residue removed: made four feature-internal types private instead of exporting them and replaced the stale future-milestone theme comment with its current compatibility purpose. No runtime code was deleted without caller proof.
+- Duplication decision: small program-label helpers remain feature-local because the supervisor version has different normalization behavior and moving the other copies into configuration would expand the approved boundary. Two local error-message helpers remain local instead of creating a generic utility module.
+- Boundary proof: `package.json` and `package-lock.json` are unchanged; no dependency was added, removed, or upgraded. No API, database, model, storage, authentication, middleware, or Next.js production configuration file changed.
+- Focused validation: all newly added admin/supervisor files plus the changed student fine/type files pass ESLint with no output. `npx tsc --noEmit` passes with no output. `git diff --check` passes.
+- Production build: the final `npm run build` passed outside the restricted sandbox; Next.js compiled successfully and completed its TypeScript phase.
+- Read-only smoke check: the final production landing page returned HTTP 200 from local port 3100; the server was stopped. No form or authenticated mutation was submitted.
+- Repository lint comparison: final `npm run lint` reports 140 existing findings (110 errors and 30 warnings), improving the original 236-finding baseline (194 errors and 42 warnings). Changed presentation modules introduce no new lint failures.
+- Product review: fetch paths/methods/payloads, auth assumptions, confirmations, validation, uploads/downloads, draft keys, storage behavior, role navigation, status actions, and responsive/accessibility markup were retained. No unexplained unrelated change remains.
+- Remaining risk: the authenticated admin, supervisor, and student visual/keyboard checklist requires staging role credentials and was not claimed as executed; the documented checklist remains the handoff for staging. The build and anonymous smoke check are read-only.
+- Ponytail review: reused existing UI/configuration and handlers, removed duplicated inline presentation, added only responsibility-named components and narrow feature types, introduced no dependency or generic state layer, and retained all security, validation, confirmation, and error handling.
+- Exact next action: review and commit the validated Milestones 6–9 diff, then run the documented authenticated staging checklist when role credentials are available.
+
+### 2026-07-26 — Milestone 8: frontend type boundaries
+
+- Files changed: `components/dashboards/StudentDashboard.tsx`, `components/student/FinePaymentPanel.tsx`, and `components/student/studentDashboardTypes.ts`; Milestones 6–7 already typed their new admin and supervisor boundaries.
+- Scope: audited every frontend file created or changed by Milestones 3–7 and replaced the remaining explicit `any` in the student dashboard surface with narrow session, dashboard-data, project, supervisor, fine, broadcast, and error types.
+- Behavior protected: values are still read from the same responses, session field, and parent state; request bodies, route paths, validation, fine locks, draft persistence, uploads, and fallback messages remain unchanged. No runtime schema or cast-based validation was added.
+- Changed-file lint: `FinePaymentPanel.tsx` and the type module are clean. `StudentDashboard.tsx` retains two existing effect errors and three existing hook warnings; no explicit `any` remains anywhere in the refactored Milestones 3–7 frontend surface.
+- Type checking: `npx tsc --noEmit` passed with no output.
+- Production build: `npm run build` passed outside the restricted sandbox and compiled successfully.
+- Read-only smoke check: the production landing page returned HTTP 200 from local port 3100; the server was stopped without submitting student actions.
+- Repository lint comparison: `npm run lint` reports 140 findings (110 errors and 30 warnings), improving the post-Milestone-7 result of 153 findings (123 errors and 30 warnings).
+- New failures: none.
+- Ponytail review: types describe only fields consumed by each feature; no global domain model, runtime validator, dependency, lint suppression, model change, or API change was introduced.
+- Next action: perform Milestone 9's zero-caller/residue audit, verify dependency and forbidden-file boundaries, then run the complete validation baseline and read-only smoke test.
+
+### 2026-07-26 — Milestone 7: supervisor dashboard split
+
+- Files changed: `components/dashboards/SupervisorDashboard.tsx`; added `components/supervisor/SupervisorProjectCard.tsx`, `SupervisorProjectsSection.tsx`, `SupervisorOverviewSection.tsx`, `SupervisorProjectDialog.tsx`, and `supervisorDashboardTypes.ts`.
+- Extraction order: moved the project card and its display helpers, list/filter presentation, overview/recent-project presentation, then the selected-project detail dialog.
+- Parent responsibility: `SupervisorDashboard.tsx` retains fetching, filters, selected-project state, review actions, remarks/confirmations, migration, team expansion/removal, export, broadcast placement, and navigation. It is now 612 lines instead of 1,194.
+- Behavior protected: review status payloads, optional remarks, migration validation and payloads, capacity/removal confirmations, spreadsheet export request/download, broadcast/voice components, filters/counts/badges, PDF links, timeline, wording, classes, and responsive layout remain unchanged.
+- Boundary typing: added narrow project, member, dashboard, theme, queue, and stats types. Typed dialog callbacks now explicitly normalize the same string value the existing prompt component supplies.
+- Changed-file lint: all five new supervisor files are clean. The parent retains one existing `react-hooks/set-state-in-effect` error and one existing dependency warning; it has no explicit `any` remaining.
+- Type checking: `npx tsc --noEmit` passed with no output.
+- Production build: `npm run build` passed outside the restricted sandbox and compiled successfully.
+- Read-only smoke check: the production landing page returned HTTP 200 from local port 3100; the server was stopped without submitting supervisor actions.
+- Repository lint comparison: `npm run lint` reports 153 findings (123 errors and 30 warnings), improving the post-Milestone-6 result of 179 findings (147 errors and 32 warnings).
+- Tests: no tracked automated test suite exists; focused lint, TypeScript, production build, repository lint, diff checks, and read-only smoke validation were used.
+- New failures: none.
+- Ponytail review: reused `SharedUI`, `Timeline`, `VoiceChat`, `BroadcastWidget`, project-domain configuration, and all parent handlers. Added no dependency, service, hook, store, reducer, or generic workflow layer; retained confirmation, validation, authorization assumptions, and error handling.
+- Next action: audit and replace explicit `any` only in frontend files touched by Milestones 3–7, using narrow feature-owned types without changing runtime behavior.
+
+### 2026-07-26 — Milestone 6: admin dashboard split
+
+- Files changed: `components/dashboards/AdminDashboard.tsx`; added `components/admin/AdminReports.tsx`, `AdminOverviewSection.tsx`, `AdminHeadlineSection.tsx`, `AdminSupervisorsSection.tsx`, `AdminStudentsSection.tsx`, and `adminDashboardTypes.ts`.
+- Extraction order: moved browser-only report formatting/download presentation, overview statistics, supervisor management and slot editor, student management, then headline presentation.
+- Parent responsibility: `AdminDashboard.tsx` retains every fetch, mutation, confirmation flow, pagination/filter state, report selection, and tab transition. It is now 964 lines instead of 1,832.
+- Behavior protected: report rows, HTML/CSV text generation, Blob downloads, popup behavior, admin endpoints and payloads, destructive confirmations, supervisor slot limits, student pagination/filters, headline actions, wording, classes, and responsive layouts remain unchanged.
+- Boundary typing: added narrow admin supervisor, student, reports, pagination, stats, and dashboard prop types. The typed dialog contract exposed three callbacks that could receive `undefined`; default empty strings preserve the dialog's existing runtime value and validation behavior.
+- Changed-file lint: all six new admin files are clean. The parent retains two existing `react-hooks/set-state-in-effect` errors and nine existing warnings; it has no explicit `any` remaining.
+- Type checking: `npx tsc --noEmit` passed with no output.
+- Production build: `npm run build` passed outside the restricted sandbox and compiled successfully.
+- Read-only smoke check: the production landing page returned HTTP 200 from local port 3100; the server was stopped without submitting admin actions.
+- Repository lint comparison: `npm run lint` reports 179 findings (147 errors and 32 warnings), improving the post-Milestone-5 result of 205 findings (172 errors and 33 warnings).
+- Tests: no tracked automated test suite exists; focused lint, TypeScript, production build, repository lint, diff checks, and the read-only smoke check were used.
+- New failures: none.
+- Ponytail review: reused `SharedUI`, existing configuration and handlers; added no dependency, hook, store, service, reducer, or generic utility. Report builders moved byte-for-byte apart from narrow input types. All authorization, validation, confirmation, and error-handling protections remain in place.
+- Next action: begin Milestone 7 with the supervisor project-card presentation, leaving review/migration/removal handlers and selected-project state in the parent.
 
 ### 2026-07-26 — Milestone 5: student dashboard split
 
@@ -193,7 +257,7 @@ Database- and storage-related duplication was observed during the audit but is e
 
 ## Exact next action
 
-Begin Milestone 6 only: characterize the admin dashboard's pure report formatting and download presentation before editing, keeping authorization, requests, and mutations in the parent.
+Review and commit the validated Milestones 6–9 diff, then run the documented authenticated staging checklist when admin, supervisor, and student staging credentials are available.
 
 ## Explicitly deferred
 
