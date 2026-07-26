@@ -164,7 +164,7 @@ Delete candidates one coherent group at a time. Do not delete an export solely b
 
 ## Milestone 3 — Consolidate the project timeline
 
-Status: Not started
+Status: Complete
 
 Risk: Medium
 
@@ -198,7 +198,7 @@ Purpose: replace the near-identical student and supervisor timeline implementati
 
 ## Milestone 4 — Split the landing and authentication page
 
-Status: Not started
+Status: Complete
 
 Risk: Medium
 
@@ -229,7 +229,7 @@ Purpose: separate existing screen responsibilities while keeping session and nav
 
 ## Milestone 5 — Split the student dashboard
 
-Status: Not started
+Status: Complete
 
 Risk: Medium
 

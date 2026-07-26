@@ -46,6 +46,7 @@ import {
   StatCard,
   StyledInput,
 } from '../ui/SharedUI';
+import { Timeline } from '../ui/Timeline';
 
 
 
@@ -62,12 +63,6 @@ const FALLBACK_THEME = {
   lightBg: 'bg-[var(--color-accent-soft)]',
   border: 'border-[var(--color-accent)]',
 };
-
-const STAGES = [
-  { id: 'PROPOSAL', label: 'Proposal' },
-  { id: 'THESIS_DRAFT', label: 'Thesis Draft' },
-  { id: 'FINAL_DELIVERABLES', label: 'Final Deliverables' },
-];
 
 const getStatusVariant = (status?: string): BadgeVariant => {
   if (status === 'Approved') return 'success';
@@ -115,15 +110,6 @@ const getProjectDomainDisplayLabels = (project?: any) => {
   return legacyDomain ? [legacyDomain] : [];
 };
 
-const getStageProgress = (stage?: string) => {
-  const index = Math.max(
-    STAGES.findIndex((item) => item.id === stage),
-    0
-  );
-
-  return Math.round(((index + 1) / STAGES.length) * 100);
-};
-
 const getSafePdfKey = (url?: string) => {
   if (!url) return '';
 
@@ -144,62 +130,6 @@ const hasProjectSubmission = (project: any) => {
 const isProjectReviewable = (project: any) => {
   const status = String(project?.status || '').trim();
   return hasProjectSubmission(project) && !REVIEWED_PROJECT_STATUSES.has(status);
-};
-
-const ProjectTimeline = ({ currentStage }: { currentStage?: string }) => {
-  const currentIndex = Math.max(
-    STAGES.findIndex((stage) => stage.id === currentStage),
-    0
-  );
-
-  return (
-    <DashboardPanel>
-      <SectionHeader
-        title="Project Progress"
-        description={`${getStageProgress(currentStage)}% complete based on the current project stage.`}
-      />
-
-      <div className="portal-scrollbar overflow-x-auto">
-        <div className="relative flex min-w-[560px] items-start justify-between gap-4 pb-2">
-          <div className="absolute left-10 right-10 top-5 h-px bg-[var(--color-border)]" />
-
-          {STAGES.map((stage, index) => {
-            const isDone = index < currentIndex;
-            const isActive = index === currentIndex;
-
-            return (
-              <div
-                key={stage.id}
-                className="relative z-10 flex flex-1 flex-col items-center text-center"
-              >
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold ${
-                    isDone
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
-                      : isActive
-                        ? 'border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-accent)]'
-                        : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)]'
-                  }`}
-                >
-                  {isDone ? <CheckCircle size={18} /> : index + 1}
-                </div>
-
-                <p
-                  className={`mt-3 text-sm font-semibold ${
-                    isActive || isDone
-                      ? 'text-[var(--color-text)]'
-                      : 'text-[var(--color-text-muted)]'
-                  }`}
-                >
-                  {stage.label}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </DashboardPanel>
-  );
 };
 
 const SupervisorDashboard = ({
@@ -1077,7 +1007,10 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
               </div>
             </div>
 
-            <ProjectTimeline currentStage={selectedProject.stage || 'PROPOSAL'} />
+            <Timeline
+              currentStage={selectedProject.stage || 'PROPOSAL'}
+              descriptionSuffix="based on the current project stage."
+            />
 
             <DashboardPanel>
               <SectionHeader

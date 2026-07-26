@@ -4,11 +4,11 @@
 
 - Date: 2026-07-26
 - Branch: `fyp-v2`
-- Status: first three milestones complete (0–2); Milestone 3 ready
-- Roadmap progress: 30% (3 of 10 milestones complete)
-- Current milestone: Milestone 3 — consolidate the project timeline
-- Current sub-step: characterize both active timelines before changing either caller
-- Working tree before this documentation step: clean
+- Status: Milestones 0–5 complete; Milestone 6 ready
+- Roadmap progress: 60% (6 of 10 milestones complete)
+- Current milestone: Milestone 6 — split the admin dashboard
+- Current sub-step: characterize the report formatting and download presentation boundary before extraction
+- Working tree: contains only the planned Milestones 3–5 refactor and documentation changes
 
 ## Objective
 
@@ -59,15 +59,65 @@ Database- and storage-related duplication was observed during the audit but is e
 | 0. Protected baseline | Complete | Baseline and read-only smoke checklist recorded. |
 | 1. Repository hygiene | Complete | Removed verified artifacts and dead backup code. |
 | 2. Dead frontend surface | Complete | Removed seven verified zero-caller UI exports. |
-| 3. Shared project timeline | Next | Keep one behavior-equivalent frontend timeline. |
-| 4. Landing and authentication page | Pending | Split `app/page.tsx` by existing UI responsibility. |
-| 5. Student dashboard | Pending | Extract presentational sections incrementally. |
-| 6. Admin dashboard | Pending | Extract reports and management views incrementally. |
+| 3. Shared project timeline | Complete | One behavior-equivalent timeline serves both dashboards. |
+| 4. Landing and authentication page | Complete | Extracted dialog and authentication screens by responsibility. |
+| 5. Student dashboard | Complete | Extracted six presentational boundaries; parent retains workflow state and side effects. |
+| 6. Admin dashboard | Next | Extract reports and management views incrementally. |
 | 7. Supervisor dashboard | Pending | Extract project list/card/detail views incrementally. |
 | 8. UI type boundaries | Pending | Replace touched `any` boundaries without runtime changes. |
 | 9. Final product-quality pass | Pending | Validate the complete refactor and remove leftovers. |
 
 ## Completed work
+
+### 2026-07-26 — Milestone 5: student dashboard split
+
+- Files changed: `components/dashboards/StudentDashboard.tsx`; added `components/student/ProjectDomainSelector.tsx`, `StudentOverviewSection.tsx`, `StudentProjectSubmissionSection.tsx`, `StudentTeamSection.tsx`, `StudentResourcesSection.tsx`, `StudentDashboardDialogs.tsx`, and `studentDashboardTypes.ts`.
+- Extraction order: moved the project-domain selector, overview, project submission, team, resources/templates, then the supervisor-change, academic-update, and template-preview dialogs. TypeScript was checked after the first boundaries and after the complete extraction.
+- Parent responsibility: `StudentDashboard.tsx` remains the single owner of fetching, mutations, draft and file persistence, uploads, secure URL construction, fine restrictions, template clipboard work, top-level state, and tab orchestration. It is now 1,116 lines instead of 2,223.
+- Behavior protected: fetch URLs/methods/bodies/response handling, draft keys and timing, PDF type/size validation and upload, secure media links, fine locks, supervisor/team rules, academic reset warnings, template copying, field wording, disabled states, markup classes, responsive layout, and dialog actions remain unchanged.
+- Boundary typing: added narrow student summary, supervisor, member, announcement, template, academic-form, and supervisor-option types beside the feature; no server, API, database, storage, authentication, or production configuration file changed.
+- Changed-file lint: the new overview, project, team, resources, dialog, and type files are clean. The project-domain selector retains the existing `react-hooks/set-state-in-effect` finding that moved with its close-when-disabled behavior. The parent retains 14 existing errors and 3 existing warnings; no new lint finding was introduced.
+- Type checking: `npx tsc --noEmit` passed with no output.
+- Production build: `npm run build` passed outside the restricted sandbox; Next.js compiled successfully and completed its TypeScript phase.
+- Read-only smoke check: the built landing page returned HTTP 200 from local port 3100; the server was then stopped. Authenticated student actions were not submitted.
+- Repository lint comparison: `npm run lint` reports 205 findings (172 errors and 33 warnings), improving the post-Milestone-4 result of 213 findings (179 errors and 34 warnings).
+- Tests: no tracked automated test suite exists, so no test file was added; type checking, production build, focused lint, repository lint, diff checks, and the read-only HTTP smoke check were used.
+- New failures: none.
+- Decisions and known risk: side-effect handlers intentionally stayed in the parent so extracting markup could not alter persistence, permissions, uploads, or destructive reset behavior. Authenticated visual and keyboard checks still require staging credentials.
+- Ponytail review: reused `SharedUI`, `Timeline`, `VoiceChat`, project-domain configuration, and existing handlers; removed no safety logic; introduced only feature-named presentation components and one cohesive type file; added no hook, store, service, reducer, generic helper, or dependency. This is the smallest safe coherent split, and no new component should be removed or merged.
+- Next action: begin Milestone 6 by characterizing the admin dashboard's pure report formatting and download presentation, leaving authorization, requests, and mutations in the parent.
+
+### 2026-07-26 — Milestone 4: landing and authentication page split
+
+- Files changed: `app/page.tsx`; added `app/_components/PortalDialog.tsx`, `components/auth/LoginView.tsx`, `components/auth/RegisterView.tsx`, and `components/auth/PasswordResetFlow.tsx`.
+- Extraction order: moved the page-owned dialog first and validated TypeScript; then extracted sign-in, registration (with its private select), and password recovery as feature-owned components.
+- Parent responsibility: `app/page.tsx` remains the single owner of session/role selection, dynamic dashboard loading, intro flow, theme state, registration-policy loading, supervisor loading, dialog state, navigation, and view switching. It is now 308 lines instead of 1,081.
+- Behavior protected: dynamic imports, form field names, validation order and messages, `signIn` behavior, fetch paths/methods/headers/bodies, loading states, registration-policy refresh, dialog close/confirm behavior, markup/classes, and visible wording remain unchanged.
+- Boundary typing: added narrow dialog, registration-supervisor, select-option, and component prop types beside their owning features; no new explicit `any` was introduced.
+- Changed-file lint: the new login, registration, and password-reset files add no errors. The existing `<img>` warning moved with the login markup; the existing dialog reset effect and three page orchestration effects retain their known `react-hooks/set-state-in-effect` findings.
+- Type checking: `npx tsc --noEmit` passed with no output.
+- Production build: `npm run build` passed outside the restricted sandbox and generated all 21 static pages.
+- Read-only smoke check: the built landing page returned HTTP 200 from local port 3100; the server was then stopped. Form submission and authenticated role checks remain staging-only.
+- Repository lint comparison: `npm run lint` reports 213 findings (179 errors and 34 warnings), improving the post-Milestone-3 result of 234 by removing explicit `any` and unused-import findings from the extracted code.
+- New failures: none.
+- Ponytail review: reused existing `GlassCard`, `StyledInput`, registration-policy types, and page orchestration; added no service, hook, form library, dependency, or generic helper; the four extracted files each own one real UI responsibility.
+- Next action: characterize and extract the student dashboard's presentational sections while retaining all data fetching, mutations, draft persistence, uploads, and top-level state in the parent.
+
+### 2026-07-26 — Milestone 3: shared project timeline
+
+- Files changed: `components/ui/Timeline.tsx`, `components/dashboards/StudentDashboard.tsx`, and `components/dashboards/SupervisorDashboard.tsx`.
+- Characterized behavior: both dashboards use Proposal, Thesis Draft, and Final Deliverables; unknown stages fall back to Proposal; progress is 33%, 67%, or 100%; markup, icons, colors, spacing, and horizontal overflow were identical. Only the description wording differed.
+- Reuse: replaced the unused timeline implementation in place with the active dashboard markup, stage definition, label helper, and progress calculation; both dashboard callers now use it.
+- Behavior protected: stage values, fallback, percentages, DOM semantics, icons, styling, responsive overflow, student wording, and supervisor wording remain unchanged.
+- Incremental validation: after replacing the student caller, `npx tsc --noEmit` passed and the new timeline module was lint-clean; the student dashboard retained only its existing findings. The supervisor caller was replaced only after that result.
+- Changed-file lint: the shared timeline introduced no finding; the two dashboards retain their pre-existing `any`, hook, and unused-import findings.
+- Type checking: `npx tsc --noEmit` passed with no output after both callers were migrated.
+- Production build: `npm run build` passed outside the restricted sandbox and generated all 21 static pages.
+- Read-only smoke check: the built landing page returned HTTP 200 from local port 3100; the server was then stopped. Authenticated timeline checks still require staging role credentials.
+- Repository lint comparison: `npm run lint` reports 234 findings (193 errors and 41 warnings), improving the 236-finding baseline because the old unused timeline's explicit `any` and unused prop were removed.
+- New failures: none.
+- Ponytail review: removed both duplicate timeline components and constants, reused the existing `Timeline.tsx` boundary, added no dependency or generic workflow/theme abstraction, and retained all security, validation, accessibility, and error-handling code.
+- Next action: extract the existing page-owned dialog presentation from `app/page.tsx`, preserving its state contract.
 
 ### 2026-07-26 — Milestone 2: dead frontend surface
 
@@ -143,7 +193,7 @@ Database- and storage-related duplication was observed during the audit but is e
 
 ## Exact next action
 
-Begin Milestone 3 only: characterize stage values, progress calculations, styling, responsive overflow, and wording in both active timeline implementations and in `components/ui/Timeline.tsx` before replacing the first caller.
+Begin Milestone 6 only: characterize the admin dashboard's pure report formatting and download presentation before editing, keeping authorization, requests, and mutations in the parent.
 
 ## Explicitly deferred
 
