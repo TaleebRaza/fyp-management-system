@@ -86,8 +86,6 @@ export const StyledInput = ({
   );
 };
 
-export const Input = StyledInput;
-
 type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
   wrapperClassName?: string;
 };
@@ -330,42 +328,6 @@ export const StatCard = ({
 
   return <Card className={cardClassName}>{content}</Card>;
 };
-
-type TableShellProps = CommonProps & {
-  title?: React.ReactNode;
-  description?: React.ReactNode;
-  action?: React.ReactNode;
-};
-
-export const TableShell = ({
-  title,
-  description,
-  action,
-  children,
-  className = "",
-}: TableShellProps) => (
-  <Card className={cn("overflow-hidden p-0", className)}>
-    {(title || description || action) && (
-      <div className="flex flex-col gap-3 border-b border-[var(--color-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          {title && (
-            <h3 className="text-base font-bold text-[var(--color-text)]">
-              {title}
-            </h3>
-          )}
-          {description && (
-            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-              {description}
-            </p>
-          )}
-        </div>
-        {action && <div className="shrink-0">{action}</div>}
-      </div>
-    )}
-
-    <div className="portal-scrollbar overflow-x-auto">{children}</div>
-  </Card>
-);
 
 type EmptyStateProps = {
   title: React.ReactNode;
@@ -833,46 +795,6 @@ export const DashboardPanel = ({
   </Card>
 );
 
-export const DetailRow = ({
-  label,
-  value,
-  className = "",
-}: {
-  label: React.ReactNode;
-  value: React.ReactNode;
-  className?: string;
-}) => (
-  <div
-    className={cn(
-      "flex flex-col gap-1 border-t border-[var(--color-border)] py-3 text-sm sm:flex-row sm:items-center sm:justify-between",
-      className
-    )}
-  >
-    <span className="text-[var(--color-text-muted)]">{label}</span>
-    <span className="font-semibold text-[var(--color-text)]">{value}</span>
-  </div>
-);
-
-export const TagList = ({
-  items,
-  className = "",
-}: {
-  items: React.ReactNode[];
-  className?: string;
-}) => (
-  <div className={cn("flex flex-wrap gap-2", className)}>
-    {items.map((item, index) => (
-      <span
-        key={`${String(item)}-${index}`}
-        className="rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-bold text-[var(--color-accent)]"
-      >
-        {item}
-      </span>
-    ))}
-  </div>
-);
-
-
 const trimTrailingUrlPunctuation = (value: string) => {
   const match = value.match(/[.,!?;:)\]}]+$/);
 
@@ -956,47 +878,3 @@ export const LinkifiedText = ({
 
   return <span className={className}>{parts.length > 0 ? parts : source}</span>;
 };
-
-export const MobileSafeTable = ({
-  children,
-  className = "",
-}: CommonProps) => (
-  <div
-    className={cn(
-      "portal-scrollbar overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]",
-      className
-    )}
-  >
-    <table className="min-w-[720px] w-full text-left text-sm">
-      {children}
-    </table>
-  </div>
-);
-
-export const TableHeadCell = ({
-  children,
-  className = "",
-}: CommonProps) => (
-  <th
-    className={cn(
-      "bg-[var(--color-surface-muted)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]",
-      className
-    )}
-  >
-    {children}
-  </th>
-);
-
-export const TableCell = ({
-  children,
-  className = "",
-}: CommonProps) => (
-  <td
-    className={cn(
-      "border-t border-[var(--color-border)] px-4 py-4 text-sm text-[var(--color-text)]",
-      className
-    )}
-  >
-    {children}
-  </td>
-);
