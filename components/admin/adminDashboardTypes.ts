@@ -83,4 +83,5 @@ export type AdminReportsData = {
   projectStageSummary?: ReportSourceItem[];
   pdfReviewSummary?: ReportSourceItem[];
   finedStudents?: ReportSourceItem[];
+  collectedFineStudents?: ReportSourceItem[];
 };

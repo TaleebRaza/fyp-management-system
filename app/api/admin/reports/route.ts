@@ -3,7 +3,9 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import {
+  buildCollectedFineSummary,
   buildFineRestriction,
+  COLLECTED_STUDENT_FINE_FILTER,
   OUTSTANDING_STUDENT_FINE_FILTER,
   type FineRestrictedUser,
 } from '../../../../lib/fineRestriction';
@@ -66,6 +68,7 @@ export async function GET(req: NextRequest) {
       projectStatusRaw,
       projectStageRaw,
       finedStudentsRaw,
+      collectedFineStudentsRaw,
       pdfReviewRaw,
       totalsRaw,
     ] = await Promise.all([
@@ -134,6 +137,13 @@ export async function GET(req: NextRequest) {
       ]),
 
       User.find(OUTSTANDING_STUDENT_FINE_FILTER)
+        .select(
+          'name rollNo program batch lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
+        )
+        .sort({ createdAt: -1 })
+        .lean(),
+
+      User.find(COLLECTED_STUDENT_FINE_FILTER)
         .select(
           'name rollNo program batch lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
         )
@@ -292,6 +302,30 @@ export async function GET(req: NextRequest) {
       ];
     });
     const totalFineAmount = finedStudents.reduce((sum, student) => sum + student.fineAmount, 0);
+    const collectedFineStudents = (collectedFineStudentsRaw as FinedStudentRecord[]).flatMap((student) => {
+      const collection = buildCollectedFineSummary(student);
+      if (!collection) return [];
+
+      const breakdown = [
+        collection.lateRegistrationFine
+          ? `Late registration: PKR ${collection.lateRegistrationFine.amount.toLocaleString()}`
+          : '',
+        collection.adminFine
+          ? `${collection.adminFine.title}: PKR ${collection.adminFine.amount.toLocaleString()}`
+          : '',
+      ].filter(Boolean);
+
+      return [
+        {
+          label: `${student.name || 'Unknown Student'} (${student.rollNo || 'No Roll No'})`,
+          fineAmount: collection.totalAmount,
+          daysLate: collection.lateRegistrationFine?.daysLate || 0,
+          fineBreakdown: breakdown.join(' + '),
+          program: student.program || 'No Program',
+          batch: student.batch || 'No Batch',
+        },
+      ];
+    });
 
     const students = Number(studentTotals.students || 0);
     const activeStudents = Number(studentTotals.activeStudents || 0);
@@ -326,6 +360,7 @@ export async function GET(req: NextRequest) {
           totalFineAmount,
         },
         finedStudents,
+        collectedFineStudents,
         studentsPerSupervisor,
         studentStatusSummary: toLabelRows(studentStatusRaw, 'No Status'),
         studentActivitySummary: toLabelRows(studentActivityRaw, 'Unknown'),

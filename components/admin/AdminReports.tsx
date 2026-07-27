@@ -17,7 +17,8 @@ export type ReportOption = {
     | 'projectStatusSummary'
     | 'projectStageSummary'
     | 'pdfReviewSummary'
-    | 'finedStudents';
+    | 'finedStudents'
+    | 'collectedFineStudents';
   label: string;
   description: string;
 };
@@ -73,6 +74,11 @@ export const REPORT_OPTIONS: ReportOption[] = [
     id: 'finedStudents',
     label: 'Students Fined',
     description: 'Shows students with outstanding monetary fines and the amount still due.',
+  },
+  {
+    id: 'collectedFineStudents',
+    label: 'Fines Collected',
+    description: 'Shows monetary fines verified as collected, excluding waived fines.',
   },
 ];
 
@@ -145,6 +151,14 @@ export const toReportRows = (data: AdminReportsData | null, reportId: ReportOpti
     }));
   }
 
+  if (reportId === 'collectedFineStudents') {
+    return (data.collectedFineStudents || []).map((item) => ({
+      label: item.label || 'Unknown Student',
+      value: Number(item.fineAmount || 0),
+      note: `${item.fineBreakdown || `${Number(item.daysLate || 0)} day(s) late`} · ${item.program || 'No Program'} · ${item.batch || 'No Batch'}`,
+    }));
+  }
+
   return (data.pdfReviewSummary || []).map((item) => ({
     label: item.label || 'Unknown',
     value: Number(item.total || 0),
@@ -182,6 +196,9 @@ export const buildReportHtml = (data: AdminReportsData, report: ReportOption, ro
     ? new Date(data.generatedAt).toLocaleString()
     : new Date().toLocaleString();
   const maxValue = Math.max(...rows.map((row) => row.value), 1);
+  const totalCollected = report.id === 'collectedFineStudents'
+    ? rows.reduce((sum, row) => sum + row.value, 0)
+    : null;
   const totals = data?.totals || {};
   const chartRows = rows
     .map((row) => {
@@ -237,6 +254,7 @@ export const buildReportHtml = (data: AdminReportsData, report: ReportOption, ro
       <p class="eyebrow">FYP Portal Report</p>
       <h1>${escapeHtml(report.label)}</h1>
       <p class="description">${escapeHtml(report.description)}</p>
+      ${totalCollected !== null ? `<p class="description">Total collected: PKR ${totalCollected.toLocaleString()}</p>` : ''}
       <p class="description">Generated on ${escapeHtml(generatedAt)}. This report was created in the browser and was not saved to portal storage.</p>
     </section>
     <section class="summary">
@@ -290,6 +308,10 @@ export function AdminReportsDialog({
   onDownloadHtml: () => void;
   onOpenReport: () => void;
 }) {
+  const totalCollected = selectedReportId === 'collectedFineStudents'
+    ? rows.reduce((sum, row) => sum + row.value, 0)
+    : null;
+
   return (
     <Dialog
       open={open}
@@ -363,6 +385,11 @@ export function AdminReportsDialog({
               title={selectedReport.label}
               description={`${selectedReport.description} Generated ${new Date(data.generatedAt || '').toLocaleString()}.`}
             />
+            {totalCollected !== null && (
+              <p className="text-sm font-black text-[var(--color-text)]">
+                Total collected: PKR {totalCollected.toLocaleString()}
+              </p>
+            )}
 
             {rows.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center">

@@ -16,6 +16,22 @@ export const OUTSTANDING_STUDENT_FINE_FILTER = {
   ],
 };
 
+export const COLLECTED_STUDENT_FINE_FILTER = {
+  role: 'student',
+  $or: [
+    {
+      lateRegistrationFine: { $gt: 0 },
+      lateRegistrationFineStatus: 'resolved',
+    },
+    {
+      'registrationPunishment.active': true,
+      'registrationPunishment.category': 'fine',
+      'registrationPunishment.amount': { $gt: 0 },
+      'registrationPunishment.status': 'resolved',
+    },
+  ],
+};
+
 export type FinePaymentDetails = {
   methodLabel: string;
   accountTitle: string;
@@ -55,6 +71,18 @@ export type FineRestrictedUser = {
   } | null;
 };
 
+export type CollectedFineSummary = {
+  lateRegistrationFine: {
+    amount: number;
+    daysLate: number;
+  } | null;
+  adminFine: {
+    amount: number;
+    title: string;
+  } | null;
+  totalAmount: number;
+};
+
 export function buildFineRestriction(user: FineRestrictedUser | null | undefined): FineRestrictionSummary | null {
   if (!user) return null;
 
@@ -87,6 +115,40 @@ export function buildFineRestriction(user: FineRestrictedUser | null | undefined
 
   return {
     active: true,
+    lateRegistrationFine,
+    adminFine,
+    totalAmount: (lateRegistrationFine?.amount || 0) + (adminFine?.amount || 0),
+  };
+}
+
+export function buildCollectedFineSummary(user: FineRestrictedUser | null | undefined): CollectedFineSummary | null {
+  if (!user) return null;
+
+  const lateAmount = Math.max(Math.round(Number(user.lateRegistrationFine) || 0), 0);
+  const lateRegistrationFine =
+    lateAmount > 0 && user.lateRegistrationFineStatus === 'resolved'
+      ? {
+          amount: lateAmount,
+          daysLate: Math.max(Math.trunc(Number(user.lateRegistrationDays) || 0), 0),
+        }
+      : null;
+
+  const punishment = user.registrationPunishment || {};
+  const adminAmount = Math.max(Math.round(Number(punishment.amount) || 0), 0);
+  const adminFine =
+    punishment.active === true &&
+    punishment.category === 'fine' &&
+    adminAmount > 0 &&
+    punishment.status === 'resolved'
+      ? {
+          amount: adminAmount,
+          title: String(punishment.title || 'Administrative fine').trim() || 'Administrative fine',
+        }
+      : null;
+
+  if (!lateRegistrationFine && !adminFine) return null;
+
+  return {
     lateRegistrationFine,
     adminFine,
     totalAmount: (lateRegistrationFine?.amount || 0) + (adminFine?.amount || 0),
