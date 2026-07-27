@@ -23,6 +23,7 @@ const AUTHENTICATED_ROUTES = [
 const STUDENT_ROUTES = [
   "/api/dashboard/student",
   "/api/project/join",
+  "/api/project/leave",
   "/api/upload", // Secures the Vercel Blob from public abuse
 ];
 
@@ -90,6 +91,7 @@ export const config = {
     /* Student & File Routes (Newly Secured) */
     "/api/dashboard/student",
     "/api/project/join",
+    "/api/project/leave",
     "/api/upload",
     "/api/read-pdf",
     "/api/templates",

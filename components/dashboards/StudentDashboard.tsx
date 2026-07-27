@@ -162,6 +162,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   const maxTeamSize = getTeamCapacity(project?.maxTeamSize);
   const canShareInviteCode =
     Boolean(project?.inviteCode) && projectMembers.length < maxTeamSize;
+  const canLeaveTeam = projectMembers.length > 1;
   const currentStage = project?.stage || 'PROPOSAL';
   const visibleTemplates = cachedTemplateStage === currentStage ? cachedTemplates : [];
   const currentProgramName = getProgramName(me?.program);
@@ -725,6 +726,70 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     }
   };
 
+  // leave-team-feature-v1
+  const performLeaveTeam = async () => {
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch('/api/project/leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.error || 'Failed to leave the team.');
+      }
+
+      if (projectDraftKey) clearBrowserDraft(projectDraftKey);
+      if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
+      setTitle('');
+      setDesc('');
+      setSelectedDomains([]);
+      setLegacyDomain('');
+      setTools('');
+      setFile(null);
+      setInviteCodeInput('');
+      setCachedTemplates([]);
+      setCachedTemplateStage(null);
+
+      await fetchData();
+      await fetchSupervisors();
+
+      showDialog({
+        title: 'Team left',
+        message:
+          json.message ||
+          'You left the team successfully. A new project and invite code have been created for you.',
+      });
+    } catch (error) {
+      showDialog({
+        title: 'Leave team failed',
+        message: getErrorMessage(error, 'Unable to leave the team right now.'),
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLeaveTeam = () => {
+    if (!canLeaveTeam) {
+      showDialog({
+        title: 'Cannot leave team',
+        message: 'You cannot leave because you are the only member of this team.',
+      });
+      return;
+    }
+
+    showDialog({
+      type: 'confirm',
+      title: 'Leave current team?',
+      message:
+        'You will lose this team’s supervisor, project status, project details, and PDF link. A completely new project and invite code will be created for you. This action cannot be undone.',
+      onConfirm: performLeaveTeam,
+    });
+  };
+
   const handleCopyInviteCode = async () => {
     if (!project?.inviteCode) return;
 
@@ -1055,6 +1120,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             inviteCodeInput={inviteCodeInput}
             onInviteCodeChange={setInviteCodeInput}
             onJoinTeam={handleJoinTeam}
+            canLeaveTeam={canLeaveTeam}
+            onLeaveTeam={handleLeaveTeam}
             onCopyInviteCode={handleCopyInviteCode}
             onOpenSupervisorChange={openSupervisorChangeDialog}
             isSupervisorChangeLocked={isSupervisorChangeLocked}

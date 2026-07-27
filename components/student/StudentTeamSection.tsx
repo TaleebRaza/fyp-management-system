@@ -1,5 +1,5 @@
 import type { FormEventHandler } from 'react';
-import { ArrowRight, Copy, Loader2, Lock, UserCheck, Users } from 'lucide-react';
+import { ArrowRight, Copy, Loader2, Lock, LogOut, UserCheck, Users } from 'lucide-react';
 import {
   AvatarBadge,
   Button,
@@ -34,6 +34,8 @@ export default function StudentTeamSection({
   inviteCodeInput,
   onInviteCodeChange,
   onJoinTeam,
+  canLeaveTeam,
+  onLeaveTeam,
   onCopyInviteCode,
   onOpenSupervisorChange,
   isSupervisorChangeLocked,
@@ -55,6 +57,8 @@ export default function StudentTeamSection({
   inviteCodeInput: string;
   onInviteCodeChange: (value: string) => void;
   onJoinTeam: FormEventHandler<HTMLFormElement>;
+  canLeaveTeam: boolean;
+  onLeaveTeam: () => void;
   onCopyInviteCode: () => void;
   onOpenSupervisorChange: () => void;
   isSupervisorChangeLocked: boolean;
@@ -190,6 +194,23 @@ export default function StudentTeamSection({
           </form>
         </div>
 
+        <div className="mt-6 border-t border-[var(--color-border)] pt-6">
+          <Button
+            type="button"
+            variant="danger"
+            className="w-full"
+            onClick={onLeaveTeam}
+            disabled={isSubmitting || !canLeaveTeam}
+          >
+            {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <LogOut size={16} />}
+            Leave Team
+          </Button>
+          <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
+            {canLeaveTeam
+              ? 'Leaving removes your supervisor, project details, status, and PDF link. You will receive a new project and invite code.'
+              : 'You cannot leave while you are the only member of this team.'}
+          </p>
+        </div>
         {!isUnassigned && (
           <div className="mt-6 border-t border-[var(--color-border)] pt-6">
             <Button
