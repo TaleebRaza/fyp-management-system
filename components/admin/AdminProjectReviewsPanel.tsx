@@ -190,12 +190,9 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
     );
   }
 
-  const firstVisibleItem = pagination.total === 0 ? 0 : ((page - 1) * pagination.limit) + 1;
-  const lastVisibleItem = Math.min(page * pagination.limit, pagination.total);
-
   return (
     <>
-      <div className="flex min-h-0 flex-col lg:h-full" aria-busy={isLoading}>
+      <div className="relative flex min-h-0 flex-col lg:h-full" aria-busy={isLoading}>
         <div className="min-h-0 flex-1">
           <SupervisorProjectsSection
             title="Project Review Queue"
@@ -217,33 +214,32 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
           />
         </div>
 
-        {pagination.total > 0 && (
-          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-            <span className="font-semibold text-[var(--color-text-muted)]">
-              Showing {firstVisibleItem}-{lastVisibleItem} of {pagination.total}
-              {isLoading ? ' · Updating…' : ''}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-xl border border-[var(--color-border)] px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isLoading || page <= 1}
-                onClick={() => setPage((currentPage) => Math.max(currentPage - 1, 1))}
-              >
-                Previous
-              </button>
-              <span className="min-w-24 text-center font-bold">
-                Page {page} of {Math.max(pagination.totalPages, 1)}
-              </span>
-              <button
-                type="button"
-                className="rounded-xl border border-[var(--color-border)] px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isLoading || page >= pagination.totalPages}
-                onClick={() => setPage((currentPage) => currentPage + 1)}
-              >
-                Next
-              </button>
-            </div>
+        {pagination.totalPages > 1 && (
+          <div
+            className="pointer-events-none absolute bottom-4 right-4 z-20 flex items-center gap-2"
+            role="group"
+            aria-label={`Review queue pagination, page ${page} of ${pagination.totalPages}`}
+          >
+            <button
+              type="button"
+              className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-lg font-black text-[var(--color-text)] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-lg"
+              disabled={isLoading || page <= 1}
+              onClick={() => setPage((currentPage) => Math.max(currentPage - 1, 1))}
+              aria-label="Previous review queue page"
+              title="Previous page"
+            >
+              {'<'}
+            </button>
+            <button
+              type="button"
+              className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-lg font-black text-[var(--color-text)] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-lg"
+              disabled={isLoading || page >= pagination.totalPages}
+              onClick={() => setPage((currentPage) => currentPage + 1)}
+              aria-label="Next review queue page"
+              title="Next page"
+            >
+              {'>'}
+            </button>
           </div>
         )}
       </div>
