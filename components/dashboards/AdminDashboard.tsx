@@ -45,7 +45,8 @@ import type {
   AdminSupervisor,
 } from '../admin/adminDashboardTypes';
 
-const AdminProjectReviewsPanel = dynamic(() => import('../admin/AdminProjectReviewsPanel'), {
+const loadAdminProjectReviewsPanel = () => import('../admin/AdminProjectReviewsPanel');
+const AdminProjectReviewsPanel = dynamic(loadAdminProjectReviewsPanel, {
   loading: () => <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">Loading project reviews...</div>,
 });
 
@@ -281,6 +282,18 @@ const AdminDashboard = ({
       void fetchHeadline();
     });
   }, [fetchHeadline, fetchSupervisors]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadAdminProjectReviewsPanel();
+      void fetch('/api/admin/project-reviews?page=1&limit=24', {
+        credentials: 'same-origin',
+      }).catch(() => undefined);
+    }, 750);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

@@ -1,87 +1,128 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import type { ShowDialog } from '../../app/_components/PortalDialog';
+import { PROGRAM_MAP } from '../../config/appSettings';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
-import {
-  getMemberNames,
-  getMemberRollNumbers,
-  getProgramName,
-  getProjectDomainDisplayLabels,
-  getProjectProgram,
-} from '../supervisor/SupervisorProjectCard';
+import { getProgramName } from '../supervisor/SupervisorProjectCard';
 import type { SupervisorProject } from '../supervisor/supervisorDashboardTypes';
+
+const PAGE_SIZE = 24;
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
+
+type PaginationState = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+type FetchProjectsOptions = {
+  showLoading?: boolean;
+  forceRefresh?: boolean;
+};
 
 export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: ShowDialog }) {
   const [projects, setProjects] = useState<SupervisorProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<SupervisorProject | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [programFilter, setProgramFilter] = useState('All');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationState>({
+    page: 1,
+    limit: PAGE_SIZE,
+    total: 0,
+    totalPages: 0,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const latestRequestId = useRef(0);
 
-  const fetchProjects = useCallback(async () => {
-    setIsLoading(true);
+  const programs = useMemo(
+    () => Object.keys(PROGRAM_MAP).sort((a, b) => getProgramName(a).localeCompare(getProgramName(b))),
+    []
+  );
+
+  const fetchProjects = useCallback(async ({
+    showLoading = true,
+    forceRefresh = false,
+  }: FetchProjectsOptions = {}) => {
+    const requestId = ++latestRequestId.current;
+
+    if (showLoading) setIsLoading(true);
 
     try {
-      const response = await fetch('/api/admin/project-reviews', { cache: 'no-store' });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      });
+
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (programFilter !== 'All') params.set('program', programFilter);
+
+      const response = await fetch(`/api/admin/project-reviews?${params.toString()}`, {
+        cache: forceRefresh ? 'reload' : 'default',
+      });
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to load submitted projects.');
       }
 
+      if (requestId !== latestRequestId.current) return;
+
       setProjects(Array.isArray(data.projects) ? data.projects : []);
+      setPagination(data.pagination || {
+        page,
+        limit: PAGE_SIZE,
+        total: Array.isArray(data.projects) ? data.projects.length : 0,
+        totalPages: 1,
+      });
     } catch (error) {
+      if (requestId !== latestRequestId.current) return;
+
       console.error('Admin project review queue error:', error);
       showDialog({
         title: 'Review queue unavailable',
         message: getErrorMessage(error, 'Unable to load submitted projects right now.'),
       });
     } finally {
-      setIsLoading(false);
+      if (showLoading && requestId === latestRequestId.current) {
+        setIsLoading(false);
+      }
     }
-  }, [showDialog]);
+  }, [debouncedSearch, page, programFilter, showDialog]);
 
   useEffect(() => {
-    void Promise.resolve().then(fetchProjects);
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setDebouncedSearch(search.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void fetchProjects();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [fetchProjects]);
 
-  const programs = useMemo(() => Array.from(new Set(
-    projects.map(getProjectProgram).filter((program) => program && program !== 'N/A')
-  )).sort((a, b) => getProgramName(a).localeCompare(getProgramName(b))), [projects]);
-
-  const filteredProjects = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return projects.filter((project) => {
-      if (programFilter !== 'All' && getProjectProgram(project) !== programFilter) return false;
-      if (!query) return true;
-
-      return [
-        getMemberNames(project),
-        getMemberRollNumbers(project),
-        project.supervisorName,
-        getProgramName(getProjectProgram(project)),
-        getProjectProgram(project),
-        project.projectTitle,
-        project.domain,
-        ...(project.domains || []),
-        ...getProjectDomainDisplayLabels(project),
-        project.tools,
-        project.status,
-        project.batch,
-        project.semester,
-      ].some((field) => String(field || '').toLowerCase().includes(query));
-    });
-  }, [programFilter, projects, search]);
+  const handleProgramFilterChange = (value: string) => {
+    setPage(1);
+    setProgramFilter(value);
+  };
 
   const handleAction = (studentId: string, status: string) => {
-    const supervisorName = selectedProject?.supervisorName || 'the assigned supervisor';
+    const projectBeingReviewed = selectedProject;
+    const supervisorName = projectBeingReviewed?.supervisorName || 'the assigned supervisor';
 
     showDialog({
       type: 'prompt',
@@ -104,8 +145,31 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
           }
 
           setSelectedProject(null);
-          await fetchProjects();
-          showDialog({ title: 'Project updated', message: `The project has been marked as ${status}.` });
+
+          if (projectBeingReviewed) {
+            setProjects((currentProjects) =>
+              currentProjects.filter((project) => project._id !== projectBeingReviewed._id)
+            );
+            setPagination((current) => {
+              const total = Math.max(current.total - 1, 0);
+              return {
+                ...current,
+                total,
+                totalPages: total === 0 ? 0 : Math.ceil(total / current.limit),
+              };
+            });
+          }
+
+          showDialog({
+            title: 'Project updated',
+            message: `The project has been marked as ${status}.`,
+          });
+
+          if (projects.length === 1 && page > 1) {
+            setPage((currentPage) => Math.max(currentPage - 1, 1));
+          } else {
+            void fetchProjects({ showLoading: false, forceRefresh: true });
+          }
         } catch (error) {
           showDialog({
             title: 'Action failed',
@@ -118,31 +182,70 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
     });
   };
 
-  if (isLoading) {
-    return <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">Loading submitted projects...</div>;
+  if (isLoading && projects.length === 0) {
+    return (
+      <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">
+        Loading submitted projects...
+      </div>
+    );
   }
+
+  const firstVisibleItem = pagination.total === 0 ? 0 : ((page - 1) * pagination.limit) + 1;
+  const lastVisibleItem = Math.min(page * pagination.limit, pagination.total);
 
   return (
     <>
-      <div className="min-h-0 lg:h-full">
-        <SupervisorProjectsSection
-          title="Project Review Queue"
-          description="Submitted projects awaiting a decision. Reviews are applied as the assigned supervisor."
-          queueFilter="all"
-          hideQueueFilterClear
-          search={search}
-          onSearchChange={setSearch}
-          filterValue={programFilter}
-          onFilterChange={setProgramFilter}
-          filterOptions={programs}
-          filterLabel="Program"
-          projects={filteredProjects}
-          emptyState={{
-            title: 'No projects waiting for review',
-            description: 'There are no submitted projects awaiting a review right now.',
-          }}
-          onOpenProject={setSelectedProject}
-        />
+      <div className="flex min-h-0 flex-col lg:h-full" aria-busy={isLoading}>
+        <div className="min-h-0 flex-1">
+          <SupervisorProjectsSection
+            title="Project Review Queue"
+            description="Submitted projects awaiting a decision. Reviews are applied as the assigned supervisor."
+            queueFilter="all"
+            hideQueueFilterClear
+            search={search}
+            onSearchChange={setSearch}
+            filterValue={programFilter}
+            onFilterChange={handleProgramFilterChange}
+            filterOptions={programs}
+            filterLabel="Program"
+            projects={projects}
+            emptyState={{
+              title: 'No projects waiting for review',
+              description: 'There are no submitted projects awaiting a review right now.',
+            }}
+            onOpenProject={setSelectedProject}
+          />
+        </div>
+
+        {pagination.total > 0 && (
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <span className="font-semibold text-[var(--color-text-muted)]">
+              Showing {firstVisibleItem}-{lastVisibleItem} of {pagination.total}
+              {isLoading ? ' · Updating…' : ''}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-[var(--color-border)] px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoading || page <= 1}
+                onClick={() => setPage((currentPage) => Math.max(currentPage - 1, 1))}
+              >
+                Previous
+              </button>
+              <span className="min-w-24 text-center font-bold">
+                Page {page} of {Math.max(pagination.totalPages, 1)}
+              </span>
+              <button
+                type="button"
+                className="rounded-xl border border-[var(--color-border)] px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoading || page >= pagination.totalPages}
+                onClick={() => setPage((currentPage) => currentPage + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <SupervisorProjectDialog
