@@ -6,6 +6,7 @@ import {
   normalizeProjectDomainIds,
 } from '../../config/projectDomains';
 import { AvatarBadge, Badge } from '../ui/SharedUI';
+import { isProjectAwaitingReview } from '../../lib/projectReviewPolicy';
 import type { SupervisorProject } from './supervisorDashboardTypes';
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'muted';
@@ -56,12 +57,10 @@ export const getSafePdfKey = (url?: string) => {
   }
 };
 
-const REVIEWED_PROJECT_STATUSES = new Set(['Approved', 'Rejected', 'Changes Requested']);
-
 export const hasProjectSubmission = (project: SupervisorProject) => Boolean(project.pdfUrl);
 
 export const isProjectReviewable = (project: SupervisorProject) =>
-  hasProjectSubmission(project) && !REVIEWED_PROJECT_STATUSES.has(String(project.status || '').trim());
+  isProjectAwaitingReview(project);
 
 export default function SupervisorProjectCard({
   project,
@@ -104,6 +103,7 @@ export default function SupervisorProjectCard({
         <Badge variant="muted">{getProgramName(getProjectProgram(project))}</Badge>
         {project.batch && <Badge variant="muted">{project.batch}</Badge>}
         {project.semester && <Badge variant="muted">{project.semester}</Badge>}
+        {project.supervisorName && <Badge variant="muted">Supervisor: {project.supervisorName}</Badge>}
         {domainLabels.map((domainLabel) => <Badge key={domainLabel} variant="accent">{domainLabel}</Badge>)}
       </div>
 

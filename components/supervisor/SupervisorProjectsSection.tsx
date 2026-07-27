@@ -8,13 +8,15 @@ export default function SupervisorProjectsSection({
   description,
   queueFilter,
   onClearQueueFilter,
+  hideQueueFilterClear = false,
   isExporting,
   onExport,
   search,
   onSearchChange,
-  batchFilter,
-  onBatchFilterChange,
-  batches,
+  filterValue,
+  onFilterChange,
+  filterOptions,
+  filterLabel,
   projects,
   emptyState,
   onOpenProject,
@@ -22,14 +24,16 @@ export default function SupervisorProjectsSection({
   title: string;
   description: string;
   queueFilter: ProjectQueueFilter;
-  onClearQueueFilter: () => void;
-  isExporting: boolean;
-  onExport: () => void;
+  onClearQueueFilter?: () => void;
+  hideQueueFilterClear?: boolean;
+  isExporting?: boolean;
+  onExport?: () => void;
   search: string;
   onSearchChange: (value: string) => void;
-  batchFilter: string;
-  onBatchFilterChange: (value: string) => void;
-  batches: string[];
+  filterValue: string;
+  onFilterChange: (value: string) => void;
+  filterOptions: string[];
+  filterLabel: string;
   projects: SupervisorProject[];
   emptyState: { title: string; description: string };
   onOpenProject: (project: SupervisorProject) => void;
@@ -41,20 +45,20 @@ export default function SupervisorProjectsSection({
         description={description}
         action={
           <div className="flex flex-wrap gap-2">
-            {queueFilter !== 'all' && <Button variant="outline" onClick={onClearQueueFilter}>Clear queue filter</Button>}
-            <Button variant="outline" onClick={onExport} disabled={isExporting}>
+            {!hideQueueFilterClear && queueFilter !== 'all' && onClearQueueFilter && <Button variant="outline" onClick={onClearQueueFilter}>Clear queue filter</Button>}
+            {onExport && <Button variant="outline" onClick={onExport} disabled={isExporting}>
               {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
               {isExporting ? 'Exporting...' : 'Export Excel'}
-            </Button>
+            </Button>}
           </div>
         }
       />
 
       <div className="mb-5 grid shrink-0 gap-3 lg:grid-cols-[1fr_14rem]">
         <StyledInput icon={Search} value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search by student, roll number, title, domain, status..." />
-        <Select value={batchFilter} onChange={(event) => onBatchFilterChange(event.target.value)}>
-          <option value="All">All Batches</option>
-          {batches.map((batch) => <option key={batch} value={batch}>{batch}</option>)}
+        <Select value={filterValue} onChange={(event) => onFilterChange(event.target.value)} aria-label={`Filter by ${filterLabel.toLowerCase()}`}>
+          <option value="All">All {filterLabel}s</option>
+          {filterOptions.map((option) => <option key={option} value={option}>{option}</option>)}
         </Select>
       </div>
 

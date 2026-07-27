@@ -10,6 +10,7 @@ import {
   type FineRestrictedUser,
 } from '../../../../lib/fineRestriction';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { REVIEWED_PROJECT_STATUSES } from '../../../../lib/projectReviewPolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +48,6 @@ const toLabelRows = (rows: CountRow[], fallback: string) => {
     total: Number(row.total || 0),
   }));
 };
-
-const REVIEWED_PROJECT_STATUSES = ['Approved', 'Rejected', 'Changes Requested'];
 
 export async function GET(req: NextRequest) {
   try {

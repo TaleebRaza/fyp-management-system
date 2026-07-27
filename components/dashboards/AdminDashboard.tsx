@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { signOut } from 'next-auth/react';
 import {
   BarChart3,
   CircleDollarSign,
+  ClipboardCheck,
   GraduationCap,
   LayoutDashboard,
   LockKeyhole,
@@ -43,7 +45,11 @@ import type {
   AdminSupervisor,
 } from '../admin/adminDashboardTypes';
 
-type AdminTab = 'overview' | 'supervisors' | 'students' | 'registration' | 'fines';
+const AdminProjectReviewsPanel = dynamic(() => import('../admin/AdminProjectReviewsPanel'), {
+  loading: () => <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">Loading project reviews...</div>,
+});
+
+type AdminTab = 'overview' | 'supervisors' | 'students' | 'reviews' | 'registration' | 'fines';
 
 const AdminDashboard = ({
   session,
@@ -802,6 +808,13 @@ const AdminDashboard = ({
       onClick: () => setActiveTab('students'),
     },
     {
+      id: 'reviews',
+      label: 'Project Reviews',
+      icon: <ClipboardCheck size={18} />,
+      active: activeTab === 'reviews',
+      onClick: () => setActiveTab('reviews'),
+    },
+    {
       id: 'registration',
       label: 'Registration',
       icon: <LockKeyhole size={18} />,
@@ -926,6 +939,7 @@ const AdminDashboard = ({
             />
           </div>
         )}
+        {activeTab === 'reviews' && <AdminProjectReviewsPanel showDialog={showDialog} />}
         {activeTab === 'fines' && <FineManagementPanel showDialog={showDialog} />}
         {activeTab === 'registration' && (
           <RegistrationControlPanel

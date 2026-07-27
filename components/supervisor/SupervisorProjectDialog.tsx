@@ -14,29 +14,13 @@ import {
 } from './SupervisorProjectCard';
 import type { SupervisorProject, SupervisorTheme } from './supervisorDashboardTypes';
 
-export default function SupervisorProjectDialog({
-  project,
-  onClose,
-  isProcessingAction,
-  onAction,
-  supervisorId,
-  theme,
-  isDarkMode,
-  migrationStudentId,
-  onMigrationStudentChange,
-  migrationCode,
-  onMigrationCodeChange,
-  onMigrate,
-  onExpandTeam,
-  onRemoveTeam,
-}: {
-  project: SupervisorProject | null;
-  onClose: () => void;
-  isProcessingAction: boolean;
-  onAction: (studentId: string, status: string) => void;
-  supervisorId: string;
+type VoiceNotes = {
+  currentUserId: string;
   theme: SupervisorTheme;
   isDarkMode: boolean;
+};
+
+type ProjectManagement = {
   migrationStudentId: string;
   onMigrationStudentChange: (studentId: string) => void;
   migrationCode: string;
@@ -44,6 +28,22 @@ export default function SupervisorProjectDialog({
   onMigrate: () => void;
   onExpandTeam: () => void;
   onRemoveTeam: () => void;
+};
+
+export default function SupervisorProjectDialog({
+  project,
+  onClose,
+  isProcessingAction,
+  onAction,
+  voiceNotes,
+  management,
+}: {
+  project: SupervisorProject | null;
+  onClose: () => void;
+  isProcessingAction: boolean;
+  onAction: (studentId: string, status: string) => void;
+  voiceNotes?: VoiceNotes;
+  management?: ProjectManagement;
 }) {
   const selectedPdfKey = getSafePdfKey(project?.pdfUrl);
   const domainLabels = getProjectDomainDisplayLabels(project);
@@ -53,7 +53,7 @@ export default function SupervisorProjectDialog({
       open={!!project}
       onClose={onClose}
       title={getMemberNames(project)}
-      description={project ? `${getMemberRollNumbers(project)} · ${getProgramName(getProjectProgram(project))} · ${project.batch || 'No batch'} · ${project.semester || 'No semester'}` : ''}
+      description={project ? `${getMemberRollNumbers(project)} · ${getProgramName(getProjectProgram(project))} · ${project.batch || 'No batch'} · ${project.semester || 'No semester'}${project.supervisorName ? ` · Supervisor: ${project.supervisorName}` : ''}` : ''}
       size="xl"
       footer={
         project ? (
@@ -124,30 +124,30 @@ export default function SupervisorProjectDialog({
             </div>
           </DashboardPanel>
 
-          <DashboardPanel>
+          {voiceNotes && <DashboardPanel>
             <SectionHeader title="Voice Notes" description="Communicate with the team through short project voice notes." />
-            <VoiceChat projectId={project._id} currentUserId={supervisorId} theme={theme} isDarkMode={isDarkMode} />
-          </DashboardPanel>
+            <VoiceChat projectId={project._id} currentUserId={voiceNotes.currentUserId} theme={voiceNotes.theme} isDarkMode={voiceNotes.isDarkMode} />
+          </DashboardPanel>}
 
-          <DashboardPanel>
+          {management && <DashboardPanel>
             <SectionHeader title="Supervisor Management" description="Select a student from the team and migrate them individually." />
             <div className="grid gap-4">
               <div>
                 <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Select Student to Migrate</label>
-                <select value={migrationStudentId} onChange={(event) => onMigrationStudentChange(event.target.value)} className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]">
+                <select value={management.migrationStudentId} onChange={(event) => management.onMigrationStudentChange(event.target.value)} className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]">
                   {(project.members || []).map((member) => <option key={member._id} value={member._id}>{member.name} ({member.rollNo || member.email})</option>)}
                 </select>
               </div>
               <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-                <StyledInput value={migrationCode} onChange={(event) => onMigrationCodeChange(event.target.value.toUpperCase())} placeholder="Enter target migration code" />
-                <Button variant="outline" disabled={isProcessingAction || !migrationStudentId} onClick={onMigrate}>
+                <StyledInput value={management.migrationCode} onChange={(event) => management.onMigrationCodeChange(event.target.value.toUpperCase())} placeholder="Enter target migration code" />
+                <Button variant="outline" disabled={isProcessingAction || !management.migrationStudentId} onClick={management.onMigrate}>
                   {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <ArrowRightLeft size={16} />}Migrate Student
                 </Button>
-                {getTeamCapacity(project.maxTeamSize) < EXPANDED_TEAM_SIZE && <Button variant="outline" disabled={isProcessingAction} onClick={onExpandTeam}><Users size={16} />Allow 3 Members</Button>}
-                <Button variant="danger" disabled={isProcessingAction} onClick={onRemoveTeam}><UserMinus size={16} />Remove Team</Button>
+                {getTeamCapacity(project.maxTeamSize) < EXPANDED_TEAM_SIZE && <Button variant="outline" disabled={isProcessingAction} onClick={management.onExpandTeam}><Users size={16} />Allow 3 Members</Button>}
+                <Button variant="danger" disabled={isProcessingAction} onClick={management.onRemoveTeam}><UserMinus size={16} />Remove Team</Button>
               </div>
             </div>
-          </DashboardPanel>
+          </DashboardPanel>}
         </div>
       )}
     </Dialog>

@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import { sendNotificationEmail } from '../../../../lib/mailer';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
-import SystemConfig from '../../../../models/SystemConfig';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 import mongoose, { ClientSession } from 'mongoose';
@@ -15,53 +11,12 @@ import {
 } from '../../../../config/projectDomains';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
-import { escapeHtml } from '../../../../lib/security/input';
+import { normalizeText } from '../../../../lib/security/input';
 import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../lib/teamCapacity';
+import { reviewProject } from '../../../../lib/projectReview';
+import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
 
 export const dynamic = 'force-dynamic';
-
-type DeletionTarget = {
-  key: string;
-  size: number;
-};
-
-function getR2ObjectKey(value: string) {
-  const trimmedValue = String(value || '').trim();
-  if (!trimmedValue) return '';
-
-  try {
-    const parsedUrl = new URL(trimmedValue);
-    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
-  } catch {
-    return trimmedValue.replace(/^\/+/, '');
-  }
-}
-
-function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = getR2ObjectKey(fileUrl || '');
-  if (!key) return null;
-
-  return {
-    key,
-    size: Math.max(Number(fileSize || 0), 0),
-  };
-}
-
-async function decrementStorageLedger(bytes: number, session?: ClientSession) {
-  if (bytes <= 0) return;
-
-  await SystemConfig.findOneAndUpdate(
-    { configKey: 'storage' },
-    { $inc: { usedBytes: -bytes } },
-    { upsert: true, ...(session ? { session } : {}) }
-  );
-
-  await SystemConfig.updateOne(
-    { configKey: 'storage', usedBytes: { $lt: 0 } },
-    { $set: { usedBytes: 0 } },
-    session ? { session } : undefined
-  );
-}
 
 async function createProjectWithUniqueInviteCode(projectData: Record<string, unknown>, session: ClientSession) {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -173,129 +128,22 @@ export async function POST(req: NextRequest) {
     const { action, studentId, status, remarks, migrationCode, projectId } = await req.json();
 
     if (action === 'updateStatus') {
-      const triggerStudent = await User.findOne({
-        _id: studentId,
-        role: 'student',
+      const requestedStudentId = normalizeText(studentId, 64);
+      if (!mongoose.Types.ObjectId.isValid(requestedStudentId) || !isProjectReviewStatus(status)) {
+        return NextResponse.json({ error: 'Invalid project review request.' }, { status: 400 });
+      }
+
+      const result = await reviewProject({
+        studentId: requestedStudentId,
+        status,
+        remarks: normalizeText(remarks, 2000) || 'No remarks provided.',
         supervisorId: currentUser.id,
       });
-      if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
-      const teamMembers = triggerStudent.projectId
-        ? await User.find({
-            projectId: triggerStudent.projectId,
-            role: 'student',
-            supervisorId: currentUser.id,
-          })
-        : [triggerStudent];
-
-      let finalStatus = status;
-      let newStage: string | undefined = undefined;
-      let notificationMessage = `Status: ${status}`;
-
-      // --- NEW: Timeline Progression Logic ---
-      if (status === 'Approved' && triggerStudent.projectId) {
-        const project = await Project.findOne({
-          _id: triggerStudent.projectId,
-          supervisorId: currentUser.id,
-        });
-        
-        if (project) {
-          if (project.stage === 'PROPOSAL') {
-            newStage = 'THESIS_DRAFT';
-            finalStatus = 'Pending'; 
-            notificationMessage = 'Proposal Approved! Please begin uploading your Thesis Chapters.';
-          } else if (project.stage === 'THESIS_DRAFT') {
-            newStage = 'FINAL_DELIVERABLES';
-            finalStatus = 'Pending';
-            notificationMessage = 'Thesis Approved! Please submit your Final Deliverables.';
-          } else {
-            finalStatus = 'Approved';
-            notificationMessage = 'Congratulations! Your FYP is fully Approved and completed.';
-          }
-
-          // --- Storage ledger fix for stage advance cleanup ---
-          if (newStage && project.pdfUrl) {
-            const target = buildDeletionTarget(project.pdfUrl, project.pdfSize);
-            const sameFileUsedElsewhere = await Project.exists({
-              _id: { $ne: project._id },
-              pdfUrl: project.pdfUrl,
-            });
-
-            if (target && !sameFileUsedElsewhere) {
-              try {
-                await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }));
-                await decrementStorageLedger(target.size);
-                console.log(`Timeline advance cleanup: deleted previous stage PDF -> ${target.key}`);
-              } catch (error) {
-                console.error('Failed to wipe old stage PDF:', error instanceof Error ? error.message : error);
-              }
-            }
-          }
-        }
+      if (!result.success) {
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 });
       }
-      // ---------------------------------------
 
-      // 1. Update the Users
-      await User.updateMany(
-        { _id: { $in: teamMembers.map(m => m._id) } },
-        { $set: { 
-            status: finalStatus, 
-            remarks: remarks || notificationMessage,
-            // Reset the PDF URL if they advanced a stage, so the form expects a new file
-            ...(newStage ? { pdfUrl: '' } : {}) 
-          } 
-        }
-      );
-
-      // 2. Update the Project Document
-      if (triggerStudent.projectId) {
-        await Project.findOneAndUpdate({ _id: triggerStudent.projectId, supervisorId: currentUser.id }, {
-          $set: { 
-            status: finalStatus,
-            // Wipe the URL and reset the size tracking to 0 so the next upload starts clean
-            ...(newStage ? { stage: newStage, pdfUrl: '', pdfSize: 0 } : {})
-          } 
-        });
-      }
-      
-      // 3. Email Notifications (Parallelized for Speed)
-      const emailPromises = teamMembers.map(async (member) => {
-        if (member.supervisorId && member.email) {
-          const supervisor = await User.findById(member.supervisorId);
-          if (supervisor && supervisor.notificationsEnabled !== false) {
-            const subject = `FYP Project Update: ${newStage ? 'Stage Advanced!' : status}`;
-            const primaryColor = status === 'Approved' ? '#10b981' : status === 'Changes Requested' ? '#f59e0b' : '#ef4444'; 
-            const bgColor = status === 'Approved' ? '#ecfdf5' : status === 'Changes Requested' ? '#fffbeb' : '#fef2f2';
-
-            const htmlContent = `
-              <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
-                <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">
-                  <div style="background-color: #18181b; padding: 24px; text-align: center;">
-                    <h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1>
-                  </div>
-                  <div style="padding: 32px;">
-                    <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">Project Updated</h2>
-                    <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${escapeHtml(supervisor.name)}</strong>, has reviewed your submission.</p>
-                    <div style="text-align: center; margin-bottom: 24px;">
-                      <span style="display: inline-block; background-color: ${bgColor}; color: ${primaryColor}; padding: 8px 16px; border-radius: 999px; font-weight: bold;">
-                        ${escapeHtml(notificationMessage)}
-                      </span>
-                    </div>
-                    <div style="background-color: #f8fafc; border-left: 4px solid ${primaryColor}; padding: 20px;">
-                      <p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Supervisor Remarks</p>
-                      <p style="margin: 0; font-size: 15px; color: #334155; font-style: italic;">"${escapeHtml(remarks || 'Proceed to the next stage.')}"</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            `;
-            return sendNotificationEmail(member.email, subject, htmlContent);
-          }
-        }
-      });
-
-      // Execute all emails at the exact same time
-      await Promise.all(emailPromises);
       return NextResponse.json({ message: 'Status updated and timeline advanced!' }, { status: 200 });
     }
 

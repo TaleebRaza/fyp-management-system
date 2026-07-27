@@ -564,9 +564,10 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
               onExport={handleExportPDF}
               search={projectSearch}
               onSearchChange={setProjectSearch}
-              batchFilter={batchFilter}
-              onBatchFilterChange={setBatchFilter}
-              batches={uniqueBatches}
+              filterValue={batchFilter}
+              onFilterChange={setBatchFilter}
+              filterOptions={uniqueBatches}
+              filterLabel="Batch"
               projects={filteredProjects}
               emptyState={emptyProjectState}
               onOpenProject={(project) => {
@@ -583,26 +584,26 @@ const openProjectsView = (queueFilter: ProjectQueueFilter = 'all') => {
         onClose={() => setSelectedProject(null)}
         isProcessingAction={isProcessingAction}
         onAction={handleAction}
-        supervisorId={supervisorId}
-        theme={theme}
-        isDarkMode={isDarkMode}
-        migrationStudentId={migrationStudentId}
-        onMigrationStudentChange={setMigrationStudentId}
-        migrationCode={selectedProject ? migrationInput[selectedProject._id] || '' : ''}
-        onMigrationCodeChange={(value) => {
-          if (!selectedProject) return;
-          setMigrationInput((previous) => ({ ...previous, [selectedProject._id]: value }));
-        }}
-        onMigrate={() => {
-          if (selectedProject) void handleMigrate(migrationStudentId, selectedProject._id);
-        }}
-        onExpandTeam={() => {
-          if (selectedProject) handleExpandTeam(selectedProject._id);
-        }}
-        onRemoveTeam={() => {
-          if (selectedProject) {
-            handleRemoveTeam(selectedProject.triggerStudentId, getMemberNames(selectedProject));
-          }
+        voiceNotes={{ currentUserId: supervisorId, theme, isDarkMode }}
+        management={{
+          migrationStudentId,
+          onMigrationStudentChange: setMigrationStudentId,
+          migrationCode: selectedProject ? migrationInput[selectedProject._id] || '' : '',
+          onMigrationCodeChange: (value) => {
+            if (!selectedProject) return;
+            setMigrationInput((previous) => ({ ...previous, [selectedProject._id]: value }));
+          },
+          onMigrate: () => {
+            if (selectedProject) void handleMigrate(migrationStudentId, selectedProject._id);
+          },
+          onExpandTeam: () => {
+            if (selectedProject) handleExpandTeam(selectedProject._id);
+          },
+          onRemoveTeam: () => {
+            if (selectedProject) {
+              handleRemoveTeam(selectedProject.triggerStudentId, getMemberNames(selectedProject));
+            }
+          },
         }}
       />
     </>

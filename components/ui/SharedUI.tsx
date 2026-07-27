@@ -3,6 +3,7 @@
 
 import React from "react";
 import Image from "next/image";
+import { createPortal } from "react-dom";
 
 type IconComponent = React.ComponentType<{
   size?: number;
@@ -396,9 +397,9 @@ export const Dialog = ({
   size = "md",
   closeLabel = "Close dialog",
 }: DialogProps) => {
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-end justify-center px-3 py-3 sm:items-center sm:px-4"
       role="dialog"
@@ -455,7 +456,8 @@ export const Dialog = ({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
