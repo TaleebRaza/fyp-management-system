@@ -34,6 +34,14 @@ import type {
   StudentDashboardProps,
   WordTemplate,
 } from '../student/studentDashboardTypes';
+import {
+  getStudentDashboard,
+  getStudentHeadline,
+  getStudentSupervisors,
+  getStudentTemplates,
+  submitStudentProject,
+  uploadStudentPdf,
+} from '../student/api/studentDashboardApi';
 import { PROGRAM_MAP } from '../../config/appSettings';
 import {
   clearBrowserDraft,
@@ -254,10 +262,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
   const fetchHeadline = useCallback(async () => {
     try {
-      const response = await fetch('/api/headline');
-      const json = await response.json();
-
-      setHeadline(json.headline?.text || '');
+      setHeadline(await getStudentHeadline());
     } catch (error) {
       console.error('Failed to fetch headline:', error);
     }
@@ -268,13 +273,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
       const userId = (session.user as { id?: string }).id;
       if (!userId) return;
 
-      const response = await fetch(`/api/dashboard/student?id=${userId}`, { cache: 'no-store' });
-      const json = await response.json();
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Failed to load student dashboard.');
-      }
-
+      const json = await getStudentDashboard(String(userId));
       setData(json);
       if (json?.student) {
         const domainSource =
@@ -331,10 +330,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
   const fetchSupervisors = useCallback(async () => {
     try {
-      const response = await fetch('/api/supervisors');
-      const json = await response.json();
-
-      setLocalSups(Array.isArray(json) ? json : []);
+      setLocalSups(await getStudentSupervisors());
     } catch (error) {
       console.error('Supervisor fetch error:', error);
     }
@@ -347,30 +343,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     setIsFetchingTemplates(true);
 
     try {
-      const response = await fetch(`/api/templates?stage=${requestedStage}`);
-      const json = await response.json();
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Failed to load templates.');
-      }
-
-      const templates = Array.isArray(json.templates)
-        ? json.templates.filter(
-            (template: unknown): template is WordTemplate => {
-              if (!template || typeof template !== 'object') return false;
-
-              const candidate = template as Partial<WordTemplate>;
-              return (
-                typeof candidate.id === 'string' &&
-                typeof candidate.title === 'string' &&
-                typeof candidate.filename === 'string' &&
-                candidate.format === 'word' &&
-                typeof candidate.content === 'string'
-              );
-            }
-          )
-        : [];
-
+      const templates = await getStudentTemplates(requestedStage);
       setCachedTemplates(templates);
       setCachedTemplateStage(requestedStage);
     } catch (error) {
@@ -442,44 +415,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   ]);
 
   const uploadPdf = async (selectedFile: File) => {
-    if (selectedFile.type !== 'application/pdf') {
-      throw new Error('Only PDF documents are allowed.');
-    }
-
-    if (selectedFile.size > 4 * 1024 * 1024) {
-      throw new Error('File exceeds the 4MB limit.');
-    }
-
-    const tokenResponse = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filename: selectedFile.name,
-        contentType: selectedFile.type,
-        fileSize: selectedFile.size,
-      }),
-    });
-
-    const tokenJson = await tokenResponse.json();
-
-    if (!tokenResponse.ok) {
-      throw new Error(tokenJson.error || 'Failed to prepare secure upload.');
-    }
-
-    const uploadResponse = await fetch(tokenJson.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': selectedFile.type },
-      body: selectedFile,
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error('PDF upload failed. Please try again.');
-    }
-
-    return {
-      url: tokenJson.url,
-      fileSize: selectedFile.size,
-    };
+    return uploadStudentPdf(selectedFile);
   };
   const handleProjectFileChange = async (nextFile: File | null) => {
     setFile(nextFile);
@@ -537,26 +473,15 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
     try {
       const upload = file ? await uploadPdf(file) : { url: pdfUrl, fileSize: 0 };
-
-      const response = await fetch('/api/dashboard/student', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: currentUserId,
-          title: title.trim(),
-          desc: desc.trim(),
-          domains: selectedDomains,
-          tools: tools.trim(),
-          pdfUrl: upload.url,
-          fileSize: upload.fileSize,
-        }),
+      const json = await submitStudentProject({
+        id: currentUserId,
+        title: title.trim(),
+        desc: desc.trim(),
+        domains: selectedDomains,
+        tools: tools.trim(),
+        pdfUrl: upload.url,
+        fileSize: upload.fileSize,
       });
-
-      const json = await response.json();
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Failed to submit project.');
-      }
 
       if (projectDraftKey) clearBrowserDraft(projectDraftKey);
       if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
