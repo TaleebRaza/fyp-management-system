@@ -44,6 +44,11 @@ import {
 import { createStudentProjectDraft } from '../student/draft/studentProjectDraft';
 import { useStudentProjectDraft } from '../student/hooks/useStudentProjectDraft';
 import { useStudentTemplates } from '../student/hooks/useStudentTemplates';
+import { useStudentAcademicUpdate } from '../student/hooks/useStudentAcademicUpdate';
+import { useStudentFineRefresh } from '../student/hooks/useStudentFineRefresh';
+import { useStudentSupervisorActions } from '../student/hooks/useStudentSupervisorActions';
+import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
+import { getStudentFineRestrictionState } from '../student/workflows/studentFineRestriction';
 import { PROGRAM_MAP } from '../../config/appSettings';
 import {
   formatProjectDomainLabels,
@@ -85,20 +90,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   const [localSups, setLocalSups] = useState<AvailableSupervisor[]>([]);
   const [headline, setHeadline] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProjectSubmitting, setIsProjectSubmitting] = useState(false);
 
 
-  const [inviteCodeInput, setInviteCodeInput] = useState('');
-  const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
-  const [isSupervisorWarningOpen, setIsSupervisorWarningOpen] = useState(false);
-
-  const [isAcademicDialogOpen, setIsAcademicDialogOpen] = useState(false);
-  const [isAcademicWarningStep, setIsAcademicWarningStep] = useState(false);
-  const [isAcademicUpdating, setIsAcademicUpdating] = useState(false);
-  const [academicForm, setAcademicForm] = useState({
-    program: 'BSCS',
-    batch: '',
-  });
 
 
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
@@ -125,19 +119,12 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   const supervisor = data?.supervisor;
   const project = data?.project;
   const supervisorBroadcast = data?.supervisorBroadcast || null;
-  const fineRestriction = data?.fineRestriction || null;
-  const teamFineRestriction = data?.teamFineRestriction || fineRestriction;
-  const isOwnFineRestricted = Boolean(fineRestriction?.active);
-  const isFineRestricted = Boolean(teamFineRestriction?.active);
-  const restrictedMember = teamFineRestriction?.member;
-  const restrictedMemberLabel = `${restrictedMember?.name || 'A team member'}${
-    restrictedMember?.rollNo ? ` (${restrictedMember.rollNo})` : ''
-  }`;
-  const teamFineMessage =
-    teamFineRestriction?.isCurrentStudent !== false
-      ? 'Project uploads are locked until the administrator verifies and clears your outstanding fine.'
-      : `Project uploads are locked because ${restrictedMemberLabel} has an outstanding fine. The administrator must clear it before any team member can upload the proposal.`;
-
+  const {
+    fineRestriction,
+    isOwnFineRestricted,
+    isFineRestricted,
+    teamFineMessage,
+  } = getStudentFineRestrictionState(data);
   if (activeTab === 'fine' && !fineRestriction) setActiveTab('project');
 
   const projectMembers = Array.isArray(project?.members) ? project.members : [];
@@ -215,36 +202,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     return items;
   }, [headline, supervisorBroadcast, supervisor?.name]);
 
-  const batchOptions = useMemo(() => {
-    const options: string[] = [];
-    const maxYear = new Date().getFullYear() + 1;
-
-    for (let year = 2021; year <= maxYear; year++) {
-      options.push(`Spring ${year}`);
-      options.push(`Fall ${year}`);
-    }
-
-    return options;
-  }, []);
-
-  const supervisorOptions = useMemo(() => {
-    return localSups
-      .filter((supervisorItem) => !supervisorItem.isFull)
-      .map((supervisorItem) => ({
-        id: supervisorItem._id,
-        label: `${supervisorItem.name} (${supervisorItem.filledSlots}/${supervisorItem.maxSlots} slots)`,
-      }));
-  }, [localSups]);
-
-  const supervisorChangeOptions = useMemo(() => {
-    const currentSupervisorId = String(me?.supervisorId || '');
-    return supervisorOptions.filter((option) => String(option.id) !== currentSupervisorId);
-  }, [supervisorOptions, me?.supervisorId]);
-
-  const selectedSupervisorName =
-    localSups.find((supervisorItem) => String(supervisorItem._id) === String(selectedSupervisorId))?.name ||
-    'the selected supervisor';
-
   const fetchHeadline = useCallback(async () => {
     try {
       setHeadline(await getStudentHeadline());
@@ -274,10 +231,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
           tools: json.student.tools,
         });
         await restoreProjectDraft(serverProjectDraft);
-        setAcademicForm({
-          program: json.student.program || 'BSCS',
-          batch: json.student.batch || '',
-        });
       }
     } catch (error) {
       console.error('Dashboard fetch error:', error);
@@ -306,19 +259,72 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     });
   }, [fetchData, fetchHeadline, fetchSupervisors]);
 
-  // No polling: only re-check a restricted account when the browser tab becomes visible again.
-  useEffect(() => {
-    if (!isFineRestricted) return;
-
-    const refreshFineStatus = () => {
-      if (document.visibilityState === 'visible') {
-        void fetchData();
-      }
-    };
-
-    document.addEventListener('visibilitychange', refreshFineStatus);
-    return () => document.removeEventListener('visibilitychange', refreshFineStatus);
-  }, [fetchData, isFineRestricted]);
+  useStudentFineRefresh({
+    isFineRestricted,
+    refreshDashboard: fetchData,
+  });
+  const {
+    selectedSupervisorId,
+    setSelectedSupervisorId,
+    isSupervisorWarningOpen,
+    isSubmitting: isSupervisorSubmitting,
+    supervisorOptions,
+    supervisorChangeOptions,
+    selectedSupervisorName,
+    handleAssignSupervisor,
+    openSupervisorChangeDialog,
+    closeSupervisorChangeDialog,
+    handleConfirmSupervisorChange,
+  } = useStudentSupervisorActions({
+    userId: currentUserId,
+    supervisors: localSups,
+    currentSupervisorId: me?.supervisorId,
+    isChangeLocked: isSupervisorChangeLocked,
+    refreshDashboard: fetchData,
+    refreshSupervisors: fetchSupervisors,
+    resetProjectDraft,
+    resetTemplates,
+    showDialog,
+  });
+  const {
+    inviteCodeInput,
+    setInviteCodeInput,
+    isSubmitting: isTeamSubmitting,
+    handleJoinTeam,
+    handleLeaveTeam,
+    handleCopyInviteCode,
+  } = useStudentTeamActions({
+    inviteCode: project?.inviteCode,
+    canLeaveTeam,
+    refreshDashboard: fetchData,
+    refreshSupervisors: fetchSupervisors,
+    resetProjectDraft,
+    resetTemplates,
+    showDialog,
+  });
+  const {
+    isAcademicDialogOpen,
+    isAcademicWarningStep,
+    setIsAcademicWarningStep,
+    isAcademicUpdating,
+    academicForm,
+    setAcademicForm,
+    batchOptions,
+    openAcademicEditor,
+    closeAcademicEditor,
+    handleAcademicUpdate,
+  } = useStudentAcademicUpdate({
+    userId: currentUserId,
+    currentProgram: me?.program,
+    currentBatch: me?.batch,
+    refreshDashboard: fetchData,
+    refreshSupervisors: fetchSupervisors,
+    resetProjectDraft,
+    resetTemplates,
+    showDialog,
+  });
+  const isSubmitting =
+    isProjectSubmitting || isSupervisorSubmitting || isTeamSubmitting;
 
   const uploadPdf = async (selectedFile: File) => {
     return uploadStudentPdf(selectedFile);
@@ -359,7 +365,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
       return;
     }
 
-    setIsSubmitting(true);
+    setIsProjectSubmitting(true);
 
     try {
       const upload = file ? await uploadPdf(file) : { url: pdfUrl, fileSize: 0 };
@@ -386,275 +392,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         message: getErrorMessage(error, 'Unable to submit project right now.'),
       });
     } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const submitSupervisorRequest = async (action: 'assignSupervisor' | 'changeSupervisor') => {
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch('/api/dashboard/student', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          id: currentUserId,
-          supervisorId: selectedSupervisorId,
-        }),
-      });
-
-      const json = await response.json();
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Failed to update supervisor.');
-      }
-
-      setSelectedSupervisorId('');
-      setIsSupervisorWarningOpen(false);
-
-      if (action === 'changeSupervisor') {
-        await resetProjectDraft();
-        resetTemplates();
-      }
-
-      await fetchData();
-      await fetchSupervisors();
-
-      showDialog({
-        title: action === 'changeSupervisor' ? 'Supervisor changed' : 'Supervisor assigned',
-        message:
-          json.message ||
-          (action === 'changeSupervisor'
-            ? 'You have started fresh under the new supervisor.'
-            : 'Your supervisor has been assigned.'),
-      });
-    } catch (error) {
-      showDialog({
-        title: action === 'changeSupervisor' ? 'Supervisor change failed' : 'Assignment failed',
-        message: getErrorMessage(error, 'Unable to update supervisor right now.'),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleAssignSupervisor = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!selectedSupervisorId) {
-      showDialog({
-        title: 'Select supervisor',
-        message: 'Choose an available supervisor before confirming.',
-      });
-      return;
-    }
-
-    await submitSupervisorRequest('assignSupervisor');
-  };
-
-  const openSupervisorChangeDialog = () => {
-    if (isSupervisorChangeLocked) {
-      showDialog({
-        title: 'Supervisor change locked',
-        message:
-          'This project has already moved past proposal approval. Ask your supervisor to use migration if a supervisor transfer is required.',
-      });
-      return;
-    }
-
-    setSelectedSupervisorId('');
-    setIsSupervisorWarningOpen(true);
-  };
-
-  const closeSupervisorChangeDialog = () => {
-    if (isSubmitting) return;
-
-    setSelectedSupervisorId('');
-    setIsSupervisorWarningOpen(false);
-  };
-
-  const handleConfirmSupervisorChange = async () => {
-    if (!selectedSupervisorId) {
-      showDialog({
-        title: 'Select supervisor',
-        message: 'Choose a new available supervisor before confirming the change.',
-      });
-      return;
-    }
-
-    await submitSupervisorRequest('changeSupervisor');
-  };
-
-  const handleJoinTeam = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const inviteCode = inviteCodeInput.trim().toUpperCase();
-
-    if (!inviteCode) {
-      showDialog({
-        title: 'Invite code required',
-        message: 'Enter a valid team invite code.',
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch('/api/project/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inviteCode }),
-      });
-
-      const json = await response.json();
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Failed to join team.');
-      }
-
-      setInviteCodeInput('');
-      await fetchData();
-
-      showDialog({
-        title: 'Team joined',
-        message: json.message || 'You have joined the team successfully.',
-      });
-    } catch (error) {
-      showDialog({
-        title: 'Join failed',
-        message: getErrorMessage(error, 'Unable to join the team right now.'),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // leave-team-feature-v1
-  const performLeaveTeam = async () => {
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch('/api/project/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const json = await response.json();
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Failed to leave the team.');
-      }
-
-      await resetProjectDraft();
-      setInviteCodeInput('');
-      resetTemplates();
-
-      await fetchData();
-      await fetchSupervisors();
-
-      showDialog({
-        title: 'Team left',
-        message:
-          json.message ||
-          'You left the team successfully. A new project and invite code have been created for you.',
-      });
-    } catch (error) {
-      showDialog({
-        title: 'Leave team failed',
-        message: getErrorMessage(error, 'Unable to leave the team right now.'),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleLeaveTeam = () => {
-    if (!canLeaveTeam) {
-      showDialog({
-        title: 'Cannot leave team',
-        message: 'You cannot leave because you are the only member of this team.',
-      });
-      return;
-    }
-
-    showDialog({
-      type: 'confirm',
-      title: 'Leave current team?',
-      message:
-        'You will lose this team’s supervisor, project status, project details, and PDF link. A completely new project and invite code will be created for you. This action cannot be undone.',
-      onConfirm: performLeaveTeam,
-    });
-  };
-
-  const handleCopyInviteCode = async () => {
-    if (!project?.inviteCode) return;
-
-    await navigator.clipboard.writeText(project.inviteCode);
-
-    showDialog({
-      title: 'Copied',
-      message: 'Team invite code copied to clipboard.',
-    });
-  };
-
-  const openAcademicEditor = () => {
-    setAcademicForm({
-      program: me?.program || 'BSCS',
-      batch: me?.batch || '',
-    });
-    setIsAcademicWarningStep(false);
-    setIsAcademicDialogOpen(true);
-  };
-
-  const handleAcademicUpdate = async () => {
-    if (!academicForm.program || !academicForm.batch) {
-      showDialog({
-        title: 'Missing academic details',
-        message: 'Select both program and batch.',
-      });
-      return;
-    }
-
-    setIsAcademicUpdating(true);
-
-    try {
-      const response = await fetch('/api/dashboard/student', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'updateProgramBatch',
-          id: currentUserId,
-          program: academicForm.program,
-          batch: academicForm.batch,
-        }),
-      });
-
-      const json = await response.json();
-
-      if (!response.ok) {
-        throw new Error(json.error || 'Failed to update program and batch.');
-      }
-
-      setIsAcademicDialogOpen(false);
-      setIsAcademicWarningStep(false);
-      await resetProjectDraft();
-      resetTemplates();
-
-      await fetchData();
-      await fetchSupervisors();
-
-      showDialog({
-        title: 'Academic info updated',
-        message: json.message || 'Program and batch updated successfully.',
-      });
-    } catch (error) {
-      showDialog({
-        title: 'Update blocked',
-        message: getErrorMessage(error, 'Could not update program and batch.'),
-      });
-    } finally {
-      setIsAcademicUpdating(false);
+      setIsProjectSubmitting(false);
     }
   };
 
@@ -845,10 +583,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
       <AcademicUpdateDialog
         open={isAcademicDialogOpen}
-        onClose={() => {
-          setIsAcademicDialogOpen(false);
-          setIsAcademicWarningStep(false);
-        }}
+        onClose={closeAcademicEditor}
         isWarningStep={isAcademicWarningStep}
         onBack={() => setIsAcademicWarningStep(false)}
         onContinue={() => setIsAcademicWarningStep(true)}
