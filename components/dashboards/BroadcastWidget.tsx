@@ -270,3 +270,4 @@ export default function BroadcastWidget({ isDarkMode, theme }: BroadcastWidgetPr
     </>
   );
 }
+
