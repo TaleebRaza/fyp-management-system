@@ -38,19 +38,13 @@ import {
   getStudentDashboard,
   getStudentHeadline,
   getStudentSupervisors,
-  getStudentTemplates,
   submitStudentProject,
   uploadStudentPdf,
 } from '../student/api/studentDashboardApi';
+import { createStudentProjectDraft } from '../student/draft/studentProjectDraft';
+import { useStudentProjectDraft } from '../student/hooks/useStudentProjectDraft';
+import { useStudentTemplates } from '../student/hooks/useStudentTemplates';
 import { PROGRAM_MAP } from '../../config/appSettings';
-import {
-  clearBrowserDraft,
-  clearBrowserFileDraft,
-  readBrowserDraft,
-  readBrowserFileDraft,
-  writeBrowserDraft,
-  writeBrowserFileDraft,
-} from '../../lib/browserDraftStorage';
 import {
   formatProjectDomainLabels,
   getProjectDomainLabels,
@@ -59,25 +53,6 @@ import {
 import { getTeamCapacity } from '../../lib/teamCapacity';
 
 type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources';
-
-type StudentProjectDraft = {
-  title: string;
-  desc: string;
-  selectedDomains: string[];
-  legacyDomain: string;
-  tools: string;
-};
-
-const getStudentProjectDraftKey = (userId: string) =>
-  `fyp-portal:student-project-draft:v1:${userId}`;
-
-const hasStudentProjectDraftChanges = (
-  draft: StudentProjectDraft,
-  baseline: StudentProjectDraft | null
-) => {
-  if (!baseline) return true;
-  return JSON.stringify(draft) !== JSON.stringify(baseline);
-};
 
 const getProgramName = (program?: string) => {
   if (!program) return 'No program';
@@ -112,15 +87,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [title, setTitle] = useState('');
-  const [desc, setDesc] = useState('');
-  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
-  const [legacyDomain, setLegacyDomain] = useState('');
-  const [tools, setTools] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [projectDraftBaseline, setProjectDraftBaseline] =
-    useState<StudentProjectDraft | null>(null);
-  const [isProjectDraftReady, setIsProjectDraftReady] = useState(false);
 
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
@@ -134,18 +100,26 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     batch: '',
   });
 
-  const [cachedTemplates, setCachedTemplates] = useState<WordTemplate[]>([]);
-  const [cachedTemplateStage, setCachedTemplateStage] = useState<string | null>(null);
-  const [isFetchingTemplates, setIsFetchingTemplates] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<WordTemplate | null>(null);
-  const [isCopyingTemplate, setIsCopyingTemplate] = useState(false);
-  const [isCopied, setIsCopied] = useState(false);
 
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
 
   const currentUserId = String((session.user as { id?: string }).id || '');
-  const projectDraftKey = currentUserId ? getStudentProjectDraftKey(currentUserId) : '';
-  const projectFileDraftKey = projectDraftKey ? `${projectDraftKey}:pdf` : '';
+  const {
+    title,
+    setTitle,
+    desc,
+    setDesc,
+    selectedDomains,
+    legacyDomain,
+    tools,
+    setTools,
+    file,
+    restoreProjectDraft,
+    handleDomainsChange,
+    handleProjectFileChange,
+    clearStoredProjectDraft,
+    resetProjectDraft,
+  } = useStudentProjectDraft(currentUserId);
 
   const me = data?.student;
   const supervisor = data?.supervisor;
@@ -172,7 +146,18 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     Boolean(project?.inviteCode) && projectMembers.length < maxTeamSize;
   const canLeaveTeam = projectMembers.length > 1;
   const currentStage = project?.stage || 'PROPOSAL';
-  const visibleTemplates = cachedTemplateStage === currentStage ? cachedTemplates : [];
+  const {
+    visibleTemplates,
+    isFetchingTemplates,
+    selectedTemplate,
+    isCopyingTemplate,
+    isCopied,
+    loadTemplates,
+    openTemplate,
+    closeTemplateDialog,
+    handleCopyTemplate,
+    resetTemplates,
+  } = useStudentTemplates({ currentStage, showDialog });
   const currentProgramName = getProgramName(me?.program);
   const toolsList = splitTools(me?.tools || tools);
   const savedDomainIds = useMemo(
@@ -276,42 +261,19 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
       const json = await getStudentDashboard(String(userId));
       setData(json);
       if (json?.student) {
-        const domainSource =
-          Array.isArray(json.project?.domains) && json.project.domains.length > 0
-            ? json.project.domains
-            : json.student.domains;
-        const previousDomainText = json.project?.domain || json.student.domain || '';
-        const restoredDomains = normalizeProjectDomainIds(domainSource, previousDomainText);
-        const serverProjectDraft: StudentProjectDraft = {
-          title: json.student.projectTitle || '',
-          desc: json.student.projectDesc || '',
-          selectedDomains: restoredDomains,
-          legacyDomain: restoredDomains.length === 0 ? previousDomainText : '',
-          tools: json.student.tools || '',
-        };
-        const savedProjectDraft = readBrowserDraft<StudentProjectDraft>(
-          getStudentProjectDraftKey(String(userId))
-        );
-        const nextProjectDraft = savedProjectDraft || serverProjectDraft;
-
-        setProjectDraftBaseline(serverProjectDraft);
-        setTitle(nextProjectDraft.title);
-        setDesc(nextProjectDraft.desc);
-        setSelectedDomains(nextProjectDraft.selectedDomains);
-        setLegacyDomain(nextProjectDraft.legacyDomain);
-        setTools(nextProjectDraft.tools);
-
-        try {
-          const savedFile = await readBrowserFileDraft(
-            `${getStudentProjectDraftKey(String(userId))}:pdf`
-          );
-          setFile(savedFile);
-        } catch (error) {
-          console.warn('Unable to restore the selected project PDF:', error);
-          setFile(null);
-        }
-
-        setIsProjectDraftReady(true);
+        const serverProjectDraft = createStudentProjectDraft({
+          title: json.student.projectTitle,
+          desc: json.student.projectDesc,
+          domains: normalizeProjectDomainIds(
+            Array.isArray(json.project?.domains) && json.project.domains.length > 0
+              ? json.project.domains
+              : json.student.domains,
+            json.project?.domain || json.student.domain || ''
+          ),
+          legacyDomain: json.project?.domain || json.student.domain || '',
+          tools: json.student.tools,
+        });
+        await restoreProjectDraft(serverProjectDraft);
         setAcademicForm({
           program: json.student.program || 'BSCS',
           batch: json.student.batch || '',
@@ -326,7 +288,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     } finally {
       setIsLoading(false);
     }
-  }, [session.user, showDialog]);
+  }, [restoreProjectDraft, session.user, showDialog]);
 
   const fetchSupervisors = useCallback(async () => {
     try {
@@ -335,30 +297,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
       console.error('Supervisor fetch error:', error);
     }
   }, []);
-
-  const fetchTemplatesByStage = async () => {
-    if (cachedTemplateStage === currentStage && cachedTemplates.length > 0) return;
-
-    const requestedStage = currentStage;
-    setIsFetchingTemplates(true);
-
-    try {
-      const templates = await getStudentTemplates(requestedStage);
-      setCachedTemplates(templates);
-      setCachedTemplateStage(requestedStage);
-    } catch (error) {
-      console.error('Template fetch error:', error);
-      showDialog({
-        title: 'Templates unavailable',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Failed to load templates from the server.',
-      });
-    } finally {
-      setIsFetchingTemplates(false);
-    }
-  };
 
   useEffect(() => {
     void Promise.resolve().then(() => {
@@ -382,57 +320,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     return () => document.removeEventListener('visibilitychange', refreshFineStatus);
   }, [fetchData, isFineRestricted]);
 
-  useEffect(() => {
-    if (!projectDraftKey || !isProjectDraftReady) return;
-
-    const currentDraft: StudentProjectDraft = {
-      title,
-      desc,
-      selectedDomains,
-      legacyDomain,
-      tools,
-    };
-
-    const saveTimer = window.setTimeout(() => {
-      if (!hasStudentProjectDraftChanges(currentDraft, projectDraftBaseline)) {
-        clearBrowserDraft(projectDraftKey);
-        return;
-      }
-
-      writeBrowserDraft(projectDraftKey, currentDraft);
-    }, 300);
-
-    return () => window.clearTimeout(saveTimer);
-  }, [
-    title,
-    desc,
-    selectedDomains,
-    legacyDomain,
-    tools,
-    projectDraftKey,
-    projectDraftBaseline,
-    isProjectDraftReady,
-  ]);
-
   const uploadPdf = async (selectedFile: File) => {
     return uploadStudentPdf(selectedFile);
   };
-  const handleProjectFileChange = async (nextFile: File | null) => {
-    setFile(nextFile);
-    if (!projectFileDraftKey) return;
-
-    try {
-      if (nextFile) {
-        await writeBrowserFileDraft(projectFileDraftKey, nextFile);
-      } else {
-        await clearBrowserFileDraft(projectFileDraftKey);
-      }
-    } catch (error) {
-      console.warn('Unable to save the selected project PDF in this browser:', error);
-    }
-  };
-
-
   const handleSubmitProject = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -483,9 +373,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         fileSize: upload.fileSize,
       });
 
-      if (projectDraftKey) clearBrowserDraft(projectDraftKey);
-      if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
-      setFile(null);
+      await clearStoredProjectDraft();
       await fetchData();
 
       showDialog({
@@ -526,16 +414,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
       setIsSupervisorWarningOpen(false);
 
       if (action === 'changeSupervisor') {
-        if (projectDraftKey) clearBrowserDraft(projectDraftKey);
-        if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
-        setTitle('');
-        setDesc('');
-        setSelectedDomains([]);
-        setLegacyDomain('');
-        setTools('');
-        setFile(null);
-        setCachedTemplates([]);
-        setCachedTemplateStage(null);
+        await resetProjectDraft();
+        resetTemplates();
       }
 
       await fetchData();
@@ -666,17 +546,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         throw new Error(json.error || 'Failed to leave the team.');
       }
 
-      if (projectDraftKey) clearBrowserDraft(projectDraftKey);
-      if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
-      setTitle('');
-      setDesc('');
-      setSelectedDomains([]);
-      setLegacyDomain('');
-      setTools('');
-      setFile(null);
+      await resetProjectDraft();
       setInviteCodeInput('');
-      setCachedTemplates([]);
-      setCachedTemplateStage(null);
+      resetTemplates();
 
       await fetchData();
       await fetchSupervisors();
@@ -766,16 +638,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
       setIsAcademicDialogOpen(false);
       setIsAcademicWarningStep(false);
-      if (projectDraftKey) clearBrowserDraft(projectDraftKey);
-      if (projectFileDraftKey) await clearBrowserFileDraft(projectFileDraftKey);
-      setTitle('');
-      setDesc('');
-      setSelectedDomains([]);
-      setLegacyDomain('');
-      setTools('');
-      setFile(null);
-      setCachedTemplates([]);
-      setCachedTemplateStage(null);
+      await resetProjectDraft();
+      resetTemplates();
 
       await fetchData();
       await fetchSupervisors();
@@ -796,111 +660,12 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
   const handleOpenTemplate = async (template?: WordTemplate) => {
     if (!template) {
-      await fetchTemplatesByStage();
+      await loadTemplates();
       setActiveTab('resources');
       return;
     }
-
-    setIsCopied(false);
-    setSelectedTemplate(template);
+    openTemplate(template);
   };
-
-  const closeTemplateDialog = () => {
-    if (isCopyingTemplate) return;
-
-    setSelectedTemplate(null);
-    setIsCopied(false);
-  };
-
-  const getPlainTextFromHtml = (html: string) => {
-    const documentFragment = new DOMParser().parseFromString(html, 'text/html');
-    return documentFragment.body.innerText.replace(/\n{3,}/g, '\n\n').trim();
-  };
-
-  const copyHtmlWithLegacySelection = (html: string) => {
-    const container = document.createElement('div');
-    container.contentEditable = 'true';
-    container.setAttribute('aria-hidden', 'true');
-    container.style.position = 'fixed';
-    container.style.left = '-9999px';
-    container.style.top = '0';
-    container.style.opacity = '0';
-    container.innerHTML = html;
-    document.body.appendChild(container);
-
-    const selection = window.getSelection();
-    const previousRanges: Range[] = [];
-
-    if (selection) {
-      for (let index = 0; index < selection.rangeCount; index += 1) {
-        previousRanges.push(selection.getRangeAt(index).cloneRange());
-      }
-
-      const range = document.createRange();
-      range.selectNodeContents(container);
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-
-    const copied = document.execCommand('copy');
-
-    if (selection) {
-      selection.removeAllRanges();
-      previousRanges.forEach((range) => selection.addRange(range));
-    }
-
-    container.remove();
-    return copied;
-  };
-
-  const handleCopyTemplate = async () => {
-    if (!selectedTemplate || isCopyingTemplate) return;
-
-    const html = selectedTemplate.content.trim();
-    if (!html) {
-      showDialog({
-        title: 'Template is empty',
-        message: 'This template has no content to copy.',
-      });
-      return;
-    }
-
-    setIsCopyingTemplate(true);
-
-    try {
-      const plainText = getPlainTextFromHtml(html);
-      const clipboardHtml = `<!doctype html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`;
-
-      if (
-        navigator.clipboard?.write &&
-        typeof ClipboardItem !== 'undefined'
-      ) {
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            'text/html': new Blob([clipboardHtml], { type: 'text/html' }),
-            'text/plain': new Blob([plainText], { type: 'text/plain' }),
-          }),
-        ]);
-      } else if (!copyHtmlWithLegacySelection(html)) {
-        throw new Error('Rich clipboard copying is not supported in this browser.');
-      }
-
-      setIsCopied(true);
-      window.setTimeout(() => setIsCopied(false), 1800);
-    } catch (error) {
-      console.error('Word template copy failed:', error);
-      showDialog({
-        title: 'Copy failed',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Your browser blocked clipboard access. Try again from a secure tab.',
-      });
-    } finally {
-      setIsCopyingTemplate(false);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center">
@@ -1012,10 +777,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             onTitleChange={setTitle}
             selectedDomains={selectedDomains}
             legacyDomain={legacyDomain}
-            onDomainsChange={(domains) => {
-              setSelectedDomains(domains);
-              if (domains.length > 0) setLegacyDomain('');
-            }}
+            onDomainsChange={handleDomainsChange}
             tools={tools}
             onToolsChange={setTools}
             description={desc}
@@ -1059,7 +821,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
           <StudentResourcesSection
             currentStage={currentStage}
             isFetchingTemplates={isFetchingTemplates}
-            onFetchTemplates={fetchTemplatesByStage}
+            onFetchTemplates={loadTemplates}
             visibleTemplates={visibleTemplates}
             onOpenTemplate={handleOpenTemplate}
             currentProgramName={currentProgramName}
