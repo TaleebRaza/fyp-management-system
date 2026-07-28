@@ -4,6 +4,14 @@
 
 `Code-Cleanup`
 
+## Remote baseline checked
+
+Before Milestone 4 was prepared, the latest visible GitHub commit on `Code-Cleanup` was:
+
+- `e419a6a3eb9876d08bd2a1dd02757f24b5d12d2a` — `Matched Origin Main file "BroadcastWidget"`
+
+Milestone 4 expects Milestones 1–3 to already be installed in the local working tree even if those cleanup commits have not yet been pushed to GitHub.
+
 ## Milestone 1 — Verification baseline
 
 Status: Complete.
@@ -29,26 +37,41 @@ Completed work:
 
 ## Milestone 3 — Supervisor dashboard decomposition
 
-Status: Complete after running the Milestone 3 installer.
+Status: Complete.
 
 Completed work:
 
-- Reduced `SupervisorDashboard.tsx` from 568 lines to a focused composition component of fewer than 280 lines.
-- Extracted supervisor dashboard GET and POST requests into a dedicated API module.
-- Extracted project loading and refresh state into `useSupervisorProjects`.
-- Connected the existing pure project selectors through `useSupervisorProjectFilters`.
-- Extracted status changes, migration, team expansion, and team removal into `useSupervisorProjectActions`.
-- Extracted alert, confirmation, and remarks-dialog behavior into `useSupervisorFeedback`.
-- Extracted export state and browser download behavior into focused modules.
-- Preserved all current API paths, request bodies, response handling, filter behavior, and UI component props.
-- Added request-contract and structure regression tests.
+- Reduced `SupervisorDashboard.tsx` from 568 lines to a focused composition component.
+- Extracted supervisor API access, loading, filtering, feedback, mutations, and export behavior.
+- Preserved existing endpoints, action names, JSON request bodies, filters, and UI component props.
+- Added API-contract, download, and structure tests.
+
+## Milestone 4 — Admin dashboard decomposition
+
+Status: Complete after running the Milestone 4 installer.
+
+Completed work:
+
+- Reduced `AdminDashboard.tsx` from 931 lines to fewer than 340 lines.
+- Removed all direct `fetch` calls from the dashboard composition component.
+- Extracted all admin endpoint calls and request bodies into `adminDashboardApi.ts`.
+- Extracted headline state and publication behavior into `useAdminHeadline`.
+- Extracted student loading, search debounce, filters, pagination, resets, promotion, and account status into `useAdminStudents`.
+- Extracted supervisor account creation, search, deletion, notification settings, and slot editing into `useAdminSupervisors`.
+- Extracted shared student/supervisor email updates into `useAdminEmailUpdate`.
+- Extracted reports loading, report selection, preview opening, and downloads into `useAdminReports`.
+- Extracted project-review prefetch behavior into `useAdminProjectReviewPrefetch`.
+- Added pure selectors for supervisor search, dashboard statistics, batch options, slot clamping, and migration-code formatting.
+- Removed the no-op empty `isReportsModalOpen` block from student status updates.
+- Added endpoint/body contract tests and structural regression tests.
 
 ## Next milestone
 
-Refactor `AdminDashboard.tsx` by domain. Create separate hooks for headline management, students, student actions, supervisors, supervisor slots, and reports. Do not create one large `useAdminDashboard` hook.
+Refactor `StudentDashboard.tsx` in two controlled passes. Begin with dashboard data, project draft persistence, submission, and templates. Do not mix account/team workflows into the same commit.
 
 ## Refactor constraints
 
+- Check the latest GitHub `Code-Cleanup` commits before every new milestone.
 - Do not change API paths or response shapes during mechanical cleanup.
 - Do not change database schemas during component extraction.
 - Do not redesign the UI in structural commits.
