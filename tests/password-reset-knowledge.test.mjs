@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { matchesPasswordResetKnowledge } from '../lib/security/passwordResetKnowledge.ts';
+import { importTypeScriptModule } from './support/importTypeScript.mjs';
+
+const { matchesPasswordResetKnowledge } = await importTypeScriptModule(
+  'lib/security/passwordResetKnowledge.ts'
+);
 
 const stored = {
   rollNo: 'F23-0201',
@@ -35,9 +39,12 @@ test('password reset knowledge requires every stored identity factor', () => {
 });
 
 test('teammate roll number is optional only when the student has no teammate', () => {
-  assert.equal(matchesPasswordResetKnowledge({ ...stored, teammateRollNos: [], requiresTeammate: false }, {
-    ...provided,
-    teammateRollNo: '',
-  }), true);
+  assert.equal(
+    matchesPasswordResetKnowledge(
+      { ...stored, teammateRollNos: [], requiresTeammate: false },
+      { ...provided, teammateRollNo: '' }
+    ),
+    true
+  );
   assert.equal(matchesPasswordResetKnowledge(stored, { ...provided, teammateRollNo: '' }), false);
 });
