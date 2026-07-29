@@ -4,7 +4,9 @@ import connectToDatabase from '../../../../../lib/mongodb';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { isRecord, normalizeText } from '../../../../../lib/security/input';
 import { normalizeStorageKey } from '../../../../../lib/security/storage';
+import { findSharedStorageKeys } from '../../../../../lib/storageReferenceSafety';
 import {
+  assertStorageLedgerReady,
   enqueueStorageDeletion,
   finalizeUploadReservation,
   StorageProtocolError,
@@ -21,7 +23,19 @@ async function enqueueCurrentBroadcastDeletion(
   if (supervisor.broadcastType !== 'audio' || !supervisor.broadcastContent) return;
 
   const key = normalizeStorageKey(supervisor.broadcastContent);
-  if (!key) return;
+  if (!key) {
+    throw new StorageProtocolError(
+      'The stored audio key is invalid. Run the storage integrity audit before replacing it.',
+      409
+    );
+  }
+  await assertStorageLedgerReady(session);
+  const sharedKeys = await findSharedStorageKeys({
+    keys: [key],
+    excludedSupervisorIds: [supervisor._id],
+    session,
+  });
+  if (sharedKeys.has(key)) return;
   await enqueueStorageDeletion(
     { key, bytes: Number(supervisor.broadcastSize || 0), reason: 'broadcast-replaced' },
     session

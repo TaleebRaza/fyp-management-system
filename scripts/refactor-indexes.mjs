@@ -32,13 +32,23 @@ export const refactorIndexes = {
     },
   ],
   storagedeletionoutboxes: [
+    { key: { key: 1 }, options: { unique: true } },
     { key: { state: 1, nextAttemptAt: 1, _id: 1 } },
     { key: { state: 1, lockedUntil: 1, _id: 1 } },
     { key: { state: 1, deadLetteredAt: 1, _id: 1 } },
   ],
   emailoutboxes: [
+    { key: { dedupeKey: 1 }, options: { unique: true } },
     { key: { state: 1, nextAttemptAt: 1, _id: 1 } },
     { key: { state: 1, lockedUntil: 1, _id: 1 } },
     { key: { state: 1, deadLetteredAt: 1, _id: 1 } },
+  ],
+  uploadreservations: [
+    { key: { key: 1 }, options: { unique: true } },
+    { key: { ownerId: 1, idempotencyKey: 1 }, options: { unique: true } },
+    { key: { state: 1, expiresAt: 1, _id: 1 } },
+  ],
+  systemconfigs: [
+    { key: { configKey: 1 }, options: { unique: true } },
   ],
 };

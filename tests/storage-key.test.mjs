@@ -20,6 +20,6 @@ test('normalizes canonical object keys and classifies their exact owner collecti
 test('rejects encoded traversal, unsafe separators, and oversized object keys', () => {
   assert.equal(normalizeStorageKey('proposals/%252e%252e/secret.pdf'), null);
   assert.equal(normalizeStorageKey('proposals\\student\\upload.pdf'), null);
-  assert.equal(normalizeStorageKey(`proposals/${'a'.repeat(513)}`), null);
+  assert.equal(normalizeStorageKey(`proposals/${'a'.repeat(501)}`), null);
   assert.equal(getStorageObjectKind('legacy/upload.pdf'), null);
 });

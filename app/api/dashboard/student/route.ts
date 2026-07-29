@@ -3,7 +3,6 @@ import mongoose, { ClientSession } from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import VoiceNote from '../../../../models/VoiceNote';
 import { enqueueNotificationEmail } from '../../../../lib/emailOutbox';
 import {
   formatProjectDomainLabels,
@@ -19,6 +18,8 @@ import {
 } from '../../../../lib/teamFineRestriction';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
+import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
+import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
 import { escapeHtml, isRecord, normalizeText } from '../../../../lib/security/input';
@@ -35,36 +36,6 @@ import {
 } from '../../../../lib/storageProtocol';
 
 export const dynamic = 'force-dynamic';
-
-type DeletionTarget = {
-  key: string;
-  size: number;
-};
-
-function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = normalizeStorageKey(fileUrl || '');
-  if (!key) return null;
-
-  return {
-    key,
-    size: Math.max(Number(fileSize || 0), 0),
-  };
-}
-
-function mergeDeletionTargets(targets: DeletionTarget[]) {
-  const mergedTargets = new Map<string, DeletionTarget>();
-
-  targets.forEach((target) => {
-    const existingTarget = mergedTargets.get(target.key);
-
-    mergedTargets.set(target.key, {
-      key: target.key,
-      size: Math.max(existingTarget?.size || 0, target.size),
-    });
-  });
-
-  return Array.from(mergedTargets.values());
-}
 
 async function createFreshStudentProject(
   studentId: mongoose.Types.ObjectId,
@@ -285,7 +256,7 @@ export async function POST(req: NextRequest) {
       const session = await mongoose.startSession();
       session.startTransaction();
 
-      let deletionTargets: DeletionTarget[] = [];
+      let queuedDeletionBytes = 0;
       let leftTeam = false;
 
       try {
@@ -349,30 +320,13 @@ export async function POST(req: NextRequest) {
             oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
 
           if (isOnlyMember) {
-            const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
-
-            deletionTargets = mergeDeletionTargets([
-              buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
-              String(student.pdfUrl || '') !== String(oldProject.pdfUrl || '')
-                ? buildDeletionTarget(student.pdfUrl, oldProject.pdfSize)
-                : null,
-              ...voiceNotes
-                .map((note) => buildDeletionTarget(note.blobUrl, note.fileSize))
-                .filter(Boolean),
-            ].filter(Boolean) as DeletionTarget[]);
-
-            if (voiceNotes.length > 0) {
-              await VoiceNote.deleteMany({
-                _id: { $in: voiceNotes.map((note) => note._id) },
-              }).session(session);
-            }
-
-            for (const target of deletionTargets) {
-              await enqueueStorageDeletion(
-                { key: target.key, bytes: target.size, reason: 'supervisor-change' },
-                session
-              );
-            }
+            const cleanup = await enqueueDeletedProjectStorage({
+              project: oldProject,
+              extraPdfUrls: [student.pdfUrl],
+              reason: 'supervisor-change',
+              session,
+            });
+            queuedDeletionBytes = cleanup.queuedDeletionBytes;
 
             if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
               throw new Error('Unable to release the previous supervisor capacity.');
@@ -418,7 +372,7 @@ export async function POST(req: NextRequest) {
             message: leftTeam
               ? 'Supervisor changed. You left your old team and started fresh under the new supervisor.'
               : 'Supervisor changed. Your previous project files are queued for deletion.',
-            queuedDeletionBytes: deletionTargets.reduce((sum, target) => sum + target.size, 0),
+            queuedDeletionBytes,
           },
           { status: 200 }
         );
@@ -667,6 +621,12 @@ export async function POST(req: NextRequest) {
         if (!project) throw new StorageProtocolError('Project membership changed. Refresh and try again.', 409);
 
         const oldPdfKey = normalizeStorageKey(project.pdfUrl);
+        if (project.pdfUrl && !oldPdfKey) {
+          throw new StorageProtocolError(
+            'The current project file key is invalid. Run the storage integrity audit before replacing it.',
+            409
+          );
+        }
         const updatedProject = await Project.updateOne(
           {
             _id: project._id,
@@ -708,10 +668,18 @@ export async function POST(req: NextRequest) {
         );
 
         if (oldPdfKey && oldPdfKey !== uploadedKey) {
-          await enqueueStorageDeletion(
-            { key: oldPdfKey, bytes: Number(project.pdfSize || 0), reason: 'project-pdf-replaced' },
-            session
-          );
+          const sharedKeys = await findSharedStorageKeys({
+            keys: [oldPdfKey],
+            excludedProjectIds: [project._id],
+            session,
+          });
+          const isShared = sharedKeys.has(oldPdfKey);
+          if (!isShared) {
+            await enqueueStorageDeletion(
+              { key: oldPdfKey, bytes: Number(project.pdfSize || 0), reason: 'project-pdf-replaced' },
+              session
+            );
+          }
         }
 
         const supervisorId = project.supervisorId || studentInTransaction.supervisorId;

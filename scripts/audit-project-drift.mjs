@@ -95,6 +95,9 @@ try {
     userProjects,
     projections,
   }, null, 2));
+  if (projectMembers.count > 0 || userProjects.count > 0 || projections.count > 0) {
+    process.exitCode = 2;
+  }
 } finally {
   await mongoose.disconnect();
 }

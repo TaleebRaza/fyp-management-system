@@ -1,4 +1,4 @@
-const MAX_STORAGE_KEY_LENGTH = 512;
+const MAX_STORAGE_KEY_LENGTH = 500;
 
 export type StorageObjectKind = 'proposal' | 'voice' | 'broadcast';
 

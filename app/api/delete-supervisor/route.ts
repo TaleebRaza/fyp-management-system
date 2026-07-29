@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import User from '../../../models/User';
-import Project from '../../../models/Project'; // NEW: Imported to fix the ghost-project bug
+import Project from '../../../models/Project';
 import { requireCurrentUser } from '../../../lib/security/auth';
+import { normalizeStorageKey } from '../../../lib/security/storageKey';
+import { findSharedStorageKeys } from '../../../lib/storageReferenceSafety';
+import {
+  assertStorageLedgerReady,
+  enqueueStorageDeletion,
+  StorageProtocolError,
+} from '../../../lib/storageProtocol';
 import {
   invalidatePublicContent,
   PUBLIC_SUPERVISORS_TAG,
@@ -31,6 +38,27 @@ export async function POST(req: NextRequest) {
         await session.abortTransaction();
         session.endSession();
         return NextResponse.json({ error: 'Supervisor not found' }, { status: 404 });
+      }
+
+      if (deletedSupervisor.broadcastType === 'audio') {
+        const key = normalizeStorageKey(deletedSupervisor.broadcastContent);
+        if (!key) {
+          throw new StorageProtocolError(
+            'The supervisor has an invalid stored audio key. Run the storage integrity audit before deletion.',
+            409
+          );
+        }
+        await assertStorageLedgerReady(session);
+        const sharedKeys = await findSharedStorageKeys({
+          keys: [key],
+          excludedSupervisorIds: [deletedSupervisor._id],
+          session,
+        });
+        if (!sharedKeys.has(key)) {
+          const numericBytes = Number(deletedSupervisor.broadcastSize);
+          const bytes = Number.isSafeInteger(numericBytes) && numericBytes > 0 ? numericBytes : 0;
+          await enqueueStorageDeletion({ key, bytes, reason: 'supervisor-deleted' }, session);
+        }
       }
 
       // 3. Safely unassign any STUDENTS that belonged to this supervisor
@@ -66,8 +94,11 @@ export async function POST(req: NextRequest) {
       session.endSession();
       throw transactionError;
     }
-  } catch {
+  } catch (error) {
     console.error('delete_supervisor_failed');
+    if (error instanceof StorageProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     return NextResponse.json({ error: 'Failed to delete supervisor' }, { status: 500 });
   }
 }

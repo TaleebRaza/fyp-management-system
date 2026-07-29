@@ -6,10 +6,8 @@ import { PROGRAM_MAP } from '../config/appSettings';
 
 import User from '../models/User';
 import Project from '../models/Project';
-import VoiceNote from '../models/VoiceNote';
 import { releaseSupervisorProjectSlot } from './supervisorCapacity';
-import { normalizeStorageKey } from './security/storage';
-import { enqueueStorageDeletion } from './storageProtocol';
+import { enqueueDeletedProjectStorage } from './projectStorageCleanup';
 
 const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MIN_BATCH_YEAR = 2021;
@@ -21,11 +19,6 @@ const STUDENT_SELF_ACADEMIC_RESET_MESSAGE =
   'You changed your academic information and accepted the progress reset. Please choose a supervisor again or join a team to begin.';
 
 type AcademicResetActor = 'admin' | 'student';
-
-type DeletionTarget = {
-  key: string;
-  size: number;
-};
 
 type ResetStudentAcademicInfoParams = {
   targetUserId: string;
@@ -68,31 +61,6 @@ function formatCooldown(ms: number) {
   }
 
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-}
-
-function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = normalizeStorageKey(fileUrl || '');
-  if (!key) return null;
-
-  return {
-    key,
-    size: Math.max(Number(fileSize || 0), 0),
-  };
-}
-
-function mergeDeletionTargets(targets: DeletionTarget[]) {
-  const mergedTargets = new Map<string, DeletionTarget>();
-
-  targets.forEach((target) => {
-    const existingTarget = mergedTargets.get(target.key);
-
-    mergedTargets.set(target.key, {
-      key: target.key,
-      size: Math.max(existingTarget?.size || 0, target.size),
-    });
-  });
-
-  return Array.from(mergedTargets.values());
 }
 
 async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, session: ClientSession) {
@@ -203,29 +171,13 @@ export async function resetStudentAcademicInfo({
         oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
 
       if (isOnlyMember) {
-        const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(mongoSession);
-
-        const deletionTargets = mergeDeletionTargets([
-          buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
-          buildDeletionTarget(student.pdfUrl, oldProject.pdfSize),
-          ...voiceNotes
-            .map((note) => buildDeletionTarget(note.blobUrl, note.fileSize))
-            .filter(Boolean),
-        ].filter(Boolean) as DeletionTarget[]);
-
-        for (const target of deletionTargets) {
-          await enqueueStorageDeletion(
-            { key: target.key, bytes: target.size, reason: 'academic-reset' },
-            mongoSession
-          );
-          queuedDeletionBytes += target.size;
-        }
-
-        if (voiceNotes.length > 0) {
-          await VoiceNote.deleteMany({
-            _id: { $in: voiceNotes.map((note) => note._id) },
-          }).session(mongoSession);
-        }
+        const cleanup = await enqueueDeletedProjectStorage({
+          project: oldProject,
+          extraPdfUrls: [student.pdfUrl],
+          reason: 'academic-reset',
+          session: mongoSession,
+        });
+        queuedDeletionBytes = cleanup.queuedDeletionBytes;
 
         if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, mongoSession)) {
           throw new AcademicResetError('Unable to release the previous supervisor capacity.', 409);

@@ -4,8 +4,12 @@ import connectToDatabase from '../../../../lib/mongodb';
 import { processEmailOutbox } from '../../../../lib/emailOutbox';
 import { hasValidCronAuthorization } from '../../../../lib/security/cron';
 import { normalizeStorageKey } from '../../../../lib/security/storage';
+import { collectStorageDeletionTargets } from '../../../../lib/storageDeletionTargets';
+import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import {
+  assertStorageLedgerReady,
   enqueueStorageDeletion,
+  expireUploadReservations,
   processStorageDeletionOutbox,
   withStorageTransaction,
 } from '../../../../lib/storageProtocol';
@@ -29,8 +33,11 @@ export async function GET(req: Request) {
     const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000);
     const seventyTwoHoursAgo = new Date(now - 72 * 60 * 60 * 1000);
     const cleanup = await withStorageTransaction(async (session) => {
+      await assertStorageLedgerReady(session);
       let purgedVoiceNotesCount = 0;
       let purgedBroadcastsCount = 0;
+      let skippedInvalidVoiceNotesCount = 0;
+      let skippedInvalidBroadcastsCount = 0;
       let queuedDeletionBytes = 0;
       const expiredNotes = await VoiceNote.find({
         $or: [
@@ -41,17 +48,30 @@ export async function GET(req: Request) {
         .sort({ createdAt: 1, _id: 1 })
         .limit(CLEANUP_LIMIT)
         .session(session);
-      for (const note of expiredNotes) {
+      const validExpiredNotes = expiredNotes.filter((note) => normalizeStorageKey(note.blobUrl));
+      skippedInvalidVoiceNotesCount = expiredNotes.length - validExpiredNotes.length;
+      const voiceTargets = collectStorageDeletionTargets(
+        validExpiredNotes.map((note) => ({ key: note.blobUrl, bytes: note.fileSize }))
+      );
+      const sharedVoiceKeys = await findSharedStorageKeys({
+        keys: voiceTargets.map((target) => target.key),
+        excludedVoiceNoteIds: validExpiredNotes.map((note) => note._id),
+        session,
+      });
+      for (const target of voiceTargets) {
+        if (sharedVoiceKeys.has(target.key)) continue;
         await enqueueStorageDeletion(
-          { key: note.blobUrl, bytes: Number(note.fileSize || 0), reason: 'voice-expired' },
+          { ...target, reason: 'voice-expired' },
           session
         );
-        queuedDeletionBytes += Number(note.fileSize || 0);
+        queuedDeletionBytes += target.bytes;
       }
-      if (expiredNotes.length > 0) {
-        await VoiceNote.deleteMany({ _id: { $in: expiredNotes.map((note) => note._id) } }).session(session);
+      if (validExpiredNotes.length > 0) {
+        await VoiceNote.deleteMany({
+          _id: { $in: validExpiredNotes.map((note) => note._id) },
+        }).session(session);
       }
-      purgedVoiceNotesCount = expiredNotes.length;
+      purgedVoiceNotesCount = validExpiredNotes.length;
 
       const expiredBroadcasts = await User.find({
         role: 'supervisor',
@@ -62,24 +82,43 @@ export async function GET(req: Request) {
         .sort({ broadcastCreatedAt: 1, _id: 1 })
         .limit(CLEANUP_LIMIT)
         .session(session);
-      for (const supervisor of expiredBroadcasts) {
-        const key = normalizeStorageKey(supervisor.broadcastContent);
-        if (key) {
-          await enqueueStorageDeletion(
-            { key, bytes: Number(supervisor.broadcastSize || 0), reason: 'broadcast-expired' },
-            session
-          );
-          queuedDeletionBytes += Number(supervisor.broadcastSize || 0);
-        }
+      const validExpiredBroadcasts = expiredBroadcasts.filter((supervisor) =>
+        normalizeStorageKey(supervisor.broadcastContent)
+      );
+      skippedInvalidBroadcastsCount = expiredBroadcasts.length - validExpiredBroadcasts.length;
+      const broadcastTargets = collectStorageDeletionTargets(
+        validExpiredBroadcasts.map((supervisor) => ({
+          key: normalizeStorageKey(supervisor.broadcastContent),
+          bytes: supervisor.broadcastSize,
+        }))
+      );
+      const sharedBroadcastKeys = await findSharedStorageKeys({
+        keys: broadcastTargets.map((target) => target.key),
+        excludedSupervisorIds: validExpiredBroadcasts.map((supervisor) => supervisor._id),
+        session,
+      });
+      for (const target of broadcastTargets) {
+        if (sharedBroadcastKeys.has(target.key)) continue;
+        await enqueueStorageDeletion({ ...target, reason: 'broadcast-expired' }, session);
+        queuedDeletionBytes += target.bytes;
+      }
+      for (const supervisor of validExpiredBroadcasts) {
         supervisor.broadcastType = null;
         supervisor.broadcastContent = null;
         supervisor.broadcastSize = 0;
         supervisor.broadcastCreatedAt = null;
         await supervisor.save({ session });
       }
-      purgedBroadcastsCount = expiredBroadcasts.length;
-      return { purgedVoiceNotesCount, purgedBroadcastsCount, queuedDeletionBytes };
+      purgedBroadcastsCount = validExpiredBroadcasts.length;
+      return {
+        purgedVoiceNotesCount,
+        purgedBroadcastsCount,
+        skippedInvalidVoiceNotesCount,
+        skippedInvalidBroadcastsCount,
+        queuedDeletionBytes,
+      };
     });
+    const reservations = await expireUploadReservations();
     const [storageDeletions, emails] = await Promise.all([
       processStorageDeletionOutbox(),
       processEmailOutbox(),
@@ -88,6 +127,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       message: 'Cleanup and durable background work completed.',
       ...cleanup,
+      reservations,
       storageDeletions,
       emails,
     });

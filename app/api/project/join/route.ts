@@ -13,6 +13,7 @@ import { consumeRateLimit, refundRateLimit } from '../../../../lib/rateLimit';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { getTeamCapacity } from '../../../../lib/teamCapacity';
 import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
+import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
   if (!currentUser) {
@@ -144,6 +145,12 @@ export async function POST(req: NextRequest) {
           const oldProject = await Project.findById(student.projectId).session(session);
           if (oldProject) {
             if (oldProject.members.length === 1 && oldProject.members[0].toString() === studentId) {
+              await enqueueDeletedProjectStorage({
+                project: oldProject,
+                extraPdfUrls: [student.pdfUrl],
+                reason: 'team-join',
+                session,
+              });
               if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
                 throw new Error('Unable to release previous supervisor capacity.');
               }

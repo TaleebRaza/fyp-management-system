@@ -1,9 +1,15 @@
 import Project from '../models/Project';
 import User from '../models/User';
 import { enqueueNotificationEmail } from './emailOutbox';
+import { findSharedStorageKeys } from './storageReferenceSafety';
 import { escapeHtml } from './security/input';
 import { normalizeStorageKey } from './security/storage';
-import { enqueueStorageDeletion, withStorageTransaction } from './storageProtocol';
+import {
+  assertStorageLedgerReady,
+  enqueueStorageDeletion,
+  StorageProtocolError,
+  withStorageTransaction,
+} from './storageProtocol';
 import {
   isProjectAwaitingReview,
   type ProjectReviewStatus,
@@ -125,9 +131,20 @@ export async function reviewProject({
     );
 
     if (reviewState.newStage && project.pdfUrl) {
+      await assertStorageLedgerReady(session);
       const key = normalizeStorageKey(project.pdfUrl);
-      const isShared = key && await Project.exists({ _id: { $ne: project._id }, pdfUrl: project.pdfUrl }).session(session);
-      if (key && !isShared) {
+      if (!key) {
+        throw new StorageProtocolError(
+          'The stored project file key is invalid. Run the storage integrity audit before advancing the stage.',
+          409
+        );
+      }
+      const sharedKeys = await findSharedStorageKeys({
+        keys: [key],
+        excludedProjectIds: [project._id],
+        session,
+      });
+      if (!sharedKeys.has(key)) {
         await enqueueStorageDeletion(
           { key, bytes: Math.max(Number(project.pdfSize || 0), 0), reason: 'review-stage-advanced' },
           session

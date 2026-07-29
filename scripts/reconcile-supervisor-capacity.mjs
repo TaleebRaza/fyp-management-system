@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 const shouldRepair = process.argv.includes('--repair');
 const uri = process.env.MONGODB_URI;
 
+if (shouldRepair && process.env.CONFIRM_CAPACITY_REPAIR !== 'supervisor-capacity') {
+  console.error('Capacity repair requires CONFIRM_CAPACITY_REPAIR=supervisor-capacity. No changes were made.');
+  process.exit(1);
+}
 if (!uri) {
   console.error('MONGODB_URI is required. No database changes were made.');
   process.exit(1);
@@ -47,6 +51,7 @@ try {
     })));
     console.log(JSON.stringify({ repaired: mismatches.length }));
   }
+  if (!shouldRepair && mismatches.length > 0) process.exitCode = 2;
 } finally {
   await mongoose.disconnect();
 }

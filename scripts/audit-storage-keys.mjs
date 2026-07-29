@@ -28,7 +28,7 @@ async function auditKeys({ collection: collectionName, field, prefix, filter }) 
         _id: 1,
         valid: {
           $and: [
-            { $lte: [{ $strLenCP: keyPath }, 512] },
+            { $lte: [{ $strLenCP: keyPath }, 500] },
             { $regexMatch: { input: keyPath, regex: `^${prefix}` } },
             { $not: [{ $regexMatch: { input: keyPath, regex: '(^|/)(?:\\.{1,2})(?:/|$)|\\\\' } }] },
           ],
@@ -58,6 +58,7 @@ await mongoose.connect(uri);
 try {
   const audits = await Promise.all(keyAudits.map(auditKeys));
   console.log(JSON.stringify({ mode: 'report', audits }, null, 2));
+  if (audits.some((audit) => audit.invalid > 0)) process.exitCode = 2;
 } finally {
   await mongoose.disconnect();
 }

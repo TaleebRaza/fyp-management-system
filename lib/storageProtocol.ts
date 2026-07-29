@@ -11,6 +11,7 @@ import SystemConfig from '../models/SystemConfig';
 import UploadReservation from '../models/UploadReservation';
 import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from './s3-client';
 import { hasExpectedStorageMagic, type StorageUploadKind } from './storageValidation';
+import { getStorageObjectKind, normalizeStorageKey } from './security/storageKey';
 
 const MAX_DELETION_ATTEMPTS = 8;
 const MAX_DELETION_BATCH_SIZE = 100;
@@ -65,16 +66,38 @@ export async function withStorageTransaction<T>(operation: (session: ClientSessi
   }
 }
 
-async function ensureStorageConfig(session: ClientSession) {
-  await SystemConfig.updateOne(
-    { configKey: 'storage' },
-    { $setOnInsert: { usedBytes: 0, reservedBytes: 0 } },
-    { upsert: true, session }
-  );
+export async function assertStorageLedgerReady(session: ClientSession) {
+  const configs = await SystemConfig.find({ configKey: 'storage' })
+    .select('usedBytes reservedBytes')
+    .limit(2)
+    .session(session)
+    .lean();
+  const config = configs[0];
+  if (
+    configs.length !== 1
+    || !config
+    || !Number.isSafeInteger(config.usedBytes)
+    || config.usedBytes < 0
+    || !Number.isSafeInteger(config.reservedBytes)
+    || config.reservedBytes < 0
+  ) {
+    throw new StorageProtocolError(
+      'Storage ledger is not initialized. Run the storage integrity audit before using uploads.',
+      503
+    );
+  }
 }
 
 function assertReservationInput(input: ReserveUploadInput) {
-  if (!input.key || input.key.length > 500 || !input.ownerId || !input.idempotencyKey || input.idempotencyKey.length > 128) {
+  const expectedObjectKind = input.kind === 'pdf' ? 'proposal' : input.kind;
+  if (
+    !input.key
+    || normalizeStorageKey(input.key) !== input.key
+    || getStorageObjectKind(input.key) !== expectedObjectKind
+    || !input.ownerId
+    || !input.idempotencyKey
+    || input.idempotencyKey.length > 128
+  ) {
     throw new StorageProtocolError('Invalid upload reservation.', 400);
   }
   if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes <= 0) {
@@ -100,6 +123,7 @@ export async function reserveUpload(input: ReserveUploadInput) {
   assertReservationInput(input);
 
   return await withStorageTransaction(async (session) => {
+    await assertStorageLedgerReady(session);
     const existing = await UploadReservation.findOne({
       ownerId: input.ownerId,
       idempotencyKey: input.idempotencyKey,
@@ -111,7 +135,6 @@ export async function reserveUpload(input: ReserveUploadInput) {
       return existing;
     }
 
-    await ensureStorageConfig(session);
     const capacity = await SystemConfig.updateOne(
       {
         configKey: 'storage',
@@ -142,19 +165,28 @@ export async function reserveUpload(input: ReserveUploadInput) {
 }
 
 export async function enqueueStorageDeletion(
-  target: { key: string; bytes: number; reason: string },
+  target: { key: string; bytes: number; reservedBytes?: number; reason: string },
   session: ClientSession
 ) {
-  if (!target.key || target.key.length > 500 || !Number.isSafeInteger(target.bytes) || target.bytes < 0) {
+  const reservedBytes = target.reservedBytes ?? 0;
+  if (
+    !target.key
+    || normalizeStorageKey(target.key) !== target.key
+    || !Number.isSafeInteger(target.bytes)
+    || target.bytes < 0
+    || !Number.isSafeInteger(reservedBytes)
+    || reservedBytes < 0
+  ) {
     throw new StorageProtocolError('Invalid storage deletion target.', 400);
   }
 
   await StorageDeletionOutbox.findOneAndUpdate(
     { key: target.key },
     {
-      $max: { bytes: target.bytes },
+      $max: { bytes: target.bytes, reservedBytes },
       $setOnInsert: {
         reason: target.reason.slice(0, 100),
+        verifiedBytes: null,
         state: 'pending',
         attempts: 0,
         nextAttemptAt: new Date(),
@@ -174,19 +206,19 @@ export async function cancelUploadReservation(
   reason: string
 ) {
   return await withStorageTransaction(async (session) => {
+    await assertStorageLedgerReady(session);
     const reservation = await UploadReservation.findOne({ key, ownerId }).session(session);
     if (!reservation || reservation.state !== 'pending') return false;
 
     await enqueueStorageDeletion(
-      { key: reservation.key, bytes: 0, reason },
+      {
+        key: reservation.key,
+        bytes: 0,
+        reservedBytes: reservation.expectedBytes,
+        reason,
+      },
       session
     );
-    const released = await SystemConfig.updateOne(
-      { configKey: 'storage', reservedBytes: { $gte: reservation.expectedBytes } },
-      { $inc: { reservedBytes: -reservation.expectedBytes } },
-      { session }
-    );
-    if (released.modifiedCount !== 1) throw new Error('Storage reservation ledger is inconsistent.');
 
     reservation.state = 'cancelled';
     await reservation.save({ session });
@@ -253,6 +285,7 @@ export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>
   }
 
   return await withStorageTransaction(async (session) => {
+    await assertStorageLedgerReady(session);
     const activeReservation = await UploadReservation.findOne({
       _id: reservation._id,
       state: 'pending',
@@ -261,7 +294,6 @@ export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>
     if (!activeReservation) return { finalizedNow: false } satisfies FinalizedUpload<T>;
 
     const result = await input.commit(session, verified);
-    await ensureStorageConfig(session);
     const converted = await SystemConfig.updateOne(
       { configKey: 'storage', reservedBytes: { $gte: activeReservation.expectedBytes } },
       {
@@ -287,7 +319,76 @@ function retryDelay(attempts: number) {
   return Math.min(6 * 60 * 60 * 1000, 60_000 * (2 ** Math.min(attempts, 8)));
 }
 
+function isMissingStorageObject(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const storageError = error as { name?: unknown; $metadata?: { httpStatusCode?: unknown } };
+  return storageError.name === 'NotFound'
+    || storageError.name === 'NoSuchKey'
+    || storageError.$metadata?.httpStatusCode === 404;
+}
+
+async function getDeletionBytes(target: {
+  _id: unknown;
+  key: string;
+  bytes: number;
+  reservedBytes?: number | null;
+  verifiedBytes?: number | null;
+  lockToken?: string | null;
+}) {
+  if (normalizeStorageKey(target.key) !== target.key) {
+    throw new Error('Storage deletion target has an invalid object key.');
+  }
+  // Reservation cancellations were never added to usedBytes. Their quota is
+  // released separately after deletion, so subtracting object bytes here would
+  // undercount live data. The reservation lookup also protects legacy outbox
+  // rows created before reservedBytes was recorded on the deletion target.
+  const unfinalizedReservation = await UploadReservation.exists({
+    key: target.key,
+    state: { $in: ['pending', 'cancelled'] },
+  });
+  if (Number(target.reservedBytes || 0) > 0 || unfinalizedReservation) return 0;
+
+  if (Number.isSafeInteger(target.verifiedBytes) && Number(target.verifiedBytes) >= 0) {
+    return Number(target.verifiedBytes);
+  }
+
+  let verifiedBytes = 0;
+  try {
+    const object = await getS3Client().send(
+      new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: target.key })
+    );
+    verifiedBytes = Number(object.ContentLength);
+    if (!Number.isSafeInteger(verifiedBytes) || verifiedBytes < 0) {
+      throw new Error('Storage object returned an invalid size.');
+    }
+  } catch (error) {
+    if (!isMissingStorageObject(error)) throw error;
+  }
+
+  const saved = await StorageDeletionOutbox.updateOne(
+    { _id: target._id, state: 'processing', lockToken: target.lockToken },
+    { $set: { verifiedBytes } }
+  );
+  if (saved.modifiedCount !== 1) throw new Error('Storage deletion lease was lost.');
+  return verifiedBytes;
+}
+
 export async function processStorageDeletionOutbox(limit = 25) {
+  await withStorageTransaction(async (session) => {
+    await assertStorageLedgerReady(session);
+    const duplicateKeys = await StorageDeletionOutbox.aggregate([
+      { $group: { _id: '$key', count: { $sum: 1 } } },
+      { $match: { count: { $gt: 1 } } },
+      { $limit: 1 },
+    ]).session(session);
+    if (duplicateKeys.length > 0) {
+      throw new StorageProtocolError(
+        'Duplicate storage deletion targets exist. Run the storage integrity audit before cleanup.',
+        503
+      );
+    }
+    return true;
+  });
   const batchSize = Math.min(Math.max(Math.trunc(limit), 1), MAX_DELETION_BATCH_SIZE);
   let claimed = 0;
   let deleted = 0;
@@ -321,6 +422,7 @@ export async function processStorageDeletionOutbox(limit = 25) {
     maxJobLagMs = Math.max(maxJobLagMs, Math.max(now.getTime() - target.nextAttemptAt.getTime(), 0));
 
     try {
+      const deletionBytes = await getDeletionBytes(target);
       await getS3Client().send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }));
       await withStorageTransaction(async (session) => {
         const activeTarget = await StorageDeletionOutbox.findOne({
@@ -330,14 +432,25 @@ export async function processStorageDeletionOutbox(limit = 25) {
         }).session(session);
         if (!activeTarget) return;
 
-        await ensureStorageConfig(session);
+        await assertStorageLedgerReady(session);
         await SystemConfig.updateOne(
           { configKey: 'storage' },
           [
             {
               $set: {
                 usedBytes: {
-                  $max: [0, { $subtract: [{ $ifNull: ['$usedBytes', 0] }, activeTarget.bytes] }],
+                  $max: [0, { $subtract: [{ $ifNull: ['$usedBytes', 0] }, deletionBytes] }],
+                },
+                reservedBytes: {
+                  $max: [
+                    0,
+                    {
+                      $subtract: [
+                        { $ifNull: ['$reservedBytes', 0] },
+                        Number(activeTarget.reservedBytes || 0),
+                      ],
+                    },
+                  ],
                 },
               },
             },

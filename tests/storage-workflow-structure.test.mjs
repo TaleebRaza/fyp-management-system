@@ -20,6 +20,10 @@ test('storage reservations keep pending bytes and atomically claimed deletion wo
   assert.match(protocol, /HeadObjectCommand/);
   assert.match(protocol, /GetObjectCommand/);
   assert.match(protocol, /processStorageDeletionOutbox/);
+  assert.match(protocol, /verifiedBytes/);
+  assert.match(protocol, /reservedBytes: reservation\.expectedBytes/);
+  assert.match(protocol, /Storage ledger is not initialized/);
+  assert.doesNotMatch(protocol, /\$setOnInsert: \{ usedBytes: 0, reservedBytes: 0 \}/);
 });
 
 test('submission and review enqueue email work without awaiting SMTP', async () => {
@@ -57,20 +61,38 @@ test('voice, broadcast, PDF submission, and review use reservation finalization 
   assert.doesNotMatch(review, /DeleteObjectCommand/);
 });
 
-test('academic reset and team changes use transaction callbacks with fresh state', async () => {
-  const [academicReset, join, leave] = await Promise.all([
+test('academic reset and team changes use transaction callbacks with durable cleanup', async () => {
+  const [academicReset, projectCleanup, join, leave] = await Promise.all([
     read('lib/academicReset.ts'),
+    read('lib/projectStorageCleanup.ts'),
     read('app/api/project/join/route.ts'),
     read('app/api/project/leave/route.ts'),
   ]);
 
   assert.match(academicReset, /mongoSession\.withTransaction/);
   assert.match(academicReset, /student\.domains = \[\]/);
-  assert.match(academicReset, /enqueueStorageDeletion/);
+  assert.match(academicReset, /enqueueDeletedProjectStorage/);
+  assert.match(projectCleanup, /enqueueStorageDeletion/);
+  assert.match(projectCleanup, /VoiceNote\.deleteMany/);
   assert.doesNotMatch(academicReset, /DeleteObjectCommand/);
   assert.match(join, /session\.withTransaction/);
+  assert.match(join, /enqueueDeletedProjectStorage/);
   assert.match(join, /User\.findOne\(\{ _id: currentUser\.id, role: 'student' \}\)\.session\(session\)/);
   assert.doesNotMatch(join, /withTransactionRetry/);
   assert.match(leave, /session\.withTransaction/);
   assert.doesNotMatch(leave, /withTransactionRetry/);
+});
+
+test('the deployed cron expires reservations and supervisor deletion queues audio cleanup', async () => {
+  const [cron, supervisorDeletion, deployment] = await Promise.all([
+    read('app/api/cron/voice-cleanup/route.ts'),
+    read('app/api/delete-supervisor/route.ts'),
+    read('vercel.json'),
+  ]);
+
+  assert.match(cron, /expireUploadReservations/);
+  assert.match(cron, /processStorageDeletionOutbox/);
+  assert.match(deployment, /\/api\/cron\/voice-cleanup/);
+  assert.match(supervisorDeletion, /enqueueStorageDeletion/);
+  assert.match(supervisorDeletion, /supervisor-deleted/);
 });
