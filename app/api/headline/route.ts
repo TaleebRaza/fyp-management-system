@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
 import Headline from '../../../models/Headline';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import { normalizeText } from '../../../lib/security/input';
+import {
+  getPublicHeadline,
+  invalidatePublicContent,
+  PUBLIC_HEADLINE_TAG,
+} from '../../../lib/publicContentCache';
+import { publicJson } from '../../../lib/publicResponse';
 
 export const dynamic = 'force-dynamic';
 
 // GET remains public/open so the frontend can easily read the headline on page load
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    await connectToDatabase();
-    // Fetch the most recently created active headline
-    const latestHeadline = await Headline.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
-    return NextResponse.json({ headline: latestHeadline }, { status: 200 });
+    return publicJson(req, { headline: await getPublicHeadline() });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch headline' }, { status: 500 });
   }
@@ -33,7 +35,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectToDatabase();
     const { text } = await req.json();
     const normalizedText = normalizeText(text, 500);
     
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
     if (normalizedText) {
       await Headline.create({ text: normalizedText, isActive: true });
     }
+    invalidatePublicContent(PUBLIC_HEADLINE_TAG);
     
     return NextResponse.json({ message: 'Headline updated successfully!' }, { status: 200 });
   } catch {

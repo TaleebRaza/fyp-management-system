@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import {
   MAX_EXTRA_SUPERVISOR_SLOTS,
@@ -8,6 +7,10 @@ import {
   normalizeExtraSupervisorSlots,
 } from '../../../../lib/supervisorSlots';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import {
+  invalidatePublicContent,
+  PUBLIC_SUPERVISORS_TAG,
+} from '../../../../lib/publicContentCache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,8 +39,6 @@ export async function POST(req: NextRequest) {
 
     const safeExtraSlots = normalizeExtraSupervisorSlots(numericExtraSlots);
 
-    await connectToDatabase();
-
     const supervisor = await User.findOneAndUpdate(
       { _id: supervisorId, role: 'supervisor' },
       { $set: { extraSlots: safeExtraSlots } },
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
     if (!supervisor) {
       return NextResponse.json({ error: 'Supervisor not found.' }, { status: 404 });
     }
+    invalidatePublicContent(PUBLIC_SUPERVISORS_TAG);
 
     return NextResponse.json(
       {

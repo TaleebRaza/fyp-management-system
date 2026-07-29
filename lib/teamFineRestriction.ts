@@ -17,6 +17,33 @@ export type TeamFineRestriction = {
   isCurrentStudent: boolean;
 };
 
+type TeamFineMember = {
+  _id?: unknown;
+  name?: unknown;
+  rollNo?: unknown;
+} & Parameters<typeof buildFineRestriction>[0];
+
+export function getTeamFineRestrictionFromMembers(
+  members: TeamFineMember[],
+  currentStudentId: unknown
+): TeamFineRestriction | null {
+  const currentId = String(currentStudentId || '');
+  const member = members.find((item) => String(item._id) === currentId && buildFineRestriction(item)) ||
+    members.find((item) => buildFineRestriction(item));
+
+  if (!member) return null;
+
+  return {
+    active: true,
+    member: {
+      id: String(member._id),
+      name: String(member.name || 'A team member'),
+      rollNo: String(member.rollNo || ''),
+    },
+    isCurrentStudent: String(member._id) === currentId,
+  };
+}
+
 export async function getTeamFineRestriction(
   projectId: unknown,
   currentStudentId: unknown
@@ -30,18 +57,7 @@ export async function getTeamFineRestriction(
     .select(TEAM_FINE_FIELDS)
     .lean();
 
-  const member = members.find((item) => String(item._id) === currentId) || members[0];
-  if (!member || !buildFineRestriction(member)) return null;
-
-  return {
-    active: true,
-    member: {
-      id: String(member._id),
-      name: String(member.name || 'A team member'),
-      rollNo: String(member.rollNo || ''),
-    },
-    isCurrentStudent: String(member._id) === currentId,
-  };
+  return getTeamFineRestrictionFromMembers(members, currentId);
 }
 
 export function getTeamFineRestrictionMessage(

@@ -43,13 +43,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    await connectToDatabase();
-    const students = await User.find({ role: 'student', supervisorId: currentUser.id }).lean();
+    const students = await User.find({ role: 'student', supervisorId: currentUser.id })
+      .select('_id name rollNo email program batch semester projectId projectTitle projectDesc domain domains tools pdfUrl status remarks')
+      .lean();
     const supervisor = await User.findById(currentUser.id).select('+migrationCode').lean();
 
     // Fetch associated projects to get the timeline stage.
     const projectIds = students.map(s => s.projectId).filter(Boolean);
-    const projects = await Project.find({ _id: { $in: projectIds } }).lean();
+    const projects = projectIds.length > 0
+      ? await Project.find({ _id: { $in: projectIds } })
+          .select('_id stage maxTeamSize domains domain')
+          .lean()
+      : [];
     const projectMetadata = projects.reduce<Record<string, { stage: string; maxTeamSize: number; domains: string[]; domain: string }>>((acc, p) => {
       const domainIds = normalizeProjectDomainIds(p.domains, p.domain);
 

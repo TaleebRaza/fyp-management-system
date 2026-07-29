@@ -1,12 +1,15 @@
 import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
-import connectToDatabase from '../../../lib/mongodb';
 import { normalizeRollNo } from '../../../lib/rollNo';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import { isRecord, normalizeText } from '../../../lib/security/input';
 import { validatePassword } from '../../../lib/security/password';
 import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
+import {
+  invalidatePublicContent,
+  PUBLIC_SUPERVISORS_TAG,
+} from '../../../lib/publicContentCache';
 import User from '../../../models/User';
 
 export async function POST(req: NextRequest) {
@@ -34,7 +37,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Password must be 10 to 128 characters.' }, { status: 400 });
     }
 
-    await connectToDatabase();
     await new User({
       name,
       email,
@@ -45,6 +47,7 @@ export async function POST(req: NextRequest) {
       notificationsEnabled: true,
       occupiedSlots: 0,
     }).save();
+    invalidatePublicContent(PUBLIC_SUPERVISORS_TAG);
 
     return NextResponse.json({ message: 'Supervisor added successfully.' }, { status: 201 });
   } catch (error) {

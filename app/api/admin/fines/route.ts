@@ -15,6 +15,10 @@ import {
 } from '../../../../lib/fineRestriction';
 import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationFine';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import {
+  invalidatePublicContent,
+  PUBLIC_REGISTRATION_POLICY_TAG,
+} from '../../../../lib/publicContentCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -160,6 +164,7 @@ export async function PATCH(req: NextRequest) {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       const updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument);
+      invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
 
       return NextResponse.json({
         message: 'Fine payment details saved.',
@@ -191,6 +196,7 @@ export async function PATCH(req: NextRequest) {
         );
         updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument || policyDocument);
       }
+      invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
 
       return NextResponse.json({
         message: 'Late-registration fine compounding is paused.',
@@ -219,6 +225,7 @@ export async function PATCH(req: NextRequest) {
         );
         updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument || policyDocument);
       }
+      invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
 
       return NextResponse.json({
         message: 'Late-registration fine compounding has resumed from the frozen amount.',

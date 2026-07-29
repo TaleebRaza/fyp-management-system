@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '../../../../lib/mongodb';
 import {
   REGISTRATION_POLICY_KEY,
   getOrCreateRegistrationPolicy,
@@ -9,6 +8,10 @@ import {
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import { DEFAULT_REGISTRATION_CLOSED_MESSAGE } from '../../../../types/registrationPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import {
+  invalidatePublicContent,
+  PUBLIC_REGISTRATION_POLICY_TAG,
+} from '../../../../lib/publicContentCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +32,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Administrator access is required.' }, { status: 403 });
     }
 
-    await connectToDatabase();
     const policy = await getOrCreateRegistrationPolicy();
 
     return NextResponse.json(serializeRegistrationPolicy(policy), {
@@ -102,8 +104,6 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    await connectToDatabase();
-
     const previous = await RegistrationPolicy.findOne({
       policyKey: REGISTRATION_POLICY_KEY,
     })
@@ -148,6 +148,7 @@ export async function PUT(req: NextRequest) {
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
+    invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
 
     return NextResponse.json({
       message: isOpen

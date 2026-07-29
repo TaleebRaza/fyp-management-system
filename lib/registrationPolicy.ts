@@ -25,7 +25,7 @@ export async function getOrCreateRegistrationPolicy() {
   );
 }
 
-export async function readRegistrationPolicy(session?: ClientSession) {
+export function readRegistrationPolicy(session?: ClientSession) {
   const query = RegistrationPolicy.findOne({ policyKey: REGISTRATION_POLICY_KEY });
   if (session) query.session(session);
   return query;

@@ -201,9 +201,3 @@ export async function toggleAdminStudent(
 ): Promise<AdminMutationResult> {
   return postJson('/api/admin/toggle-student', { studentId, isActive });
 }
-
-export async function prefetchAdminProjectReviews(): Promise<void> {
-  await fetch('/api/admin/project-reviews?page=1&limit=24', {
-    credentials: 'same-origin',
-  });
-}

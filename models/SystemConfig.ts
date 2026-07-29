@@ -2,7 +2,7 @@
 import mongoose, { Schema } from 'mongoose';
 
 const SystemConfigSchema = new Schema({
-  configKey: { type: String, required: true, unique: true, index: true },
+  configKey: { type: String, required: true, unique: true },
   usedBytes: { type: Number, default: 0, min: 0 },
   reservedBytes: { type: Number, default: 0, min: 0 },
 }, { timestamps: true });

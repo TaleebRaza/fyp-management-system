@@ -14,6 +14,7 @@ import {
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
 import {
   getTeamFineRestriction,
+  getTeamFineRestrictionFromMembers,
   getTeamFineRestrictionMessage,
 } from '../../../../lib/teamFineRestriction';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
@@ -111,8 +112,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
     }
 
-    await connectToDatabase();
-
     // Use the authenticated student's ID and return only dashboard-safe fields.
     const student = await User.findOne({ _id: studentId, role: 'student' })
       .select(
@@ -136,8 +135,8 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    // Fetch dashboard relationships and the team restriction in parallel.
-    const [supervisor, project, teamFineRestriction] = await Promise.all([
+    // Fetch independent dashboard relationships in parallel.
+    const [supervisor, project] = await Promise.all([
       student.supervisorId
         ? User.findById(student.supervisorId)
             .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
@@ -145,11 +144,23 @@ export async function GET(req: NextRequest) {
         : null,
       student.projectId
         ? Project.findById(student.projectId)
-            .populate('members', 'name rollNo email')
+            .select('_id members status stage domain domains pdfUrl inviteCode maxTeamSize')
             .lean()
         : null,
-    getTeamFineRestriction(student.projectId, student._id),
     ]);
+
+    const projectMembers = project?.members?.length
+      ? await User.find({ _id: { $in: project.members }, role: 'student' })
+          .select('_id name rollNo email lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment')
+          .lean()
+      : [];
+    const teamFineRestriction = getTeamFineRestrictionFromMembers(projectMembers, student._id);
+    const safeProjectMembers = projectMembers.map((member) => ({
+      _id: member._id,
+      name: member.name,
+      rollNo: member.rollNo,
+      email: member.email,
+    }));
 
     const supervisorBroadcast = supervisor?.broadcastType && supervisor?.broadcastContent
       ? {
@@ -187,6 +198,7 @@ export async function GET(req: NextRequest) {
     const projectResponse = projectRecord
       ? {
           ...projectRecord,
+          members: safeProjectMembers,
           domains: normalizedDomains,
           domain: normalizedDomainText,
         }

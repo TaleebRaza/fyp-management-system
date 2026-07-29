@@ -11,6 +11,9 @@
     "capacity:reconcile": "node scripts/reconcile-supervisor-capacity.mjs",
     "capacity:repair": "node scripts/reconcile-supervisor-capacity.mjs --repair",
     "project:drift-audit": "node scripts/audit-project-drift.mjs",
+    "storage:keys:audit": "node scripts/audit-storage-keys.mjs",
+    "indexes:refactor:audit": "node scripts/audit-refactor-indexes.mjs",
+    "indexes:refactor:apply": "node scripts/apply-refactor-indexes.mjs --apply",
     "verify:refactor": "npm run lint && npm run test:unit && npm run build",
     "test": "npm run test:unit"
   },

@@ -1,22 +1,12 @@
-import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
-import {
-  getOrCreateRegistrationPolicy,
-  serializeRegistrationPolicy,
-} from '../../../lib/registrationPolicy';
+import { NextRequest, NextResponse } from 'next/server';
+import { getPublicRegistrationPolicy } from '../../../lib/publicContentCache';
+import { publicJson } from '../../../lib/publicResponse';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    await connectToDatabase();
-    const policy = await getOrCreateRegistrationPolicy();
-
-    return NextResponse.json(serializeRegistrationPolicy(policy), {
-      headers: {
-        'Cache-Control': 'no-store, max-age=0',
-      },
-    });
+    return publicJson(req, await getPublicRegistrationPolicy());
   } catch (error) {
     console.error('Registration policy read error:', error);
     return NextResponse.json(

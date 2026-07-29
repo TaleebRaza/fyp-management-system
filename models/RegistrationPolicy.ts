@@ -38,7 +38,6 @@ const RegistrationPolicySchema = new Schema(
       type: String,
       required: true,
       unique: true,
-      index: true,
       default: 'student-registration',
     },
     isOpen: { type: Boolean, default: true },

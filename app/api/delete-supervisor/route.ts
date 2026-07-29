@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Project from '../../../models/Project'; // NEW: Imported to fix the ghost-project bug
 import { requireCurrentUser } from '../../../lib/security/auth';
+import {
+  invalidatePublicContent,
+  PUBLIC_SUPERVISORS_TAG,
+} from '../../../lib/publicContentCache';
 
 export async function POST(req: NextRequest) {
   if (!await requireCurrentUser(req, ['admin'])) {
@@ -11,7 +14,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await connectToDatabase();
     const { id } = await req.json();
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid supervisor ID.' }, { status: 400 });
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest) {
       // 5. Commit Transaction
       await session.commitTransaction();
       session.endSession();
+      invalidatePublicContent(PUBLIC_SUPERVISORS_TAG);
 
       return NextResponse.json({ message: 'Supervisor deleted successfully' }, { status: 200 });
 

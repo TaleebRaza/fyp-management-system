@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { requireCurrentUser } from '../../../lib/security/auth';
-import User from '../../../models/User';
 import Project from '../../../models/Project';
 
 export const dynamic = 'force-dynamic';
@@ -137,6 +136,18 @@ async function readWordTemplate(template: TemplateDefinition) {
   };
 }
 
+const templateBundles = new Map<TemplateStage, Promise<Awaited<ReturnType<typeof readWordTemplate>>[]>>();
+
+function getWordTemplates(stage: TemplateStage) {
+  let bundle = templateBundles.get(stage);
+  if (!bundle) {
+    bundle = Promise.all(STAGE_MAP[stage].map(readWordTemplate));
+    templateBundles.set(stage, bundle);
+    void bundle.catch(() => templateBundles.delete(stage));
+  }
+  return bundle;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await requireCurrentUser(req);
@@ -157,9 +168,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (currentUser.role === 'student') {
-      const student = await User.findById(currentUser.id).select('projectId').lean();
-      const project = student?.projectId ? await Project.findById(student.projectId).select('stage').lean() : null;
-      if (!project || project.stage !== stageParam) {
+      const hasTemplateAccess = await Project.exists({
+        members: currentUser.id,
+        stage: stageParam,
+      });
+      if (!hasTemplateAccess) {
         return NextResponse.json({ error: 'Template is not available for your current project stage.' }, { status: 403 });
       }
     }
@@ -179,9 +192,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const templates = await Promise.all(
-        STAGE_MAP[stageParam].map(readWordTemplate)
-      );
+      const templates = await getWordTemplates(stageParam);
 
       return NextResponse.json(
         {

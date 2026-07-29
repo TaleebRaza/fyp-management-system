@@ -42,7 +42,7 @@ const subscribeToClient = () => () => {};
 
 async function fetchRegistrationPolicy(): Promise<RegistrationPolicyDto | null> {
   try {
-    const response = await fetch('/api/registration-policy', { cache: 'no-store' });
+    const response = await fetch('/api/registration-policy');
     if (!response.ok) return null;
     return response.json();
   } catch (error) {

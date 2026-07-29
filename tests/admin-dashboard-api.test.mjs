@@ -149,12 +149,6 @@ test('preserves supervisor notification and slot request bodies', async () => {
   ]);
 });
 
-test('prefetches project reviews with the existing pagination and credentials', async () => {
-  await withMockFetch(async (url, init) => {
-    assert.equal(url, '/api/admin/project-reviews?page=1&limit=24');
-    assert.deepEqual(init, { credentials: 'same-origin' });
-    return jsonResponse({});
-  }, async () => {
-    await api.prefetchAdminProjectReviews();
-  });
+test('does not prefetch review data when the admin dashboard loads', () => {
+  assert.equal('prefetchAdminProjectReviews' in api, false);
 });

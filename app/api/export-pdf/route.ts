@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import ExcelJS from 'exceljs';
 import { requireCurrentUser } from '../../../lib/security/auth';
@@ -8,8 +7,6 @@ export async function GET(req: NextRequest) {
   try {
     const currentUser = await requireCurrentUser(req, ['supervisor', 'admin']);
     if (!currentUser) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-    await connectToDatabase();
-
     const url = new URL(req.url);
     const supervisorId = currentUser.role === 'admin' ? url.searchParams.get('id') : currentUser.id;
     const supervisorName = url.searchParams.get('name') || 'Supervisor';
@@ -38,7 +35,9 @@ export async function GET(req: NextRequest) {
       query.program = programFilter;
     }
 
-    const students = await User.find(query).lean();
+    const students = await User.find(query)
+      .select('name rollNo program batch semester projectTitle tools projectDesc')
+      .lean();
 
     // 2. Create a new Excel Workbook and Worksheet
     const workbook = new ExcelJS.Workbook();
