@@ -1,0 +1,155 @@
+import { randomBytes } from 'crypto';
+
+import bcrypt from 'bcryptjs';
+
+import connectToDatabase from '../mongodb';
+import Project from '../../models/Project';
+import User from '../../models/User';
+import { buildRollNoRegex, normalizeRollNo } from '../rollNo';
+import { consumeRateLimit } from '../rateLimit';
+import { matchesPasswordResetKnowledge } from '../security/passwordResetKnowledge';
+import {
+  parsePasswordResetCompletionInput,
+  parsePasswordResetKnowledgeInput,
+} from './passwordResetValidation';
+
+const PASSWORD_RESET_REQUEST_LIMIT = 5;
+const PASSWORD_RESET_ATTEMPT_LIMIT = 10;
+const PASSWORD_CHANGE_COOLDOWN_MS = 5 * 60 * 60 * 1000;
+const RESET_TOKEN_EXPIRY_MS = 15 * 60 * 1000;
+const DETAILS_MISMATCH_ERROR = 'The account details do not match our records.';
+const INVALID_TOKEN_ERROR = 'Account recovery has expired. Verify your details again.';
+
+type PasswordResetBody = Record<string, unknown>;
+
+export type PasswordResetServiceResult = {
+  status: number;
+  body: PasswordResetBody;
+};
+
+function result(status: number, body: PasswordResetBody): PasswordResetServiceResult {
+  return { status, body };
+}
+
+async function findStudentByRollNo(rollNo: string) {
+  const exactUser = await User.findOne({ role: 'student', rollNo });
+  if (exactUser) return exactUser;
+  return await User.findOne({ role: 'student', rollNo: buildRollNoRegex(rollNo) });
+}
+
+export async function verifyPasswordResetKnowledge(input: unknown): Promise<PasswordResetServiceResult> {
+  const parsed = parsePasswordResetKnowledgeInput(input);
+  if (!parsed.ok) return result(400, { error: parsed.error });
+
+  await connectToDatabase();
+  const { rollNo, supervisorId, batch, program, teammateRollNo } = parsed.value;
+  const rateLimit = await consumeRateLimit(
+    `forgot-password:${rollNo.toLowerCase()}`,
+    PASSWORD_RESET_REQUEST_LIMIT
+  );
+  if (!rateLimit.allowed) {
+    return result(429, {
+      error: 'Too many password reset attempts. Please try again in an hour.',
+    });
+  }
+
+  const user = await findStudentByRollNo(rollNo);
+  if (!user) return result(400, { error: DETAILS_MISMATCH_ERROR });
+
+  const project = user.projectId
+    ? await Project.findOne({ _id: user.projectId, members: user._id }).select('members').lean()
+    : null;
+  const projectMembers = Array.isArray(project?.members) ? project.members : [];
+  const teammateIds = projectMembers.filter(
+    (memberId: unknown) => String(memberId) !== String(user._id)
+  );
+  const teammates = teammateIds.length
+    ? await User.find({ _id: { $in: teammateIds }, role: 'student' }).select('rollNo').lean()
+    : [];
+
+  const detailsMatch = matchesPasswordResetKnowledge(
+    {
+      rollNo: normalizeRollNo(user.rollNo),
+      supervisorId: user.supervisorId ? String(user.supervisorId) : 'none',
+      batch: String(user.batch || '').trim(),
+      program: String(user.program || '').trim().toUpperCase(),
+      teammateRollNos: (teammates as Array<{ rollNo?: unknown }>).map((teammate) =>
+        normalizeRollNo(teammate.rollNo)
+      ),
+      requiresTeammate: teammates.length > 0,
+    },
+    { rollNo, supervisorId, batch, program, teammateRollNo }
+  );
+  if (!detailsMatch) return result(400, { error: DETAILS_MISMATCH_ERROR });
+
+  if (user.lastPasswordChange) {
+    const timeSinceLastChange = Date.now() - new Date(user.lastPasswordChange).getTime();
+    if (timeSinceLastChange < PASSWORD_CHANGE_COOLDOWN_MS) {
+      const hoursLeft = Math.ceil(
+        (PASSWORD_CHANGE_COOLDOWN_MS - timeSinceLastChange) / 3_600_000
+      );
+      return result(429, {
+        error: `Password was changed recently. Please try again in ${hoursLeft} hours.`,
+      });
+    }
+  }
+
+  const resetToken = randomBytes(32).toString('hex');
+  await User.findByIdAndUpdate(user._id, {
+    resetCode: await bcrypt.hash(resetToken, 10),
+    resetCodeExpiry: new Date(Date.now() + RESET_TOKEN_EXPIRY_MS),
+  });
+
+  return result(200, {
+    message: 'Account details verified. Choose a new password.',
+    resetToken,
+  });
+}
+
+export async function completePasswordReset(input: unknown): Promise<PasswordResetServiceResult> {
+  const parsed = parsePasswordResetCompletionInput(input);
+  if (!parsed.ok) return result(400, { error: parsed.error });
+
+  await connectToDatabase();
+  const { rollNo, resetToken, newPassword } = parsed.value;
+  const rateLimit = await consumeRateLimit(
+    `reset-password:${rollNo.toLowerCase()}`,
+    PASSWORD_RESET_ATTEMPT_LIMIT
+  );
+  if (!rateLimit.allowed) {
+    return result(429, {
+      error: 'Too many password reset attempts. Please try again in an hour.',
+    });
+  }
+
+  const user = await findStudentByRollNo(rollNo);
+  const tokenIsValid = Boolean(
+    user
+    && user.resetCode
+    && user.resetCodeExpiry
+    && new Date(user.resetCodeExpiry).getTime() > Date.now()
+    && await bcrypt.compare(resetToken, user.resetCode)
+  );
+  if (!user || !tokenIsValid) return result(400, { error: INVALID_TOKEN_ERROR });
+
+  const updateResult = await User.updateOne(
+    {
+      _id: user._id,
+      role: 'student',
+      resetCode: user.resetCode,
+      resetCodeExpiry: { $gt: new Date() },
+    },
+    {
+      $set: {
+        password: await bcrypt.hash(newPassword, 10),
+        resetCode: null,
+        resetCodeExpiry: null,
+        lastPasswordChange: new Date(),
+      },
+    }
+  );
+
+  return updateResult.modifiedCount === 1
+    ? result(200, { message: 'Password successfully updated! You can now log in.' })
+    : result(400, { error: INVALID_TOKEN_ERROR });
+}
