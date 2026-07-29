@@ -4,7 +4,6 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -29,38 +28,34 @@ export async function POST(req: NextRequest) {
 
     await connectToDatabase();
 
-    // The target student is always the signed-in student, never a browser-supplied ID.
-    const student = await User.findOne({ _id: currentUser.id, role: 'student' });
-    if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-
-    const fineRestriction = buildFineRestriction(student);
-    if (fineRestriction) {
-      return NextResponse.json(
-        {
-          code: FINE_RESTRICTION_CODE,
-          error: 'Project changes are locked until the administrator clears your outstanding fine.',
-          fineRestriction,
-        },
-        { status: 403 }
-      );
-    }
-
     const rateLimitKey = `project-join:${currentUser.id}`;
     const attempt = await consumeRateLimit(rateLimitKey, 10);
     if (!attempt.allowed) {
       return NextResponse.json({ error: 'Too many failed invite-code attempts. Try again later.' }, { status: 429 });
     }
 
-    const studentId = student._id.toString();
+    const studentId = currentUser.id;
 
     // Initialize the formal MongoDB Session
     const session = await mongoose.startSession();
 
     try {
-      // Execute the logic inside our robust retry wrapper
-      const response = await withTransactionRetry(session, async () => {
-        
-        // 1. Find the target project (Locking it inside the transaction)
+      const response = await session.withTransaction(async () => {
+        const student = await User.findOne({ _id: currentUser.id, role: 'student' }).session(session);
+        if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+
+        const fineRestriction = buildFineRestriction(student);
+        if (fineRestriction) {
+          return NextResponse.json(
+            {
+              code: FINE_RESTRICTION_CODE,
+              error: 'Project changes are locked until the administrator clears your outstanding fine.',
+              fineRestriction,
+            },
+            { status: 403 }
+          );
+        }
+
         const targetProject = await Project.findOne({ inviteCode: normalizedInviteCode }).session(session);
         if (!targetProject) {
           return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
@@ -117,7 +112,7 @@ export async function POST(req: NextRequest) {
         );
 
         // 4. Guard the final write as well as the read-time check.
-        // The transaction retry wrapper will re-run this flow after a concurrent write conflict.
+        // session.withTransaction retries this whole callback with freshly loaded documents.
         const joinedProject = await Project.findOneAndUpdate(
           {
             _id: targetProject._id,

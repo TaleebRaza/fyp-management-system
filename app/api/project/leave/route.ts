@@ -3,7 +3,6 @@ import mongoose, { ClientSession } from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import { withTransactionRetry } from '../../../../lib/transactionUtils';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
 
@@ -52,7 +51,7 @@ export async function POST(req: NextRequest) {
     const session = await mongoose.startSession();
 
     try {
-      return await withTransactionRetry(session, async () => {
+      return await session.withTransaction(async () => {
         const student = await User.findOne({
           _id: currentUser.id,
           role: 'student',

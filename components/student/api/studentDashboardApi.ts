@@ -114,6 +114,7 @@ export async function uploadStudentPdf(selectedFile: File): Promise<StudentPdfUp
       filename: selectedFile.name,
       contentType: selectedFile.type,
       fileSize: selectedFile.size,
+      idempotencyKey: crypto.randomUUID(),
     }),
   });
   const tokenData = await readJson<UploadTokenResponse>(tokenResponse);

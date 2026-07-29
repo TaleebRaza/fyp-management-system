@@ -1,11 +1,9 @@
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import mongoose from 'mongoose';
-import { BUCKET_NAME, s3Client } from './s3-client';
-import SystemConfig from '../models/SystemConfig';
 import Project from '../models/Project';
 import User from '../models/User';
 import { sendNotificationEmail } from './mailer';
 import { escapeHtml } from './security/input';
+import { normalizeStorageKey } from './security/storage';
+import { enqueueStorageDeletion, withStorageTransaction } from './storageProtocol';
 import {
   isProjectAwaitingReview,
   type ProjectReviewStatus,
@@ -23,46 +21,44 @@ type ReviewProjectResult =
   | { success: true }
   | { success: false; reason: 'not-found' | 'not-reviewable' };
 
-function getR2ObjectKey(value: string) {
-  const trimmedValue = String(value || '').trim();
-  if (!trimmedValue) return '';
+type ReviewNotification = {
+  supervisorId: string;
+  teamMembers: Array<{ email?: string }>;
+  status: string;
+  newStage?: string;
+  notificationMessage: string;
+};
 
-  try {
-    return decodeURIComponent(new URL(trimmedValue).pathname.replace(/^\/+/, ''));
-  } catch {
-    return trimmedValue.replace(/^\/+/, '');
-  }
+function reviewFailure(reason: 'not-found' | 'not-reviewable'): ReviewProjectResult {
+  return { success: false, reason };
 }
 
-async function deletePreviousStagePdf(fileUrl: string, fileSize: number, projectId: unknown) {
-  const key = getR2ObjectKey(fileUrl);
-  if (!key) return;
+function reviewSuccess(): ReviewProjectResult {
+  return { success: true };
+}
 
-  const sameFileUsedElsewhere = await Project.exists({
-    _id: { $ne: projectId },
-    pdfUrl: fileUrl,
-  });
-
-  if (sameFileUsedElsewhere) return;
-
-  try {
-    await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
-
-    const size = Math.max(Number(fileSize || 0), 0);
-    if (size > 0) {
-      await SystemConfig.findOneAndUpdate(
-        { configKey: 'storage' },
-        { $inc: { usedBytes: -size } },
-        { upsert: true }
-      );
-      await SystemConfig.updateOne(
-        { configKey: 'storage', usedBytes: { $lt: 0 } },
-        { $set: { usedBytes: 0 } }
-      );
-    }
-  } catch (error) {
-    console.error('Failed to wipe old stage PDF:', error instanceof Error ? error.message : error);
+function nextProjectReviewState(status: ProjectReviewStatus, stage: string) {
+  if (status !== 'Approved') {
+    return { finalStatus: status, notificationMessage: `Status: ${status}` };
   }
+  if (stage === 'PROPOSAL') {
+    return {
+      finalStatus: 'Pending',
+      newStage: 'THESIS_DRAFT',
+      notificationMessage: 'Proposal Approved! Please begin uploading your Thesis Chapters.',
+    };
+  }
+  if (stage === 'THESIS_DRAFT') {
+    return {
+      finalStatus: 'Pending',
+      newStage: 'FINAL_DELIVERABLES',
+      notificationMessage: 'Thesis Approved! Please submit your Final Deliverables.',
+    };
+  }
+  return {
+    finalStatus: 'Approved',
+    notificationMessage: 'Congratulations! Your FYP is fully Approved and completed.',
+  };
 }
 
 export async function reviewProject({
@@ -72,90 +68,102 @@ export async function reviewProject({
   supervisorId,
   requireAwaitingReview = false,
 }: ReviewProjectRequest): Promise<ReviewProjectResult> {
-  const triggerStudent = await User.findOne({
-    _id: studentId,
-    role: 'student',
-    ...(supervisorId ? { supervisorId } : {}),
-  })
-    .select('_id email projectId supervisorId pdfUrl status')
-    .lean();
+  const review = await withStorageTransaction(async (session) => {
+    const triggerStudent = await User.findOne({
+      _id: studentId,
+      role: 'student',
+      ...(supervisorId ? { supervisorId } : {}),
+    })
+      .select('_id projectId')
+      .session(session);
+    if (!triggerStudent?.projectId) return { result: reviewFailure('not-found') };
 
-  if (!triggerStudent) return { success: false, reason: 'not-found' };
-  if (requireAwaitingReview && !isProjectAwaitingReview(triggerStudent)) {
-    return { success: false, reason: 'not-reviewable' };
-  }
-
-  const assignedSupervisorId = String(triggerStudent.supervisorId || '');
-  if (!mongoose.Types.ObjectId.isValid(assignedSupervisorId)) {
-    return { success: false, reason: 'not-found' };
-  }
-
-  const teamMembers = triggerStudent.projectId
-    ? await User.find({
-        projectId: triggerStudent.projectId,
-        role: 'student',
-        supervisorId: assignedSupervisorId,
-      })
-        .select('_id email')
-        .lean()
-    : [triggerStudent];
-
-  let finalStatus: string = status;
-  let newStage: string | undefined;
-  let notificationMessage = `Status: ${status}`;
-  const project = triggerStudent.projectId
-    ? await Project.findOne({ _id: triggerStudent.projectId, supervisorId: assignedSupervisorId })
-    : null;
-
-  if (status === 'Approved' && project) {
-    if (project.stage === 'PROPOSAL') {
-      newStage = 'THESIS_DRAFT';
-      finalStatus = 'Pending';
-      notificationMessage = 'Proposal Approved! Please begin uploading your Thesis Chapters.';
-    } else if (project.stage === 'THESIS_DRAFT') {
-      newStage = 'FINAL_DELIVERABLES';
-      finalStatus = 'Pending';
-      notificationMessage = 'Thesis Approved! Please submit your Final Deliverables.';
-    } else {
-      finalStatus = 'Approved';
-      notificationMessage = 'Congratulations! Your FYP is fully Approved and completed.';
+    const project = await Project.findOne({
+      _id: triggerStudent.projectId,
+      members: triggerStudent._id,
+      ...(supervisorId ? { supervisorId } : {}),
+    }).session(session);
+    if (!project || (requireAwaitingReview && !isProjectAwaitingReview(project))) {
+      return { result: reviewFailure(project ? 'not-reviewable' : 'not-found') };
     }
 
-    if (newStage && project.pdfUrl) {
-      await deletePreviousStagePdf(project.pdfUrl, project.pdfSize, project._id);
-    }
-  }
+    const assignedSupervisorId = String(project.supervisorId || '');
+    if (!assignedSupervisorId) return { result: reviewFailure('not-found') };
 
-  await User.updateMany(
-    { _id: { $in: teamMembers.map((member) => member._id) } },
-    {
-      $set: {
-        status: finalStatus,
-        remarks: remarks || notificationMessage,
-        ...(newStage ? { pdfUrl: '' } : {}),
+    const teamMembers = await User.find({
+      _id: { $in: project.members },
+      role: 'student',
+      projectId: project._id,
+    })
+      .select('_id email')
+      .session(session)
+      .lean();
+    if (teamMembers.length === 0) return { result: reviewFailure('not-found') };
+
+    const reviewState = nextProjectReviewState(status, project.stage);
+    const projectUpdate = await Project.updateOne(
+      {
+        _id: project._id,
+        supervisorId: project.supervisorId,
+        $or: [{ version: Number(project.version || 0) }, { version: { $exists: false } }],
       },
-    }
-  );
-
-  if (triggerStudent.projectId) {
-    await Project.findOneAndUpdate(
-      { _id: triggerStudent.projectId, supervisorId: assignedSupervisorId },
       {
         $set: {
-          status: finalStatus,
-          ...(newStage ? { stage: newStage, pdfUrl: '', pdfSize: 0 } : {}),
+          status: reviewState.finalStatus,
+          ...(reviewState.newStage ? { stage: reviewState.newStage, pdfUrl: '', pdfSize: 0 } : {}),
         },
-      }
+        $inc: { version: 1 },
+      },
+      { session }
     );
-  }
+    if (projectUpdate.modifiedCount !== 1) {
+      return { result: reviewFailure('not-reviewable') };
+    }
 
-  const supervisor = await User.findById(assignedSupervisorId)
+    await User.updateMany(
+      { _id: { $in: teamMembers.map((member) => member._id) } },
+      {
+        $set: {
+          status: reviewState.finalStatus,
+          remarks: remarks || reviewState.notificationMessage,
+          ...(reviewState.newStage ? { pdfUrl: '' } : {}),
+        },
+      },
+      { session }
+    );
+
+    if (reviewState.newStage && project.pdfUrl) {
+      const key = normalizeStorageKey(project.pdfUrl);
+      const isShared = key && await Project.exists({ _id: { $ne: project._id }, pdfUrl: project.pdfUrl }).session(session);
+      if (key && !isShared) {
+        await enqueueStorageDeletion(
+          { key, bytes: Math.max(Number(project.pdfSize || 0), 0), reason: 'review-stage-advanced' },
+          session
+        );
+      }
+    }
+
+    return {
+      result: reviewSuccess(),
+      notification: {
+        supervisorId: assignedSupervisorId,
+        teamMembers,
+        status,
+        newStage: reviewState.newStage,
+        notificationMessage: reviewState.notificationMessage,
+      } satisfies ReviewNotification,
+    };
+  });
+  if (!review.result.success || !review.notification) return review.result;
+
+  const supervisor = await User.findById(review.notification.supervisorId)
     .select('name notificationsEnabled')
     .lean();
   if (supervisor && supervisor.notificationsEnabled !== false) {
-    const subject = `FYP Project Update: ${newStage ? 'Stage Advanced!' : status}`;
-    const primaryColor = status === 'Approved' ? '#10b981' : status === 'Changes Requested' ? '#f59e0b' : '#ef4444';
-    const backgroundColor = status === 'Approved' ? '#ecfdf5' : status === 'Changes Requested' ? '#fffbeb' : '#fef2f2';
+    const { status: reviewStatus, newStage, notificationMessage, teamMembers } = review.notification;
+    const subject = `FYP Project Update: ${newStage ? 'Stage Advanced!' : reviewStatus}`;
+    const primaryColor = reviewStatus === 'Approved' ? '#10b981' : reviewStatus === 'Changes Requested' ? '#f59e0b' : '#ef4444';
+    const backgroundColor = reviewStatus === 'Approved' ? '#ecfdf5' : reviewStatus === 'Changes Requested' ? '#fffbeb' : '#fef2f2';
     const htmlContent = `
       <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
         <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">

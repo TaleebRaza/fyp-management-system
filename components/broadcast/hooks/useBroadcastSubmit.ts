@@ -76,6 +76,7 @@ export function useBroadcastSubmit({
           body: JSON.stringify({
             contentType,
             fileSize: audioBlob.size,
+            idempotencyKey: crypto.randomUUID(),
           }),
         });
         const uploadData = await uploadRes.json();

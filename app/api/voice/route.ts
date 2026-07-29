@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import connectToDatabase from '../../../lib/mongodb';
-import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
-import SystemConfig from '../../../models/SystemConfig';
 import VoiceNote from '../../../models/VoiceNote';
 import { hasProjectAccess, requireCurrentUser } from '../../../lib/security/auth';
 import { isOwnedVoiceKey } from '../../../lib/security/voice';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
+import {
+  enqueueStorageDeletion,
+  finalizeUploadReservation,
+  StorageProtocolError,
+} from '../../../lib/storageProtocol';
 
 export const dynamic = 'force-dynamic';
-
-const MAX_VOICE_NOTE_BYTES = 1024 * 1024;
 
 export async function GET(req: NextRequest) {
   const currentUser = await requireCurrentUser(req);
@@ -29,34 +29,25 @@ export async function GET(req: NextRequest) {
     }
 
     const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      const expiredNotes = await VoiceNote.find({
-        projectId,
-        isPlayed: true,
-        playedAt: { $lte: tenMinutesAgo },
-      }).session(session);
+      await session.withTransaction(async () => {
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        const expiredNotes = await VoiceNote.find({
+          projectId,
+          isPlayed: true,
+          playedAt: { $lte: tenMinutesAgo },
+        }).session(session);
 
-      if (expiredNotes.length > 0) {
-        const totalSize = expiredNotes.reduce((sum, note) => sum + (note.fileSize || 0), 0);
-        await Promise.all(expiredNotes.map((note) =>
-          s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: note.blobUrl }))
-        ));
-        await VoiceNote.deleteMany({ _id: { $in: expiredNotes.map((note) => note._id) } }).session(session);
-
-        if (totalSize > 0) {
-          await SystemConfig.findOneAndUpdate(
-            { configKey: 'storage' },
-            { $inc: { usedBytes: -totalSize } },
-            { session }
+        for (const note of expiredNotes) {
+          await enqueueStorageDeletion(
+            { key: note.blobUrl, bytes: Number(note.fileSize || 0), reason: 'played-voice-expired' },
+            session
           );
         }
-      }
-
-      await session.commitTransaction();
-      session.endSession();
+        if (expiredNotes.length > 0) {
+          await VoiceNote.deleteMany({ _id: { $in: expiredNotes.map((note) => note._id) } }).session(session);
+        }
+      });
 
       const notes = await VoiceNote.find({ projectId })
         .populate('senderId', 'name role')
@@ -64,9 +55,9 @@ export async function GET(req: NextRequest) {
         .lean();
       return NextResponse.json({ notes });
     } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
       throw error;
+    } finally {
+      await session.endSession();
     }
   } catch {
     console.error('voice_fetch_failed');
@@ -95,28 +86,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Project not found or access denied.' }, { status: 403 });
     }
 
-    const object = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: blobUrl }));
-    const fileSize = object.ContentLength;
-    if (!fileSize || fileSize > MAX_VOICE_NOTE_BYTES || !object.ContentType?.startsWith('audio/webm')) {
-      return NextResponse.json({ error: 'Uploaded voice note is invalid.' }, { status: 400 });
-    }
+    const finalized = await finalizeUploadReservation({
+      key: blobUrl,
+      ownerId: currentUser.id,
+      kind: 'voice',
+      projectId: String(projectId),
+      commit: async (session, uploadedObject) => {
+        const note = new VoiceNote({
+          projectId,
+          senderId: currentUser.id,
+          blobUrl,
+          fileSize: uploadedObject.actualBytes,
+        });
+        await note.save({ session });
+        return note;
+      },
+    });
+    const note = finalized.finalizedNow
+      ? finalized.result
+      : await VoiceNote.findOne({ blobUrl }).lean();
+    if (!note) return NextResponse.json({ error: 'Voice note finalization is incomplete.' }, { status: 409 });
 
-    const note = await new VoiceNote({
-      projectId,
-      senderId: currentUser.id,
-      blobUrl,
-      fileSize,
-    }).save();
-
-    await SystemConfig.findOneAndUpdate(
-      { configKey: 'storage' },
-      { $inc: { usedBytes: fileSize } },
-      { upsert: true }
+    return NextResponse.json(
+      { message: 'Voice note saved', note },
+      { status: finalized.finalizedNow ? 201 : 200 }
     );
-
-    return NextResponse.json({ message: 'Voice note saved', note }, { status: 201 });
-  } catch {
+  } catch (error) {
     console.error('voice_finalize_failed');
+    if (error instanceof StorageProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     return NextResponse.json({ error: 'Failed to save note' }, { status: 500 });
   }
 }

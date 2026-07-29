@@ -15,6 +15,7 @@ const ProjectSchema = new Schema({
   pdfUrl: { type: String, default: '' },
   pdfSize: { type: Number, default: 0 }, // <-- NEW: track size of the uploaded PDF
   status: { type: String, default: 'Pending' },
+  version: { type: Number, default: 0, min: 0 },
     maxTeamSize: { type: Number, enum: [2, 3], default: 2 },
   
   stage: { 

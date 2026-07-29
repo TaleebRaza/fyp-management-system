@@ -94,11 +94,14 @@ test('preserves the secure PDF token and upload request contracts', async () => 
 
   assert.equal(calls[0][0], '/api/upload');
   assert.equal(calls[0][1].method, 'POST');
-  assert.deepEqual(JSON.parse(calls[0][1].body), {
+  const uploadRequest = JSON.parse(calls[0][1].body);
+  assert.deepEqual(uploadRequest, {
     filename: 'proposal.pdf',
     contentType: 'application/pdf',
     fileSize: 1024,
+    idempotencyKey: uploadRequest.idempotencyKey,
   });
+  assert.match(uploadRequest.idempotencyKey, /^[A-Za-z0-9_-]{8,128}$/);
   assert.equal(calls[1][0], 'https://upload.example/file');
   assert.equal(calls[1][1].method, 'PUT');
   assert.equal(calls[1][1].headers['Content-Type'], 'application/pdf');

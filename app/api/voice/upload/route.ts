@@ -2,12 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import crypto from 'crypto';
-import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from '../../../../lib/s3-client';
+import { BUCKET_NAME, getS3Client } from '../../../../lib/s3-client';
 import connectToDatabase from '../../../../lib/mongodb';
-import SystemConfig from '../../../../models/SystemConfig';
 import { hasProjectAccess, requireCurrentUser } from '../../../../lib/security/auth';
 import { consumeRateLimitDimensions } from '../../../../lib/rateLimit';
+import {
+  cancelUploadReservation,
+  reserveUpload,
+  StorageProtocolError,
+} from '../../../../lib/storageProtocol';
+import { buildStorageKey } from '../../../../lib/storageValidation';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,13 +27,7 @@ export async function POST(req: NextRequest) {
 
     await connectToDatabase();
     
-    // 1. Storage Capacity Firewall
-    const config = await SystemConfig.findOne({ configKey: 'storage' });
-    if (config && config.usedBytes >= MAX_STORAGE_BYTES) {
-      return NextResponse.json({ error: 'System storage capacity reached. Contact Administrator.' }, { status: 403 });
-    }
-
-    const { contentType, fileSize, projectId } = await req.json();
+    const { contentType, fileSize, projectId, idempotencyKey } = await req.json();
 
     if (contentType !== 'audio/webm') {
       return NextResponse.json({ error: 'Voice notes must use the audio/webm format.' }, { status: 400 });
@@ -38,6 +36,9 @@ export async function POST(req: NextRequest) {
     // 2. Strict 1MB size limit for voice notes
     if (!Number.isSafeInteger(Number(fileSize)) || Number(fileSize) <= 0 || Number(fileSize) > 1 * 1024 * 1024) {
       return NextResponse.json({ error: 'Voice note exceeds 1MB limit.' }, { status: 400 });
+    }
+    if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) {
+      return NextResponse.json({ error: 'A valid upload idempotency key is required.' }, { status: 400 });
     }
 
     const isVoiceNote = Boolean(projectId);
@@ -49,11 +50,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Project ID required for voice notes.' }, { status: 400 });
     }
 
-    // A voice-note key is bound to both its sender and its project. The no-project
-    // branch is only for the existing supervisor broadcast uploader.
-    const key = isVoiceNote
-      ? `voicenotes/${currentUser.id}/${projectId}/${crypto.randomUUID()}.webm`
-      : `broadcasts/${currentUser.id}/${crypto.randomUUID()}.webm`;
+    const kind = isVoiceNote ? 'voice' : 'broadcast';
+    const key = buildStorageKey(kind, currentUser.id, idempotencyKey, isVoiceNote ? String(projectId) : undefined);
+    const reservation = await reserveUpload({
+      key,
+      ownerId: currentUser.id,
+      kind,
+      projectId: isVoiceNote ? String(projectId) : undefined,
+      expectedBytes: Number(fileSize),
+      expectedContentType: contentType,
+      idempotencyKey,
+      expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+    });
 
     // 4. Create Presigned URL strictly for this specific key
     const command = new PutObjectCommand({
@@ -63,11 +71,20 @@ export async function POST(req: NextRequest) {
     });
 
     // Generate a URL that self-destructs in 60 seconds
-    const uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
+    let uploadUrl: string;
+    try {
+      uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
+    } catch (error) {
+      await cancelUploadReservation(key, currentUser.id, 'signing-failed');
+      throw error;
+    }
 
-    return NextResponse.json({ uploadUrl, key });
-  } catch {
+    return NextResponse.json({ uploadUrl, key, reservationId: String(reservation._id) });
+  } catch (error) {
     console.error('voice_upload_url_failed');
+    if (error instanceof StorageProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     return NextResponse.json({ error: 'Failed to generate secure upload route' }, { status: 500 });
   }
 }

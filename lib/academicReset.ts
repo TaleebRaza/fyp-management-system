@@ -1,16 +1,15 @@
 import mongoose, { ClientSession } from 'mongoose';
 import { createInviteCode } from './security/inviteCode';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 import connectToDatabase from './mongodb';
-import { s3Client, BUCKET_NAME } from './s3-client';
 import { PROGRAM_MAP } from '../config/appSettings';
 
 import User from '../models/User';
 import Project from '../models/Project';
 import VoiceNote from '../models/VoiceNote';
-import SystemConfig from '../models/SystemConfig';
 import { releaseSupervisorProjectSlot } from './supervisorCapacity';
+import { normalizeStorageKey } from './security/storage';
+import { enqueueStorageDeletion } from './storageProtocol';
 
 const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MIN_BATCH_YEAR = 2021;
@@ -71,20 +70,8 @@ function formatCooldown(ms: number) {
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
-function getR2ObjectKey(value: string) {
-  const trimmedValue = String(value || '').trim();
-  if (!trimmedValue) return '';
-
-  try {
-    const parsedUrl = new URL(trimmedValue);
-    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
-  } catch {
-    return trimmedValue.replace(/^\/+/, '');
-  }
-}
-
 function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = getR2ObjectKey(fileUrl || '');
+  const key = normalizeStorageKey(fileUrl || '');
   if (!key) return null;
 
   return {
@@ -158,9 +145,9 @@ export async function resetStudentAcademicInfo({
   }
 
   const mongoSession = await mongoose.startSession();
-  mongoSession.startTransaction();
 
   try {
+    return await mongoSession.withTransaction(async () => {
     const student = await User.findById(targetUserId).session(mongoSession);
 
     if (!student || student.role !== 'student') {
@@ -206,7 +193,7 @@ export async function resetStudentAcademicInfo({
       ? await Project.findById(student.projectId).session(mongoSession)
       : null;
 
-    let freedBytes = 0;
+    let queuedDeletionBytes = 0;
 
     if (oldProject) {
       const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
@@ -226,14 +213,12 @@ export async function resetStudentAcademicInfo({
             .filter(Boolean),
         ].filter(Boolean) as DeletionTarget[]);
 
-        if (deletionTargets.length > 0) {
-          await Promise.all(
-            deletionTargets.map((target) =>
-              s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
-            )
+        for (const target of deletionTargets) {
+          await enqueueStorageDeletion(
+            { key: target.key, bytes: target.size, reason: 'academic-reset' },
+            mongoSession
           );
-
-          freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
+          queuedDeletionBytes += target.size;
         }
 
         if (voiceNotes.length > 0) {
@@ -255,20 +240,6 @@ export async function resetStudentAcademicInfo({
       }
     }
 
-    if (freedBytes > 0) {
-      await SystemConfig.findOneAndUpdate(
-        { configKey: 'storage' },
-        { $inc: { usedBytes: -freedBytes } },
-        { upsert: true, session: mongoSession }
-      );
-
-      await SystemConfig.updateOne(
-        { configKey: 'storage', usedBytes: { $lt: 0 } },
-        { $set: { usedBytes: 0 } },
-        { session: mongoSession }
-      );
-    }
-
     const newProject = await createFreshStudentProject(student._id, mongoSession);
 
     student.program = finalProgram;
@@ -280,6 +251,7 @@ export async function resetStudentAcademicInfo({
     student.projectTitle = '';
     student.projectDesc = '';
     student.domain = '';
+    student.domains = [];
     student.tools = '';
     student.pdfUrl = '';
 
@@ -289,20 +261,15 @@ export async function resetStudentAcademicInfo({
 
     await student.save({ session: mongoSession });
 
-    await mongoSession.commitTransaction();
-    mongoSession.endSession();
-
     return {
       message:
         actor === 'admin'
           ? 'Academic information updated by Admin. Student has been reset.'
           : 'Academic information updated. Your dashboard has been reset.',
-      freedBytes,
+      queuedDeletionBytes,
     };
-  } catch (error) {
-    await mongoSession.abortTransaction();
-    mongoSession.endSession();
-
-    throw error;
+    });
+  } finally {
+    await mongoSession.endSession();
   }
 }

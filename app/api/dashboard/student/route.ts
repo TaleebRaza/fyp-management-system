@@ -5,10 +5,6 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
-import { PROGRAM_MAP } from '../../../../config/appSettings';
-import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
-import SystemConfig from '../../../../models/SystemConfig';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -21,64 +17,31 @@ import {
   getTeamFineRestrictionMessage,
 } from '../../../../lib/teamFineRestriction';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
+import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
 import { escapeHtml, isRecord, normalizeText } from '../../../../lib/security/input';
+import { normalizeStorageKey } from '../../../../lib/security/storage';
 import {
   capacityReservationError,
   releaseSupervisorProjectSlot,
   reserveSupervisorProjectSlot,
 } from '../../../../lib/supervisorCapacity';
+import {
+  enqueueStorageDeletion,
+  finalizeUploadReservation,
+  StorageProtocolError,
+} from '../../../../lib/storageProtocol';
 
 export const dynamic = 'force-dynamic';
-
-const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const MIN_BATCH_YEAR = 2021;
 
 type DeletionTarget = {
   key: string;
   size: number;
 };
 
-function isValidProgram(program: string) {
-  return Object.prototype.hasOwnProperty.call(PROGRAM_MAP, program);
-}
-
-function isValidBatch(batch: string) {
-  const match = /^(Spring|Fall) (20\d{2})$/.exec(batch);
-  if (!match) return false;
-
-  const year = Number(match[2]);
-  const maxYear = new Date().getFullYear() + 1;
-
-  return year >= MIN_BATCH_YEAR && year <= maxYear;
-}
-
-function formatCooldown(ms: number) {
-  const hours = Math.floor(ms / 3600000);
-  const minutes = Math.ceil((ms % 3600000) / 60000);
-
-  if (hours > 0) {
-    return `${hours} hour${hours === 1 ? '' : 's'}${minutes > 0 ? ` and ${minutes} minute${minutes === 1 ? '' : 's'}` : ''}`;
-  }
-
-  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-}
-
-function getR2ObjectKey(value: string) {
-  const trimmedValue = String(value || '').trim();
-  if (!trimmedValue) return '';
-
-  try {
-    const parsedUrl = new URL(trimmedValue);
-    return decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''));
-  } catch {
-    return trimmedValue.replace(/^\/+/, '');
-  }
-}
-
 function buildDeletionTarget(fileUrl: string | undefined, fileSize: number | undefined): DeletionTarget | null {
-  const key = getR2ObjectKey(fileUrl || '');
+  const key = normalizeStorageKey(fileUrl || '');
   if (!key) return null;
 
   return {
@@ -274,156 +237,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized Program/Batch update request.' }, { status: 401 });
       }
 
-      const studentId = String(body.id || '').trim();
-      const newProgram = String(body.program || '').trim().toUpperCase();
-      const newBatch = String(body.batch || '').trim();
-
-      if (!mongoose.Types.ObjectId.isValid(studentId)) {
-        return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
-      }
-
-      if (!isValidProgram(newProgram)) {
-        return NextResponse.json({ error: 'Invalid program selected.' }, { status: 400 });
-      }
-
-      if (!isValidBatch(newBatch)) {
-        return NextResponse.json({ error: 'Invalid batch selected.' }, { status: 400 });
-      }
-
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
       try {
-        const student = await User.findById(studentId).session(session);
-
-        if (!student || student.role !== 'student') {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
-        }
-
-        if (student.program === newProgram && student.batch === newBatch) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'No changes selected. Program and Batch are already the same.' }, { status: 400 });
-        }
-
-        if (student.lastProgramBatchChangeAt) {
-          const lastChangeTime = new Date(student.lastProgramBatchChangeAt).getTime();
-          const timeSinceLastChange = Date.now() - lastChangeTime;
-
-          if (timeSinceLastChange < PROGRAM_BATCH_CHANGE_COOLDOWN_MS) {
-            const remainingTime = PROGRAM_BATCH_CHANGE_COOLDOWN_MS - timeSinceLastChange;
-
-            await session.abortTransaction();
-            session.endSession();
-
-            return NextResponse.json(
-              { error: `You can change Program/Batch once per day. Please try again in ${formatCooldown(remainingTime)}.` },
-              { status: 429 }
-            );
-          }
-        }
-
-        const oldProject = student.projectId
-          ? await Project.findById(student.projectId).session(session)
-          : null;
-
-        let freedBytes = 0;
-
-        if (oldProject) {
-          const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
-          const isOnlyMember =
-            oldProjectMembers.length <= 1 ||
-            oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
-
-          if (isOnlyMember) {
-            const voiceNotes = await VoiceNote.find({ projectId: oldProject._id }).session(session);
-
-            const deletionTargets = mergeDeletionTargets([
-              buildDeletionTarget(oldProject.pdfUrl, oldProject.pdfSize),
-              buildDeletionTarget(student.pdfUrl, oldProject.pdfSize),
-              ...voiceNotes
-                .map((note) => buildDeletionTarget(note.blobUrl, note.fileSize))
-                .filter(Boolean),
-            ].filter(Boolean) as DeletionTarget[]);
-
-            if (deletionTargets.length > 0) {
-              await Promise.all(
-                deletionTargets.map((target) =>
-                  s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
-                )
-              );
-
-              freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
-            }
-
-            if (voiceNotes.length > 0) {
-              await VoiceNote.deleteMany({
-                _id: { $in: voiceNotes.map((note) => note._id) },
-              }).session(session);
-            }
-
-            if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
-              throw new Error('Unable to release the previous supervisor capacity.');
-            }
-            await Project.findByIdAndDelete(oldProject._id, { session });
-          } else {
-            await Project.findByIdAndUpdate(
-              oldProject._id,
-              { $pull: { members: student._id } },
-              { session }
-            );
-          }
-        }
-
-        if (freedBytes > 0) {
-          await SystemConfig.findOneAndUpdate(
-            { configKey: 'storage' },
-            { $inc: { usedBytes: -freedBytes } },
-            { upsert: true, session }
-          );
-
-          await SystemConfig.updateOne(
-            { configKey: 'storage', usedBytes: { $lt: 0 } },
-            { $set: { usedBytes: 0 } },
-            { session }
-          );
-        }
-
-        const newProject = await createFreshStudentProject(student._id, session);
-
-        student.program = newProgram;
-        student.batch = newBatch;
-        student.supervisorId = null;
-        student.projectId = newProject._id;
-        student.status = 'Unassigned';
-        student.remarks = 'You changed your academic information and accepted the progress reset. Please choose a supervisor again or join a team to begin.';
-        student.projectTitle = '';
-        student.projectDesc = '';
-        student.domain = '';
-        student.domains = [];
-        student.tools = '';
-        student.pdfUrl = '';
-        student.lastProgramBatchChangeAt = new Date();
-
-        await student.save({ session });
-
-        await session.commitTransaction();
-        session.endSession();
-
-        return NextResponse.json(
-          {
-            message: 'Program and Batch updated successfully. Your dashboard has been reset.',
-            freedBytes,
-          },
-          { status: 200 }
-        );
+        const result = await resetStudentAcademicInfo({
+          targetUserId: String(body.id || '').trim(),
+          newProgram: typeof body.program === 'string' ? body.program : undefined,
+          newBatch: typeof body.batch === 'string' ? body.batch : undefined,
+          actor: 'student',
+          enforceStudentCooldown: true,
+        });
+        return NextResponse.json(result, { status: 200 });
       } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
-
-        console.error('Program/Batch Update Error:', error instanceof Error ? error.message : error);
+        if (error instanceof AcademicResetError) {
+          return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        }
+        console.error('student_academic_reset_failed');
         return NextResponse.json({ error: 'Failed to update Program/Batch.' }, { status: 500 });
       }
     }
@@ -447,7 +274,6 @@ export async function POST(req: NextRequest) {
       session.startTransaction();
 
       let deletionTargets: DeletionTarget[] = [];
-      let freedBytes = 0;
       let leftTeam = false;
 
       try {
@@ -523,12 +349,17 @@ export async function POST(req: NextRequest) {
                 .filter(Boolean),
             ].filter(Boolean) as DeletionTarget[]);
 
-            freedBytes = deletionTargets.reduce((sum, target) => sum + target.size, 0);
-
             if (voiceNotes.length > 0) {
               await VoiceNote.deleteMany({
                 _id: { $in: voiceNotes.map((note) => note._id) },
               }).session(session);
+            }
+
+            for (const target of deletionTargets) {
+              await enqueueStorageDeletion(
+                { key: target.key, bytes: target.size, reason: 'supervisor-change' },
+                session
+              );
             }
 
             if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
@@ -544,20 +375,6 @@ export async function POST(req: NextRequest) {
               { session }
             );
           }
-        }
-
-        if (freedBytes > 0) {
-          await SystemConfig.findOneAndUpdate(
-            { configKey: 'storage' },
-            { $inc: { usedBytes: -freedBytes } },
-            { upsert: true, session }
-          );
-
-          await SystemConfig.updateOne(
-            { configKey: 'storage', usedBytes: { $lt: 0 } },
-            { $set: { usedBytes: 0 } },
-            { session }
-          );
         }
 
         const freshProject = await createFreshStudentProject(
@@ -584,22 +401,12 @@ export async function POST(req: NextRequest) {
         await session.commitTransaction();
         session.endSession();
 
-        if (deletionTargets.length > 0) {
-          Promise.all(
-            deletionTargets.map((target) =>
-              s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }))
-            )
-          ).catch((error: unknown) => {
-            console.error('Supervisor change file cleanup failed:', error instanceof Error ? error.message : error);
-          });
-        }
-
         return NextResponse.json(
           {
             message: leftTeam
               ? 'Supervisor changed. You left your old team and started fresh under the new supervisor.'
-              : 'Supervisor changed. Your previous project files were deleted and you started fresh.',
-            freedBytes,
+              : 'Supervisor changed. Your previous project files are queued for deletion.',
+            queuedDeletionBytes: deletionTargets.reduce((sum, target) => sum + target.size, 0),
           },
           { status: 200 }
         );
@@ -823,100 +630,88 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    // Use storage metadata, not browser metadata, for a newly supplied PDF.
-    const oldPdfUrl = triggeringStudent.pdfUrl;
-    let sizeDelta = 0;
-    const isNewPdf = pdfUrl !== oldPdfUrl;
-    let uploadedPdfSize = 0;
+    const uploadedKey = normalizeStorageKey(pdfUrl);
+    if (!uploadedKey || !uploadedKey.startsWith(`proposals/${submissionStudentId}/`)) {
+      return NextResponse.json({ error: 'Invalid uploaded PDF.' }, { status: 400 });
+    }
 
-    if (isNewPdf) {
-      const uploadedKey = getR2ObjectKey(pdfUrl);
-      if (!uploadedKey.startsWith(`proposals/${submissionStudentId}/`)) {
-        return NextResponse.json({ error: 'Invalid uploaded PDF.' }, { status: 400 });
-      }
-
-      try {
-        const uploadedObject = await s3Client.send(
-          new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: uploadedKey })
-        );
-        uploadedPdfSize = Number(uploadedObject.ContentLength || 0);
-        if (uploadedPdfSize <= 0 || uploadedPdfSize > 4 * 1024 * 1024 || !uploadedObject.ContentType?.startsWith('application/pdf')) {
-          await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: uploadedKey }));
-          return NextResponse.json({ error: 'Uploaded PDF is invalid.' }, { status: 400 });
+    const finalized = await finalizeUploadReservation({
+      key: uploadedKey,
+      ownerId: submissionStudentId,
+      kind: 'pdf',
+      commit: async (session, uploadedObject) => {
+        const studentInTransaction = await User.findOne({
+          _id: submissionStudentId,
+          role: 'student',
+        }).session(session);
+        if (!studentInTransaction?.projectId) {
+          throw new StorageProtocolError('Project record not found for this student.', 409);
         }
-      } catch (error) {
-        console.error('Uploaded PDF verification failed:', error);
-        return NextResponse.json({ error: 'Uploaded PDF could not be verified.' }, { status: 400 });
-      }
-    }
-    
-    let targetProject = null;
-    if (triggeringStudent.projectId) {
-      targetProject = await Project.findById(triggeringStudent.projectId);
-    }
-    
-    if (oldPdfUrl && oldPdfUrl !== pdfUrl) {
-      try {
-        let keyToDelete = oldPdfUrl;
-        if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
-        
-        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: keyToDelete }));
-        
-        // Subtract the exact size of the old PDF being wiped
-        sizeDelta -= (targetProject?.pdfSize || 0);
-        console.log(`🧹 PDF Orphan Prevention: Wiped old proposal blob -> ${keyToDelete}`);
-      } catch (blobError) {
-        console.error('Failed to delete old PDF blob:', blobError instanceof Error ? blobError.message : blobError);
-      }
-    }
 
-    if (isNewPdf) sizeDelta += uploadedPdfSize;
+        const project = await Project.findOne({
+          _id: studentInTransaction.projectId,
+          members: studentInTransaction._id,
+        }).session(session);
+        if (!project) throw new StorageProtocolError('Project membership changed. Refresh and try again.', 409);
 
-    // Atomically sync the global ledger
-    if (sizeDelta !== 0) {
-      await SystemConfig.findOneAndUpdate(
-        { configKey: 'storage' },
-        { $inc: { usedBytes: sizeDelta } },
-        { upsert: true }
-      );
-    }
+        const oldPdfKey = normalizeStorageKey(project.pdfUrl);
+        const updatedProject = await Project.updateOne(
+          {
+            _id: project._id,
+            members: studentInTransaction._id,
+            $or: [{ version: Number(project.version || 0) }, { version: { $exists: false } }],
+          },
+          {
+            $set: {
+              title,
+              titleFingerprint: fingerprint,
+              domain: normalizedDomainText,
+              domains: selectedDomainIds,
+              pdfUrl: uploadedKey,
+              pdfSize: uploadedObject.actualBytes,
+              status: 'Submitted For Review',
+            },
+            $inc: { version: 1 },
+          },
+          { session }
+        );
+        if (updatedProject.modifiedCount !== 1) {
+          throw new StorageProtocolError('Project changed while submitting. Refresh and try again.', 409);
+        }
 
-    const submissionData = {  
-      projectTitle: title,
-      projectDesc: description,
-      domain: normalizedDomainText,
-      domains: selectedDomainIds,
-      tools,
-      pdfUrl,
-      status: 'Submitted For Review'
-    };
+        await User.updateMany(
+          { projectId: project._id, role: 'student' },
+          {
+            $set: {
+              projectTitle: title,
+              projectDesc: description,
+              domain: normalizedDomainText,
+              domains: selectedDomainIds,
+              tools,
+              pdfUrl: uploadedKey,
+              status: 'Submitted For Review',
+            },
+          },
+          { session }
+        );
 
-    let updatedStudent = null;
+        if (oldPdfKey && oldPdfKey !== uploadedKey) {
+          await enqueueStorageDeletion(
+            { key: oldPdfKey, bytes: Number(project.pdfSize || 0), reason: 'project-pdf-replaced' },
+            session
+          );
+        }
 
-    if (triggeringStudent.projectId) {
-      // Prepare dynamic payload: only update pdfSize if a new file was actually sent
-      const projectUpdates: Record<string, unknown> = {
-        title,
-        titleFingerprint: fingerprint,
-        domain: normalizedDomainText,
-        domains: selectedDomainIds,
-        pdfUrl,
-        status: 'Submitted For Review',
-      };
-      if (isNewPdf) projectUpdates.pdfSize = uploadedPdfSize;
+        return {
+          name: studentInTransaction.name,
+          supervisorId: String(project.supervisorId || studentInTransaction.supervisorId || ''),
+        };
+      },
+    });
 
-      // OPTIMIZATION: Run Project updates and Team updates in parallel to halve DB response time
-      await Promise.all([
-        Project.findByIdAndUpdate(triggeringStudent.projectId, { $set: projectUpdates }),
-        User.updateMany(
-          { projectId: triggeringStudent.projectId },
-          { $set: submissionData }
-        )
-      ]);
-      updatedStudent = await User.findById(triggeringStudent._id); // Re-fetch to get supervisor ID
-    } else {
-      updatedStudent = await User.findByIdAndUpdate(triggeringStudent._id, { $set: submissionData }, { returnDocument: 'after' });
-    }
+    const updatedStudent = finalized.finalizedNow
+      ? finalized.result
+      : await User.findById(submissionStudentId).select('name supervisorId').lean();
 
     // Trigger Supervisor Email Notification (Kept identical to prevent UI changes)
     if (updatedStudent && updatedStudent.supervisorId) {
@@ -947,7 +742,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ message: 'Project Submitted!' }, { status: 200 });
   } catch (error) {
-    console.error('Student Dashboard API Error:', error);
+    console.error('student_dashboard_submission_failed');
+    if (error instanceof StorageProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
   }
 }

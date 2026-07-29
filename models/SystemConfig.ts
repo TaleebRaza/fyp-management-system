@@ -3,7 +3,8 @@ import mongoose, { Schema } from 'mongoose';
 
 const SystemConfigSchema = new Schema({
   configKey: { type: String, required: true, unique: true, index: true },
-  usedBytes: { type: Number, default: 0 }
+  usedBytes: { type: Number, default: 0, min: 0 },
+  reservedBytes: { type: Number, default: 0, min: 0 },
 }, { timestamps: true });
 
 const SystemConfig = mongoose.models.SystemConfig || mongoose.model('SystemConfig', SystemConfigSchema);

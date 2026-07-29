@@ -129,7 +129,12 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
       const urlRes = await fetch('/api/voice/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentType: file.type, fileSize: file.size, projectId })
+        body: JSON.stringify({
+          contentType: file.type,
+          fileSize: file.size,
+          projectId,
+          idempotencyKey: crypto.randomUUID(),
+        })
       });
       
       if (!urlRes.ok) {
@@ -149,11 +154,19 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
       if (!r2Res.ok) throw new Error('Cloudflare R2 Upload rejected the file');
 
       // 3. Save the transaction and file size to the MongoDB Ledger
-      await fetch('/api/voice', {
+      const finalizeResponse = await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, blobUrl: key })
       });
+      if (!finalizeResponse.ok) {
+        const errorData: unknown = await finalizeResponse.json().catch(() => ({}));
+        throw new Error(
+          errorData && typeof errorData === 'object' && 'error' in errorData && typeof errorData.error === 'string'
+            ? errorData.error
+            : 'Voice note finalization failed'
+        );
+      }
 
       // Silently sync the database to swap the local URL for the secure cloud URL
       fetchMessages();

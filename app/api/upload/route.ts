@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import crypto from 'crypto';
-import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from '../../../lib/s3-client';
+import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
 import connectToDatabase from '../../../lib/mongodb';
-import SystemConfig from '../../../models/SystemConfig';
 import User from '../../../models/User';
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../lib/fineRestriction';
 import {
@@ -13,6 +11,12 @@ import {
 } from '../../../lib/teamFineRestriction';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
+import {
+  cancelUploadReservation,
+  reserveUpload,
+  StorageProtocolError,
+} from '../../../lib/storageProtocol';
+import { buildStorageKey } from '../../../lib/storageValidation';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
@@ -58,12 +62,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const config = await SystemConfig.findOne({ configKey: 'storage' });
-    if (config && config.usedBytes >= MAX_STORAGE_BYTES) {
-      return NextResponse.json({ error: 'System storage capacity reached.' }, { status: 403 });
-    }
-
-    const { filename, contentType, fileSize } = await req.json();
+    const { filename, contentType, fileSize, idempotencyKey } = await req.json();
     if (!Number.isSafeInteger(Number(fileSize)) || Number(fileSize) <= 0) {
       return NextResponse.json({ error: 'A valid file size is required.' }, { status: 400 });
     }
@@ -76,22 +75,41 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) {
+      return NextResponse.json({ error: 'A valid upload idempotency key is required.' }, { status: 400 });
+    }
 
     if (String(filename || '').length > 120) {
       return NextResponse.json({ error: 'Filename is too long.' }, { status: 400 });
     }
-    const sanitizedCleanName =
-      String(filename || 'document.pdf').replace(/[^a-zA-Z0-9.-]/g, '_') || 'document.pdf';
-    const key = `proposals/${currentUser.id}/${crypto.randomUUID()}-${sanitizedCleanName}`;
+    const key = buildStorageKey('pdf', currentUser.id, idempotencyKey);
+    const reservation = await reserveUpload({
+      key,
+      ownerId: currentUser.id,
+      kind: 'pdf',
+      expectedBytes: Number(fileSize),
+      expectedContentType: contentType,
+      idempotencyKey,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
       ContentType: contentType,
     });
-    const uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 120 });
-    return NextResponse.json({ uploadUrl, url: key });
-  } catch {
+    let uploadUrl: string;
+    try {
+      uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 120 });
+    } catch (error) {
+      await cancelUploadReservation(key, currentUser.id, 'signing-failed');
+      throw error;
+    }
+    return NextResponse.json({ uploadUrl, url: key, reservationId: String(reservation._id) });
+  } catch (error) {
     console.error('pdf_upload_url_failed');
+    if (error instanceof StorageProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     return NextResponse.json(
       { error: 'Server token generation routing aborted.' },
       { status: 500 }
