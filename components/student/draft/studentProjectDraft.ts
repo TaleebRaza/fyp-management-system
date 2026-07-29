@@ -22,6 +22,17 @@ export const EMPTY_STUDENT_PROJECT_DRAFT: StudentProjectDraft = {
   tools: '',
 };
 
+export const MAX_STUDENT_DRAFT_TITLE_LENGTH = 200;
+export const MAX_STUDENT_DRAFT_DESCRIPTION_LENGTH = 5_000;
+export const MAX_STUDENT_DRAFT_TOOLS_LENGTH = 1_000;
+export const MAX_STUDENT_DRAFT_DOMAINS = 10;
+export const MAX_STUDENT_DRAFT_DOMAIN_LENGTH = 64;
+export const MAX_STUDENT_PROJECT_FILE_BYTES = 4 * 1024 * 1024;
+
+function draftText(value: unknown, maximum: number) {
+  return typeof value === 'string' ? value.slice(0, maximum) : '';
+}
+
 export function getStudentProjectDraftKey(userId: string): string {
   return `fyp-portal:student-project-draft:v1:${userId}`;
 }
@@ -34,15 +45,20 @@ export function createStudentProjectDraft(
   input: StudentProjectDraftInput
 ): StudentProjectDraft {
   const selectedDomains = Array.isArray(input.domains)
-    ? input.domains.filter((domain): domain is string => typeof domain === 'string')
+    ? input.domains
+        .filter((domain): domain is string => typeof domain === 'string')
+        .slice(0, MAX_STUDENT_DRAFT_DOMAINS)
+        .map((domain) => domain.slice(0, MAX_STUDENT_DRAFT_DOMAIN_LENGTH))
     : [];
 
   return {
-    title: input.title || '',
-    desc: input.desc || '',
+    title: draftText(input.title, MAX_STUDENT_DRAFT_TITLE_LENGTH),
+    desc: draftText(input.desc, MAX_STUDENT_DRAFT_DESCRIPTION_LENGTH),
     selectedDomains,
-    legacyDomain: selectedDomains.length === 0 ? input.legacyDomain || '' : '',
-    tools: input.tools || '',
+    legacyDomain: selectedDomains.length === 0
+      ? draftText(input.legacyDomain, MAX_STUDENT_DRAFT_DOMAIN_LENGTH)
+      : '',
+    tools: draftText(input.tools, MAX_STUDENT_DRAFT_TOOLS_LENGTH),
   };
 }
 

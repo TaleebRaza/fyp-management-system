@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSession, signOut } from "next-auth/react";
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
@@ -38,7 +38,6 @@ type IntroState = 'checking' | 'showing' | 'complete';
 
 const INTRO_SESSION_KEY = 'fyp_intro_seen';
 const INTRO_SAFETY_TIMEOUT_MS = 7000;
-const subscribeToClient = () => () => {};
 
 async function fetchRegistrationPolicy(): Promise<RegistrationPolicyDto | null> {
   try {
@@ -69,8 +68,7 @@ export default function App() {
   const [registrationPolicy, setRegistrationPolicy] = useState<RegistrationPolicyDto>(
     DEFAULT_REGISTRATION_POLICY
   );
-  const isMounted = useSyncExternalStore(subscribeToClient, () => true, () => false);
-  const [isThemeReady, setIsThemeReady] = useState(false);
+  const [isClient, setIsClient] = useState(false);
   const [introState, setIntroState] = useState<IntroState>('checking');
   const [dialog, setDialog] = useState<PortalDialogState>({
     isOpen: false,
@@ -87,39 +85,52 @@ export default function App() {
 
   const { data: session, status } = useSession();
 
-  if (isMounted && !isThemeReady) {
-    setIsThemeReady(true);
-    setIsDarkMode(localStorage.getItem('fyp_theme') === 'dark');
-  }
-
-  if (isMounted && status === 'authenticated' && introState !== 'complete') {
-    setIntroState('complete');
-  }
-
-  if (isMounted && status === 'unauthenticated' && introState === 'checking') {
-    let nextIntroState: IntroState = 'showing';
-
-    try {
-      if (sessionStorage.getItem(INTRO_SESSION_KEY) === '1') {
-        nextIntroState = 'complete';
-      } else {
-        // Mark it before playback so a refresh during the intro does not replay it.
-        sessionStorage.setItem(INTRO_SESSION_KEY, '1');
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setIsClient(true);
+      try {
+        setIsDarkMode(localStorage.getItem('fyp_theme') === 'dark');
+      } catch {
+        // The default light theme remains usable when browser storage is unavailable.
       }
-    } catch (error) {
-      console.warn('Session intro storage is unavailable:', error);
-    }
-
-    setIntroState(nextIntroState);
-  }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isClient) return;
+    const timer = window.setTimeout(() => {
+      if (status === 'authenticated') {
+        setIntroState('complete');
+        return;
+      }
+      if (status !== 'unauthenticated' || introState !== 'checking') return;
 
-    localStorage.setItem('fyp_theme', isDarkMode ? 'dark' : 'light');
+      try {
+        if (sessionStorage.getItem(INTRO_SESSION_KEY) === '1') {
+          setIntroState('complete');
+        } else {
+          sessionStorage.setItem(INTRO_SESSION_KEY, '1');
+          setIntroState('showing');
+        }
+      } catch {
+        setIntroState('showing');
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [introState, isClient, status]);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    try {
+      localStorage.setItem('fyp_theme', isDarkMode ? 'dark' : 'light');
+    } catch {
+      // Theme preference persistence is optional.
+    }
     document.documentElement.classList.toggle('dark', isDarkMode);
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
-  }, [isDarkMode, isMounted]);
+  }, [isClient, isDarkMode]);
 
   const handleIntroComplete = useCallback(() => {
     setIntroState('complete');
@@ -259,7 +270,7 @@ export default function App() {
     );
   }, [status, session, isDarkMode, isRegistering, supervisorsList, showDialog, registrationPolicy, loadRegistrationPolicy]);
 
-  if (!isMounted || status === 'loading') {
+  if (!isClient || status === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)]">
         <Loader2 className="animate-spin text-[var(--color-accent)]" size={40} />

@@ -48,9 +48,13 @@ export function useBroadcastSubmit({
     inFlightRef.current = true;
     setIsSubmitting(true);
     try {
-      await fetch('/api/dashboard/supervisor/broadcast', { method: 'DELETE' });
+      const response = await fetch('/api/dashboard/supervisor/broadcast', { method: 'DELETE' });
+      const data: { error?: string } = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to clear broadcast.');
       setSuccess(true);
       scheduleCompletion(onClearComplete);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to clear broadcast.');
     } finally {
       inFlightRef.current = false;
       setIsSubmitting(false);
@@ -79,9 +83,9 @@ export function useBroadcastSubmit({
             idempotencyKey: crypto.randomUUID(),
           }),
         });
-        const uploadData = await uploadRes.json();
+        const uploadData: { uploadUrl?: string; key?: string; error?: string } = await uploadRes.json().catch(() => ({}));
 
-        if (!uploadRes.ok) {
+        if (!uploadRes.ok || !uploadData.uploadUrl || !uploadData.key) {
           throw new Error(uploadData.error || 'Upload failed');
         }
 

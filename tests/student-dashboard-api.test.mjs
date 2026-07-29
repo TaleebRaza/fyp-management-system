@@ -126,6 +126,20 @@ test('rejects non-PDF and oversized files before making a request', async () => 
   assert.equal(requestCount, 0);
 });
 
+test('reports a failed object upload instead of pretending finalization can continue', async () => {
+  await withMockFetch(async (url) => {
+    if (url === '/api/upload') {
+      return jsonResponse({ uploadUrl: 'https://upload.example/file', url: 'files/proposal.pdf' });
+    }
+    return jsonResponse({ error: 'Object store rejected upload.' }, { ok: false });
+  }, async () => {
+    await assert.rejects(
+      () => api.uploadStudentPdf({ name: 'proposal.pdf', type: 'application/pdf', size: 1024 }),
+      /PDF upload failed/
+    );
+  });
+});
+
 test('submits a named student project action', async () => {
   const input = {
     id: 'student-1',

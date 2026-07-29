@@ -2,12 +2,9 @@ import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['pdfkit'],
-  
-  compress: true, // ✅ Added
-  
+  compress: true,
   experimental: {
-    optimizePackageImports: ['lucide-react', 'date-fns'], // ✅ Added
+    optimizePackageImports: ['lucide-react'],
   },
   async headers() {
     return [{

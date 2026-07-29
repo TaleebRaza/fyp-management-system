@@ -11,7 +11,11 @@ const {
   getStudentProjectDraftKey,
   getStudentProjectFileDraftKey,
   hasStudentProjectDraftChanges,
+  MAX_STUDENT_DRAFT_DESCRIPTION_LENGTH,
+  MAX_STUDENT_DRAFT_TITLE_LENGTH,
 } = draftModule;
+
+const storage = await importTypeScriptModule('lib/browserDraftStorage.ts');
 
 test('student project draft keys remain backward compatible', () => {
   assert.equal(
@@ -57,4 +61,16 @@ test('draft change detection compares the complete persisted draft', () => {
     true
   );
   assert.equal(hasStudentProjectDraftChanges(baseline, null), true);
+});
+
+test('draft persistence policy bounds text and expires old browser records', () => {
+  const draft = createStudentProjectDraft({
+    title: 'x'.repeat(MAX_STUDENT_DRAFT_TITLE_LENGTH + 1),
+    desc: 'y'.repeat(MAX_STUDENT_DRAFT_DESCRIPTION_LENGTH + 1),
+  });
+
+  assert.equal(draft.title.length, MAX_STUDENT_DRAFT_TITLE_LENGTH);
+  assert.equal(draft.desc.length, MAX_STUDENT_DRAFT_DESCRIPTION_LENGTH);
+  assert.equal(storage.isBrowserDraftExpired(Date.now() - 8 * 24 * 60 * 60 * 1000), true);
+  assert.equal(storage.isBrowserDraftExpired(Date.now() - 60 * 60 * 1000), false);
 });

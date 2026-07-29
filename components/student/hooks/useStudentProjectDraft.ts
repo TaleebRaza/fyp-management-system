@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   clearBrowserDraft,
   clearBrowserFileDraft,
+  cleanupBrowserDrafts,
   readBrowserDraft,
   readBrowserFileDraft,
   writeBrowserDraft,
@@ -11,10 +12,12 @@ import {
 } from '../../../lib/browserDraftStorage';
 import {
   EMPTY_STUDENT_PROJECT_DRAFT,
+  createStudentProjectDraft,
   getStudentProjectDraftKey,
   getStudentProjectFileDraftKey,
   hasStudentProjectDraftChanges,
   type StudentProjectDraft,
+  MAX_STUDENT_PROJECT_FILE_BYTES,
 } from '../draft/studentProjectDraft';
 
 const DRAFT_SAVE_DELAY_MS = 300;
@@ -50,9 +53,14 @@ export function useStudentProjectDraft(userId: string) {
     async (serverDraft: StudentProjectDraft) => {
       if (!draftKey || !fileDraftKey) return;
 
+      try {
+        await cleanupBrowserDrafts();
+      } catch {
+        // Draft cleanup must never prevent a student from opening the dashboard.
+      }
       const savedDraft = readBrowserDraft<StudentProjectDraft>(draftKey);
       setBaseline(serverDraft);
-      applyDraft(savedDraft || serverDraft);
+      applyDraft(savedDraft ? createStudentProjectDraft(savedDraft) : serverDraft);
 
       try {
         setFile(await readBrowserFileDraft(fileDraftKey));
@@ -68,13 +76,13 @@ export function useStudentProjectDraft(userId: string) {
   useEffect(() => {
     if (!draftKey || !isReady) return;
 
-    const currentDraft: StudentProjectDraft = {
+    const currentDraft = createStudentProjectDraft({
       title,
       desc,
-      selectedDomains,
+      domains: selectedDomains,
       legacyDomain,
       tools,
-    };
+    });
     const saveTimer = window.setTimeout(() => {
       if (!hasStudentProjectDraftChanges(currentDraft, baseline)) {
         clearBrowserDraft(draftKey);
@@ -97,7 +105,7 @@ export function useStudentProjectDraft(userId: string) {
       if (!fileDraftKey) return;
 
       try {
-        if (nextFile) {
+        if (nextFile && nextFile.size <= MAX_STUDENT_PROJECT_FILE_BYTES) {
           await writeBrowserFileDraft(fileDraftKey, nextFile);
         } else {
           await clearBrowserFileDraft(fileDraftKey);

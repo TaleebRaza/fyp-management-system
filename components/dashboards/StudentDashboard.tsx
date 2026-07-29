@@ -229,7 +229,14 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
               Academic Info
             </Button>
 
-            <Button variant="danger" onClick={() => signOut({ redirect: false })}>
+            <Button
+              variant="danger"
+              onClick={() => {
+                void clearStoredProjectDraft().finally(() => {
+                  void signOut({ redirect: false });
+                });
+              }}
+            >
               <LogIn size={16} className="rotate-180" />
               Logout
             </Button>
