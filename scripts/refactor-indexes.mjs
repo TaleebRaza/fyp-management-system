@@ -31,4 +31,14 @@ export const refactorIndexes = {
       },
     },
   ],
+  storagedeletionoutboxes: [
+    { key: { state: 1, nextAttemptAt: 1, _id: 1 } },
+    { key: { state: 1, lockedUntil: 1, _id: 1 } },
+    { key: { state: 1, deadLetteredAt: 1, _id: 1 } },
+  ],
+  emailoutboxes: [
+    { key: { state: 1, nextAttemptAt: 1, _id: 1 } },
+    { key: { state: 1, lockedUntil: 1, _id: 1 } },
+    { key: { state: 1, deadLetteredAt: 1, _id: 1 } },
+  ],
 };

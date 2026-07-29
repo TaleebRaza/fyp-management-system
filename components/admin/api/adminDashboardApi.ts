@@ -19,6 +19,7 @@ export type AdminStudentQuery = {
   batchFilter: string;
   search: string;
   programCodes: readonly string[];
+  cursor?: string;
 };
 
 export type AdminStudentsResponse = {
@@ -27,6 +28,7 @@ export type AdminStudentsResponse = {
   filterMeta?: {
     batches?: string[];
   };
+  nextCursor?: string | null;
   error?: string;
 };
 
@@ -85,6 +87,10 @@ export function buildAdminStudentSearchParams(query: AdminStudentQuery): URLSear
 
   if (query.search) {
     params.set('search', query.search);
+  }
+
+  if (query.cursor) {
+    params.set('cursor', query.cursor);
   }
 
   return params;

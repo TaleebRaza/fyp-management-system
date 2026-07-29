@@ -4,6 +4,7 @@ import {
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import mongoose, { ClientSession } from 'mongoose';
+import { randomUUID } from 'node:crypto';
 
 import StorageDeletionOutbox from '../models/StorageDeletionOutbox';
 import SystemConfig from '../models/SystemConfig';
@@ -12,6 +13,8 @@ import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from './s3-client';
 import { hasExpectedStorageMagic, type StorageUploadKind } from './storageValidation';
 
 const MAX_DELETION_ATTEMPTS = 8;
+const MAX_DELETION_BATCH_SIZE = 100;
+const DELETION_WORKER_LEASE_MS = 5 * 60 * 1000;
 
 export class StorageProtocolError extends Error {
   constructor(message: string, readonly statusCode: number) {
@@ -155,7 +158,10 @@ export async function enqueueStorageDeletion(
         state: 'pending',
         attempts: 0,
         nextAttemptAt: new Date(),
+        lockedUntil: null,
+        lockToken: null,
         lastErrorCode: '',
+        deadLetteredAt: null,
       },
     },
     { upsert: true, session }
@@ -282,24 +288,45 @@ function retryDelay(attempts: number) {
 }
 
 export async function processStorageDeletionOutbox(limit = 25) {
-  const targets = await StorageDeletionOutbox.find({
-    state: 'pending',
-    nextAttemptAt: { $lte: new Date() },
-  })
-    .sort({ nextAttemptAt: 1, _id: 1 })
-    .limit(Math.min(Math.max(limit, 1), 100))
-    .lean();
-
+  const batchSize = Math.min(Math.max(Math.trunc(limit), 1), MAX_DELETION_BATCH_SIZE);
+  let claimed = 0;
   let deleted = 0;
   let retried = 0;
+  let deadLettered = 0;
+  let maxJobLagMs = 0;
 
-  for (const target of targets) {
+  for (let index = 0; index < batchSize; index += 1) {
+    const now = new Date();
+    const lockToken = randomUUID();
+    const target = await StorageDeletionOutbox.findOneAndUpdate(
+      {
+        $or: [
+          { state: 'pending', nextAttemptAt: { $lte: now } },
+          { state: 'processing', lockedUntil: { $lte: now } },
+        ],
+      },
+      {
+        $set: {
+          state: 'processing',
+          lockedUntil: new Date(now.getTime() + DELETION_WORKER_LEASE_MS),
+          lockToken,
+        },
+        $inc: { attempts: 1 },
+      },
+      { new: true, sort: { nextAttemptAt: 1, _id: 1 } }
+    ).lean();
+    if (!target) break;
+
+    claimed += 1;
+    maxJobLagMs = Math.max(maxJobLagMs, Math.max(now.getTime() - target.nextAttemptAt.getTime(), 0));
+
     try {
       await getS3Client().send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }));
       await withStorageTransaction(async (session) => {
         const activeTarget = await StorageDeletionOutbox.findOne({
           _id: target._id,
-          state: 'pending',
+          state: 'processing',
+          lockToken,
         }).session(session);
         if (!activeTarget) return;
 
@@ -321,23 +348,46 @@ export async function processStorageDeletionOutbox(limit = 25) {
       });
       deleted += 1;
     } catch (error) {
-      const attempts = Number(target.attempts || 0) + 1;
+      const isDeadLetter = target.attempts >= MAX_DELETION_ATTEMPTS;
       await StorageDeletionOutbox.updateOne(
-        { _id: target._id, state: 'pending' },
+        { _id: target._id, state: 'processing', lockToken },
         {
           $set: {
-            state: attempts >= MAX_DELETION_ATTEMPTS ? 'dead-letter' : 'pending',
-            nextAttemptAt: new Date(Date.now() + retryDelay(attempts)),
-            lastErrorCode: error instanceof Error ? error.name : 'storage_delete_failed',
+            state: isDeadLetter ? 'dead-letter' : 'pending',
+            nextAttemptAt: new Date(Date.now() + retryDelay(target.attempts)),
+            lockedUntil: null,
+            lockToken: null,
+            lastErrorCode: error instanceof Error && error.name === 'TimeoutError'
+              ? 'storage_delete_timeout'
+              : 'storage_delete_failed',
+            deadLetteredAt: isDeadLetter ? new Date() : null,
           },
-          $inc: { attempts: 1 },
         }
       );
-      retried += 1;
+      if (isDeadLetter) {
+        deadLettered += 1;
+      } else {
+        retried += 1;
+      }
     }
   }
 
-  return { processed: targets.length, deleted, retried };
+  const oldestDeadLetter = await StorageDeletionOutbox.findOne({ state: 'dead-letter' })
+    .select('deadLetteredAt updatedAt')
+    .sort({ deadLetteredAt: 1, _id: 1 })
+    .lean();
+  const oldestDeadLetterAt = oldestDeadLetter?.deadLetteredAt || oldestDeadLetter?.updatedAt;
+
+  return {
+    claimed,
+    deleted,
+    retried,
+    deadLettered,
+    maxJobLagMs,
+    oldestDeadLetterAgeMs: oldestDeadLetterAt
+      ? Math.max(Date.now() - oldestDeadLetterAt.getTime(), 0)
+      : 0,
+  };
 }
 
 export async function expireUploadReservations(limit = 25) {

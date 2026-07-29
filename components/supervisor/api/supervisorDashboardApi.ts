@@ -139,7 +139,6 @@ export async function fetchSupervisorExport(
 ) {
   const response = await fetchImpl(
     `/api/export-pdf?id=${encodeURIComponent(request.supervisorId)}` +
-      `&name=${encodeURIComponent(request.supervisorName)}` +
       `&batch=${encodeURIComponent(request.batchFilter)}` +
       `&program=${encodeURIComponent(request.programFilter || 'All')}`
   );

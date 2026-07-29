@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const page = parsePositiveInteger(req.nextUrl.searchParams.get('page'), 1, Number.MAX_SAFE_INTEGER);
+    const page = parsePositiveInteger(req.nextUrl.searchParams.get('page'), 1, 1_000);
     const limit = parsePositiveInteger(req.nextUrl.searchParams.get('limit'), 24, 50);
     const search = normalizeText(req.nextUrl.searchParams.get('search'), 120);
     const program = normalizeText(req.nextUrl.searchParams.get('program'), 32);

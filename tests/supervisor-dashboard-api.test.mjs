@@ -103,7 +103,7 @@ test('API errors use the server message without hiding it', async () => {
   );
 });
 
-test('export preserves the existing query parameters and returns a non-empty blob', async () => {
+test('export sends filters and lets the server derive the supervisor filename', async () => {
   const calls = [];
   const expectedBlob = new Blob(['report']);
   const result = await fetchSupervisorExport(
@@ -127,7 +127,7 @@ test('export preserves the existing query parameters and returns a non-empty blo
 
   assert.equal(
     calls[0][0],
-    '/api/export-pdf?id=sup%201&name=Dr.%20Test%20User&batch=Fall%202023&program=All'
+    '/api/export-pdf?id=sup%201&batch=Fall%202023&program=All'
   );
   assert.equal(result, expectedBlob);
 });

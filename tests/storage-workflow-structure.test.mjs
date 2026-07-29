@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('storage reservations keep pending bytes and durable deletion work separate', async () => {
+test('storage reservations keep pending bytes and atomically claimed deletion work separate', async () => {
   const [reservation, outbox, protocol] = await Promise.all([
     read('models/UploadReservation.ts'),
     read('models/StorageDeletionOutbox.ts'),
@@ -14,11 +14,28 @@ test('storage reservations keep pending bytes and durable deletion work separate
   assert.match(reservation, /key: \{ type: String, required: true, unique: true/);
   assert.match(reservation, /state: \{ type: String, enum: \['pending', 'finalized', 'cancelled'\]/);
   assert.doesNotMatch(reservation, /expireAfterSeconds/);
-  assert.match(outbox, /state: \{ type: String, enum: \['pending', 'dead-letter'\]/);
+  assert.match(outbox, /state: \{ type: String, enum: \['pending', 'processing', 'dead-letter'\]/);
+  assert.match(outbox, /lockToken/);
   assert.match(protocol, /reservedBytes/);
   assert.match(protocol, /HeadObjectCommand/);
   assert.match(protocol, /GetObjectCommand/);
   assert.match(protocol, /processStorageDeletionOutbox/);
+});
+
+test('submission and review enqueue email work without awaiting SMTP', async () => {
+  const [outbox, student, review] = await Promise.all([
+    read('lib/emailOutbox.ts'),
+    read('app/api/dashboard/student/route.ts'),
+    read('lib/projectReview.ts'),
+  ]);
+
+  assert.match(outbox, /findOneAndUpdate/);
+  assert.match(outbox, /state: 'processing'/);
+  assert.match(outbox, /maxJobLagMs/);
+  assert.match(student, /enqueueNotificationEmail/);
+  assert.match(review, /enqueueNotificationEmail/);
+  assert.doesNotMatch(student, /sendNotificationEmail/);
+  assert.doesNotMatch(review, /sendNotificationEmail/);
 });
 
 test('voice, broadcast, PDF submission, and review use reservation finalization instead of direct object deletion', async () => {

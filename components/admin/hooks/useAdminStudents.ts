@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
 import { PROGRAM_MAP } from '../../../config/appSettings';
 import type {
@@ -31,6 +31,7 @@ export function useAdminStudents(showDialog: ShowDialog) {
   const [isLoading, setIsLoading] = useState(true);
   const [studentFilter, setStudentFilter] = useState('All');
   const [batchFilter, setBatchFilter] = useState('All');
+  const pageCursors = useRef(new Map<number, string>());
 
   const programCodes = useMemo(() => Object.keys(PROGRAM_MAP), []);
   const filterOptions = useMemo(
@@ -49,12 +50,18 @@ export function useAdminStudents(showDialog: ShowDialog) {
           batchFilter,
           search: debouncedSearch,
           programCodes,
+          cursor: pageToFetch > 1 ? pageCursors.current.get(pageToFetch) : undefined,
         });
 
         setStudents(Array.isArray(data.students) ? data.students : []);
         if (data.pagination) setPagination(data.pagination);
         if (Array.isArray(data.filterMeta?.batches)) {
           setBatches(data.filterMeta.batches);
+        }
+        if (data.nextCursor) {
+          pageCursors.current.set(pageToFetch + 1, data.nextCursor);
+        } else {
+          pageCursors.current.delete(pageToFetch + 1);
         }
       } catch (error) {
         console.error('Student fetch error:', error);
@@ -82,6 +89,7 @@ export function useAdminStudents(showDialog: ShowDialog) {
     const timer = window.setTimeout(() => {
       setIsLoading(true);
       setPage(1);
+      pageCursors.current.clear();
       setDebouncedSearch(search.trim());
     }, 300);
 
@@ -98,6 +106,7 @@ export function useAdminStudents(showDialog: ShowDialog) {
       batchFilter,
       search: debouncedSearch,
       programCodes,
+      cursor: page > 1 ? pageCursors.current.get(page) : undefined,
     })
       .then((data) => {
         if (ignore) return;
@@ -106,6 +115,11 @@ export function useAdminStudents(showDialog: ShowDialog) {
         if (data.pagination) setPagination(data.pagination);
         if (Array.isArray(data.filterMeta?.batches)) {
           setBatches(data.filterMeta.batches);
+        }
+        if (data.nextCursor) {
+          pageCursors.current.set(page + 1, data.nextCursor);
+        } else {
+          pageCursors.current.delete(page + 1);
         }
       })
       .catch((error) => {
@@ -137,12 +151,14 @@ export function useAdminStudents(showDialog: ShowDialog) {
 
   const handleStudentFilterChange = useCallback((value: string) => {
     setIsLoading(true);
+    pageCursors.current.clear();
     setStudentFilter(value);
     setPage(1);
   }, []);
 
   const handleBatchFilterChange = useCallback((value: string) => {
     setIsLoading(true);
+    pageCursors.current.clear();
     setBatchFilter(value);
     setPage(1);
   }, []);
@@ -152,7 +168,8 @@ export function useAdminStudents(showDialog: ShowDialog) {
       if (
         nextPage < 1 ||
         nextPage > pagination.totalPages ||
-        nextPage === page
+        nextPage === page ||
+        (nextPage > page && !pageCursors.current.has(nextPage))
       ) {
         return;
       }

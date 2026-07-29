@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
+import { normalizeRollNo } from '../../../../lib/rollNo';
 import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { isValidEmailAddress, normalizeEmailAddress } from '../../../../lib/studentIdentity';
 
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const MAX_SEARCH_LENGTH = 100;
+
+type StudentCursor = {
+  createdAt: string;
+  id: string;
+};
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -22,9 +31,35 @@ function parsePositiveInteger(value: string | null, fallback: number) {
   return parsed;
 }
 
-export async function GET(req: NextRequest) {
-  const startedAt = Date.now();
+function parseCursor(value: string | null): StudentCursor | null {
+  if (!value) return null;
 
+  try {
+    const cursor = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as StudentCursor;
+    if (
+      !cursor
+      || typeof cursor.createdAt !== 'string'
+      || Number.isNaN(new Date(cursor.createdAt).getTime())
+      || !mongoose.Types.ObjectId.isValid(cursor.id)
+    ) {
+      return null;
+    }
+    return cursor;
+  } catch {
+    return null;
+  }
+}
+
+function createCursor(student: { createdAt?: Date; _id?: unknown }) {
+  if (!student.createdAt || !student._id) return null;
+
+  return Buffer.from(JSON.stringify({
+    createdAt: student.createdAt.toISOString(),
+    id: String(student._id),
+  })).toString('base64url');
+}
+
+export async function GET(req: NextRequest) {
   if (!await requireCurrentUser(req, ['admin'])) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
@@ -34,15 +69,6 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
 
-    const hasPaginationParams = searchParams.has('page') || searchParams.has('limit');
-    const hasFilterParams =
-      searchParams.has('program') ||
-      searchParams.has('batch') ||
-      searchParams.has('status') ||
-      searchParams.has('search');
-
-    const shouldPaginate = hasPaginationParams || hasFilterParams;
-
     const page = parsePositiveInteger(searchParams.get('page'), DEFAULT_PAGE);
     const requestedLimit = parsePositiveInteger(searchParams.get('limit'), DEFAULT_LIMIT);
     const limit = Math.min(requestedLimit, MAX_LIMIT);
@@ -50,32 +76,49 @@ export async function GET(req: NextRequest) {
     const program = searchParams.get('program')?.trim();
     const batch = searchParams.get('batch')?.trim();
     const status = searchParams.get('status')?.trim();
-    const search = searchParams.get('search')?.trim();
+    const search = searchParams.get('search')?.trim().slice(0, MAX_SEARCH_LENGTH);
 
-    const query: Record<string, unknown> = { role: 'student' };
+    const filters: Record<string, unknown>[] = [{ role: 'student' }];
 
     if (program && program !== 'All') {
-      query.program = program;
+      filters.push({ program });
     }
 
     if (batch && batch !== 'All') {
-      query.batch = batch;
+      filters.push({ batch });
     }
 
     if (status && status !== 'All') {
-      query.status = status;
+      filters.push({ status });
     }
 
     if (search) {
-      const safeSearch = escapeRegex(search);
-      const searchRegex = new RegExp(safeSearch, 'i');
-
-      query.$or = [
-        { name: searchRegex },
-        { rollNo: searchRegex },
-        { email: searchRegex },
+      const clauses: Record<string, unknown>[] = [
+        { rollNo: normalizeRollNo(search) },
+        { name: new RegExp(`^${escapeRegex(search)}`, 'i') },
       ];
+      if (isValidEmailAddress(search)) {
+        clauses.splice(1, 0, { email: normalizeEmailAddress(search) });
+      }
+      filters.push({ $or: clauses });
     }
+
+    const baseQuery = filters.length === 1 ? filters[0] : { $and: [...filters] };
+    const cursor = parseCursor(searchParams.get('cursor'));
+    if (page > DEFAULT_PAGE && !cursor) {
+      return NextResponse.json({ error: 'A pagination cursor is required for later pages.' }, { status: 400 });
+    }
+    if (cursor) {
+      const createdAt = new Date(cursor.createdAt);
+      filters.push({
+        $or: [
+          { createdAt: { $lt: createdAt } },
+          { createdAt, _id: { $lt: new mongoose.Types.ObjectId(cursor.id) } },
+        ],
+      });
+    }
+
+    const query = filters.length === 1 ? filters[0] : { $and: [...filters] };
 
     const selectedFields = [
       '_id',
@@ -96,50 +139,17 @@ export async function GET(req: NextRequest) {
       batch: { $nin: [null, ''] },
     });
 
-    if (!shouldPaginate) {
-      const [students, batches] = await Promise.all([
-        User.find(query)
-          .select(selectedFields)
-          .sort({ createdAt: -1 })
-          .lean(),
-        filterMetaPromise,
-      ]);
-
-      console.log(`Admin students query completed in ${Date.now() - startedAt}ms`);
-
-      return NextResponse.json(
-        {
-          students,
-          pagination: {
-            page: 1,
-            limit: students.length,
-            total: students.length,
-            totalPages: students.length > 0 ? 1 : 0,
-          },
-          filterMeta: {
-            batches: batches.sort(),
-          },
-        },
-        { status: 200 }
-      );
-    }
-
-    const skip = (page - 1) * limit;
-
     const [students, total, batches] = await Promise.all([
       User.find(query)
         .select(selectedFields)
-        .sort({ createdAt: -1 })
-        .skip(skip)
+        .sort({ createdAt: -1, _id: -1 })
         .limit(limit)
         .lean(),
-      User.countDocuments(query),
+      User.countDocuments(baseQuery),
       filterMetaPromise,
     ]);
 
     const totalPages = Math.ceil(total / limit);
-
-    console.log(`Admin students query completed in ${Date.now() - startedAt}ms`);
 
     return NextResponse.json(
       {
@@ -153,6 +163,7 @@ export async function GET(req: NextRequest) {
         filterMeta: {
           batches: batches.sort(),
         },
+        nextCursor: students.length === limit ? createCursor(students.at(-1)) : null,
       },
       { status: 200 }
     );

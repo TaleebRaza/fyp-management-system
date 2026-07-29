@@ -1,6 +1,6 @@
 import Project from '../models/Project';
 import User from '../models/User';
-import { sendNotificationEmail } from './mailer';
+import { enqueueNotificationEmail } from './emailOutbox';
 import { escapeHtml } from './security/input';
 import { normalizeStorageKey } from './security/storage';
 import { enqueueStorageDeletion, withStorageTransaction } from './storageProtocol';
@@ -20,14 +20,6 @@ type ReviewProjectRequest = {
 type ReviewProjectResult =
   | { success: true }
   | { success: false; reason: 'not-found' | 'not-reviewable' };
-
-type ReviewNotification = {
-  supervisorId: string;
-  teamMembers: Array<{ email?: string }>;
-  status: string;
-  newStage?: string;
-  notificationMessage: string;
-};
 
 function reviewFailure(reason: 'not-found' | 'not-reviewable'): ReviewProjectResult {
   return { success: false, reason };
@@ -143,44 +135,39 @@ export async function reviewProject({
       }
     }
 
-    return {
-      result: reviewSuccess(),
-      notification: {
-        supervisorId: assignedSupervisorId,
-        teamMembers,
-        status,
-        newStage: reviewState.newStage,
-        notificationMessage: reviewState.notificationMessage,
-      } satisfies ReviewNotification,
-    };
-  });
-  if (!review.result.success || !review.notification) return review.result;
-
-  const supervisor = await User.findById(review.notification.supervisorId)
-    .select('name notificationsEnabled')
-    .lean();
-  if (supervisor && supervisor.notificationsEnabled !== false) {
-    const { status: reviewStatus, newStage, notificationMessage, teamMembers } = review.notification;
-    const subject = `FYP Project Update: ${newStage ? 'Stage Advanced!' : reviewStatus}`;
-    const primaryColor = reviewStatus === 'Approved' ? '#10b981' : reviewStatus === 'Changes Requested' ? '#f59e0b' : '#ef4444';
-    const backgroundColor = reviewStatus === 'Approved' ? '#ecfdf5' : reviewStatus === 'Changes Requested' ? '#fffbeb' : '#fef2f2';
-    const htmlContent = `
-      <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
-        <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">
-          <div style="background-color: #18181b; padding: 24px; text-align: center;"><h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1></div>
-          <div style="padding: 32px;">
-            <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">Project Updated</h2>
-            <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${escapeHtml(supervisor.name)}</strong>, has reviewed your submission.</p>
-            <div style="text-align: center; margin-bottom: 24px;"><span style="display: inline-block; background-color: ${backgroundColor}; color: ${primaryColor}; padding: 8px 16px; border-radius: 999px; font-weight: bold;">${escapeHtml(notificationMessage)}</span></div>
-            <div style="background-color: #f8fafc; border-left: 4px solid ${primaryColor}; padding: 20px;"><p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Supervisor Remarks</p><p style="margin: 0; font-size: 15px; color: #334155; font-style: italic;">"${escapeHtml(remarks || 'Proceed to the next stage.')}"</p></div>
+    const supervisor = await User.findOne({ _id: assignedSupervisorId, role: 'supervisor' })
+      .select('name notificationsEnabled')
+      .session(session)
+      .lean();
+    if (supervisor && supervisor.notificationsEnabled !== false) {
+      const subject = `FYP Project Update: ${reviewState.newStage ? 'Stage Advanced!' : status}`;
+      const primaryColor = status === 'Approved' ? '#10b981' : status === 'Changes Requested' ? '#f59e0b' : '#ef4444';
+      const backgroundColor = status === 'Approved' ? '#ecfdf5' : status === 'Changes Requested' ? '#fffbeb' : '#fef2f2';
+      const html = `
+        <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
+          <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">
+            <div style="background-color: #18181b; padding: 24px; text-align: center;"><h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1></div>
+            <div style="padding: 32px;">
+              <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">Project Updated</h2>
+              <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${escapeHtml(supervisor.name)}</strong>, has reviewed your submission.</p>
+              <div style="text-align: center; margin-bottom: 24px;"><span style="display: inline-block; background-color: ${backgroundColor}; color: ${primaryColor}; padding: 8px 16px; border-radius: 999px; font-weight: bold;">${escapeHtml(reviewState.notificationMessage)}</span></div>
+              <div style="background-color: #f8fafc; border-left: 4px solid ${primaryColor}; padding: 20px;"><p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Supervisor Remarks</p><p style="margin: 0; font-size: 15px; color: #334155; font-style: italic;">"${escapeHtml(remarks || 'Proceed to the next stage.')}"</p></div>
+            </div>
           </div>
-        </div>
-      </div>`;
+        </div>`;
+      const reviewVersion = Number(project.version || 0) + 1;
+      for (const member of teamMembers) {
+        if (!member.email) continue;
+        await enqueueNotificationEmail({
+          dedupeKey: `project-review:${project._id}:${reviewVersion}:${member._id}`,
+          to: member.email,
+          subject,
+          html,
+        }, session);
+      }
+    }
 
-    await Promise.all(teamMembers.flatMap((member) => member.email
-      ? [sendNotificationEmail(member.email, subject, htmlContent)]
-      : []));
-  }
-
-  return { success: true };
+    return { result: reviewSuccess() };
+  });
+  return review.result;
 }

@@ -1,13 +1,20 @@
 import { NextResponse } from 'next/server';
 
 import connectToDatabase from '../../../../lib/mongodb';
+import { processEmailOutbox } from '../../../../lib/emailOutbox';
 import { hasValidCronAuthorization } from '../../../../lib/security/cron';
 import { normalizeStorageKey } from '../../../../lib/security/storage';
-import { enqueueStorageDeletion, withStorageTransaction } from '../../../../lib/storageProtocol';
+import {
+  enqueueStorageDeletion,
+  processStorageDeletionOutbox,
+  withStorageTransaction,
+} from '../../../../lib/storageProtocol';
 import User from '../../../../models/User';
 import VoiceNote from '../../../../models/VoiceNote';
 
 export const dynamic = 'force-dynamic';
+
+const CLEANUP_LIMIT = 100;
 
 export async function GET(req: Request) {
   if (!hasValidCronAuthorization(req.headers.get('authorization'), process.env.CRON_SECRET)) {
@@ -18,13 +25,22 @@ export async function GET(req: Request) {
   try {
     await connectToDatabase();
     const now = Date.now();
+    const tenMinutesAgo = new Date(now - 10 * 60 * 1000);
     const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000);
     const seventyTwoHoursAgo = new Date(now - 72 * 60 * 60 * 1000);
     const cleanup = await withStorageTransaction(async (session) => {
       let purgedVoiceNotesCount = 0;
       let purgedBroadcastsCount = 0;
       let queuedDeletionBytes = 0;
-      const expiredNotes = await VoiceNote.find({ createdAt: { $lte: twentyFourHoursAgo } }).session(session);
+      const expiredNotes = await VoiceNote.find({
+        $or: [
+          { createdAt: { $lte: twentyFourHoursAgo } },
+          { isPlayed: true, playedAt: { $lte: tenMinutesAgo } },
+        ],
+      })
+        .sort({ createdAt: 1, _id: 1 })
+        .limit(CLEANUP_LIMIT)
+        .session(session);
       for (const note of expiredNotes) {
         await enqueueStorageDeletion(
           { key: note.blobUrl, bytes: Number(note.fileSize || 0), reason: 'voice-expired' },
@@ -42,7 +58,10 @@ export async function GET(req: Request) {
         broadcastType: 'audio',
         broadcastContent: { $ne: null },
         broadcastCreatedAt: { $lte: seventyTwoHoursAgo },
-      }).session(session);
+      })
+        .sort({ broadcastCreatedAt: 1, _id: 1 })
+        .limit(CLEANUP_LIMIT)
+        .session(session);
       for (const supervisor of expiredBroadcasts) {
         const key = normalizeStorageKey(supervisor.broadcastContent);
         if (key) {
@@ -61,10 +80,16 @@ export async function GET(req: Request) {
       purgedBroadcastsCount = expiredBroadcasts.length;
       return { purgedVoiceNotesCount, purgedBroadcastsCount, queuedDeletionBytes };
     });
+    const [storageDeletions, emails] = await Promise.all([
+      processStorageDeletionOutbox(),
+      processEmailOutbox(),
+    ]);
 
     return NextResponse.json({
-      message: 'Cleanup records were queued for storage deletion.',
+      message: 'Cleanup and durable background work completed.',
       ...cleanup,
+      storageDeletions,
+      emails,
     });
   } catch {
     console.error('voice_cleanup_failed');

@@ -4,7 +4,7 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import VoiceNote from '../../../../models/VoiceNote';
-import { sendNotificationEmail } from '../../../../lib/mailer';
+import { enqueueNotificationEmail } from '../../../../lib/emailOutbox';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -647,7 +647,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid uploaded PDF.' }, { status: 400 });
     }
 
-    const finalized = await finalizeUploadReservation({
+    await finalizeUploadReservation({
       key: uploadedKey,
       ownerId: submissionStudentId,
       kind: 'pdf',
@@ -714,43 +714,41 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        return {
-          name: studentInTransaction.name,
-          supervisorId: String(project.supervisorId || studentInTransaction.supervisorId || ''),
-        };
+        const supervisorId = project.supervisorId || studentInTransaction.supervisorId;
+        const supervisor = supervisorId
+          ? await User.findOne({ _id: supervisorId, role: 'supervisor' })
+              .select('email notificationsEnabled')
+              .session(session)
+              .lean()
+          : null;
+        if (supervisor?.email && supervisor.notificationsEnabled !== false) {
+          await enqueueNotificationEmail({
+            dedupeKey: `project-submission:${project._id}:${uploadedKey}`,
+            to: supervisor.email,
+            subject: `New FYP Project Submitted: ${studentInTransaction.name}`,
+            html: `
+              <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
+                <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">
+                  <div style="background-color: #18181b; padding: 24px; text-align: center;">
+                    <h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1>
+                  </div>
+                  <div style="padding: 32px;">
+                    <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">New Project Submission</h2>
+                    <p style="color: #71717a; margin-bottom: 24px;">A new Final Year Project proposal has been submitted.</p>
+                    <div style="background-color: #f4f4f5; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+                      <p style="margin: 0 0 12px 0;"><strong>Submitted By:</strong> ${escapeHtml(studentInTransaction.name)}</p>
+                      <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${escapeHtml(normalizedDomainText)}</p>
+                      <p style="margin: 0;"><strong>Title:</strong> ${escapeHtml(title)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>`,
+          }, session);
+        }
+
+        return true;
       },
     });
-
-    const updatedStudent = finalized.finalizedNow
-      ? finalized.result
-      : await User.findById(submissionStudentId).select('name supervisorId').lean();
-
-    // Trigger Supervisor Email Notification (Kept identical to prevent UI changes)
-    if (updatedStudent && updatedStudent.supervisorId) {
-      const supervisor = await User.findById(updatedStudent.supervisorId);
-      if (supervisor && supervisor.email && supervisor.notificationsEnabled !== false) {
-        const subject = `New FYP Project Submitted: ${updatedStudent.name}`;
-        const htmlContent = `
-          <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
-            <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">
-              <div style="background-color: #18181b; padding: 24px; text-align: center;">
-                <h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1>
-              </div>
-              <div style="padding: 32px;">
-                <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">New Project Submission</h2>
-                <p style="color: #71717a; margin-bottom: 24px;">A new Final Year Project proposal has been submitted.</p>
-                <div style="background-color: #f4f4f5; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
-                  <p style="margin: 0 0 12px 0;"><strong>Submitted By:</strong> ${escapeHtml(updatedStudent.name)}</p>
-                  <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${escapeHtml(normalizedDomainText)}</p>
-                  <p style="margin: 0;"><strong>Title:</strong> ${escapeHtml(title)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
-        await sendNotificationEmail(supervisor.email, subject, htmlContent);
-      }
-    }
 
     return NextResponse.json({ message: 'Project Submitted!' }, { status: 200 });
   } catch (error) {

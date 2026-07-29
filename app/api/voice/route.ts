@@ -6,7 +6,6 @@ import { hasProjectAccess, requireCurrentUser } from '../../../lib/security/auth
 import { isOwnedVoiceKey } from '../../../lib/security/voice';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 import {
-  enqueueStorageDeletion,
   finalizeUploadReservation,
   StorageProtocolError,
 } from '../../../lib/storageProtocol';
@@ -28,37 +27,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Project not found or access denied.' }, { status: 403 });
     }
 
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
-        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-        const expiredNotes = await VoiceNote.find({
-          projectId,
-          isPlayed: true,
-          playedAt: { $lte: tenMinutesAgo },
-        }).session(session);
-
-        for (const note of expiredNotes) {
-          await enqueueStorageDeletion(
-            { key: note.blobUrl, bytes: Number(note.fileSize || 0), reason: 'played-voice-expired' },
-            session
-          );
-        }
-        if (expiredNotes.length > 0) {
-          await VoiceNote.deleteMany({ _id: { $in: expiredNotes.map((note) => note._id) } }).session(session);
-        }
-      });
-
-      const notes = await VoiceNote.find({ projectId })
-        .populate('senderId', 'name role')
-        .sort({ createdAt: 1 })
-        .lean();
-      return NextResponse.json({ notes });
-    } catch (error) {
-      throw error;
-    } finally {
-      await session.endSession();
-    }
+    const notes = await VoiceNote.find({ projectId })
+      .populate('senderId', 'name role')
+      .sort({ createdAt: 1 })
+      .lean();
+    return NextResponse.json({ notes });
   } catch {
     console.error('voice_fetch_failed');
     return NextResponse.json({ error: 'Failed to fetch notes' }, { status: 500 });

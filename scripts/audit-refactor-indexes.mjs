@@ -12,6 +12,8 @@ const expectedIndexes = {
   projects: [{ key: { status: 1, updatedAt: -1 } }, ...refactorIndexes.projects],
   voicenotes: refactorIndexes.voicenotes,
   users: refactorIndexes.users,
+  storagedeletionoutboxes: refactorIndexes.storagedeletionoutboxes,
+  emailoutboxes: refactorIndexes.emailoutboxes,
 };
 
 function indexKey(index) {

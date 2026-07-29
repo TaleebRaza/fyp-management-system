@@ -54,6 +54,20 @@ test('builds program, batch, and search student query parameters', () => {
   );
 });
 
+test('passes the next-page cursor without changing the page label contract', () => {
+  const params = api.buildAdminStudentSearchParams({
+    page: 2,
+    limit: 20,
+    studentFilter: 'All',
+    batchFilter: 'All',
+    search: '',
+    programCodes: ['BSCS'],
+    cursor: 'next-page-token',
+  });
+
+  assert.equal(params.toString(), 'page=2&limit=20&cursor=next-page-token');
+});
+
 test('loads students through the unchanged admin students endpoint', async () => {
   await withMockFetch(async (url, init) => {
     assert.equal(

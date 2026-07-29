@@ -63,6 +63,7 @@ export type AdminProjectReviewQueueResult = {
 
 const DEFAULT_PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 50;
+const MAX_PAGE = 1_000;
 
 function clampInteger(value: number | undefined, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
@@ -92,11 +93,11 @@ function buildUserSearchClauses(regex: RegExp) {
 export async function getAdminProjectReviewQueue(
   options: AdminProjectReviewQueueOptions = {}
 ): Promise<AdminProjectReviewQueueResult> {
-  const page = clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER);
+  const page = clampInteger(options.page, 1, 1, MAX_PAGE);
   const limit = clampInteger(options.limit, DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE);
   const search = String(options.search || '').trim();
   const program = String(options.program || '').trim();
-  const searchRegex = search ? new RegExp(escapeRegex(search), 'i') : null;
+  const searchRegex = search ? new RegExp(`^${escapeRegex(search)}`, 'i') : null;
 
   const filterLookupStarted = performance.now();
   const [programStudentIds, searchStudentIds, searchSupervisorIds] = await Promise.all([

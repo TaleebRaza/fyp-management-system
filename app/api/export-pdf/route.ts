@@ -1,32 +1,47 @@
 import { NextRequest } from 'next/server';
-import User from '../../../models/User';
 import ExcelJS from 'exceljs';
+
+import { EXPANDED_TEAM_SIZE } from '../../../lib/teamCapacity';
+import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 import { requireCurrentUser } from '../../../lib/security/auth';
+import User from '../../../models/User';
+
+function filenameSegment(value: string, fallback: string) {
+  const normalized = value
+    .trim()
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return normalized || fallback;
+}
 
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await requireCurrentUser(req, ['supervisor', 'admin']);
     if (!currentUser) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+
     const url = new URL(req.url);
     const supervisorId = currentUser.role === 'admin' ? url.searchParams.get('id') : currentUser.id;
-    const supervisorName = url.searchParams.get('name') || 'Supervisor';
-    const batchFilter = url.searchParams.get('batch') || 'All';
-    const programFilter = url.searchParams.get('program') || 'All';
+    const batchFilter = url.searchParams.get('batch')?.trim() || 'All';
+    const programFilter = url.searchParams.get('program')?.trim() || 'All';
 
     if (!supervisorId) {
       return new Response(JSON.stringify({ error: 'Supervisor ID is required' }), { status: 400 });
     }
 
-    // 1. Build the dynamic query based on the batch filter
+    const supervisor = await User.findOne({ _id: supervisorId, role: 'supervisor' })
+      .select('name extraSlots')
+      .lean();
+    if (!supervisor) {
+      return new Response(JSON.stringify({ error: 'Supervisor not found' }), { status: 404 });
+    }
+
+    const exportLimit = getSupervisorMaxSlots(supervisor) * EXPANDED_TEAM_SIZE;
     const query: Record<string, unknown> = {
       role: 'student',
-      $or: [
-        { supervisorId: supervisorId },
-        { supervisorId: supervisorId.toString() }
-      ]
+      $or: [{ supervisorId }, { supervisorId: String(supervisorId) }],
     };
 
-    // If the user didn't select "All", restrict the query to the selected dashboard filters.
     if (batchFilter !== 'All') {
       query.batch = batchFilter;
     }
@@ -35,18 +50,19 @@ export async function GET(req: NextRequest) {
       query.program = programFilter;
     }
 
-    const students = await User.find(query)
+    const studentRows = await User.find(query)
       .select('name rollNo program batch semester projectTitle tools projectDesc')
+      .sort({ rollNo: 1, _id: 1 })
+      .limit(exportLimit + 1)
       .lean();
+    const isTruncated = studentRows.length > exportLimit;
+    const students = studentRows.slice(0, exportLimit);
 
-    // 2. Create a new Excel Workbook and Worksheet
     const workbook = new ExcelJS.Workbook();
-    // Name the sheet dynamically based on the batch
     const selectedFilters = [programFilter, batchFilter].filter((value) => value !== 'All');
     const sheetName = selectedFilters.length === 0 ? 'All Assigned Students' : `${selectedFilters.join(' ')} Students`;
-    const worksheet = workbook.addWorksheet(sheetName.substring(0, 31)); // Excel limits sheet names to 31 chars
+    const worksheet = workbook.addWorksheet(sheetName.substring(0, 31));
 
-    // 3. Define the exact columns, now including Batch and Semester
     worksheet.columns = [
       { header: 'Name', key: 'name', width: 25 },
       { header: 'Roll No', key: 'rollNo', width: 18 },
@@ -55,36 +71,31 @@ export async function GET(req: NextRequest) {
       { header: 'Semester', key: 'semester', width: 15 },
       { header: 'Project Title', key: 'title', width: 40 },
       { header: 'Technologies', key: 'tools', width: 30 },
-      { header: 'Description', key: 'desc', width: 70 }
+      { header: 'Description', key: 'desc', width: 70 },
     ];
 
-    // Make the header row bold
     worksheet.getRow(1).font = { bold: true };
 
-    // 4. Add each student as a single row
-    if (students && students.length > 0) {
-      students.forEach((student) => {
-        worksheet.addRow({
-          name: student.name,
-          rollNo: student.rollNo,
-          program: student.program || 'N/A',
-          batch: student.batch || 'N/A',
-          semester: student.semester || '7th Semester',
-          title: student.projectTitle || 'N/A',
-          tools: student.tools || 'N/A',
-          desc: student.projectDesc || 'N/A'
-        });
+    for (const student of students) {
+      worksheet.addRow({
+        name: student.name,
+        rollNo: student.rollNo,
+        program: student.program || 'N/A',
+        batch: student.batch || 'N/A',
+        semester: student.semester || '7th Semester',
+        title: student.projectTitle || 'N/A',
+        tools: student.tools || 'N/A',
+        desc: student.projectDesc || 'N/A',
       });
     }
 
-    // 5. Generate the binary buffer
     const buffer = await workbook.xlsx.writeBuffer();
-
-    // 6. Return the file with proper Excel headers
-    const safeFilenameName = supervisorName.replace(/\s+/g, '-');
-    const safeBatchName = batchFilter.replace(/\s+/g, '-');
-    const safeProgramName = programFilter.replace(/\s+/g, '-');
-    const finalFilename = `fyp-report-${safeFilenameName}-${safeProgramName}-${safeBatchName}.xlsx`;
+    const finalFilename = [
+      'fyp-report',
+      filenameSegment(supervisor.name || 'supervisor', 'supervisor'),
+      filenameSegment(programFilter, 'all'),
+      filenameSegment(batchFilter, 'all'),
+    ].join('-') + '.xlsx';
 
     return new Response(buffer as BlobPart, {
       status: 200,
@@ -92,14 +103,15 @@ export async function GET(req: NextRequest) {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${finalFilename}"`,
         'Content-Length': buffer.byteLength.toString(),
+        'X-Export-Limit': String(exportLimit),
+        'X-Export-Truncated': String(isTruncated),
       },
     });
-
   } catch (error) {
     console.error('Excel export error:', error);
-    return new Response(JSON.stringify({ error: 'Failed to generate Excel report' }), { 
-      status: 500, 
-      headers: { 'Content-Type': 'application/json' } 
+    return new Response(JSON.stringify({ error: 'Failed to generate Excel report' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 }
