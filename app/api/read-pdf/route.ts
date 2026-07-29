@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { s3Client, BUCKET_NAME } from '../../../lib/s3-client';
+import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import { canAccessStoredObject, normalizeStorageKey } from '../../../lib/security/storage';
 
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Redirect the browser directly to the secure R2 stream (valid for 5 minutes)
-    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+    const signedUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 300 });
     
     // Strict Anti-Caching Headers to prevent the UI from displaying old PDFs
     return NextResponse.redirect(signedUrl, {

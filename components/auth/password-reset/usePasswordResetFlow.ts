@@ -52,10 +52,10 @@ export function usePasswordResetFlow({ showDialog, onBack }: UsePasswordResetFlo
     const normalizedRollNo = rollNo.trim();
     const normalizedTeammateRollNo = teammateRollNo.trim();
 
-    if (!normalizedRollNo || !supervisorId || !batch || !program) {
+    if (!normalizedRollNo) {
       showDialog({
         title: 'Account details required',
-        message: 'Enter your roll number and select your supervisor, batch, and program.',
+        message: 'Enter your student roll number or supervisor ID.',
       });
       return;
     }

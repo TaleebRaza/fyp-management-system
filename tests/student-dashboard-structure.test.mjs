@@ -15,14 +15,11 @@ test('installs the student dashboard API boundary', () => {
   );
 });
 
-test('routes student loading, templates, upload, and submission through the API module', () => {
+test('routes student loading, templates, upload, and submission through focused hooks', () => {
   for (const marker of [
-    'getStudentHeadline',
-    'getStudentDashboard',
-    'getStudentSupervisors',
-    'getStudentTemplates',
-    'uploadStudentPdf',
-    'submitStudentProject',
+    'useStudentDashboardData',
+    'useStudentTemplates',
+    'useStudentProjectSubmission',
   ]) {
     assert.match(dashboard, new RegExp(`\\b${marker}\\b`));
   }
@@ -33,11 +30,13 @@ test('routes student loading, templates, upload, and submission through the API 
   assert.doesNotMatch(dashboard, /tokenResponse/);
 });
 
-test('keeps the student team and account workflows connected for the next pass', () => {
+test('keeps the student team and account workflows composed from focused hooks', () => {
   for (const marker of [
-    'submitSupervisorRequest',
+    'useStudentSupervisorActions',
+    'useStudentTeamActions',
+    'useStudentAcademicUpdate',
     'handleJoinTeam',
-    'performLeaveTeam',
+    'handleLeaveTeam',
     'handleAcademicUpdate',
     'StudentOverviewSection',
     'StudentProjectSubmissionSection',

@@ -77,6 +77,7 @@ export type AvailableSupervisor = {
   name: string;
   filledSlots: number;
   maxSlots: number;
+  capacityReady?: boolean;
   isFull?: boolean;
 };
 

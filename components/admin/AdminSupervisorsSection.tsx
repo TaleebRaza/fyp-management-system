@@ -75,6 +75,7 @@ export default function AdminSupervisorsSection({
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-bold text-[var(--color-text)]">{supervisor.name}</h3>
                             <Badge variant="muted">{supervisor.rollNo || 'No ID'}</Badge>
+                            {supervisor.capacityReady === false ? <Badge variant="warning">Capacity reconciliation needed</Badge> : null}
                             {supervisor.isFull ? <Badge variant="danger">Full</Badge> : null}
                           </div>
                           <button type="button" onClick={() => onUpdateEmail(supervisor._id, supervisor.email || '', supervisor.name)} className="mt-1 break-all text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-accent)]">

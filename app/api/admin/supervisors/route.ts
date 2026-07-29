@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
-import Project from '../../../../models/Project';
-import { APP_SETTINGS } from '../../../../config/appSettings';
 import { getSupervisorExtraSlots, getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 
@@ -14,27 +12,12 @@ export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
     const supervisors = await User.find({ role: 'supervisor' })
-      .select('_id name email rollNo migrationCode notificationsEnabled extraSlots')
+      .select('_id name email rollNo +migrationCode notificationsEnabled extraSlots occupiedSlots')
       .lean();
-    const supervisorIds = supervisors.map((supervisor) => supervisor._id);
-    const counts = new Map<string, number>();
-
-    if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-      const rows = await User.aggregate([
-        { $match: { role: 'student', supervisorId: { $in: supervisorIds } } },
-        { $group: { _id: '$supervisorId', count: { $sum: 1 } } },
-      ]);
-      rows.forEach((row) => counts.set(row._id.toString(), row.count));
-    } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-      const rows = await Project.aggregate([
-        { $match: { supervisorId: { $in: supervisorIds } } },
-        { $group: { _id: '$supervisorId', count: { $sum: 1 } } },
-      ]);
-      rows.forEach((row) => counts.set(row._id.toString(), row.count));
-    }
 
     return NextResponse.json(supervisors.map((supervisor) => {
-      const filledSlots = counts.get(supervisor._id.toString()) || 0;
+      const capacityReady = Number.isInteger(supervisor.occupiedSlots) && supervisor.occupiedSlots >= 0;
+      const filledSlots = capacityReady ? supervisor.occupiedSlots : 0;
       const maxSlots = getSupervisorMaxSlots(supervisor);
 
       return {
@@ -46,7 +29,8 @@ export async function GET(req: NextRequest) {
         notificationsEnabled: supervisor.notificationsEnabled,
         extraSlots: getSupervisorExtraSlots(supervisor),
         filledSlots,
-        isFull: filledSlots >= maxSlots,
+        capacityReady,
+        isFull: !capacityReady || filledSlots >= maxSlots,
         maxSlots,
       };
     }));

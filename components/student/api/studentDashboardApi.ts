@@ -142,7 +142,7 @@ export async function submitStudentProject(
   const response = await fetch('/api/dashboard/student', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, action: 'submitProject' }),
   });
   const data = await readJson<StudentProjectSubmissionResponse>(response);
   if (!response.ok) {

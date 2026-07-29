@@ -5,6 +5,8 @@
 **Scope:** MongoDB/Mongoose, Cloudflare R2/S3, local/browser storage, the callers that amplify those operations, data integrity, security, and response latency.  
 **Status:** Audit and plan complete; implementation, database measurement, and production migration have not started.
 
+Note: Anything below here will never mess with database and storage. The database and storage are currently in use. We can not risk current data corruption.
+
 ## 1. Executive summary
 
 The portal cannot honestly guarantee end-to-end responses in microseconds. A microsecond is `0.001 ms`; crossing a process boundary, opening or borrowing a network connection, executing a MongoDB command, reaching R2, or sending SMTP mail normally costs milliseconds before meaningful application work begins. Cold serverless starts can cost much more. The correct goal is:

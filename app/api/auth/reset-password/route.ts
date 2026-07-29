@@ -6,8 +6,8 @@ export async function POST(req: Request) {
   try {
     const response = await completePasswordReset(await req.json());
     return NextResponse.json(response.body, { status: response.status });
-  } catch (error) {
-    console.error('Password reset error:', error instanceof Error ? error.message : error);
+  } catch {
+    console.error('password_reset_completion_failed');
     return NextResponse.json({ error: 'Failed to reset password.' }, { status: 500 });
   }
 }

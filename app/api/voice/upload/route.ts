@@ -3,16 +3,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
-import { s3Client, BUCKET_NAME, MAX_STORAGE_BYTES } from '../../../../lib/s3-client';
+import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from '../../../../lib/s3-client';
 import connectToDatabase from '../../../../lib/mongodb';
 import SystemConfig from '../../../../models/SystemConfig';
 import { hasProjectAccess, requireCurrentUser } from '../../../../lib/security/auth';
+import { consumeRateLimitDimensions } from '../../../../lib/rateLimit';
 
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await requireCurrentUser(req);
     if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const rateLimit = await consumeRateLimitDimensions('voice-upload', currentUser.id, req.headers, 30);
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: 'Too many upload requests. Please try again later.' }, { status: 429 });
     }
 
     await connectToDatabase();
@@ -30,7 +36,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Strict 1MB size limit for voice notes
-    if (fileSize > 1 * 1024 * 1024) {
+    if (!Number.isSafeInteger(Number(fileSize)) || Number(fileSize) <= 0 || Number(fileSize) > 1 * 1024 * 1024) {
       return NextResponse.json({ error: 'Voice note exceeds 1MB limit.' }, { status: 400 });
     }
 
@@ -57,14 +63,11 @@ export async function POST(req: NextRequest) {
     });
 
     // Generate a URL that self-destructs in 60 seconds
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
+    const uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
 
     return NextResponse.json({ uploadUrl, key });
-  } catch (error) {
-    console.error(
-      'Upload URL Generation Error:',
-      error instanceof Error ? error.message : 'Unknown error'
-    );
+  } catch {
+    console.error('voice_upload_url_failed');
     return NextResponse.json({ error: 'Failed to generate secure upload route' }, { status: 500 });
   }
 }

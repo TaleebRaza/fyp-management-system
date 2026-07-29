@@ -5,8 +5,6 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { withTransactionRetry } from '../../../../lib/transactionUtils';
-import { APP_SETTINGS } from '../../../../config/appSettings';
-import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -15,6 +13,7 @@ import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fin
 import { consumeRateLimit, refundRateLimit } from '../../../../lib/rateLimit';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { getTeamCapacity } from '../../../../lib/teamCapacity';
+import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
   if (!currentUser) {
@@ -100,29 +99,6 @@ export async function POST(req: NextRequest) {
               }, { status: 403 });
             }
 
-            // --- OPTIMIZATION: Absolute Capacity Firewall Check ---
-            if (firstMember.supervisorId) {
-              // Only block the join if we are counting by individual STUDENTS.
-              // If we are counting by PROJECT, this project already exists and is already counted.
-              // Adding a member to an existing project does not consume an extra project slot.
-              if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-                const supervisor = await User.findOne({ _id: firstMember.supervisorId, role: 'supervisor' })
-                  .select('_id extraSlots')
-                  .session(session);
-
-                const currentFilledSlots = await User.countDocuments({ 
-                  role: 'student', 
-                  supervisorId: firstMember.supervisorId 
-                }).session(session);
-                const maxSlots = getSupervisorMaxSlots(supervisor);
-                
-                if (currentFilledSlots >= maxSlots) {
-                  return NextResponse.json({ 
-                    error: `Capacity Firewall: The supervisor assigned to this team has reached their absolute student limit (${maxSlots} slots).` 
-                  }, { status: 409 });
-                }
-              }
-            }
           }
         }
 
@@ -173,6 +149,9 @@ export async function POST(req: NextRequest) {
           const oldProject = await Project.findById(student.projectId).session(session);
           if (oldProject) {
             if (oldProject.members.length === 1 && oldProject.members[0].toString() === studentId) {
+              if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
+                throw new Error('Unable to release previous supervisor capacity.');
+              }
               await Project.findByIdAndDelete(student.projectId, { session });
             } else {
               await Project.findByIdAndUpdate(student.projectId, {

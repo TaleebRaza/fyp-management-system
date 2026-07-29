@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:unit": "node tests/run-unit-tests.mjs",
+    "capacity:reconcile": "node scripts/reconcile-supervisor-capacity.mjs",
+    "capacity:repair": "node scripts/reconcile-supervisor-capacity.mjs --repair",
     "verify:refactor": "npm run lint && npm run test:unit && npm run build",
     "test": "npm run test:unit"
   },

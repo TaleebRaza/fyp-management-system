@@ -1,4 +1,7 @@
 import RateLimit from '../models/RateLimit';
+import { createHash } from 'node:crypto';
+
+type HeaderSource = Pick<Headers, 'get'>;
 
 type RateLimitResult = {
   allowed: boolean;
@@ -9,6 +12,16 @@ type RateLimitResult = {
 
 function normalizeRateLimitIdentifier(identifier: string) {
   return identifier.trim().toLowerCase();
+}
+
+export function hashRateLimitIdentifier(identifier: string) {
+  return createHash('sha256').update(normalizeRateLimitIdentifier(identifier)).digest('hex');
+}
+
+export function getTrustedClientIp(headers: HeaderSource) {
+  return headers.get('x-vercel-forwarded-for')
+    || headers.get('x-real-ip')
+    || 'unknown';
 }
 
 export async function consumeRateLimit(identifier: string, maxRequests: number): Promise<RateLimitResult> {
@@ -59,4 +72,24 @@ export async function refundRateLimit(identifier: string) {
       $inc: { count: -1 },
     }
   );
+}
+
+export async function consumeRateLimitDimensions(
+  scope: string,
+  accountIdentifier: string,
+  headers: HeaderSource,
+  maxRequests: number
+) {
+  const accountKey = `${scope}:account:${hashRateLimitIdentifier(accountIdentifier)}`;
+  const ipKey = `${scope}:ip:${hashRateLimitIdentifier(getTrustedClientIp(headers))}`;
+  const [account, ip] = await Promise.all([
+    consumeRateLimit(accountKey, maxRequests),
+    consumeRateLimit(ipKey, maxRequests),
+  ]);
+
+  return {
+    allowed: account.allowed && ip.allowed,
+    account,
+    ip,
+  };
 }

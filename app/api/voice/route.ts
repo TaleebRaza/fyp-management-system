@@ -7,6 +7,7 @@ import SystemConfig from '../../../models/SystemConfig';
 import VoiceNote from '../../../models/VoiceNote';
 import { hasProjectAccess, requireCurrentUser } from '../../../lib/security/auth';
 import { isOwnedVoiceKey } from '../../../lib/security/voice';
+import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,8 +68,8 @@ export async function GET(req: NextRequest) {
       session.endSession();
       throw error;
     }
-  } catch (error) {
-    console.error('Voice Fetch Error:', error);
+  } catch {
+    console.error('voice_fetch_failed');
     return NextResponse.json({ error: 'Failed to fetch notes' }, { status: 500 });
   }
 }
@@ -76,6 +77,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req);
   if (!currentUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rateLimit = await consumeRateLimitDimensions('voice-finalize', currentUser.id, req.headers, 30);
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: 'Too many voice finalization attempts. Please try again later.' }, { status: 429 });
+  }
 
   try {
     const { projectId, blobUrl } = await req.json();
@@ -109,8 +115,8 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({ message: 'Voice note saved', note }, { status: 201 });
-  } catch (error) {
-    console.error('Voice POST Error:', error);
+  } catch {
+    console.error('voice_finalize_failed');
     return NextResponse.json({ error: 'Failed to save note' }, { status: 500 });
   }
 }
@@ -137,8 +143,8 @@ export async function PATCH(req: NextRequest) {
       { new: true }
     );
     return NextResponse.json({ message: 'Note marked as played', note: updatedNote });
-  } catch (error) {
-    console.error('Voice PATCH Error:', error);
+  } catch {
+    console.error('voice_mark_played_failed');
     return NextResponse.json({ error: 'Failed to update note' }, { status: 500 });
   }
 }

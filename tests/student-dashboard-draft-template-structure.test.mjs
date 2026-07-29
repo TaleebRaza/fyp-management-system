@@ -15,13 +15,17 @@ const templateHook = await readFile(
   new URL('../components/student/hooks/useStudentTemplates.ts', import.meta.url),
   'utf8'
 );
+const dataHook = await readFile(
+  new URL('../components/student/hooks/useStudentDashboardData.ts', import.meta.url),
+  'utf8'
+);
 
 test('student dashboard delegates draft and template workflows', () => {
   assert.match(dashboard, /useStudentProjectDraft\(currentUserId\)/);
   assert.match(dashboard, /useStudentTemplates\(\{/);
-  assert.match(dashboard, /await restoreProjectDraft\(serverProjectDraft\)/);
-  assert.match(dashboard, /await resetProjectDraft\(\)/);
-  assert.match(dashboard, /resetTemplates\(\)/);
+  assert.match(dashboard, /resetProjectDraft,/);
+  assert.match(dashboard, /resetTemplates,/);
+  assert.match(dataHook, /await restoreProjectDraft\(serverDraft\)/);
   assert.doesNotMatch(dashboard, /readBrowserDraft|writeBrowserDraft/);
   assert.doesNotMatch(dashboard, /new DOMParser|document\.execCommand\('copy'\)/);
 });

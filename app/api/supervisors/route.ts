@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
-import Project from '../../../models/Project'; 
-import { APP_SETTINGS } from '../../../config/appSettings';
 import { getSupervisorExtraSlots, getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 
 export async function GET() {
@@ -11,7 +9,7 @@ export async function GET() {
     
     // This route is used before sign-in, so its response must stay public-safe.
     const supervisors = await User.find({ role: 'supervisor' })
-      .select('_id name extraSlots')
+      .select('_id name extraSlots occupiedSlots')
       .lean();
     
     // If no supervisors exist, return early to save processing time
@@ -19,34 +17,10 @@ export async function GET() {
       return NextResponse.json([], { status: 200 });
     }
 
-    // Extract supervisor IDs so we only count data for these specific users
-    const supervisorIds = supervisors.map(sup => sup._id);
-    const countsMap = new Map(); // Using a Map for O(1) lightning-fast lookups
-
-    // 2. Perform ONE bulk aggregation instead of N individual count queries (Query 2)
-    if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-      const studentCounts = await User.aggregate([
-        { $match: { role: 'student', supervisorId: { $in: supervisorIds } } },
-        { $group: { _id: '$supervisorId', count: { $sum: 1 } } }
-      ]);
-      
-      // Store the bulk results in our map
-      studentCounts.forEach(item => countsMap.set(item._id.toString(), item.count));
-      
-    } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-      const projectCounts = await Project.aggregate([
-        { $match: { supervisorId: { $in: supervisorIds } } },
-        { $group: { _id: '$supervisorId', count: { $sum: 1 } } }
-      ]);
-      
-      // Store the bulk results in our map
-      projectCounts.forEach(item => countsMap.set(item._id.toString(), item.count));
-    }
-
-    // 3. Attach the capacity metadata in memory (Zero database calls inside this loop)
+    // Capacity counters are backfilled explicitly before a supervisor can accept assignments.
     const supervisorsWithSlots = supervisors.map(sup => {
-      // Pull the pre-calculated count from our map, default to 0 if not found
-      const filledSlots = countsMap.get(sup._id.toString()) || 0;
+      const capacityReady = Number.isInteger(sup.occupiedSlots) && sup.occupiedSlots >= 0;
+      const filledSlots = capacityReady ? sup.occupiedSlots : 0;
       const extraSlots = getSupervisorExtraSlots(sup);
       const maxSlots = getSupervisorMaxSlots(sup);
 
@@ -55,7 +29,8 @@ export async function GET() {
         name: sup.name,
         extraSlots,
         filledSlots,
-        isFull: filledSlots >= maxSlots,
+        capacityReady,
+        isFull: !capacityReady || filledSlots >= maxSlots,
         maxSlots
       };
     });

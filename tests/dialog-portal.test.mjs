@@ -4,7 +4,7 @@ import test from 'node:test';
 
 test('shared dialogs render at the document root', async () => {
   const source = await readFile(
-    new URL('../components/ui/SharedUI.tsx', import.meta.url),
+    new URL('../components/ui/feedback/Dialog.tsx', import.meta.url),
     'utf8'
   );
 

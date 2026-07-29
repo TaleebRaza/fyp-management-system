@@ -3,10 +3,10 @@ import { normalizeRollNo } from '../lib/rollNo';
 import { normalizeExtraSupervisorSlots } from '../lib/supervisorSlots';
 
 const UserSchema = new Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: false, unique: true, sparse: true, trim: true, lowercase: true },
-  rollNo: { type: String, required: true, unique: true, set: normalizeRollNo },
-  password: { type: String, required: true },
+  name: { type: String, required: true, trim: true, maxlength: 100 },
+  email: { type: String, required: false, unique: true, sparse: true, trim: true, lowercase: true, maxlength: 254 },
+  rollNo: { type: String, required: true, unique: true, set: normalizeRollNo, maxlength: 40 },
+  password: { type: String, required: true, select: false },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
   
   program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS'], required: false },
@@ -20,7 +20,7 @@ const UserSchema = new Schema({
   projectTitle: { type: String, default: '' },
   pdfUrl: { type: String, default: '' },
   
-  migrationCode: { type: String, required: false },
+  migrationCode: { type: String, required: false, trim: true, maxlength: 32, select: false },
   projectDesc: { type: String, required: false },
   // Legacy display string retained while existing routes and exports are upgraded.
   domain: { type: String, default: '' },
@@ -35,13 +35,15 @@ const UserSchema = new Schema({
     max: 10,
     set: normalizeExtraSupervisorSlots,
   },
+  // Written only after the explicit capacity reconciliation/backfill has verified it.
+  occupiedSlots: { type: Number, default: 0, min: 0 },
   isActive: { type: Boolean, default: true }, 
   
   monthlyLoginCount: { type: Number, default: 0 },
   lastLoginMonth: { type: String, default: '' },
   
-  resetCode: { type: String, required: false },
-  resetCodeExpiry: { type: Date, required: false },
+  resetCode: { type: String, required: false, select: false },
+  resetCodeExpiry: { type: Date, required: false, select: false },
   lastPasswordChange: { type: Date, required: false },
 
   // Limits student Program/Batch self-editing to once per 24 hours.

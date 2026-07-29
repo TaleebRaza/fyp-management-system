@@ -18,6 +18,7 @@ export type AdminSupervisor = {
   rollNo?: string;
   migrationCode?: string;
   filledSlots?: number;
+  capacityReady?: boolean;
   extraSlots?: number;
   maxSlots?: number;
   isFull?: boolean;

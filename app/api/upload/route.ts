@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
-import { s3Client, BUCKET_NAME, MAX_STORAGE_BYTES } from '../../../lib/s3-client';
+import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from '../../../lib/s3-client';
 import connectToDatabase from '../../../lib/mongodb';
 import SystemConfig from '../../../models/SystemConfig';
 import User from '../../../models/User';
@@ -12,6 +12,7 @@ import {
   getTeamFineRestrictionMessage,
 } from '../../../lib/teamFineRestriction';
 import { requireCurrentUser } from '../../../lib/security/auth';
+import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
@@ -23,6 +24,11 @@ export async function POST(req: NextRequest) {
         { error: 'Unauthorized: Authentication token missing or invalid.' },
         { status: 401 }
       );
+    }
+
+    const rateLimit = await consumeRateLimitDimensions('pdf-upload', currentUser.id, req.headers, 20);
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: 'Too many upload requests. Please try again later.' }, { status: 429 });
     }
 
     await connectToDatabase();
@@ -58,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { filename, contentType, fileSize } = await req.json();
-    if (!Number.isFinite(Number(fileSize)) || Number(fileSize) <= 0) {
+    if (!Number.isSafeInteger(Number(fileSize)) || Number(fileSize) <= 0) {
       return NextResponse.json({ error: 'A valid file size is required.' }, { status: 400 });
     }
     if (Number(fileSize) > MAX_FILE_SIZE) {
@@ -71,6 +77,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (String(filename || '').length > 120) {
+      return NextResponse.json({ error: 'Filename is too long.' }, { status: 400 });
+    }
     const sanitizedCleanName =
       String(filename || 'document.pdf').replace(/[^a-zA-Z0-9.-]/g, '_') || 'document.pdf';
     const key = `proposals/${currentUser.id}/${crypto.randomUUID()}-${sanitizedCleanName}`;
@@ -79,10 +88,10 @@ export async function POST(req: NextRequest) {
       Key: key,
       ContentType: contentType,
     });
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 });
+    const uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 120 });
     return NextResponse.json({ uploadUrl, url: key });
-  } catch (error) {
-    console.error('Client Upload Token Generation Handshake Error:', error instanceof Error ? error.message : error);
+  } catch {
+    console.error('pdf_upload_url_failed');
     return NextResponse.json(
       { error: 'Server token generation routing aborted.' },
       { status: 500 }

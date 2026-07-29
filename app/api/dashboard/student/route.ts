@@ -5,8 +5,7 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import VoiceNote from '../../../../models/VoiceNote';
 import { sendNotificationEmail } from '../../../../lib/mailer';
-import { APP_SETTINGS, PROGRAM_MAP } from '../../../../config/appSettings';
-import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
+import { PROGRAM_MAP } from '../../../../config/appSettings';
 import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../../../../lib/s3-client';
 import SystemConfig from '../../../../models/SystemConfig';
@@ -24,7 +23,12 @@ import {
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
-import { escapeHtml } from '../../../../lib/security/input';
+import { escapeHtml, isRecord, normalizeText } from '../../../../lib/security/input';
+import {
+  capacityReservationError,
+  releaseSupervisorProjectSlot,
+  reserveSupervisorProjectSlot,
+} from '../../../../lib/supervisorCapacity';
 
 export const dynamic = 'force-dynamic';
 
@@ -253,12 +257,19 @@ export async function POST(req: NextRequest) {
     }
 
     await connectToDatabase();
-    const body = await req.json();
+    const body: unknown = await req.json();
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: 'Invalid student action.' }, { status: 400 });
+    }
+    const action = body.action;
+    if (!['updateProgramBatch', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
+      return NextResponse.json({ error: 'Unknown student action.' }, { status: 400 });
+    }
 
         // ==========================================
     // ACTION: STUDENT PROGRAM/BATCH SELF UPDATE
     // ==========================================
-    if (body.action === 'updateProgramBatch') {
+    if (action === 'updateProgramBatch') {
       if (String(currentUser.id) !== String(body.id)) {
         return NextResponse.json({ error: 'Unauthorized Program/Batch update request.' }, { status: 401 });
       }
@@ -353,6 +364,9 @@ export async function POST(req: NextRequest) {
               }).session(session);
             }
 
+            if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
+              throw new Error('Unable to release the previous supervisor capacity.');
+            }
             await Project.findByIdAndDelete(oldProject._id, { session });
           } else {
             await Project.findByIdAndUpdate(
@@ -417,7 +431,7 @@ export async function POST(req: NextRequest) {
     // ==========================================
     // ACTION: CHANGE SUPERVISOR (student starts fresh)
     // ==========================================
-    if (body.action === 'changeSupervisor') {
+    if (action === 'changeSupervisor') {
       if (String(currentUser.id) !== String(body.id)) {
         return NextResponse.json({ error: 'Unauthorized supervisor change request.' }, { status: 401 });
       }
@@ -455,7 +469,7 @@ export async function POST(req: NextRequest) {
           _id: newSupervisorId,
           role: 'supervisor',
         })
-          .select('_id name extraSlots')
+          .select('_id name')
           .session(session);
 
         if (!targetSupervisor) {
@@ -464,29 +478,11 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
         }
 
-        let filledSlots = 0;
-
-        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-          filledSlots = await User.countDocuments({
-            role: 'student',
-            supervisorId: targetSupervisor._id,
-          }).session(session);
-        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-          filledSlots = await Project.countDocuments({
-            supervisorId: targetSupervisor._id,
-          }).session(session);
-        }
-
-        const maxSlots = getSupervisorMaxSlots(targetSupervisor);
-
-        if (filledSlots >= maxSlots) {
+        const reservation = await reserveSupervisorProjectSlot(targetSupervisor._id, session);
+        if (reservation !== 'reserved') {
           await session.abortTransaction();
           session.endSession();
-
-          return NextResponse.json(
-            { error: `Cannot change supervisor. The selected supervisor is full (${maxSlots} slots).` },
-            { status: 409 }
-          );
+          return NextResponse.json({ error: capacityReservationError(reservation) }, { status: reservation === 'missing' ? 404 : 409 });
         }
 
         const oldProject = student.projectId
@@ -535,6 +531,9 @@ export async function POST(req: NextRequest) {
               }).session(session);
             }
 
+            if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
+              throw new Error('Unable to release the previous supervisor capacity.');
+            }
             await Project.findByIdAndDelete(oldProject._id, { session });
           } else {
             leftTeam = true;
@@ -616,7 +615,7 @@ export async function POST(req: NextRequest) {
     // ==========================================
     // ACTION: ASSIGN SUPERVISOR (Transaction Lock)
     // ==========================================
-    if (body.action === 'assignSupervisor') {
+    if (action === 'assignSupervisor') {
       if (String(currentUser.id) !== String(body.id)) {
         return NextResponse.json({ error: 'Unauthorized supervisor assignment request.' }, { status: 401 });
       }
@@ -647,7 +646,7 @@ export async function POST(req: NextRequest) {
         }
 
         const supervisor = await User.findOne({ _id: body.supervisorId, role: 'supervisor' })
-          .select('_id extraSlots')
+          .select('_id')
           .session(session);
 
         if (!supervisor) {
@@ -656,27 +655,14 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
         }
 
-        let filledSlots = 0;
-        // 2. Count current slots WITH the session lock
-        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-          filledSlots = await User.countDocuments({ role: 'student', supervisorId: body.supervisorId }).session(session);
-        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-          filledSlots = await Project.countDocuments({ supervisorId: body.supervisorId }).session(session);
-        }
-
-        const maxSlots = getSupervisorMaxSlots(supervisor);
-
-        // 3. Strict Capacity Enforcement
-        if (filledSlots >= maxSlots) {
+        const reservation = await reserveSupervisorProjectSlot(supervisor._id, session);
+        if (reservation !== 'reserved') {
           await session.abortTransaction();
           session.endSession();
-          return NextResponse.json(
-            { error: `Cannot assign. The selected supervisor has reached maximum capacity (${maxSlots} slots).` }, 
-            { status: 409 } // 409 Conflict is the correct HTTP status for a race condition rejection
-          );
+          return NextResponse.json({ error: capacityReservationError(reservation) }, { status: reservation === 'missing' ? 404 : 409 });
         }
 
-        const supObjectId = new mongoose.Types.ObjectId(body.supervisorId);
+        const supObjectId = new mongoose.Types.ObjectId(supervisor._id);
 
         // 4. Update Project and Team Members inside the locked session
         if (triggeringStudent.projectId) {
@@ -739,6 +725,14 @@ export async function POST(req: NextRequest) {
     });
     if (!triggeringStudent) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
+
+    const title = normalizeText(body.title, 200);
+    const description = normalizeText(body.desc, 2_000);
+    const tools = normalizeText(body.tools, 1_000);
+    const pdfUrl = typeof body.pdfUrl === 'string' ? body.pdfUrl.trim() : '';
+    if (!title || !description || !tools || !pdfUrl) {
+      return NextResponse.json({ error: 'Title, description, tools, and a PDF are required.' }, { status: 400 });
     }
 
     const submissionFineRestriction = buildFineRestriction(triggeringStudent);
@@ -809,7 +803,7 @@ export async function POST(req: NextRequest) {
     );
 
     // --- NEW: Dynamic Title Deduplication Engine ---
-    const fingerprint = generateFingerprint(body.title);
+    const fingerprint = generateFingerprint(title);
     
     if (triggeringStudent.projectId) {
       const duplicateProject = await Project.findOne({
@@ -832,11 +826,11 @@ export async function POST(req: NextRequest) {
     // Use storage metadata, not browser metadata, for a newly supplied PDF.
     const oldPdfUrl = triggeringStudent.pdfUrl;
     let sizeDelta = 0;
-    const isNewPdf = Boolean(body.pdfUrl && body.pdfUrl !== oldPdfUrl);
+    const isNewPdf = pdfUrl !== oldPdfUrl;
     let uploadedPdfSize = 0;
 
     if (isNewPdf) {
-      const uploadedKey = getR2ObjectKey(String(body.pdfUrl));
+      const uploadedKey = getR2ObjectKey(pdfUrl);
       if (!uploadedKey.startsWith(`proposals/${submissionStudentId}/`)) {
         return NextResponse.json({ error: 'Invalid uploaded PDF.' }, { status: 400 });
       }
@@ -861,7 +855,7 @@ export async function POST(req: NextRequest) {
       targetProject = await Project.findById(triggeringStudent.projectId);
     }
     
-    if (oldPdfUrl && body.pdfUrl && oldPdfUrl !== body.pdfUrl) {
+    if (oldPdfUrl && oldPdfUrl !== pdfUrl) {
       try {
         let keyToDelete = oldPdfUrl;
         if (keyToDelete.includes('.com/')) keyToDelete = keyToDelete.split('.com/')[1];
@@ -888,12 +882,12 @@ export async function POST(req: NextRequest) {
     }
 
     const submissionData = {  
-      projectTitle: body.title,
-      projectDesc: body.desc,
+      projectTitle: title,
+      projectDesc: description,
       domain: normalizedDomainText,
       domains: selectedDomainIds,
-      tools: body.tools,
-      pdfUrl: body.pdfUrl,
+      tools,
+      pdfUrl,
       status: 'Submitted For Review'
     };
 
@@ -902,11 +896,11 @@ export async function POST(req: NextRequest) {
     if (triggeringStudent.projectId) {
       // Prepare dynamic payload: only update pdfSize if a new file was actually sent
       const projectUpdates: Record<string, unknown> = {
-        title: body.title,
+        title,
         titleFingerprint: fingerprint,
         domain: normalizedDomainText,
         domains: selectedDomainIds,
-        pdfUrl: body.pdfUrl,
+        pdfUrl,
         status: 'Submitted For Review',
       };
       if (isNewPdf) projectUpdates.pdfSize = uploadedPdfSize;
@@ -941,7 +935,7 @@ export async function POST(req: NextRequest) {
                 <div style="background-color: #f4f4f5; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
                   <p style="margin: 0 0 12px 0;"><strong>Submitted By:</strong> ${escapeHtml(updatedStudent.name)}</p>
                   <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${escapeHtml(normalizedDomainText)}</p>
-                  <p style="margin: 0;"><strong>Title:</strong> ${escapeHtml(body.title)}</p>
+                  <p style="margin: 0;"><strong>Title:</strong> ${escapeHtml(title)}</p>
                 </div>
               </div>
             </div>

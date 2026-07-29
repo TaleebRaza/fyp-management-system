@@ -8,6 +8,10 @@ type SendMailOptions = {
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'FYP Portal';
 const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || process.env.EMAIL_USER;
 
+export function isEmailConfigured() {
+  return Boolean(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD);
+}
+
 // Create a reusable transporter object using the default SMTP transport.
 // Keep this Gmail-based so the portal still works on the current free setup.
 const transporter = nodemailer.createTransport({
@@ -40,7 +44,7 @@ export const sendNotificationEmail = async (
   textContent?: string,
   options: SendMailOptions = {}
 ) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
+  if (!isEmailConfigured()) {
     console.warn('Email credentials missing in environment. Email dispatch aborted.');
     return false;
   }
@@ -70,10 +74,11 @@ export const sendNotificationEmail = async (
       },
     });
 
-    console.log('Email accepted by Gmail SMTP:', info.messageId);
+    void info;
+    console.info('email_dispatched');
     return true;
-  } catch (error) {
-    console.error('Email send error:', error);
+  } catch {
+    console.error('email_dispatch_failed');
     return false;
   }
 };

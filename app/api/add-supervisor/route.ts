@@ -1,53 +1,58 @@
-import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+import { NextRequest, NextResponse } from 'next/server';
+
 import connectToDatabase from '../../../lib/mongodb';
-import User from '../../../models/User';
-import bcrypt from 'bcryptjs'; // NEW: Import secure hashing library
+import { normalizeRollNo } from '../../../lib/rollNo';
+import { requireCurrentUser } from '../../../lib/security/auth';
+import { isRecord, normalizeText } from '../../../lib/security/input';
 import { validatePassword } from '../../../lib/security/password';
+import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
+import User from '../../../models/User';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  if (!await requireCurrentUser(req, ['admin'])) {
+    return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
+  }
+
   try {
-    const { name, email, rollNo, password, migrationCode } = await req.json();
+    const body: unknown = await req.json();
+    if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor request.' }, { status: 400 });
 
-    // 1. Basic validation to prevent empty payloads reaching the database
-    if (!name || !email || !rollNo || !password) {
-      return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
+    const name = normalizeText(body.name, 100);
+    const email = normalizeEmailAddress(body.email);
+    const rollNo = normalizeRollNo(body.rollNo);
+    const password = typeof body.password === 'string' ? body.password : '';
+    const migrationCode = normalizeText(body.migrationCode, 32).toUpperCase();
+
+    if (!name || !email || !rollNo || !password || !migrationCode) {
+      return NextResponse.json({ error: 'Name, email, roll number, password, and migration code are required.' }, { status: 400 });
     }
-    if (!validatePassword(String(password))) {
+    if (rollNo.length > 40 || !isValidEmailAddress(email) || !/^[A-Z0-9-]+$/.test(migrationCode)) {
+      return NextResponse.json({ error: 'Enter valid supervisor details.' }, { status: 400 });
+    }
+    if (!validatePassword(password)) {
       return NextResponse.json({ error: 'Password must be 10 to 128 characters.' }, { status: 400 });
     }
 
     await connectToDatabase();
-    
-    // 2. Hash the password before it ever touches the database
-    // Using 10 salt rounds provides a strong balance between security and performance
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // 3. We skip the slow `findOne` query to prevent race conditions and save DB reads.
-    // MongoDB will handle uniqueness atomically via indexes.
-    const newSupervisor = new User({
+    await new User({
       name,
-      email, 
+      email,
       rollNo,
-      password: hashedPassword, // SECURE: Save the hashed version, not the plaintext
+      password: await bcrypt.hash(password, 10),
       role: 'supervisor',
       migrationCode,
-      notificationsEnabled: true
-    });
-    
-    // 4. Attempt to save directly
-    await newSupervisor.save();
-    
-    return NextResponse.json({ message: 'Supervisor added successfully!' }, { status: 201 });
-    
+      notificationsEnabled: true,
+      occupiedSlots: 0,
+    }).save();
+
+    return NextResponse.json({ message: 'Supervisor added successfully.' }, { status: 201 });
   } catch (error) {
-    // 5. Catch the atomic MongoDB Duplicate Key Error (E11000)
-    // This perfectly handles race conditions if two requests hit at the exact same time.
     if ((error as { code?: unknown }).code === 11000) {
-      return NextResponse.json({ error: 'This Username/ID or Email already exists!' }, { status: 400 });
+      return NextResponse.json({ error: 'This roll number, email, or migration code already exists.' }, { status: 400 });
     }
-    
-    // Log the actual error for debugging, but hide it from the client
-    console.error("API Error [add-supervisor]:", error instanceof Error ? error.message : error);
+
+    console.error('add_supervisor_failed');
     return NextResponse.json({ error: 'Failed to add supervisor.' }, { status: 500 });
   }
 }

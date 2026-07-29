@@ -49,10 +49,7 @@ export async function verifyPasswordResetDetails(
 
   return {
     ok: true,
-    message: readMessage(
-      body.message,
-      'Your account details were verified. Choose a new password.'
-    ),
+    message: readMessage(body.message, 'Your account details were verified. Choose a new password.'),
     resetToken: body.resetToken,
   };
 }

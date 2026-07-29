@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +21,8 @@ export async function POST(req: NextRequest) {
     const { targetUserId, newEmail } = await req.json();
     const cleanedEmail = String(newEmail || '').trim().toLowerCase();
 
-    if (!targetUserId) {
-      return NextResponse.json({ error: 'Student or supervisor ID is required.' }, { status: 400 });
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return NextResponse.json({ error: 'A valid student or supervisor ID is required.' }, { status: 400 });
     }
 
     if (!cleanedEmail || !isValidEmail(cleanedEmail)) {
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const updatedUser = await User.findByIdAndUpdate(
-      targetUserId,
+      { _id: targetUserId, role: { $in: ['student', 'supervisor'] } },
       { $set: { email: cleanedEmail } },
       { new: true, runValidators: true }
     )
@@ -61,8 +62,8 @@ export async function POST(req: NextRequest) {
         },
       }
     );
-  } catch (error) {
-    console.error('Update Email Error:', error);
+  } catch {
+    console.error('update_email_failed');
     return NextResponse.json({ error: 'Failed to update email.' }, { status: 500 });
   }
 }

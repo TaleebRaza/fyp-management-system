@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -7,8 +7,7 @@ import User from '../../../models/User';
 import Project from '../../../models/Project';
 import { buildRollNoRegex, normalizeRollNo } from '../../../lib/rollNo';
 import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
-import { APP_SETTINGS, PROGRAM_MAP } from '../../../config/appSettings';
-import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
+import { PROGRAM_MAP } from '../../../config/appSettings';
 import { calculateLateRegistrationFine } from '../../../lib/lateRegistrationFine';
 import RegistrationPolicy from '../../../models/RegistrationPolicy';
 import {
@@ -20,8 +19,13 @@ import {
 import { validatePassword } from '../../../lib/security/password';
 import { createInviteCode } from '../../../lib/security/inviteCode';
 import { normalizeText } from '../../../lib/security/input';
+import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
+import {
+  capacityReservationError,
+  reserveSupervisorProjectSlot,
+} from '../../../lib/supervisorCapacity';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
     const normalizedName = normalizeText(name, 100);
@@ -47,7 +51,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid program selected.' }, { status: 400 });
     }
 
-      await connectToDatabase();
+    await connectToDatabase();
+    const rateLimit = await consumeRateLimitDimensions(
+      'registration',
+      `${normalizedRollNo}:${normalizedEmail}`,
+      req.headers,
+      5
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: 'Too many registration attempts. Please try again in an hour.' }, { status: 429 });
+    }
 
   // The client-side lock is only informational. This server check is authoritative.
   const currentPolicyDocument = await getOrCreateRegistrationPolicy();
@@ -83,33 +96,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'This student is already registered.' }, { status: 400 });
     }
 
-    if (supervisorId) {
-      if (!mongoose.Types.ObjectId.isValid(supervisorId)) {
-        return NextResponse.json({ error: 'Invalid supervisor selected.' }, { status: 400 });
-      }
-
-      const supervisor = await User.findOne({ _id: supervisorId, role: 'supervisor' })
-        .select('_id extraSlots')
-        .lean();
-
-      if (!supervisor) {
-        return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
-      }
-
-      let filledSlots = 0;
-      if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-        filledSlots = await User.countDocuments({ role: 'student', supervisorId });
-      } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-        filledSlots = await Project.countDocuments({ supervisorId });
-      }
-
-      const maxSlots = getSupervisorMaxSlots(supervisor);
-      if (filledSlots >= maxSlots) {
-        return NextResponse.json(
-          { error: `Registration failed. The selected supervisor has reached maximum capacity (${maxSlots} slots).` },
-          { status: 409 }
-        );
-      }
+    if (supervisorId && !mongoose.Types.ObjectId.isValid(supervisorId)) {
+      return NextResponse.json({ error: 'Invalid supervisor selected.' }, { status: 400 });
     }
 
     const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
@@ -139,6 +127,15 @@ export async function POST(req: Request) {
         transactionPolicy.lateFineAccrual
       );
     const registrationPunishment = buildRegistrationPunishmentSnapshot(transactionPolicy);
+
+    if (supervisorId) {
+      const reservation = await reserveSupervisorProjectSlot(supervisorId, session);
+      if (reservation !== 'reserved') {
+        throw Object.assign(new Error(capacityReservationError(reservation)), {
+          code: `CAPACITY_${reservation.toUpperCase()}`,
+        });
+      }
+    }
 
     const newStudent = new User({
         name: normalizedName,
@@ -200,6 +197,12 @@ export async function POST(req: Request) {
     }
     if (errorCode === 11000) {
       return NextResponse.json({ error: 'This roll number or email is already registered.' }, { status: 400 });
+    }
+    if (typeof errorCode === 'string' && errorCode.startsWith('CAPACITY_')) {
+      return NextResponse.json(
+        { error: (transactionError as Error).message },
+        { status: errorCode === 'CAPACITY_MISSING' ? 404 : 409 }
+      );
     }
 
       throw transactionError;

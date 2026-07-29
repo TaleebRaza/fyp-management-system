@@ -33,7 +33,7 @@ export default function PasswordResetFlow({
         </div>
         <p className="mt-4 text-sm leading-6 text-[var(--color-text-muted)]">
           {flow.step === 'verify'
-            ? 'Verify the academic details already recorded on your account.'
+            ? 'Students verify their academic details. Supervisors enter their private ID.'
             : 'Your account details are verified. Choose a new password.'}
         </p>
       </div>

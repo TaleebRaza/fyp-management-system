@@ -7,7 +7,7 @@ const RateLimitSchema = new Schema({
     type: String, 
     required: true, 
     unique: true,
-    index: true // Indexed for lightning-fast lookups during traffic spikes
+    maxlength: 160,
   },
   // Tracks how many requests have been made within the window
   count: { 

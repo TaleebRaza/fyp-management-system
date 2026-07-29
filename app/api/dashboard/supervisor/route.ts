@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import { APP_SETTINGS } from '../../../../config/appSettings';
-import { getSupervisorMaxSlots } from '../../../../lib/supervisorSlots';
 import mongoose, { ClientSession } from 'mongoose';
 import {
   formatProjectDomainLabels,
@@ -11,10 +9,15 @@ import {
 } from '../../../../config/projectDomains';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
-import { normalizeText } from '../../../../lib/security/input';
+import { isRecord, normalizeText } from '../../../../lib/security/input';
 import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../lib/teamCapacity';
 import { reviewProject } from '../../../../lib/projectReview';
 import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
+import {
+  capacityReservationError,
+  releaseSupervisorProjectSlot,
+  reserveSupervisorProjectSlot,
+} from '../../../../lib/supervisorCapacity';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +45,7 @@ export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
     const students = await User.find({ role: 'student', supervisorId: currentUser.id }).lean();
-    const supervisor = await User.findById(currentUser.id).select('migrationCode').lean();
+    const supervisor = await User.findById(currentUser.id).select('+migrationCode').lean();
 
     // Fetch associated projects to get the timeline stage.
     const projectIds = students.map(s => s.projectId).filter(Boolean);
@@ -125,7 +128,12 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     
     // Read the body once only. Reading req.json() twice breaks migration.
-    const { action, studentId, status, remarks, migrationCode, projectId } = await req.json();
+    const body: unknown = await req.json();
+    if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor action.' }, { status: 400 });
+    const { action, studentId, status, remarks, migrationCode, projectId } = body;
+    if (!['updateStatus', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
+      return NextResponse.json({ error: 'Unknown supervisor action.' }, { status: 400 });
+    }
 
     if (action === 'updateStatus') {
       const requestedStudentId = normalizeText(studentId, 64);
@@ -149,7 +157,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'migrate') {
       const requestedStudentId = String(studentId || '').trim();
-      const requestedMigrationCode = String(migrationCode || '').trim().toUpperCase();
+      const requestedMigrationCode = normalizeText(migrationCode, 32).toUpperCase();
 
       if (!mongoose.Types.ObjectId.isValid(requestedStudentId)) {
         return NextResponse.json({ error: 'Invalid student selected.' }, { status: 400 });
@@ -173,7 +181,7 @@ export async function POST(req: NextRequest) {
           role: 'supervisor',
           migrationCode: requestedMigrationCode,
         })
-          .select('_id name extraSlots')
+          .select('_id name')
           .session(session);
 
         if (!targetSup) {
@@ -193,16 +201,9 @@ export async function POST(req: NextRequest) {
           return await fail('This student is already assigned to the target supervisor.', 400);
         }
 
-        let filledSlots = 0;
-        if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'STUDENT') {
-          filledSlots = await User.countDocuments({ role: 'student', supervisorId: targetSup._id }).session(session);
-        } else if (APP_SETTINGS.SLOT_CALCULATION_MODE === 'PROJECT') {
-          filledSlots = await Project.countDocuments({ supervisorId: targetSup._id }).session(session);
-        }
-
-        const maxSlots = getSupervisorMaxSlots(targetSup);
-        if (filledSlots >= maxSlots) {
-          return await fail(`Target supervisor has reached maximum capacity (${maxSlots} slots).`, 409);
+        const reservation = await reserveSupervisorProjectSlot(targetSup._id, session);
+        if (reservation !== 'reserved') {
+          return await fail(capacityReservationError(reservation), reservation === 'missing' ? 404 : 409);
         }
 
         const oldProject = studentInTx.projectId
@@ -262,6 +263,9 @@ export async function POST(req: NextRequest) {
               oldProject.domain || studentInTx.domain
             );
 
+            if (!await releaseSupervisorProjectSlot(currentUser.id, session)) {
+              return await fail('Unable to release the previous supervisor capacity.', 409);
+            }
             oldProject.supervisorId = targetSup._id;
             oldProject.members = [studentInTx._id];
             oldProject.domain = inheritedDomainText;
@@ -337,37 +341,68 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'removeStudent') {
-      const triggerStudent = await User.findOne({
-        _id: studentId,
-        role: 'student',
-        supervisorId: currentUser.id,
-      });
-      if (!triggerStudent) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      const requestedStudentId = String(studentId || '').trim();
+      if (!mongoose.Types.ObjectId.isValid(requestedStudentId)) {
+        return NextResponse.json({ error: 'Invalid student selected.' }, { status: 400 });
+      }
 
-      // --- Team-Aware Removal ---
-      if (triggerStudent.projectId) {
-        await Project.findOneAndUpdate(
-          { _id: triggerStudent.projectId, supervisorId: currentUser.id },
-          { $set: { supervisorId: null } }
-        );
-        await User.updateMany(
-          { projectId: triggerStudent.projectId, role: 'student', supervisorId: currentUser.id },
-          { $set: {
+      const session = await mongoose.startSession();
+      session.startTransaction();
+      try {
+        const triggerStudent = await User.findOne({
+          _id: requestedStudentId,
+          role: 'student',
+          supervisorId: currentUser.id,
+        }).session(session);
+        if (!triggerStudent) {
+          await session.abortTransaction();
+          return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
+        }
+
+        if (triggerStudent.projectId) {
+          const project = await Project.findOne({
+            _id: triggerStudent.projectId,
+            supervisorId: currentUser.id,
+          }).session(session);
+          if (!project) {
+            await session.abortTransaction();
+            return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
+          }
+          if (!await releaseSupervisorProjectSlot(currentUser.id, session)) {
+            await session.abortTransaction();
+            return NextResponse.json({ error: 'Unable to release supervisor capacity.' }, { status: 409 });
+          }
+          project.supervisorId = null;
+          await project.save({ session });
+          await User.updateMany(
+            { projectId: project._id, role: 'student', supervisorId: currentUser.id },
+            { $set: {
               supervisorId: null,
               status: 'Unassigned',
               projectTitle: '',
               projectDesc: '',
               pdfUrl: '',
-              remarks: 'Your team was removed by the supervisor. Please select a new one.'
-            }
-          }
-        );
-      } else {
-        await User.findOneAndUpdate({ _id: studentId, role: 'student', supervisorId: currentUser.id }, {
-          $set: { supervisorId: null, status: 'Unassigned', projectTitle: '', projectDesc: '', pdfUrl: '', remarks: 'You were removed.' }
-        });
+              remarks: 'Your team was removed by the supervisor. Please select a new one.',
+            } },
+            { session, runValidators: true }
+          );
+        } else {
+          await User.updateOne(
+            { _id: requestedStudentId, role: 'student', supervisorId: currentUser.id },
+            { $set: { supervisorId: null, status: 'Unassigned', projectTitle: '', projectDesc: '', pdfUrl: '', remarks: 'You were removed.' } },
+            { session, runValidators: true }
+          );
+        }
+
+        await session.commitTransaction();
+        return NextResponse.json({ message: 'Team removed successfully.' }, { status: 200 });
+      } catch {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('supervisor_removal_failed');
+        return NextResponse.json({ error: 'Failed to remove team.' }, { status: 500 });
+      } finally {
+        session.endSession();
       }
-      return NextResponse.json({ message: 'Team removed successfully!' }, { status: 200 });
     }
 
     if (action === 'expandTeam') {

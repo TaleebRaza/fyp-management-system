@@ -31,19 +31,22 @@ export function parsePasswordResetKnowledgeInput(input: unknown): ParsedInput<Pa
     teammateRollNo: normalizeRollNo(body.teammateRollNo),
   };
 
-  if (!value.rollNo || !value.supervisorId || !value.batch || !value.program) {
-    return {
-      ok: false,
-      error: 'Roll number, supervisor, batch, and program are required.',
-    };
+  if (!value.rollNo || value.rollNo.length > 40) {
+    return { ok: false, error: 'Enter a valid roll number or supervisor ID.' };
   }
 
-  const isValid =
-    value.rollNo.length <= 40
+  const hasAcademicDetails = Boolean(value.supervisorId || value.batch || value.program || value.teammateRollNo);
+  if (!hasAcademicDetails) return { ok: true, value };
+
+  const isValid = Boolean(
+    value.supervisorId
+    && value.batch
+    && value.program
     && (value.supervisorId === 'none' || mongoose.Types.ObjectId.isValid(value.supervisorId))
     && /^(Spring|Fall) \d{4}$/.test(value.batch)
     && Object.prototype.hasOwnProperty.call(PROGRAM_MAP, value.program)
-    && value.teammateRollNo.length <= 40;
+    && value.teammateRollNo.length <= 40
+  );
 
   return isValid ? { ok: true, value } : { ok: false, error: 'Enter valid account details.' };
 }

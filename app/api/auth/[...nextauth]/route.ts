@@ -5,7 +5,7 @@ import User from "../../../../models/User";
 import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
 import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
 import { isBcryptHash } from "../../../../lib/security/password";
-import { consumeRateLimit } from "../../../../lib/rateLimit";
+import { consumeRateLimitDimensions } from "../../../../lib/rateLimit";
 
 // --- HELPER: Backward-Compatible Verification ---
 async function verifyPassword(inputPassword: string, storedPassword: string) {
@@ -24,7 +24,7 @@ const handler = NextAuth({
         rollNo: { label: "Roll No", type: "text" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         await connectToDatabase();
 
         const normalizedRollNo = normalizeRollNo(credentials?.rollNo);
@@ -33,30 +33,38 @@ const handler = NextAuth({
         if (!normalizedRollNo || !password) {
           throw new Error("Invalid roll number or password.");
         }
-        const rateLimit = await consumeRateLimit(`login:${normalizedRollNo}`, 10);
-        if (!rateLimit.allowed) throw new Error("Too many login attempts. Please try again later.");
-        
-        let user = await User.findOne({ rollNo: normalizedRollNo });
+        const denyLogin = async () => {
+          const rateLimit = await consumeRateLimitDimensions(
+            'login',
+            normalizedRollNo,
+            new Headers(request?.headers),
+            10
+          );
+          if (!rateLimit.allowed) throw new Error('Too many login attempts. Please try again later.');
+          throw new Error('Invalid roll number or password.');
+        };
+
+        let user = await User.findOne({ rollNo: normalizedRollNo }).select('+password');
 
         // ponytail: fallback supports legacy rows that were saved with trailing spaces or mixed case.
         if (!user) {
-          user = await User.findOne({ rollNo: buildRollNoRegex(normalizedRollNo) });
+          user = await User.findOne({ rollNo: buildRollNoRegex(normalizedRollNo) }).select('+password');
         }
-        
+
         if (!user) {
-          throw new Error("Invalid roll number or password.");
+          await denyLogin();
         }
         
         // Security Lockout Check
         if (user.isActive === false) {
-          throw new Error("Invalid roll number or password.");
+          await denyLogin();
         }
         
         // NEW: Utilize our smart verifier instead of direct string comparison
         const passwordCheck = await verifyPassword(password, user.password);
 
         if (!passwordCheck.matches) {
-          throw new Error("Invalid roll number or password.");
+          await denyLogin();
         }
 
         if (passwordCheck.isLegacy) {

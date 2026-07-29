@@ -10,6 +10,7 @@ import User from '../models/User';
 import Project from '../models/Project';
 import VoiceNote from '../models/VoiceNote';
 import SystemConfig from '../models/SystemConfig';
+import { releaseSupervisorProjectSlot } from './supervisorCapacity';
 
 const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MIN_BATCH_YEAR = 2021;
@@ -241,6 +242,9 @@ export async function resetStudentAcademicInfo({
           }).session(mongoSession);
         }
 
+        if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, mongoSession)) {
+          throw new AcademicResetError('Unable to release the previous supervisor capacity.', 409);
+        }
         await Project.findByIdAndDelete(oldProject._id, { session: mongoSession });
       } else {
         await Project.findByIdAndUpdate(

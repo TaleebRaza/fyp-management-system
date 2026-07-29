@@ -52,16 +52,19 @@ export function VerifyAcademicDetailsForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
-          Roll No / ID
+          Student roll no / supervisor ID
         </label>
         <StyledInput
           icon={User}
           value={rollNo}
           onChange={(event: ChangeEvent<HTMLInputElement>) => onRollNoChange(event.target.value)}
           required
-          placeholder="e.g. F23-0201"
+          placeholder="e.g. F23-0201 or your supervisor ID"
           autoComplete="username"
         />
+        <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
+          Supervisors need only their private ID. Students must complete the academic details below.
+        </p>
       </div>
 
       <div>
@@ -71,7 +74,6 @@ export function VerifyAcademicDetailsForm({
         <Select
           value={supervisorId}
           onChange={(event: ChangeEvent<HTMLSelectElement>) => onSupervisorChange(event.target.value)}
-          required
         >
           <option value="">Select supervisor</option>
           <option value="none">No supervisor assigned</option>
@@ -87,7 +89,7 @@ export function VerifyAcademicDetailsForm({
         <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
           Batch
         </label>
-        <Select value={batch} onChange={(event: ChangeEvent<HTMLSelectElement>) => onBatchChange(event.target.value)} required>
+        <Select value={batch} onChange={(event: ChangeEvent<HTMLSelectElement>) => onBatchChange(event.target.value)}>
           <option value="">Select batch</option>
           {batchOptions.map((batchOption) => (
             <option key={batchOption} value={batchOption}>
@@ -101,7 +103,7 @@ export function VerifyAcademicDetailsForm({
         <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
           Program
         </label>
-        <Select value={program} onChange={(event: ChangeEvent<HTMLSelectElement>) => onProgramChange(event.target.value)} required>
+        <Select value={program} onChange={(event: ChangeEvent<HTMLSelectElement>) => onProgramChange(event.target.value)}>
           <option value="">Select program</option>
           {programOptions.map((programOption) => (
             <option key={programOption} value={programOption}>

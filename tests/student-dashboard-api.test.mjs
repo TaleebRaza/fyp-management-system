@@ -123,7 +123,7 @@ test('rejects non-PDF and oversized files before making a request', async () => 
   assert.equal(requestCount, 0);
 });
 
-test('submits the exact existing student project JSON body', async () => {
+test('submits a named student project action', async () => {
   const input = {
     id: 'student-1',
     title: 'Project title',
@@ -138,7 +138,7 @@ test('submits the exact existing student project JSON body', async () => {
     assert.equal(url, '/api/dashboard/student');
     assert.equal(init.method, 'POST');
     assert.equal(init.headers['Content-Type'], 'application/json');
-    assert.deepEqual(JSON.parse(init.body), input);
+    assert.deepEqual(JSON.parse(init.body), { ...input, action: 'submitProject' });
     return jsonResponse({ message: 'Submitted' });
   }, async () => {
     const result = await api.submitStudentProject(input);

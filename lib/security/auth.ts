@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../mongodb';
 import Project from '../../models/Project';
 import User from '../../models/User';
+import { isSameOriginMutation } from './origin';
 
 export type UserRole = 'admin' | 'supervisor' | 'student';
 
@@ -18,6 +19,8 @@ export async function requireCurrentUser(
   req: NextRequest,
   allowedRoles?: UserRole[]
 ): Promise<CurrentUser | null> {
+  if (!isSameOriginMutation(req)) return null;
+
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token || typeof token.id !== 'string' || !mongoose.Types.ObjectId.isValid(token.id)) {
     return null;

@@ -15,7 +15,7 @@ import {
 
 const PASSWORD_RESET_REQUEST_LIMIT = 5;
 const PASSWORD_RESET_ATTEMPT_LIMIT = 10;
-const PASSWORD_CHANGE_COOLDOWN_MS = 5 * 60 * 60 * 1000;
+const PASSWORD_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_EXPIRY_MS = 15 * 60 * 1000;
 const DETAILS_MISMATCH_ERROR = 'The account details do not match our records.';
 const INVALID_TOKEN_ERROR = 'Account recovery has expired. Verify your details again.';
@@ -31,10 +31,24 @@ function result(status: number, body: PasswordResetBody): PasswordResetServiceRe
   return { status, body };
 }
 
-async function findStudentByRollNo(rollNo: string) {
-  const exactUser = await User.findOne({ role: 'student', rollNo });
+async function findPasswordResetUserByRollNo(rollNo: string, includeResetCode = false) {
+  const filter = { role: { $in: ['student', 'supervisor'] }, rollNo };
+  const select = includeResetCode ? '+resetCode +resetCodeExpiry' : '';
+  const exactUser = await User.findOne(filter).select(select);
   if (exactUser) return exactUser;
-  return await User.findOne({ role: 'student', rollNo: buildRollNoRegex(rollNo) });
+
+  return await User.findOne({ ...filter, rollNo: buildRollNoRegex(rollNo) }).select(select);
+}
+
+function passwordChangeCooldown(lastPasswordChange: Date | null | undefined) {
+  if (!lastPasswordChange) return null;
+
+  const remaining = PASSWORD_CHANGE_COOLDOWN_MS - (Date.now() - new Date(lastPasswordChange).getTime());
+  if (remaining <= 0) return null;
+
+  return result(429, {
+    error: `Password was changed recently. Please try again in ${Math.ceil(remaining / 3_600_000)} hours.`,
+  });
 }
 
 export async function verifyPasswordResetKnowledge(input: unknown): Promise<PasswordResetServiceResult> {
@@ -53,46 +67,39 @@ export async function verifyPasswordResetKnowledge(input: unknown): Promise<Pass
     });
   }
 
-  const user = await findStudentByRollNo(rollNo);
+  const user = await findPasswordResetUserByRollNo(rollNo);
   if (!user) return result(400, { error: DETAILS_MISMATCH_ERROR });
 
-  const project = user.projectId
-    ? await Project.findOne({ _id: user.projectId, members: user._id }).select('members').lean()
-    : null;
-  const projectMembers = Array.isArray(project?.members) ? project.members : [];
-  const teammateIds = projectMembers.filter(
-    (memberId: unknown) => String(memberId) !== String(user._id)
-  );
-  const teammates = teammateIds.length
-    ? await User.find({ _id: { $in: teammateIds }, role: 'student' }).select('rollNo').lean()
-    : [];
+  if (user.role === 'student') {
+    const project = user.projectId
+      ? await Project.findOne({ _id: user.projectId, members: user._id }).select('members').lean()
+      : null;
+    const projectMembers = Array.isArray(project?.members) ? project.members : [];
+    const teammateIds = projectMembers.filter(
+      (memberId: unknown) => String(memberId) !== String(user._id)
+    );
+    const teammates = teammateIds.length
+      ? await User.find({ _id: { $in: teammateIds }, role: 'student' }).select('rollNo').lean()
+      : [];
 
-  const detailsMatch = matchesPasswordResetKnowledge(
-    {
-      rollNo: normalizeRollNo(user.rollNo),
-      supervisorId: user.supervisorId ? String(user.supervisorId) : 'none',
-      batch: String(user.batch || '').trim(),
-      program: String(user.program || '').trim().toUpperCase(),
-      teammateRollNos: (teammates as Array<{ rollNo?: unknown }>).map((teammate) =>
-        normalizeRollNo(teammate.rollNo)
-      ),
-      requiresTeammate: teammates.length > 0,
-    },
-    { rollNo, supervisorId, batch, program, teammateRollNo }
-  );
-  if (!detailsMatch) return result(400, { error: DETAILS_MISMATCH_ERROR });
-
-  if (user.lastPasswordChange) {
-    const timeSinceLastChange = Date.now() - new Date(user.lastPasswordChange).getTime();
-    if (timeSinceLastChange < PASSWORD_CHANGE_COOLDOWN_MS) {
-      const hoursLeft = Math.ceil(
-        (PASSWORD_CHANGE_COOLDOWN_MS - timeSinceLastChange) / 3_600_000
-      );
-      return result(429, {
-        error: `Password was changed recently. Please try again in ${hoursLeft} hours.`,
-      });
-    }
+    const detailsMatch = matchesPasswordResetKnowledge(
+      {
+        rollNo: normalizeRollNo(user.rollNo),
+        supervisorId: user.supervisorId ? String(user.supervisorId) : 'none',
+        batch: String(user.batch || '').trim(),
+        program: String(user.program || '').trim().toUpperCase(),
+        teammateRollNos: (teammates as Array<{ rollNo?: unknown }>).map((teammate) =>
+          normalizeRollNo(teammate.rollNo)
+        ),
+        requiresTeammate: teammates.length > 0,
+      },
+      { rollNo, supervisorId, batch, program, teammateRollNo }
+    );
+    if (!detailsMatch) return result(400, { error: DETAILS_MISMATCH_ERROR });
   }
+
+  const cooldown = passwordChangeCooldown(user.lastPasswordChange);
+  if (cooldown) return cooldown;
 
   const resetToken = randomBytes(32).toString('hex');
   await User.findByIdAndUpdate(user._id, {
@@ -101,7 +108,9 @@ export async function verifyPasswordResetKnowledge(input: unknown): Promise<Pass
   });
 
   return result(200, {
-    message: 'Account details verified. Choose a new password.',
+    message: user.role === 'supervisor'
+      ? 'Supervisor ID verified. Choose a new password.'
+      : 'Account details verified. Choose a new password.',
     resetToken,
   });
 }
@@ -122,7 +131,7 @@ export async function completePasswordReset(input: unknown): Promise<PasswordRes
     });
   }
 
-  const user = await findStudentByRollNo(rollNo);
+  const user = await findPasswordResetUserByRollNo(rollNo, true);
   const tokenIsValid = Boolean(
     user
     && user.resetCode
@@ -135,7 +144,7 @@ export async function completePasswordReset(input: unknown): Promise<PasswordRes
   const updateResult = await User.updateOne(
     {
       _id: user._id,
-      role: 'student',
+      role: { $in: ['student', 'supervisor'] },
       resetCode: user.resetCode,
       resetCodeExpiry: { $gt: new Date() },
     },

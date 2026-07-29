@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../lib/mongodb';
 import Headline from '../../../models/Headline';
 import { requireCurrentUser } from '../../../lib/security/auth';
+import { normalizeText } from '../../../lib/security/input';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,18 +35,19 @@ export async function POST(req: NextRequest) {
 
     await connectToDatabase();
     const { text } = await req.json();
+    const normalizedText = normalizeText(text, 500);
     
     // 3. Hard-delete all previous headlines to permanently reclaim database storage space
     await Headline.deleteMany({});
     
     // 4. Create the new headline
-    if (text && text.trim() !== '') {
-      await Headline.create({ text, isActive: true });
+    if (normalizedText) {
+      await Headline.create({ text: normalizedText, isActive: true });
     }
     
     return NextResponse.json({ message: 'Headline updated successfully!' }, { status: 200 });
-  } catch (error) {
-    console.error('Headline API Error:', error instanceof Error ? error.message : error);
+  } catch {
+    console.error('headline_update_failed');
     return NextResponse.json({ error: 'Failed to update headline' }, { status: 500 });
   }
 }

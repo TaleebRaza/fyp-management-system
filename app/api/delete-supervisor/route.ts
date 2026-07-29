@@ -13,6 +13,9 @@ export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
     const { id } = await req.json();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: 'Invalid supervisor ID.' }, { status: 400 });
+    }
 
     // 1. Establish an Atomic Transaction Session
     const session = await mongoose.startSession();
@@ -20,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     try {
       // 2. Delete the supervisor
-      const deletedSupervisor = await User.findByIdAndDelete(id, { session });
+      const deletedSupervisor = await User.findOneAndDelete({ _id: id, role: 'supervisor' }, { session });
       
       if (!deletedSupervisor) {
         await session.abortTransaction();
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest) {
 
       // 3. Safely unassign any STUDENTS that belonged to this supervisor
       await User.updateMany(
-        { supervisorId: id }, 
+        { supervisorId: id, role: 'student' },
         { $set: { 
             supervisorId: null, 
             status: 'Unassigned', 
@@ -60,8 +63,8 @@ export async function POST(req: NextRequest) {
       session.endSession();
       throw transactionError;
     }
-  } catch (error) {
-    console.error('Delete Supervisor Error:', error instanceof Error ? error.message : error);
+  } catch {
+    console.error('delete_supervisor_failed');
     return NextResponse.json({ error: 'Failed to delete supervisor' }, { status: 500 });
   }
 }
