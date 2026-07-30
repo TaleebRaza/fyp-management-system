@@ -93,6 +93,7 @@ test('the deployed cron expires reservations and supervisor deletion queues audi
   assert.match(cron, /expireUploadReservations/);
   assert.match(cron, /processStorageDeletionOutbox/);
   assert.match(deployment, /\/api\/cron\/voice-cleanup/);
+  assert.match(deployment, /"schedule": "0 0 \* \* \*"/);
   assert.match(supervisorDeletion, /enqueueStorageDeletion/);
   assert.match(supervisorDeletion, /supervisor-deleted/);
 });
