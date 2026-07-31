@@ -4,12 +4,17 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
-import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../lib/fineRestriction';
+import {
+  buildFineRestriction,
+  FINE_RESTRICTION_CODE,
+  isFineRestrictionBlocking,
+} from '../../../lib/fineRestriction';
 import {
   getTeamFineRestriction,
   getTeamFineRestrictionMessage,
 } from '../../../lib/teamFineRestriction';
 import { requireCurrentUser } from '../../../lib/security/auth';
+import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../lib/registrationPolicy';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 import {
   cancelUploadReservation,
@@ -49,7 +54,13 @@ export async function POST(req: NextRequest) {
 
     const fineRestriction = buildFineRestriction(student);
     const teamFineRestriction = await getTeamFineRestriction(student.projectId, student._id);
-    if (teamFineRestriction) {
+    const fineRestrictions = teamFineRestriction
+      ? serializeRegistrationPolicy(await getOrCreateRegistrationPolicy()).fineRestrictions
+      : null;
+    if (
+      teamFineRestriction &&
+      isFineRestrictionBlocking(teamFineRestriction, fineRestrictions?.proposalUpload)
+    ) {
       return NextResponse.json(
         {
           code: FINE_RESTRICTION_CODE,

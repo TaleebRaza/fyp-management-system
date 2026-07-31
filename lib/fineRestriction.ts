@@ -1,5 +1,12 @@
 export const FINE_RESTRICTION_CODE = 'FINE_RESTRICTION';
 
+export function isFineRestrictionBlocking(
+  restriction: { active?: unknown } | null | undefined,
+  enabled?: boolean
+) {
+  return enabled !== false && restriction?.active === true;
+}
+
 export const OUTSTANDING_STUDENT_FINE_FILTER = {
   role: 'student',
   $or: [

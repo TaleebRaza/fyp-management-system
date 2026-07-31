@@ -23,12 +23,28 @@ export interface LateFineAccrualPolicy {
   resumedAt: string | null;
 }
 
+export interface FineRestrictionPolicy {
+  proposalUpload: boolean;
+}
+
+export type FineRestrictionKey = keyof FineRestrictionPolicy;
+
+export const FINE_RESTRICTION_DEFINITIONS: ReadonlyArray<{
+  key: FineRestrictionKey;
+  name: string;
+}> = [{ key: 'proposalUpload', name: 'Proposal upload' }];
+
+export const DEFAULT_FINE_RESTRICTIONS: FineRestrictionPolicy = {
+  proposalUpload: true,
+};
+
 export interface RegistrationPolicyDto {
   isOpen: boolean;
   closedMessage: string;
   punishment: RegistrationPunishmentPolicy;
   finePayment: FinePaymentPolicy;
   lateFineAccrual: LateFineAccrualPolicy;
+  fineRestrictions: FineRestrictionPolicy;
   version: number;
   updatedAt: string | null;
   closedAt: string | null;
@@ -61,6 +77,7 @@ export const DEFAULT_REGISTRATION_POLICY: RegistrationPolicyDto = {
     pausedAt: null,
     resumedAt: null,
   },
+  fineRestrictions: DEFAULT_FINE_RESTRICTIONS,
   version: 0,
   updatedAt: null,
   closedAt: null,

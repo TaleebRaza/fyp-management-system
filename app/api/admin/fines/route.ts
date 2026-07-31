@@ -15,6 +15,7 @@ import {
 } from '../../../../lib/fineRestriction';
 import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationFine';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { FINE_RESTRICTION_DEFINITIONS } from '../../../../types/registrationPolicy';
 import {
   invalidatePublicContent,
   PUBLIC_REGISTRATION_POLICY_TAG,
@@ -97,6 +98,7 @@ async function buildInitialResponsePayload() {
     limit: STUDENT_LIMIT,
     finePayment: policy.finePayment,
     lateFineAccrual: policy.lateFineAccrual,
+    fineRestrictions: policy.fineRestrictions,
     currentLateFine: calculateLateRegistrationFine(new Date(), policy.lateFineAccrual),
   };
 }
@@ -231,6 +233,38 @@ export async function PATCH(req: NextRequest) {
         message: 'Late-registration fine compounding has resumed from the frozen amount.',
         lateFineAccrual: updatedPolicy.lateFineAccrual,
         currentLateFine: calculateLateRegistrationFine(now, updatedPolicy.lateFineAccrual),
+      });
+    }
+
+    if (action === 'setFineRestriction') {
+      const restrictionKey = String(body?.restrictionKey || '');
+      const restriction = FINE_RESTRICTION_DEFINITIONS.find(
+        (definition) => definition.key === restrictionKey
+      );
+      if (!restriction || typeof body?.enabled !== 'boolean') {
+        return NextResponse.json({ error: 'Invalid fine restriction.' }, { status: 400 });
+      }
+
+      const updatedPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
+        { policyKey: REGISTRATION_POLICY_KEY },
+        {
+          $set: {
+            [`fineRestrictions.${restriction.key}`]: body.enabled,
+            updatedBy,
+          },
+          $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
+          $inc: { version: 1 },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      const updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument);
+      invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
+
+      return NextResponse.json({
+        message: body.enabled
+          ? `${restriction.name} is restricted for teams with outstanding fines.`
+          : `${restriction.name} is allowed while fines remain outstanding.`,
+        fineRestrictions: updatedPolicy.fineRestrictions,
       });
     }
 

@@ -1,4 +1,5 @@
 import type { FineRestriction, StudentDashboardData } from '../studentDashboardTypes';
+import { isFineRestrictionBlocking } from '../../../lib/fineRestriction';
 
 export type StudentFineRestrictionState = {
   fineRestriction: FineRestriction | null;
@@ -14,7 +15,10 @@ export function getStudentFineRestrictionState(
   const fineRestriction = data?.fineRestriction || null;
   const teamFineRestriction = data?.teamFineRestriction || fineRestriction;
   const isOwnFineRestricted = Boolean(fineRestriction?.active);
-  const isFineRestricted = Boolean(teamFineRestriction?.active);
+  const isFineRestricted = isFineRestrictionBlocking(
+    teamFineRestriction,
+    data?.fineRestrictions?.proposalUpload
+  );
   const restrictedMember = teamFineRestriction?.member;
   const restrictedMemberLabel = `${restrictedMember?.name || 'A team member'}${
     restrictedMember?.rollNo ? ` (${restrictedMember.rollNo})` : ''

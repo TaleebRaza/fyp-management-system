@@ -32,6 +32,13 @@ const LateFineAccrualSchema = new Schema(
   { _id: false }
 );
 
+const FineRestrictionPolicySchema = new Schema(
+  {
+    proposalUpload: { type: Boolean, default: true },
+  },
+  { _id: false }
+);
+
 const RegistrationPolicySchema = new Schema(
   {
     policyKey: {
@@ -76,6 +83,10 @@ const RegistrationPolicySchema = new Schema(
         pausedAt: null,
         resumedAt: null,
       }),
+    },
+    fineRestrictions: {
+      type: FineRestrictionPolicySchema,
+      default: () => ({ proposalUpload: true }),
     },
     version: { type: Number, min: 0, default: 0 },
     registrationsAccepted: { type: Number, min: 0, default: 0 },

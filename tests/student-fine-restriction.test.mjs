@@ -29,6 +29,17 @@ test('identifies and names a restricted teammate', () => {
   assert.match(result.teamFineMessage, /Student Two \(FA22-BCS-002\)/);
 });
 
+test('keeps the fine visible when proposal uploads are allowed', () => {
+  const result = fine.getStudentFineRestrictionState({
+    fineRestriction: { active: true, isCurrentStudent: true },
+    fineRestrictions: { proposalUpload: false },
+  });
+
+  assert.equal(result.isOwnFineRestricted, true);
+  assert.equal(result.isFineRestricted, false);
+  assert.notEqual(result.fineRestriction, null);
+});
+
 test('returns an unrestricted state when no active fine exists', () => {
   const result = fine.getStudentFineRestrictionState(null);
   assert.equal(result.fineRestriction, null);

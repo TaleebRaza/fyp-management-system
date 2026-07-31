@@ -22,6 +22,11 @@ import {
 } from '../ui/SharedUI';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { FineRestrictionSummary } from '../../lib/fineRestriction';
+import {
+  DEFAULT_FINE_RESTRICTIONS,
+  FINE_RESTRICTION_DEFINITIONS,
+  type FineRestrictionPolicy,
+} from '../../types/registrationPolicy';
 
 type RestrictedStudent = {
   id: string;
@@ -39,6 +44,7 @@ type FineManagementData = {
   limit?: number;
   finePayment?: typeof EMPTY_PAYMENT;
   lateFineAccrual?: { paused?: boolean };
+  fineRestrictions?: FineRestrictionPolicy;
   currentLateFine?: { daysLate: number; fineAmount: number };
 };
 
@@ -137,6 +143,13 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
           ...(previous || {}),
           ...(json.lateFineAccrual ? { lateFineAccrual: json.lateFineAccrual } : {}),
           ...(json.currentLateFine ? { currentLateFine: json.currentLateFine } : {}),
+        }));
+      }
+
+      if (json.fineRestrictions) {
+        setData((previous) => ({
+          ...(previous || {}),
+          fineRestrictions: json.fineRestrictions,
         }));
       }
 
@@ -294,6 +307,51 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
               ? 'New registrations keep the frozen fine until compounding is resumed.'
               : 'New registrations use the current calculated fine.'}
           </p>
+        </div>
+      </DashboardPanel>
+
+      <DashboardPanel>
+        <SectionHeader
+          title="Fine Restrictions"
+          description="Choose what an outstanding fine blocks. Allowing an action does not resolve the fine."
+        />
+        <div className="space-y-3">
+          {FINE_RESTRICTION_DEFINITIONS.map((restriction) => {
+            const enabled =
+              data?.fineRestrictions?.[restriction.key] ??
+              DEFAULT_FINE_RESTRICTIONS[restriction.key];
+
+            return (
+              <div
+                key={restriction.key}
+                className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-bold text-[var(--color-text)]">{restriction.name}</p>
+                  <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                    {enabled
+                      ? 'Blocked for every team with an outstanding fine.'
+                      : 'Allowed while each outstanding fine remains due.'}
+                  </p>
+                </div>
+                <Button
+                  variant={enabled ? 'outline' : 'danger'}
+                  onClick={() =>
+                    void runAction('setFineRestriction', {
+                      restrictionKey: restriction.key,
+                      enabled: !enabled,
+                    })
+                  }
+                  disabled={Boolean(busyAction)}
+                >
+                  {busyAction === 'setFineRestriction' && (
+                    <Loader2 className="animate-spin" size={16} />
+                  )}
+                  {enabled ? 'Allow uploads' : 'Restrict uploads'}
+                </Button>
+              </div>
+            );
+          })}
         </div>
       </DashboardPanel>
 

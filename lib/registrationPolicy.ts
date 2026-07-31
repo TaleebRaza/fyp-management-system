@@ -18,6 +18,7 @@ export async function getOrCreateRegistrationPolicy() {
         punishment: DEFAULT_REGISTRATION_POLICY.punishment,
         finePayment: DEFAULT_REGISTRATION_POLICY.finePayment,
         lateFineAccrual: DEFAULT_REGISTRATION_POLICY.lateFineAccrual,
+        fineRestrictions: DEFAULT_REGISTRATION_POLICY.fineRestrictions,
         version: DEFAULT_REGISTRATION_POLICY.version,
       },
     },
@@ -37,6 +38,7 @@ type RegistrationPolicyRecord = {
   punishment?: Record<string, unknown> | null;
   finePayment?: Record<string, unknown> | null;
   lateFineAccrual?: Record<string, unknown> | null;
+  fineRestrictions?: Record<string, unknown> | null;
   version?: unknown;
   updatedAt?: string | number | Date | null;
   closedAt?: string | number | Date | null;
@@ -49,6 +51,7 @@ export function serializeRegistrationPolicy(policy: RegistrationPolicyRecord | n
   const punishment = policy.punishment || {};
   const finePayment = policy.finePayment || {};
   const lateFineAccrual = policy.lateFineAccrual || {};
+  const fineRestrictions = policy.fineRestrictions || {};
 
   return {
     isOpen: policy.isOpen !== false,
@@ -80,6 +83,9 @@ export function serializeRegistrationPolicy(policy: RegistrationPolicyRecord | n
       resumedAt: lateFineAccrual.resumedAt
         ? new Date(lateFineAccrual.resumedAt as string | number | Date).toISOString()
         : null,
+    },
+    fineRestrictions: {
+      proposalUpload: fineRestrictions.proposalUpload !== false,
     },
     version: Number.isFinite(Number(policy.version)) ? Number(policy.version) : 0,
     updatedAt: policy.updatedAt ? new Date(policy.updatedAt).toISOString() : null,

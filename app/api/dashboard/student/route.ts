@@ -10,7 +10,11 @@ import {
   validateProjectDomainIds,
 } from '../../../../config/projectDomains';
 
-import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
+import {
+  buildFineRestriction,
+  FINE_RESTRICTION_CODE,
+  isFineRestrictionBlocking,
+} from '../../../../lib/fineRestriction';
 import {
   getTeamFineRestriction,
   getTeamFineRestrictionFromMembers,
@@ -95,16 +99,6 @@ export async function GET(req: NextRequest) {
     }
 
     const fineRestriction = buildFineRestriction(student);
-    let fineRestrictionResponse: NonNullable<ReturnType<typeof buildFineRestriction>> & {
-      payment: ReturnType<typeof serializeRegistrationPolicy>['finePayment'];
-    } | null = null;
-    if (fineRestriction) {
-      const policy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
-      fineRestrictionResponse = {
-        ...fineRestriction,
-        payment: policy.finePayment,
-      };
-    }
 
     // Fetch independent dashboard relationships in parallel.
     const [supervisor, project] = await Promise.all([
@@ -126,6 +120,12 @@ export async function GET(req: NextRequest) {
           .lean()
       : [];
     const teamFineRestriction = getTeamFineRestrictionFromMembers(projectMembers, student._id);
+    const finePolicy = fineRestriction || teamFineRestriction
+      ? serializeRegistrationPolicy(await getOrCreateRegistrationPolicy())
+      : null;
+    const fineRestrictionResponse = fineRestriction && finePolicy
+      ? { ...fineRestriction, payment: finePolicy.finePayment }
+      : null;
     const safeProjectMembers = projectMembers.map((member) => ({
       _id: member._id,
       name: member.name,
@@ -182,7 +182,8 @@ export async function GET(req: NextRequest) {
         project: projectResponse,
         supervisorBroadcast,
         fineRestriction: fineRestrictionResponse,
-      teamFineRestriction,
+        teamFineRestriction,
+        fineRestrictions: finePolicy?.fineRestrictions,
       },
       {
         status: 200,
@@ -509,23 +510,32 @@ export async function POST(req: NextRequest) {
     }
 
     const submissionFineRestriction = buildFineRestriction(triggeringStudent);
-  const submissionTeamFineRestriction = await getTeamFineRestriction(
-    triggeringStudent.projectId,
-    triggeringStudent._id
-  );
-  if (submissionTeamFineRestriction) {
-    return NextResponse.json(
-      {
-        code: FINE_RESTRICTION_CODE,
-        error: getTeamFineRestrictionMessage(submissionTeamFineRestriction, 'submission'),
-        fineRestriction: submissionFineRestriction,
-        teamFineRestriction: submissionTeamFineRestriction,
-      },
-      { status: 403 }
+    const submissionTeamFineRestriction = await getTeamFineRestriction(
+      triggeringStudent.projectId,
+      triggeringStudent._id
     );
-  }
+    const fineRestrictions = submissionTeamFineRestriction
+      ? serializeRegistrationPolicy(await getOrCreateRegistrationPolicy()).fineRestrictions
+      : null;
+    if (
+      submissionTeamFineRestriction &&
+      isFineRestrictionBlocking(
+        submissionTeamFineRestriction,
+        fineRestrictions?.proposalUpload
+      )
+    ) {
+      return NextResponse.json(
+        {
+          code: FINE_RESTRICTION_CODE,
+          error: getTeamFineRestrictionMessage(submissionTeamFineRestriction, 'submission'),
+          fineRestriction: submissionFineRestriction,
+          teamFineRestriction: submissionTeamFineRestriction,
+        },
+        { status: 403 }
+      );
+    }
 
-  const hasDomainArrayPayload = Object.prototype.hasOwnProperty.call(body, 'domains');
+    const hasDomainArrayPayload = Object.prototype.hasOwnProperty.call(body, 'domains');
     const legacyDomainText = String(body.domain || '').trim();
     let selectedDomainIds: string[] = [];
 

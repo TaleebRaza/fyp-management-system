@@ -1,5 +1,6 @@
 import type { Session } from 'next-auth';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
+import type { FineRestrictionPolicy } from '../../types/registrationPolicy';
 
 export type WordTemplate = {
   id: string;
@@ -88,6 +89,7 @@ export type StudentDashboardData = {
   supervisorBroadcast?: SupervisorBroadcast | null;
   fineRestriction?: FineRestriction | null;
   teamFineRestriction?: FineRestriction | null;
+  fineRestrictions?: FineRestrictionPolicy;
 };
 
 export type AnnouncementItem = {
