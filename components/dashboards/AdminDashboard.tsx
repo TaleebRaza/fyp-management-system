@@ -17,6 +17,7 @@ import {
 import { Button, DashboardShell } from '../ui/SharedUI';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
 import FineManagementPanel from '../admin/FineManagementPanel';
+import DynamicFineManagementPanel from '../admin/DynamicFineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';
 import AdminHeadlineSection from '../admin/AdminHeadlineSection';
 import AdminStudentsSection from '../admin/AdminStudentsSection';
@@ -258,7 +259,10 @@ const AdminDashboard = ({
           <AdminProjectReviewsPanel showDialog={showDialog} />
         )}
         {activeTab === 'fines' && (
-          <FineManagementPanel showDialog={showDialog} />
+          <div className="space-y-8">
+            <DynamicFineManagementPanel showDialog={showDialog} />
+            <FineManagementPanel showDialog={showDialog} />
+          </div>
         )}
         {activeTab === 'registration' && (
           <RegistrationControlPanel

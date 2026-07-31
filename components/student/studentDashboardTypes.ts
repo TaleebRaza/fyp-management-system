@@ -69,6 +69,9 @@ export type FineRestriction = {
     accountTitle?: string;
     accountNumber?: string;
     instructions?: string;
+    requiredProof?: boolean;
+    verificationContact?: string;
+    partialPaymentsEnabled?: boolean;
   };
 };
 
@@ -88,6 +91,17 @@ export type StudentDashboardData = {
   supervisorBroadcast?: SupervisorBroadcast | null;
   fineRestriction?: FineRestriction | null;
   teamFineRestriction?: FineRestriction | null;
+  hasDynamicFineActivity?: boolean;
+  effectiveFineRestrictions?: {
+    restrictions?: string[];
+    loginMode?: 'none' | 'payment-only' | 'complete-lock';
+    sources?: Array<{
+      fineId: string;
+      restriction: string;
+      scope: string;
+      sourceLabel: string;
+    }>;
+  };
 };
 
 export type AnnouncementItem = {

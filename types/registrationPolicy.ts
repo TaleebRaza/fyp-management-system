@@ -13,6 +13,9 @@ export interface FinePaymentPolicy {
   accountTitle: string;
   accountNumber: string;
   instructions: string;
+  requiredProof: boolean;
+  verificationContact: string;
+  partialPaymentsEnabled: boolean;
 }
 
 export interface LateFineAccrualPolicy {
@@ -53,6 +56,9 @@ export const DEFAULT_REGISTRATION_POLICY: RegistrationPolicyDto = {
     accountTitle: '',
     accountNumber: '',
     instructions: '',
+    requiredProof: true,
+    verificationContact: '',
+    partialPaymentsEnabled: false,
   },
   lateFineAccrual: {
     paused: false,

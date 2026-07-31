@@ -3,6 +3,7 @@ import mongoose, { ClientSession } from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
+import StudentFine from '../../../../models/StudentFine';
 import { enqueueNotificationEmail } from '../../../../lib/emailOutbox';
 import {
   formatProjectDomainLabels,
@@ -34,6 +35,14 @@ import {
   finalizeUploadReservation,
   StorageProtocolError,
 } from '../../../../lib/storageProtocol';
+import {
+  DYNAMIC_FINE_RESTRICTION_CODE,
+  fineRestrictionMessage,
+  getFineActionRestriction,
+  type FineRestrictedAction,
+} from '../../../../lib/dynamicFineRestriction';
+import { generateLateSubmissionFines } from '../../../../lib/dynamicFineService';
+import { getEffectiveFineRestrictions } from '../../../../lib/dynamicFineRestriction';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +81,7 @@ async function createFreshStudentProject(
 
 export async function GET(req: NextRequest) {
   try {
-    const currentUser = await requireCurrentUser(req, ['student']);
+    const currentUser = await requireCurrentUser(req, ['student'], { allowPaymentOnly: true });
     if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized student request.' }, { status: 401 });
     }
@@ -92,6 +101,20 @@ export async function GET(req: NextRequest) {
 
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
+
+    const [effectiveFineRestrictions, hasDynamicFineActivity] = await Promise.all([
+      getEffectiveFineRestrictions(studentId),
+      StudentFine.exists({ studentId }),
+    ]);
+    if (effectiveFineRestrictions.loginMode === 'payment-only') {
+      return NextResponse.json(
+        { student, effectiveFineRestrictions, hasDynamicFineActivity: Boolean(hasDynamicFineActivity) },
+        {
+          status: 200,
+          headers: { 'Cache-Control': 'no-store, max-age=0' },
+        }
+      );
     }
 
     const fineRestriction = buildFineRestriction(student);
@@ -183,6 +206,8 @@ export async function GET(req: NextRequest) {
         supervisorBroadcast,
         fineRestriction: fineRestrictionResponse,
       teamFineRestriction,
+        effectiveFineRestrictions,
+        hasDynamicFineActivity: Boolean(hasDynamicFineActivity),
       },
       {
         status: 200,
@@ -210,6 +235,26 @@ export async function POST(req: NextRequest) {
     const action = body.action;
     if (!['updateProgramBatch', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown student action.' }, { status: 400 });
+    }
+
+    const dynamicAction: FineRestrictedAction | null =
+      action === 'changeSupervisor' || action === 'assignSupervisor'
+        ? 'supervisor-selection'
+        : action === 'submitProject'
+          ? 'pdf-upload'
+          : null;
+    if (dynamicAction) {
+      const dynamicRestriction = await getFineActionRestriction(currentUser.id, dynamicAction);
+      if (dynamicRestriction) {
+        return NextResponse.json(
+          {
+            code: DYNAMIC_FINE_RESTRICTION_CODE,
+            error: fineRestrictionMessage(dynamicRestriction, dynamicAction),
+            effectiveRestrictions: dynamicRestriction,
+          },
+          { status: 403 }
+        );
+      }
     }
 
         // ==========================================
@@ -666,6 +711,15 @@ export async function POST(req: NextRequest) {
           },
           { session }
         );
+
+        await generateLateSubmissionFines({
+          projectId: String(project._id),
+          projectStage: String(project.stage),
+          triggeringStudentId: String(studentInTransaction._id),
+          memberIds: project.members.map((memberId: unknown) => String(memberId)),
+          submittedAt: new Date(),
+          session,
+        });
 
         if (oldPdfKey && oldPdfKey !== uploadedKey) {
           const sharedKeys = await findSharedStorageKeys({

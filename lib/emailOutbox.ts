@@ -33,7 +33,7 @@ function validateEmailTarget(target: EmailTarget) {
   }
 }
 
-export async function enqueueNotificationEmail(target: EmailTarget, session: ClientSession) {
+export async function enqueueNotificationEmail(target: EmailTarget, session?: ClientSession) {
   validateEmailTarget(target);
 
   await EmailOutbox.findOneAndUpdate(
@@ -54,7 +54,7 @@ export async function enqueueNotificationEmail(target: EmailTarget, session: Cli
         deadLetteredAt: null,
       },
     },
-    { upsert: true, session }
+    { upsert: true, ...(session ? { session } : {}) }
   );
 }
 

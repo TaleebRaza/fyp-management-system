@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { Loader2, LogIn, Settings } from 'lucide-react';
+import { AlertTriangle, Loader2, LogIn, Settings } from 'lucide-react';
 
 import {
   Button,
   DashboardShell,
 } from '../ui/SharedUI';
 import FinePaymentPanel from '../student/FinePaymentPanel';
+import DynamicFinePaymentPanel from '../student/DynamicFinePaymentPanel';
 import StudentOverviewSection from '../student/StudentOverviewSection';
 import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';
 import StudentResourcesSection from '../student/StudentResourcesSection';
@@ -91,8 +92,13 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     isSupervisorChangeLocked,
     announcementItems,
   } = buildStudentDashboardViewModel(data, headline, tools);
+  const hasUnresolvedDynamicFine = Boolean(data?.effectiveFineRestrictions?.sources?.length);
+  const hasDynamicFine = data?.hasDynamicFineActivity === true || hasUnresolvedDynamicFine;
+  const isPaymentOnly = data?.effectiveFineRestrictions?.loginMode === 'payment-only';
   const { activeTab, setActiveTab, navItems } = useStudentDashboardNavigation(
-    Boolean(fineRestriction)
+    Boolean(fineRestriction) || hasDynamicFine,
+    isPaymentOnly,
+    Boolean(fineRestriction) || hasUnresolvedDynamicFine
   );
   const {
     visibleTemplates,
@@ -224,10 +230,12 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         }}
         actions={
           <div className="grid gap-2 sm:flex">
-            <Button variant="outline" onClick={openAcademicEditor}>
-              <Settings size={16} />
-              Academic Info
-            </Button>
+            {!isPaymentOnly && (
+              <Button variant="outline" onClick={openAcademicEditor}>
+                <Settings size={16} />
+                Academic Info
+              </Button>
+            )}
 
             <Button
               variant="danger"
@@ -243,6 +251,15 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
           </div>
         }
       >
+        {hasUnresolvedDynamicFine && activeTab !== 'fine' && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+            <p className="flex items-center gap-2 text-sm font-bold">
+              <AlertTriangle size={18} />
+              You have an unresolved fine. Review the amount, restrictions, and payment status.
+            </p>
+            <Button variant="outline" onClick={() => setActiveTab('fine')}>Open Fine Status</Button>
+          </div>
+        )}
         {activeTab === 'overview' && (
           <StudentOverviewSection
             me={me}
@@ -287,8 +304,11 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             isSubmitting={isSubmitting}
           />
         )}
-        {activeTab === 'fine' && fineRestriction && (
+        {activeTab === 'fine' && fineRestriction && !hasDynamicFine && (
           <FinePaymentPanel restriction={fineRestriction} onRefresh={fetchData} />
+        )}
+        {activeTab === 'fine' && hasDynamicFine && (
+          <DynamicFinePaymentPanel />
         )}
         {activeTab === 'team' && (
           <StudentTeamSection

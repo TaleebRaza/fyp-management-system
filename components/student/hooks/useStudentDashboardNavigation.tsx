@@ -12,13 +12,31 @@ import type { DashboardNavItem } from '../../ui/dashboard/DashboardShell';
 
 export type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources';
 
-export function useStudentDashboardNavigation(hasFineRestriction: boolean) {
+export function useStudentDashboardNavigation(
+  hasFineActivity: boolean,
+  paymentOnly = false,
+  hasOutstandingFine = hasFineActivity
+) {
   const [requestedTab, setRequestedTab] = useState<StudentTab>('overview');
-  const activeTab: StudentTab =
-    requestedTab === 'fine' && !hasFineRestriction ? 'project' : requestedTab;
+  const activeTab: StudentTab = paymentOnly
+    ? 'fine'
+    : requestedTab === 'fine' && !hasFineActivity
+      ? 'project'
+      : requestedTab;
 
   const navItems = useMemo<DashboardNavItem[]>(
-    () => [
+    () => paymentOnly
+      ? [
+          {
+            id: 'fine',
+            label: 'Fine Payment',
+            icon: <CircleDollarSign size={18} />,
+            active: true,
+            badge: 'Due',
+            onClick: () => setRequestedTab('fine'),
+          },
+        ]
+      : [
       {
         id: 'overview',
         label: 'Overview',
@@ -33,16 +51,17 @@ export function useStudentDashboardNavigation(hasFineRestriction: boolean) {
         active: activeTab === 'project',
         onClick: () => setRequestedTab('project'),
       },
-      ...(hasFineRestriction
+      ...(hasFineActivity
         ? [
             {
               id: 'fine',
               label: 'Fine Payment',
               icon: <CircleDollarSign size={18} />,
               active: activeTab === 'fine',
-              badge: 'Due',
-              className:
-                'border border-red-500/35 !bg-red-200/50 !text-red-950 hover:!bg-red-200/60 dark:!text-red-50',
+              badge: hasOutstandingFine ? 'Due' : undefined,
+              className: hasOutstandingFine
+                ? 'border border-red-500/35 !bg-red-200/50 !text-red-950 hover:!bg-red-200/60 dark:!text-red-50'
+                : undefined,
               onClick: () => setRequestedTab('fine'),
             },
           ]
@@ -62,7 +81,7 @@ export function useStudentDashboardNavigation(hasFineRestriction: boolean) {
         onClick: () => setRequestedTab('resources'),
       },
     ],
-    [activeTab, hasFineRestriction]
+    [activeTab, hasFineActivity, hasOutstandingFine, paymentOnly]
   );
 
   return {

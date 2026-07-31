@@ -1,6 +1,7 @@
 import Project from '../../models/Project';
 import User from '../../models/User';
 import VoiceNote from '../../models/VoiceNote';
+import FinePayment from '../../models/FinePayment';
 import { CurrentUser, hasProjectAccess } from './auth';
 import { getStorageObjectKind } from './storageKey';
 export { getStorageObjectKind, normalizeStorageKey } from './storageKey';
@@ -40,6 +41,12 @@ async function canAccessBroadcast(currentUser: CurrentUser, broadcastContent: st
   }));
 }
 
+async function canAccessFineProof(currentUser: CurrentUser, proofKey: string | RegExp) {
+  if (currentUser.role === 'admin') return Boolean(await FinePayment.exists({ proofKey }));
+  return currentUser.role === 'student'
+    && Boolean(await FinePayment.exists({ studentId: currentUser.id, proofKey }));
+}
+
 async function canAccessLegacyStoredObject(currentUser: CurrentUser, key: string) {
   const matcher = keyMatcher(key);
   const [project, voiceNote, broadcastOwner] = await Promise.all([
@@ -71,6 +78,8 @@ export async function canAccessStoredObject(currentUser: CurrentUser, key: strin
       return canAccessVoice(currentUser, key);
     case 'broadcast':
       return canAccessBroadcast(currentUser, key);
+    case 'fine-proof':
+      return canAccessFineProof(currentUser, key);
     default:
       return canAccessLegacyStoredObject(currentUser, key);
   }

@@ -69,6 +69,9 @@ export function serializeRegistrationPolicy(policy: RegistrationPolicyRecord | n
       accountTitle: String(finePayment.accountTitle || '').trim(),
       accountNumber: String(finePayment.accountNumber || '').trim(),
       instructions: String(finePayment.instructions || '').trim(),
+      requiredProof: finePayment.requiredProof !== false,
+      verificationContact: String(finePayment.verificationContact || '').trim(),
+      partialPaymentsEnabled: finePayment.partialPaymentsEnabled === true,
     },
     lateFineAccrual: {
       paused: lateFineAccrual.paused === true,

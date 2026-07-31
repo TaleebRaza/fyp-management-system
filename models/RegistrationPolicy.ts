@@ -17,6 +17,9 @@ const FinePaymentSchema = new Schema(
     accountTitle: { type: String, trim: true, maxlength: 120, default: '' },
     accountNumber: { type: String, trim: true, maxlength: 120, default: '' },
     instructions: { type: String, trim: true, maxlength: 1500, default: '' },
+    requiredProof: { type: Boolean, default: true },
+    verificationContact: { type: String, trim: true, maxlength: 254, default: '' },
+    partialPaymentsEnabled: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -65,6 +68,9 @@ const RegistrationPolicySchema = new Schema(
         accountTitle: '',
         accountNumber: '',
         instructions: '',
+        requiredProof: true,
+        verificationContact: '',
+        partialPaymentsEnabled: false,
       }),
     },
     lateFineAccrual: {

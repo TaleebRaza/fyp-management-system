@@ -5,6 +5,7 @@ import connectToDatabase from '../mongodb';
 import Project from '../../models/Project';
 import User from '../../models/User';
 import { isSameOriginMutation } from './origin';
+import { getStudentFineLoginMode } from '../dynamicFineRestriction';
 
 export type UserRole = 'admin' | 'supervisor' | 'student';
 
@@ -13,11 +14,16 @@ export type CurrentUser = {
   role: UserRole;
 };
 
+type CurrentUserOptions = {
+  allowPaymentOnly?: boolean;
+};
+
 const USER_ROLES: UserRole[] = ['admin', 'supervisor', 'student'];
 
 export async function requireCurrentUser(
   req: NextRequest,
-  allowedRoles?: UserRole[]
+  allowedRoles?: UserRole[],
+  options?: CurrentUserOptions
 ): Promise<CurrentUser | null> {
   if (!isSameOriginMutation(req)) return null;
 
@@ -32,6 +38,12 @@ export async function requireCurrentUser(
     .lean();
 
   if (!user || !USER_ROLES.includes(user.role as UserRole)) return null;
+
+  if (user.role === 'student') {
+    const loginMode = await getStudentFineLoginMode(String(user._id));
+    if (loginMode === 'complete-lock') return null;
+    if (loginMode === 'payment-only' && options?.allowPaymentOnly !== true) return null;
+  }
 
   const currentUser = { id: user._id.toString(), role: user.role as UserRole };
   return !allowedRoles || allowedRoles.includes(currentUser.role) ? currentUser : null;

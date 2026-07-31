@@ -1,20 +1,23 @@
-// Replace entire file with:
 import { NextRequest, NextResponse } from 'next/server';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
 import { requireCurrentUser } from '../../../lib/security/auth';
-import { canAccessStoredObject, normalizeStorageKey } from '../../../lib/security/storage';
+import { canAccessStoredObject, getStorageObjectKind, normalizeStorageKey } from '../../../lib/security/storage';
 
 export async function GET(req: NextRequest) {
   try {
-    const currentUser = await requireCurrentUser(req);
+    const key = normalizeStorageKey(req.nextUrl.searchParams.get('url'));
+    if (!key) return new NextResponse('Missing or invalid document URL', { status: 400 });
+
+    const currentUser = await requireCurrentUser(
+      req,
+      undefined,
+      { allowPaymentOnly: getStorageObjectKind(key) === 'fine-proof' }
+    );
     if (!currentUser) {
       return new NextResponse('Unauthorized: You must be logged in to view secure university documents.', { status: 401 });
     }
-
-    const key = normalizeStorageKey(req.nextUrl.searchParams.get('url'));
-    if (!key) return new NextResponse('Missing or invalid document URL', { status: 400 });
 
     if (!await canAccessStoredObject(currentUser, key)) {
       return new NextResponse('File not found or access denied', { status: 404 });

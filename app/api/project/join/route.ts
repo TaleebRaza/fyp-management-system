@@ -14,6 +14,11 @@ import { requireCurrentUser } from '../../../../lib/security/auth';
 import { getTeamCapacity } from '../../../../lib/teamCapacity';
 import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
+import {
+  DYNAMIC_FINE_RESTRICTION_CODE,
+  fineRestrictionMessage,
+  getFineActionRestriction,
+} from '../../../../lib/dynamicFineRestriction';
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
   if (!currentUser) {
@@ -36,6 +41,18 @@ export async function POST(req: NextRequest) {
     }
 
     const studentId = currentUser.id;
+
+    const dynamicRestriction = await getFineActionRestriction(studentId, 'team-membership');
+    if (dynamicRestriction) {
+      return NextResponse.json(
+        {
+          code: DYNAMIC_FINE_RESTRICTION_CODE,
+          error: fineRestrictionMessage(dynamicRestriction, 'team-membership'),
+          effectiveRestrictions: dynamicRestriction,
+        },
+        { status: 403 }
+      );
+    }
 
     // Initialize the formal MongoDB Session
     const session = await mongoose.startSession();

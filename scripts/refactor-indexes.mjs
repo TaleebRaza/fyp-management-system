@@ -51,4 +51,30 @@ export const refactorIndexes = {
   systemconfigs: [
     { key: { configKey: 1 }, options: { unique: true } },
   ],
+  finetypes: [
+    { key: { code: 1 }, options: { unique: true } },
+    { key: { category: 1, active: 1 } },
+  ],
+  finepolicies: [
+    { key: { fineTypeId: 1, version: 1 }, options: { unique: true } },
+    { key: { trigger: 1, status: 1, submissionStage: 1, effectiveFrom: -1 } },
+  ],
+  studentfines: [
+    { key: { deduplicationKey: 1 }, options: { unique: true } },
+    { key: { studentId: 1, status: 1, updatedAt: -1 } },
+    { key: { projectId: 1, status: 1 } },
+    { key: { fineTypeId: 1, policyVersion: 1, projectStage: 1 } },
+  ],
+  finerestrictionrules: [
+    { key: { active: 1, scope: 1, fineTypeId: 1, studentId: 1, projectId: 1 } },
+  ],
+  fineaudits: [
+    { key: { entityType: 1, entityId: 1, createdAt: -1 } },
+    { key: { actorId: 1, createdAt: -1 } },
+  ],
+  finepayments: [
+    { key: { studentId: 1, idempotencyKey: 1 }, options: { unique: true } },
+    { key: { status: 1, createdAt: -1 } },
+    { key: { fineIds: 1, createdAt: -1 } },
+  ],
 };

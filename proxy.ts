@@ -24,6 +24,7 @@ const STUDENT_ROUTES = [
   '/api/project/join',
   '/api/project/leave',
   '/api/upload',
+  '/api/fines',
 ];
 
 export default withAuth(
@@ -78,6 +79,7 @@ export const config = {
     '/api/project/join',
     '/api/project/leave',
     '/api/upload',
+    '/api/fines',
     '/api/read-pdf',
     '/api/templates',
     '/api/voice/:path*',

@@ -6,6 +6,7 @@ import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
 import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
 import { isBcryptHash } from "../../../../lib/security/password";
 import { consumeRateLimitDimensions } from "../../../../lib/rateLimit";
+import { getStudentFineLoginMode } from "../../../../lib/dynamicFineRestriction";
 
 // --- HELPER: Backward-Compatible Verification ---
 async function verifyPassword(inputPassword: string, storedPassword: string) {
@@ -65,6 +66,10 @@ const handler = NextAuth({
 
         if (!passwordCheck.matches) {
           await denyLogin();
+        }
+
+        if (user.role === 'student' && await getStudentFineLoginMode(String(user._id)) === 'complete-lock') {
+          throw new Error('This account is locked by an unresolved fine. Contact the FYP administration.');
         }
 
         if (passwordCheck.isLegacy) {

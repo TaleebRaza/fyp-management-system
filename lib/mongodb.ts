@@ -1,13 +1,5 @@
 import mongoose from 'mongoose';
 
-// Grab the secret connection string from our .env.local file
-const MONGODB_URI = process.env.MONGODB_URI;
-
-// If we forgot to put it in the file, throw a massive error to warn us
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
-}
-
 type MongooseCache = {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
@@ -20,6 +12,11 @@ const cached: MongooseCache =
   (globalWithMongoose.mongoose = { conn: null, promise: null });
 
 async function connectToDatabase() {
+  const mongodbUri = process.env.MONGODB_URI;
+  if (!mongodbUri) {
+    throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  }
+
   // If we are already connected, just return the existing connection
   if (cached.conn) {
     return cached.conn;
@@ -33,9 +30,11 @@ async function connectToDatabase() {
       minPoolSize: 1,        // Maintain one active socket per warm lambda
       serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of hanging serverless threads
       socketTimeoutMS: 45000,         // Close inactive sockets cleanly
+      // Production indexes are reviewed and applied by the guarded index scripts.
+      autoIndex: process.env.NODE_ENV !== 'production',
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI as string, opts).then((mongoose) => {
+    cached.promise = mongoose.connect(mongodbUri, opts).then((mongoose) => {
       console.log("✅ Successfully connected to MongoDB with optimized serverless pooling!");
       return mongoose;
     }).catch((error) => {

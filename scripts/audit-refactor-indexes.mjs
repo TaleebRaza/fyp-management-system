@@ -16,6 +16,12 @@ const expectedIndexes = {
   emailoutboxes: refactorIndexes.emailoutboxes,
   uploadreservations: refactorIndexes.uploadreservations,
   systemconfigs: refactorIndexes.systemconfigs,
+  finetypes: refactorIndexes.finetypes,
+  finepolicies: refactorIndexes.finepolicies,
+  studentfines: refactorIndexes.studentfines,
+  finerestrictionrules: refactorIndexes.finerestrictionrules,
+  fineaudits: refactorIndexes.fineaudits,
+  finepayments: refactorIndexes.finepayments,
 };
 
 function indexKey(index) {

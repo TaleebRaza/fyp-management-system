@@ -5,6 +5,11 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createInviteCode } from '../../../../lib/security/inviteCode';
+import {
+  DYNAMIC_FINE_RESTRICTION_CODE,
+  fineRestrictionMessage,
+  getFineActionRestriction,
+} from '../../../../lib/dynamicFineRestriction';
 
 const ONLY_MEMBER_CODE = 'ONLY_MEMBER_CANNOT_LEAVE';
 const TEAM_CHANGED_CODE = 'TEAM_CHANGED';
@@ -48,6 +53,17 @@ export async function POST(req: NextRequest) {
 
   try {
     await connectToDatabase();
+    const dynamicRestriction = await getFineActionRestriction(currentUser.id, 'team-membership');
+    if (dynamicRestriction) {
+      return NextResponse.json(
+        {
+          code: DYNAMIC_FINE_RESTRICTION_CODE,
+          error: fineRestrictionMessage(dynamicRestriction, 'team-membership'),
+          effectiveRestrictions: dynamicRestriction,
+        },
+        { status: 403 }
+      );
+    }
     const session = await mongoose.startSession();
 
     try {

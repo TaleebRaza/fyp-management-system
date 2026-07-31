@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
         status,
         remarks: normalizeText(remarks, 2000) || 'No remarks provided.',
         supervisorId: currentUser.id,
+        actorId: currentUser.id,
       });
 
       if (!result.success) {

@@ -24,6 +24,7 @@ import {
   capacityReservationError,
   reserveSupervisorProjectSlot,
 } from '../../../lib/supervisorCapacity';
+import { generateLateRegistrationFines } from '../../../lib/dynamicFineService';
 
 export async function POST(req: NextRequest) {
   try {
@@ -122,8 +123,9 @@ export async function POST(req: NextRequest) {
     }
 
     const transactionPolicy = serializeRegistrationPolicy(transactionPolicyDocument);
+    const registeredAt = new Date();
       const lateRegistrationAssessment = calculateLateRegistrationFine(
-        new Date(),
+        registeredAt,
         transactionPolicy.lateFineAccrual
       );
     const registrationPunishment = buildRegistrationPunishmentSnapshot(transactionPolicy);
@@ -164,6 +166,22 @@ export async function POST(req: NextRequest) {
 
       newStudent.projectId = newProject._id;
       await newStudent.save({ session });
+
+      const dynamicRegistrationFines = await generateLateRegistrationFines(
+        {
+          id: String(newStudent._id),
+          program: newStudent.program,
+          batch: newStudent.batch,
+          projectId: String(newProject._id),
+        },
+        registeredAt,
+        session
+      );
+      if (dynamicRegistrationFines.length > 0) {
+        newStudent.lateRegistrationDays = 0;
+        newStudent.lateRegistrationFine = 0;
+        await newStudent.save({ session });
+      }
 
       await session.commitTransaction();
       const punishmentMessage = registrationPunishment.active

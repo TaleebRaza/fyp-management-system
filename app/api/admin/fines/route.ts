@@ -153,6 +153,9 @@ export async function PATCH(req: NextRequest) {
         accountTitle: normalizeText(body?.finePayment?.accountTitle, 120),
         accountNumber: normalizeText(body?.finePayment?.accountNumber, 120),
         instructions: normalizeText(body?.finePayment?.instructions, 1500),
+        requiredProof: body?.finePayment?.requiredProof !== false,
+        verificationContact: normalizeText(body?.finePayment?.verificationContact, 254),
+        partialPaymentsEnabled: body?.finePayment?.partialPaymentsEnabled === true,
       };
       const updatedPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
         { policyKey: REGISTRATION_POLICY_KEY },

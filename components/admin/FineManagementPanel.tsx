@@ -47,6 +47,9 @@ const EMPTY_PAYMENT = {
   accountTitle: '',
   accountNumber: '',
   instructions: '',
+  requiredProof: true,
+  verificationContact: '',
+  partialPaymentsEnabled: false,
 };
 
 const formatMoney = (value: unknown) => `PKR ${Math.max(Number(value) || 0, 0).toLocaleString()}`;
@@ -78,6 +81,9 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
         accountTitle: payload.finePayment.accountTitle || '',
         accountNumber: payload.finePayment.accountNumber || '',
         instructions: payload.finePayment.instructions || '',
+        requiredProof: payload.finePayment.requiredProof !== false,
+        verificationContact: payload.finePayment.verificationContact || '',
+        partialPaymentsEnabled: payload.finePayment.partialPaymentsEnabled === true,
       });
     }
   }, []);
@@ -128,6 +134,9 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
           accountTitle: json.finePayment.accountTitle || '',
           accountNumber: json.finePayment.accountNumber || '',
           instructions: json.finePayment.instructions || '',
+          requiredProof: json.finePayment.requiredProof !== false,
+          verificationContact: json.finePayment.verificationContact || '',
+          partialPaymentsEnabled: json.finePayment.partialPaymentsEnabled === true,
         });
         setData((previous) => ({ ...(previous || {}), finePayment: json.finePayment }));
       }
@@ -340,6 +349,18 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
                 placeholder="IBAN, account or wallet number"
               />
             </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
+                Verification contact
+              </span>
+              <StyledInput
+                value={payment.verificationContact}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setPayment((previous) => ({ ...previous, verificationContact: event.target.value }))
+                }
+                placeholder="Email or phone for payment questions"
+              />
+            </label>
           </div>
           <label className="mt-4 block">
             <span className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
@@ -354,6 +375,28 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
               rows={5}
             />
           </label>
+          <div className="mt-4 flex flex-wrap gap-5 text-sm font-semibold text-[var(--color-text)]">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={payment.requiredProof}
+                onChange={(event) =>
+                  setPayment((previous) => ({ ...previous, requiredProof: event.target.checked }))
+                }
+              />
+              Require payment proof
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={payment.partialPaymentsEnabled}
+                onChange={(event) =>
+                  setPayment((previous) => ({ ...previous, partialPaymentsEnabled: event.target.checked }))
+                }
+              />
+              Allow partial settlement
+            </label>
+          </div>
           <Button className="mt-4" type="submit" disabled={Boolean(busyAction)}>
             {busyAction === 'updatePaymentDetails' ? (
               <Loader2 className="animate-spin" size={16} />

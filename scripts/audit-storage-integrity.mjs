@@ -113,6 +113,7 @@ try {
     projects,
     voiceNotes,
     supervisors,
+    finePayments,
     reservations,
     deletionTargets,
     storageConfigs,
@@ -129,6 +130,10 @@ try {
     database.collection('users').find(
       { role: 'supervisor', broadcastType: 'audio' },
       { projection: { broadcastContent: 1 } }
+    ).toArray(),
+    database.collection('finepayments').find(
+      { proofKey: { $exists: true, $nin: ['', null] } },
+      { projection: { proofKey: 1 } }
     ).toArray(),
     database.collection('uploadreservations').find(
       {},
@@ -160,6 +165,7 @@ try {
   for (const supervisor of supervisors) {
     addReference('broadcast', supervisor._id, supervisor.broadcastContent);
   }
+  for (const payment of finePayments) addReference('fine-payment-proof', payment._id, payment.proofKey);
 
   const projectIds = new Set(
     (await database.collection('projects').find({}, { projection: { _id: 1 } }).toArray())

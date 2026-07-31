@@ -15,6 +15,7 @@ test('normalizes canonical object keys and classifies their exact owner collecti
   assert.equal(getStorageObjectKind('proposals/student/upload.pdf'), 'proposal');
   assert.equal(getStorageObjectKind('voicenotes/student/project/upload.webm'), 'voice');
   assert.equal(getStorageObjectKind('broadcasts/supervisor/upload.webm'), 'broadcast');
+  assert.equal(getStorageObjectKind('fine-proofs/student/payment-proof'), 'fine-proof');
 });
 
 test('rejects encoded traversal, unsafe separators, and oversized object keys', () => {

@@ -14,12 +14,14 @@ import {
   isProjectAwaitingReview,
   type ProjectReviewStatus,
 } from './projectReviewPolicy';
+import { handleSubmissionReview } from './dynamicFineService';
 
 type ReviewProjectRequest = {
   studentId: string;
   status: ProjectReviewStatus;
   remarks: string;
   supervisorId?: string;
+  actorId?: string;
   requireAwaitingReview?: boolean;
 };
 
@@ -64,6 +66,7 @@ export async function reviewProject({
   status,
   remarks,
   supervisorId,
+  actorId,
   requireAwaitingReview = false,
 }: ReviewProjectRequest): Promise<ReviewProjectResult> {
   const review = await withStorageTransaction(async (session) => {
@@ -129,6 +132,15 @@ export async function reviewProject({
       },
       { session }
     );
+
+    await handleSubmissionReview({
+      projectId: String(project._id),
+      projectStage: String(project.stage),
+      decision: status,
+      reviewedAt: new Date(),
+      actorId: actorId || supervisorId || null,
+      session,
+    });
 
     if (reviewState.newStage && project.pdfUrl) {
       await assertStorageLedgerReady(session);

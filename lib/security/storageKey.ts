@@ -1,11 +1,12 @@
 const MAX_STORAGE_KEY_LENGTH = 500;
 
-export type StorageObjectKind = 'proposal' | 'voice' | 'broadcast';
+export type StorageObjectKind = 'proposal' | 'voice' | 'broadcast' | 'fine-proof';
 
 const STORAGE_PREFIXES: Record<StorageObjectKind, string> = {
   proposal: 'proposals/',
   voice: 'voicenotes/',
   broadcast: 'broadcasts/',
+  'fine-proof': 'fine-proofs/',
 };
 
 function decodeStoragePath(value: string) {

@@ -17,6 +17,11 @@ import {
   StorageProtocolError,
 } from '../../../lib/storageProtocol';
 import { buildStorageKey } from '../../../lib/storageValidation';
+import {
+  DYNAMIC_FINE_RESTRICTION_CODE,
+  fineRestrictionMessage,
+  getFineActionRestriction,
+} from '../../../lib/dynamicFineRestriction';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
@@ -56,6 +61,18 @@ export async function POST(req: NextRequest) {
           error: getTeamFineRestrictionMessage(teamFineRestriction, 'uploads'),
           fineRestriction,
           teamFineRestriction,
+        },
+        { status: 403 }
+      );
+    }
+
+    const dynamicRestriction = await getFineActionRestriction(currentUser.id, 'pdf-upload');
+    if (dynamicRestriction) {
+      return NextResponse.json(
+        {
+          code: DYNAMIC_FINE_RESTRICTION_CODE,
+          error: fineRestrictionMessage(dynamicRestriction, 'pdf-upload'),
+          effectiveRestrictions: dynamicRestriction,
         },
         { status: 403 }
       );

@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!await requireCurrentUser(req, ['admin'])) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
@@ -98,6 +99,7 @@ export async function POST(req: NextRequest) {
       studentId,
       status: body.status,
       remarks: normalizeText(body.remarks, 2000) || 'No remarks provided.',
+      actorId: currentUser.id,
       requireAwaitingReview: true,
     });
 
