@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { GlassCard, StyledInput } from '../ui/SharedUI';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { RegistrationPolicyDto } from '../../types/registrationPolicy';
+import { isValidRollNo, normalizeRollNo } from '../../lib/rollNo';
 
 export type RegistrationSupervisor = {
   _id: string;
@@ -57,7 +58,6 @@ const CustomSelect = ({
   return (
     <div className="relative mb-4" ref={dropdownRef}>
       <input type="hidden" name={name} value={value} required={required} />
-
       <button
         type="button"
         onClick={() => setIsOpen((previous) => !previous)}
@@ -71,7 +71,6 @@ const CustomSelect = ({
           className={`text-[var(--color-text-muted)] transition-transform ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
-
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -83,7 +82,6 @@ const CustomSelect = ({
           >
             {options.map((option) => {
               const isSelected = value === option.value;
-
               return (
                 <button
                   key={option.value}
@@ -183,7 +181,7 @@ export default function RegisterView({
     const registrationData = new FormData(event.currentTarget);
     const name = String(registrationData.get('name') || '').trim();
     const email = String(registrationData.get('email') || '').trim().toLowerCase();
-    const rollNo = String(registrationData.get('rollNo') || '').trim();
+    const rollNo = normalizeRollNo(registrationData.get('rollNo'));
     const password = String(registrationData.get('password') || '');
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -191,12 +189,22 @@ export default function RegisterView({
       showDialog({ title: 'Missing information', message: 'Complete your name, email, roll number, password, program, and batch.' });
       return;
     }
+
     if (!emailPattern.test(email)) {
       showDialog({ title: 'Invalid email', message: 'Enter a valid email address.' });
       return;
     }
-    if (password.length < 6) {
-      showDialog({ title: 'Password too short', message: 'Use at least 6 characters for your password.' });
+
+    if (!isValidRollNo(rollNo)) {
+      showDialog({
+        title: 'Invalid roll number',
+        message: 'Use F or S, followed by two digits, a hyphen, and four digits. Example: F23-0201.',
+      });
+      return;
+    }
+
+    if (password.length < 10) {
+      showDialog({ title: 'Password too short', message: 'Use at least 10 characters for your password.' });
       return;
     }
 
@@ -254,9 +262,27 @@ export default function RegisterView({
             <form onSubmit={handleRegister} className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Full name</label><StyledInput icon={User} name="name" required placeholder="Your full name" autoComplete="name" /></div>
-                <div><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Roll No / Student ID</label><StyledInput name="rollNo" required placeholder="e.g. F23-0201" autoComplete="username" /></div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Roll No / Student ID</label>
+                  <StyledInput
+                    name="rollNo"
+                    required
+                    placeholder="e.g. F23-0201"
+                    autoComplete="username"
+                    autoCapitalize="characters"
+                    maxLength={8}
+                    pattern="[FSfs][0-9]{2}-[0-9]{4}"
+                    title="Use F or S, two digits, a hyphen, and four digits (for example, F23-0201)."
+                    onInput={(event) => {
+                      event.currentTarget.value = event.currentTarget.value.toUpperCase();
+                    }}
+                  />
+                  <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">
+                    Required format: F23-0201 or S23-0201. Each roll number can register only once.
+                  </p>
+                </div>
                 <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Email address</label><StyledInput icon={Mail} name="email" type="email" required placeholder="student@gmail.com or student@outlook.com" autoComplete="email" /><p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Use the email address where supervisors should send project updates, approvals, and rejection messages.</p></div>
-                <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Password</label><StyledInput icon={Lock} name="password" type="password" required placeholder="Minimum 6 characters" autoComplete="new-password" /></div>
+                <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Password</label><StyledInput icon={Lock} name="password" type="password" required minLength={10} maxLength={128} placeholder="Minimum 10 characters" autoComplete="new-password" /></div>
                 <div><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Program</label><CustomSelect name="program" options={programOptions} value={program} onChange={setProgram} placeholder="Select program" required /></div>
                 <div><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Batch</label><CustomSelect name="batch" options={batchOptions} value={batch} onChange={setBatch} placeholder="Select batch" required /></div>
                 <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Supervisor</label><CustomSelect name="supervisor" options={supervisorOptions} value={supervisor} onChange={setSupervisor} placeholder="Choose supervisor" /><p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Optional. Supervisors at full capacity are disabled.</p></div>
