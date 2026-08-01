@@ -5,7 +5,9 @@ import User from "../../../../models/User";
 import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
 import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
 import { isBcryptHash } from "../../../../lib/security/password";
-import { consumeRateLimitDimensions } from "../../../../lib/rateLimit";
+import { consumeRateLimit, hashRateLimitIdentifier } from "../../../../lib/rateLimit";
+
+const LOGIN_ATTEMPT_LIMIT = 5;
 
 // --- HELPER: Backward-Compatible Verification ---
 async function verifyPassword(inputPassword: string, storedPassword: string) {
@@ -24,7 +26,7 @@ const handler = NextAuth({
         rollNo: { label: "Roll No", type: "text" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials, request) {
+      async authorize(credentials) {
         await connectToDatabase();
 
         const normalizedRollNo = normalizeRollNo(credentials?.rollNo);
@@ -34,13 +36,11 @@ const handler = NextAuth({
           throw new Error("Invalid roll number or password.");
         }
         const denyLogin = async () => {
-          const rateLimit = await consumeRateLimitDimensions(
-            'login',
-            normalizedRollNo,
-            new Headers(request?.headers),
-            10
+          const rateLimit = await consumeRateLimit(
+            `login:account:${hashRateLimitIdentifier(normalizedRollNo)}`,
+            LOGIN_ATTEMPT_LIMIT,
           );
-          if (!rateLimit.allowed) throw new Error('Too many login attempts. Please try again later.');
+          if (!rateLimit.allowed) throw new Error('Too many login attempts. Please try again in an hour.');
           throw new Error('Invalid roll number or password.');
         };
 
