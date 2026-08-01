@@ -8,7 +8,10 @@ import {
   OUTSTANDING_STUDENT_FINE_FILTER,
   type FineRestrictedUser,
 } from '../../../../lib/fineRestriction';
-import { REVIEWED_PROJECT_STATUSES } from '../../../../lib/projectReviewPolicy';
+import {
+  APPROVED_PROJECT_STAGES,
+  REVIEWED_PROJECT_STATUSES,
+} from '../../../../lib/projectReviewPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import Project from '../../../../models/Project';
 import User from '../../../../models/User';
@@ -312,7 +315,20 @@ export async function GET(req: NextRequest) {
                       ],
                     },
                   },
-                  approved: { $sum: { $cond: [{ $eq: ['$status', 'Approved'] }, 1, 0] } },
+                  approved: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $or: [
+                            { $eq: ['$status', 'Approved'] },
+                            { $in: [{ $ifNull: ['$stage', 'PROPOSAL'] }, APPROVED_PROJECT_STAGES] },
+                          ],
+                        },
+                        1,
+                        0,
+                      ],
+                    },
+                  },
                 },
               },
             ],

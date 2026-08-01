@@ -28,6 +28,7 @@ const projects = [
     domains: ['web-security'],
     tools: 'Next.js, MongoDB',
     status: 'Pending',
+    stage: 'THESIS_DRAFT',
     pdfUrl: 'https://files.test/proposal.pdf',
   },
   {
@@ -138,19 +139,19 @@ test('supervisor search covers members, roll numbers, programs, project details,
   }
 });
 
-test('dashboard statistics use all projects on overview and filtered projects on project tab', () => {
+test('dashboard statistics count projects that passed proposal approval', () => {
   const filtered = [projects[0]];
 
   assert.deepEqual(getSupervisorDashboardStats(projects, filtered, 'overview', accessors), {
     assigned: 3,
     submitted: 2,
-    approved: 1,
+    approved: 2,
     reviewQueue: 1,
   });
   assert.deepEqual(getSupervisorDashboardStats(projects, filtered, 'projects', accessors), {
     assigned: 1,
     submitted: 1,
-    approved: 0,
+    approved: 1,
     reviewQueue: 1,
   });
 });

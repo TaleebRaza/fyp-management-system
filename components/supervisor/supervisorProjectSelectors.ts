@@ -3,6 +3,7 @@ import type {
   SupervisorDashboardStats,
   SupervisorProject,
 } from './supervisorDashboardTypes';
+import { isProjectApproved } from '../../lib/projectReviewPolicy';
 
 export type SupervisorProjectSelectorAccessors = {
   getMemberNames: (project: SupervisorProject) => unknown;
@@ -105,7 +106,7 @@ export function getSupervisorDashboardStats(
   return {
     assigned: statProjects.length,
     submitted: statProjects.filter(accessors.hasProjectSubmission).length,
-    approved: statProjects.filter((project) => project.status === 'Approved').length,
+    approved: statProjects.filter(isProjectApproved).length,
     reviewQueue: statProjects.filter(accessors.isProjectReviewable).length,
   };
 }
