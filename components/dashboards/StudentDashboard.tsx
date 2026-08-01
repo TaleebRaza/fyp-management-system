@@ -88,6 +88,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     isUnassigned,
     canSubmitByStatus,
     canSubmit,
+    projectSubmissionsOpen,
     isSupervisorChangeLocked,
     announcementItems,
   } = buildStudentDashboardViewModel(data, headline, tools);
@@ -182,6 +183,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     file,
     existingPdfUrl: pdfUrl,
     status: me?.status,
+    projectSubmissionsOpen,
     isFineRestricted,
     isOwnFineRestricted,
     teamFineMessage,
@@ -269,6 +271,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             teamFineMessage={teamFineMessage}
             isOwnFineRestricted={isOwnFineRestricted}
             onOpenFine={() => setActiveTab('fine')}
+            projectSubmissionsOpen={projectSubmissionsOpen}
             canSubmitByStatus={canSubmitByStatus}
             status={me?.status}
             onSubmit={handleSubmitProject}

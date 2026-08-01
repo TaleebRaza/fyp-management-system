@@ -74,3 +74,18 @@ test('fine restrictions continue to block project submission', () => {
   assert.equal(result.isFineRestricted, true);
   assert.equal(result.canSubmit, false);
 });
+
+test('closed project submissions block eligible students before fine rules apply', () => {
+  const result = selectors.buildStudentDashboardViewModel(
+    {
+      student: { status: 'Pending' },
+      projectSubmissionsOpen: false,
+    },
+    '',
+    ''
+  );
+
+  assert.equal(result.canSubmitByStatus, true);
+  assert.equal(result.projectSubmissionsOpen, false);
+  assert.equal(result.canSubmit, false);
+});

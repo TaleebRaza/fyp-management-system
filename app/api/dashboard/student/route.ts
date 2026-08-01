@@ -3,6 +3,7 @@ import mongoose, { ClientSession } from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
+import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import { enqueueNotificationEmail } from '../../../../lib/emailOutbox';
 import {
   formatProjectDomainLabels,
@@ -20,7 +21,16 @@ import {
   getTeamFineRestrictionFromMembers,
   getTeamFineRestrictionMessage,
 } from '../../../../lib/teamFineRestriction';
-import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../../lib/registrationPolicy';
+import {
+  REGISTRATION_POLICY_KEY,
+  getOrCreateRegistrationPolicy,
+  serializeRegistrationPolicy,
+} from '../../../../lib/registrationPolicy';
+import {
+  areProjectSubmissionsOpen,
+  PROJECT_SUBMISSIONS_CLOSED_CODE,
+  PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
+} from '../../../../lib/projectSubmissionPolicy';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
 import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
@@ -101,7 +111,7 @@ export async function GET(req: NextRequest) {
     const fineRestriction = buildFineRestriction(student);
 
     // Fetch independent dashboard relationships in parallel.
-    const [supervisor, project] = await Promise.all([
+    const [supervisor, project, policyDocument] = await Promise.all([
       student.supervisorId
         ? User.findById(student.supervisorId)
             .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
@@ -112,6 +122,7 @@ export async function GET(req: NextRequest) {
             .select('_id members status stage domain domains pdfUrl inviteCode maxTeamSize')
             .lean()
         : null,
+      getOrCreateRegistrationPolicy(),
     ]);
 
     const projectMembers = project?.members?.length
@@ -120,11 +131,9 @@ export async function GET(req: NextRequest) {
           .lean()
       : [];
     const teamFineRestriction = getTeamFineRestrictionFromMembers(projectMembers, student._id);
-    const finePolicy = fineRestriction || teamFineRestriction
-      ? serializeRegistrationPolicy(await getOrCreateRegistrationPolicy())
-      : null;
-    const fineRestrictionResponse = fineRestriction && finePolicy
-      ? { ...fineRestriction, payment: finePolicy.finePayment }
+    const policy = serializeRegistrationPolicy(policyDocument);
+    const fineRestrictionResponse = fineRestriction
+      ? { ...fineRestriction, payment: policy.finePayment }
       : null;
     const safeProjectMembers = projectMembers.map((member) => ({
       _id: member._id,
@@ -183,7 +192,8 @@ export async function GET(req: NextRequest) {
         supervisorBroadcast,
         fineRestriction: fineRestrictionResponse,
         teamFineRestriction,
-        fineRestrictions: finePolicy?.fineRestrictions,
+        fineRestrictions: fineRestriction || teamFineRestriction ? policy.fineRestrictions : undefined,
+        projectSubmissionsOpen: policy.projectSubmissionsOpen,
       },
       {
         status: 200,
@@ -501,6 +511,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
+    const submissionPolicy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
+    if (!areProjectSubmissionsOpen(submissionPolicy)) {
+      return NextResponse.json(
+        { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },
+        { status: 403 }
+      );
+    }
+
     const title = normalizeText(body.title, 200);
     const description = normalizeText(body.desc, 2_000);
     const tools = normalizeText(body.tools, 1_000);
@@ -616,6 +634,18 @@ export async function POST(req: NextRequest) {
       ownerId: submissionStudentId,
       kind: 'pdf',
       commit: async (session, uploadedObject) => {
+        const acceptedSubmissionPolicy = await RegistrationPolicy.findOneAndUpdate(
+          {
+            policyKey: REGISTRATION_POLICY_KEY,
+            projectSubmissionsOpen: { $ne: false },
+          },
+          { $inc: { projectSubmissionsAccepted: 1 } },
+          { new: true, session }
+        );
+        if (!acceptedSubmissionPolicy) {
+          throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
+        }
+
         const studentInTransaction = await User.findOne({
           _id: submissionStudentId,
           role: 'student',

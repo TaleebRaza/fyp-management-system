@@ -7,6 +7,16 @@ import connectToDatabase from '../../../../lib/mongodb';
 import { reviewProject } from '../../../../lib/projectReview';
 import { getAdminProjectReviewQueue } from '../../../../lib/projectReviewQueue';
 import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
+import {
+  REGISTRATION_POLICY_KEY,
+  getOrCreateRegistrationPolicy,
+  serializeRegistrationPolicy,
+} from '../../../../lib/registrationPolicy';
+import RegistrationPolicy from '../../../../models/RegistrationPolicy';
+import {
+  invalidatePublicContent,
+  PUBLIC_REGISTRATION_POLICY_TAG,
+} from '../../../../lib/publicContentCache';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { normalizeText } from '../../../../lib/security/input';
 
@@ -43,10 +53,15 @@ export async function GET(req: NextRequest) {
     const program = normalizeText(req.nextUrl.searchParams.get('program'), 32);
 
     // requireCurrentUser already establishes the cached MongoDB connection.
-    const result = await getAdminProjectReviewQueue({ page, limit, search, program });
+    const [result, policyDocument] = await Promise.all([
+      getAdminProjectReviewQueue({ page, limit, search, program }),
+      getOrCreateRegistrationPolicy(),
+    ]);
+    const policy = serializeRegistrationPolicy(policyDocument);
     const response = NextResponse.json({
       projects: result.projects,
       pagination: result.pagination,
+      projectSubmissionsOpen: policy.projectSubmissionsOpen,
     }, { status: 200 });
 
     response.headers.set(
@@ -116,5 +131,52 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Admin project review error:', error);
     return NextResponse.json({ error: 'Failed to review project.' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
+  }
+
+  try {
+    let body: unknown;
+
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid submission control request.' }, { status: 400 });
+    }
+
+    if (!isRecord(body) || typeof body.projectSubmissionsOpen !== 'boolean') {
+      return NextResponse.json({ error: 'Submission status must be open or closed.' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    const updated = await RegistrationPolicy.findOneAndUpdate(
+      { policyKey: REGISTRATION_POLICY_KEY },
+      {
+        $set: {
+          projectSubmissionsOpen: body.projectSubmissionsOpen,
+          updatedBy: currentUser.id,
+        },
+        $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
+        $inc: { version: 1 },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    const policy = serializeRegistrationPolicy(updated);
+    invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
+
+    return NextResponse.json({
+      message: policy.projectSubmissionsOpen
+        ? 'Project submissions are open.'
+        : 'Project submissions are closed for all students.',
+      projectSubmissionsOpen: policy.projectSubmissionsOpen,
+    });
+  } catch (error) {
+    console.error('Admin project submission control error:', error);
+    return NextResponse.json({ error: 'Failed to update project submission control.' }, { status: 500 });
   }
 }

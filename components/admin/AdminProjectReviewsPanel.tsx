@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, LockKeyhole, UnlockKeyhole } from 'lucide-react';
 
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import { PROGRAM_MAP } from '../../config/appSettings';
+import { Button } from '../ui/SharedUI';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import { getProgramName } from '../supervisor/SupervisorProjectCard';
@@ -41,6 +43,8 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [projectSubmissionsOpen, setProjectSubmissionsOpen] = useState(true);
+  const [isUpdatingSubmissionControl, setIsUpdatingSubmissionControl] = useState(false);
   const latestRequestId = useRef(0);
 
   const programs = useMemo(
@@ -77,6 +81,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
       if (requestId !== latestRequestId.current) return;
 
       setProjects(Array.isArray(data.projects) ? data.projects : []);
+      setProjectSubmissionsOpen(data.projectSubmissionsOpen !== false);
       setPagination(data.pagination || {
         page,
         limit: PAGE_SIZE,
@@ -182,6 +187,36 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
     });
   };
 
+  const updateSubmissionControl = async () => {
+    setIsUpdatingSubmissionControl(true);
+
+    try {
+      const response = await fetch('/api/admin/project-reviews', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectSubmissionsOpen: !projectSubmissionsOpen }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update project submission control.');
+      }
+
+      setProjectSubmissionsOpen(data.projectSubmissionsOpen !== false);
+      showDialog({
+        title: data.projectSubmissionsOpen === false ? 'Submissions closed' : 'Submissions opened',
+        message: data.message || 'Project submission control updated.',
+      });
+    } catch (error) {
+      showDialog({
+        title: 'Submission control unavailable',
+        message: getErrorMessage(error, 'Unable to update project submission control.'),
+      });
+    } finally {
+      setIsUpdatingSubmissionControl(false);
+    }
+  };
+
   if (isLoading && projects.length === 0) {
     return (
       <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">
@@ -211,6 +246,26 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
               description: 'There are no submitted projects awaiting a review right now.',
             }}
             onOpenProject={setSelectedProject}
+            headerActions={
+              <Button
+                variant={projectSubmissionsOpen ? 'danger' : 'success'}
+                disabled={isUpdatingSubmissionControl}
+                onClick={() => void updateSubmissionControl()}
+              >
+                {isUpdatingSubmissionControl ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : projectSubmissionsOpen ? (
+                  <LockKeyhole size={16} />
+                ) : (
+                  <UnlockKeyhole size={16} />
+                )}
+                {isUpdatingSubmissionControl
+                  ? 'Updating...'
+                  : projectSubmissionsOpen
+                    ? 'Close Submissions'
+                    : 'Open Submissions'}
+              </Button>
+            }
           />
         </div>
 

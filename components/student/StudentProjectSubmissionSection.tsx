@@ -8,6 +8,7 @@ import {
   TextArea,
 } from '../ui/SharedUI';
 import ProjectDomainSelector from './ProjectDomainSelector';
+import { PROJECT_SUBMISSIONS_CLOSED_MESSAGE } from '../../lib/projectSubmissionPolicy';
 
 export default function StudentProjectSubmissionSection({
   pdfUrl,
@@ -16,6 +17,7 @@ export default function StudentProjectSubmissionSection({
   teamFineMessage,
   isOwnFineRestricted,
   onOpenFine,
+  projectSubmissionsOpen,
   canSubmitByStatus,
   status,
   onSubmit,
@@ -39,6 +41,7 @@ export default function StudentProjectSubmissionSection({
   teamFineMessage: string;
   isOwnFineRestricted: boolean;
   onOpenFine: () => void;
+  projectSubmissionsOpen: boolean;
   canSubmitByStatus: boolean;
   status?: string;
   onSubmit: FormEventHandler<HTMLFormElement>;
@@ -86,6 +89,15 @@ export default function StudentProjectSubmissionSection({
                 View Fine Details
               </Button>
             )}
+          </div>
+        </div>
+      )}
+
+      {!projectSubmissionsOpen && (
+        <div className="mb-5 rounded-xl border border-red-300 bg-red-100/70 p-4 text-sm text-red-950 dark:border-red-800 dark:bg-red-950/50 dark:text-red-50">
+          <div className="flex items-start gap-3">
+            <Lock size={18} className="mt-0.5 shrink-0" />
+            <p className="font-semibold">{PROJECT_SUBMISSIONS_CLOSED_MESSAGE}</p>
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import {
   uploadStudentPdf,
 } from '../api/studentDashboardApi';
 import type { StudentDashboardProps } from '../studentDashboardTypes';
+import { PROJECT_SUBMISSIONS_CLOSED_MESSAGE } from '../../../lib/projectSubmissionPolicy';
 
 type UseStudentProjectSubmissionOptions = {
   userId: string;
@@ -17,6 +18,7 @@ type UseStudentProjectSubmissionOptions = {
   file: File | null;
   existingPdfUrl?: string;
   status?: string;
+  projectSubmissionsOpen: boolean;
   isFineRestricted: boolean;
   isOwnFineRestricted: boolean;
   teamFineMessage: string;
@@ -39,6 +41,7 @@ export function useStudentProjectSubmission({
   file,
   existingPdfUrl,
   status,
+  projectSubmissionsOpen,
   isFineRestricted,
   isOwnFineRestricted,
   teamFineMessage,
@@ -56,6 +59,13 @@ export function useStudentProjectSubmission({
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
+      if (!projectSubmissionsOpen) {
+        showDialog({
+          title: 'Submissions closed',
+          message: PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
+        });
+        return;
+      }
       if (isFineRestricted) {
         if (isOwnFineRestricted) openFineTab();
         showDialog({
@@ -132,6 +142,7 @@ export function useStudentProjectSubmission({
       isFineRestricted,
       isOwnFineRestricted,
       openFineTab,
+      projectSubmissionsOpen,
       refreshDashboard,
       selectedDomains,
       showDialog,

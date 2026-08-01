@@ -90,6 +90,7 @@ export type StudentDashboardData = {
   fineRestriction?: FineRestriction | null;
   teamFineRestriction?: FineRestriction | null;
   fineRestrictions?: FineRestrictionPolicy;
+  projectSubmissionsOpen?: boolean;
 };
 
 export type AnnouncementItem = {

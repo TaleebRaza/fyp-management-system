@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Download, FileText, Loader2, Search } from 'lucide-react';
 import { Button, DashboardGrid, DashboardPanel, EmptyState, SectionHeader, Select, StyledInput } from '../ui/SharedUI';
 import SupervisorProjectCard from './SupervisorProjectCard';
@@ -20,6 +21,7 @@ export default function SupervisorProjectsSection({
   projects,
   emptyState,
   onOpenProject,
+  headerActions,
 }: {
   title: string;
   description: string;
@@ -37,6 +39,7 @@ export default function SupervisorProjectsSection({
   projects: SupervisorProject[];
   emptyState: { title: string; description: string };
   onOpenProject: (project: SupervisorProject) => void;
+  headerActions?: ReactNode;
 }) {
   return (
     <DashboardPanel className="flex flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
@@ -50,6 +53,7 @@ export default function SupervisorProjectsSection({
               {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
               {isExporting ? 'Exporting...' : 'Export Excel'}
             </Button>}
+            {headerActions}
           </div>
         }
       />

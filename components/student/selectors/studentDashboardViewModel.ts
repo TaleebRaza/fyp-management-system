@@ -87,6 +87,7 @@ export function buildStudentDashboardViewModel(
   const canSubmitByStatus = ['Pending', 'Rejected', 'Changes Requested'].includes(
     me?.status || ''
   );
+  const projectSubmissionsOpen = data?.projectSubmissionsOpen !== false;
 
   return {
     me,
@@ -109,7 +110,8 @@ export function buildStudentDashboardViewModel(
     pdfUrl: me?.pdfUrl || project?.pdfUrl,
     isUnassigned,
     canSubmitByStatus,
-    canSubmit: canSubmitByStatus && !fineState.isFineRestricted,
+    projectSubmissionsOpen,
+    canSubmit: canSubmitByStatus && projectSubmissionsOpen && !fineState.isFineRestricted,
     isSupervisorChangeLocked:
       !isUnassigned &&
       (project?.status === 'Approved' || currentStage !== 'PROPOSAL'),

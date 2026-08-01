@@ -15,6 +15,11 @@ import {
 } from '../../../lib/teamFineRestriction';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../lib/registrationPolicy';
+import {
+  areProjectSubmissionsOpen,
+  PROJECT_SUBMISSIONS_CLOSED_CODE,
+  PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
+} from '../../../lib/projectSubmissionPolicy';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 import {
   cancelUploadReservation,
@@ -32,6 +37,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'Unauthorized: Authentication token missing or invalid.' },
         { status: 401 }
+      );
+    }
+
+    const submissionPolicy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
+    if (!areProjectSubmissionsOpen(submissionPolicy)) {
+      return NextResponse.json(
+        { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },
+        { status: 403 }
       );
     }
 
