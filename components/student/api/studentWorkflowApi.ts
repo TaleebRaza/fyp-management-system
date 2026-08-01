@@ -90,3 +90,16 @@ export async function updateStudentAcademicInfo(
   }
   return data;
 }
+
+export async function updateStudentName(name: string): Promise<StudentWorkflowResponse> {
+  const response = await fetch('/api/dashboard/student', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'updateName', name }),
+  });
+  const data = await readJson<StudentWorkflowResponse>(response);
+  if (!response.ok) {
+    throw new Error(readError(data, 'Failed to update name.'));
+  }
+  return data;
+}

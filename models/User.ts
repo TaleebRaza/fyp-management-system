@@ -45,6 +45,7 @@ const UserSchema = new Schema({
   resetCode: { type: String, required: false, select: false },
   resetCodeExpiry: { type: Date, required: false, select: false },
   lastPasswordChange: { type: Date, required: false },
+  lastNameChangeAt: { type: Date, required: false },
 
   // Limits student Program/Batch self-editing to once per 24 hours.
   lastProgramBatchChangeAt: { type: Date, required: false },

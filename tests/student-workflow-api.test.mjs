@@ -108,6 +108,19 @@ test('academic update preserves action and field names', async () => {
   });
 });
 
+test('name update uses its own non-academic action', async () => {
+  await withMockFetch(async (url, init) => {
+    assert.equal(url, '/api/dashboard/student');
+    assert.deepEqual(JSON.parse(init.body), {
+      action: 'updateName',
+      name: 'Ayesha Khan',
+    });
+    return jsonResponse({ message: 'Updated' });
+  }, async () => {
+    await api.updateStudentName('Ayesha Khan');
+  });
+});
+
 test('workflow API propagates server error messages', async () => {
   await withMockFetch(
     async () => jsonResponse({ error: 'Supervisor slots are full.' }, { ok: false }),

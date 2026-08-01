@@ -51,6 +51,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+const NAME_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 async function createFreshStudentProject(
   studentId: mongoose.Types.ObjectId,
   session: ClientSession,
@@ -219,11 +221,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid student action.' }, { status: 400 });
     }
     const action = body.action;
-    if (!['updateProgramBatch', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
+    if (!['updateName', 'updateProgramBatch', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown student action.' }, { status: 400 });
     }
 
-        // ==========================================
+    if (action === 'updateName') {
+      const normalizedName = normalizeText(body.name, 100);
+      if (!normalizedName) {
+        return NextResponse.json({ error: 'Enter your name.' }, { status: 400 });
+      }
+
+      const student = await User.findOne({ _id: currentUser.id, role: 'student' })
+        .select('name')
+        .lean();
+      if (!student) {
+        return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
+      }
+      if (normalizedName === student.name) {
+        return NextResponse.json({ error: 'Your name is already up to date.' }, { status: 400 });
+      }
+
+      const now = new Date();
+      const nameChangeCutoff = new Date(now.getTime() - NAME_CHANGE_COOLDOWN_MS);
+      const updatedStudent = await User.findOneAndUpdate(
+        {
+          _id: currentUser.id,
+          role: 'student',
+          $or: [
+            { lastNameChangeAt: { $exists: false } },
+            { lastNameChangeAt: null },
+            { lastNameChangeAt: { $lte: nameChangeCutoff } },
+          ],
+        },
+        { $set: { name: normalizedName, lastNameChangeAt: now } },
+        { new: true }
+      )
+        .select('name')
+        .lean();
+
+      if (!updatedStudent) {
+        return NextResponse.json(
+          { error: 'You can change your name once per day. Please try again later.' },
+          { status: 429 }
+        );
+      }
+
+      return NextResponse.json(
+        { message: 'Name updated. You can change it again after 24 hours.', name: updatedStudent.name },
+        { status: 200 }
+      );
+    }
+
+    // ==========================================
     // ACTION: STUDENT PROGRAM/BATCH SELF UPDATE
     // ==========================================
     if (action === 'updateProgramBatch') {

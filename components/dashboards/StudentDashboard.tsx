@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { Loader2, LogIn, Settings } from 'lucide-react';
+import { Loader2, LogIn, Pencil, Settings } from 'lucide-react';
 
 import {
   Button,
@@ -35,6 +35,7 @@ import { useStudentAcademicUpdate } from '../student/hooks/useStudentAcademicUpd
 import { useStudentFineRefresh } from '../student/hooks/useStudentFineRefresh';
 import { useStudentSupervisorActions } from '../student/hooks/useStudentSupervisorActions';
 import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
+import { updateStudentName } from '../student/api/studentWorkflowApi';
 const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDashboardProps) => {
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
 
@@ -195,6 +196,28 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   const isSubmitting =
     isProjectSubmitting || isSupervisorSubmitting || isTeamSubmitting;
 
+  const openNameEditor = () => {
+    showDialog({
+      type: 'prompt',
+      title: 'Update name',
+      message: 'You can change your name once per day. This will not affect your academic information or project.',
+      defaultValue: me?.name || '',
+      placeholder: 'Enter your full name',
+      onConfirm: async (name = '') => {
+        try {
+          const response = await updateStudentName(name.trim());
+          await fetchData();
+          showDialog({ title: 'Name updated', message: response.message || 'Your name was updated.' });
+        } catch (error) {
+          showDialog({
+            title: 'Name update blocked',
+            message: error instanceof Error ? error.message : 'Could not update your name.',
+          });
+        }
+      },
+    });
+  };
+
   const handleOpenTemplate = async (template?: WordTemplate) => {
     if (!template) {
       await loadTemplates();
@@ -226,6 +249,11 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         }}
         actions={
           <div className="grid gap-2 sm:flex">
+            <Button variant="outline" onClick={openNameEditor}>
+              <Pencil size={16} />
+              Edit Name
+            </Button>
+
             <Button variant="outline" onClick={openAcademicEditor}>
               <Settings size={16} />
               Academic Info
