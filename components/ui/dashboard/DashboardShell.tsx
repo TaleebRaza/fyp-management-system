@@ -4,6 +4,7 @@ import React from "react";
 import Image from "next/image";
 import { cn } from "../shared/cn";
 import { AvatarBadge } from "./AvatarBadge";
+import { DashboardQuote } from "./DashboardQuote";
 
 export type DashboardNavItem = {
   id: string;
@@ -220,7 +221,6 @@ export const DashboardShell = ({
                 className="h-10 w-10 rounded-xl"
               />
             </div>
-
             <div className="hidden px-6 py-5 lg:flex lg:items-center lg:justify-between lg:gap-6">
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-bold tracking-tight text-[var(--color-text)]">
@@ -234,6 +234,8 @@ export const DashboardShell = ({
               </div>
               {actions && <div className="shrink-0">{actions}</div>}
             </div>
+
+            <DashboardQuote className="mt-3 px-1 lg:-mt-3 lg:px-6 lg:pb-5" />
 
             {actions && (
               <div className="mt-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[var(--shadow-card)] sm:p-4 lg:hidden">
