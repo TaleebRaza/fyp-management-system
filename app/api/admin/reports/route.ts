@@ -245,7 +245,7 @@ export async function GET(req: NextRequest) {
               {
                 $group: {
                   _id: null,
-                  students: { $sum: 1 },
+                  students: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
                   activeStudents: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
                   deactivatedStudents: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
                   assignedStudents: {

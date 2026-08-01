@@ -84,10 +84,11 @@ const AdminDashboard = ({
     () =>
       buildAdminStats(
         students.students,
-        students.pagination.total,
+        students.pagination.activeTotal ?? students.pagination.total,
         supervisors.supervisors.length
       ),
     [
+      students.pagination.activeTotal,
       students.pagination.total,
       students.students,
       supervisors.supervisors.length,

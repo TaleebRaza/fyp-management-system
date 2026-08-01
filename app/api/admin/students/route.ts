@@ -139,13 +139,14 @@ export async function GET(req: NextRequest) {
       batch: { $nin: [null, ''] },
     });
 
-    const [students, total, batches] = await Promise.all([
+    const [students, total, activeTotal, batches] = await Promise.all([
       User.find(query)
         .select(selectedFields)
         .sort({ createdAt: -1, _id: -1 })
         .limit(limit)
         .lean(),
       User.countDocuments(baseQuery),
+      User.countDocuments({ role: 'student', isActive: { $ne: false } }),
       filterMetaPromise,
     ]);
 
@@ -158,6 +159,7 @@ export async function GET(req: NextRequest) {
           page,
           limit,
           total,
+          activeTotal,
           totalPages,
         },
         filterMeta: {

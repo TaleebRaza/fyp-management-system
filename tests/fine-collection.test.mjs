@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildCollectedFineSummary } from '../lib/fineRestriction.ts';
+import {
+  buildCollectedFineSummary,
+  COLLECTED_STUDENT_FINE_FILTER,
+  OUTSTANDING_STUDENT_FINE_FILTER,
+} from '../lib/fineRestriction.ts';
+
+test('fine queries exclude deactivated students', () => {
+  assert.deepEqual(OUTSTANDING_STUDENT_FINE_FILTER.isActive, { $ne: false });
+  assert.deepEqual(COLLECTED_STUDENT_FINE_FILTER.isActive, { $ne: false });
+});
 
 test('collected fine summary includes only resolved monetary fines', () => {
   assert.deepEqual(

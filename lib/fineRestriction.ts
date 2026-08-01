@@ -9,6 +9,7 @@ export function isFineRestrictionBlocking(
 
 export const OUTSTANDING_STUDENT_FINE_FILTER = {
   role: 'student',
+  isActive: { $ne: false },
   $or: [
     {
       lateRegistrationFine: { $gt: 0 },
@@ -25,6 +26,7 @@ export const OUTSTANDING_STUDENT_FINE_FILTER = {
 
 export const COLLECTED_STUDENT_FINE_FILTER = {
   role: 'student',
+  isActive: { $ne: false },
   $or: [
     {
       lateRegistrationFine: { $gt: 0 },

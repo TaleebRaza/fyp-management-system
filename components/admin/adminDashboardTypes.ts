@@ -42,6 +42,7 @@ export type StudentPagination = {
   page: number;
   limit: number;
   total: number;
+  activeTotal?: number;
   totalPages: number;
 };
 
