@@ -4,7 +4,7 @@ import type { AdminReportsData } from '../adminDashboardTypes';
 
 export function AdminReportSummary({ data }: { data: AdminReportsData }) {
   return (
-    <DashboardGrid columns="four">
+    <DashboardGrid>
       <StatCard label="Students" value={data.totals?.students || 0} hint="Total student accounts" icon={<Users size={18} />} />
       <StatCard label="Supervisors" value={data.totals?.supervisors || 0} hint="Total supervisor accounts" icon={<UserCheck size={18} />} />
       <StatCard label="Projects" value={data.totals?.projects || 0} hint="Total project records" icon={<FileText size={18} />} />

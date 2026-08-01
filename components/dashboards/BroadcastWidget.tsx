@@ -3,7 +3,6 @@
 
 import { useCallback, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import type { ShowDialog } from '../../app/_components/PortalDialog';
 import {
   BroadcastDialog,
   BroadcastLauncher,
@@ -14,7 +13,6 @@ import type { BroadcastMode, BroadcastTheme } from '../broadcast';
 
 type BroadcastWidgetProps = {
   isDarkMode: boolean;
-  showDialog?: ShowDialog;
   theme?: BroadcastTheme;
 };
 
@@ -95,4 +93,3 @@ export default function BroadcastWidget({
     </>
   );
 }
-

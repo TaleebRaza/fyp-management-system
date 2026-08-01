@@ -3,7 +3,7 @@
 import { Lock } from 'lucide-react';
 
 import type { ShowDialog } from '../../app/_components/PortalDialog';
-import { GlassCard } from '../ui/SharedUI';
+import { Card } from '../ui/SharedUI';
 import { SetNewPasswordForm } from './password-reset/SetNewPasswordForm';
 import { VerifyAcademicDetailsForm } from './password-reset/VerifyAcademicDetailsForm';
 import { usePasswordResetFlow } from './password-reset/usePasswordResetFlow';
@@ -18,7 +18,7 @@ export default function PasswordResetFlow({
   const flow = usePasswordResetFlow({ showDialog, onBack });
 
   return (
-    <GlassCard className="w-full p-0">
+    <Card className="w-full p-0">
       <div className="border-b border-[var(--color-border)] px-5 py-5 sm:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
@@ -69,6 +69,6 @@ export default function PasswordResetFlow({
           />
         )}
       </div>
-    </GlassCard>
+    </Card>
   );
 }

@@ -26,18 +26,9 @@ import {
 import type { SupervisorDashboardProps } from '../supervisor/supervisorDashboardTypes';
 import { Button, DashboardShell } from '../ui/SharedUI';
 
-const FALLBACK_THEME = {
-  name: 'Professional',
-  bg: 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]',
-  text: 'text-[var(--color-accent)]',
-  ring: 'focus:ring-[var(--color-accent)]/30',
-  lightBg: 'bg-[var(--color-accent-soft)]',
-  border: 'border-[var(--color-accent)]',
-};
-
 const SupervisorDashboard = ({
   isDarkMode = false,
-  theme = FALLBACK_THEME,
+  theme,
   session,
   showDialog,
 }: SupervisorDashboardProps) => {
@@ -153,7 +144,6 @@ const SupervisorDashboard = ({
             <BroadcastWidget
               isDarkMode={isDarkMode}
               theme={theme}
-              showDialog={showDialog}
             />
             <Button
               variant="outline"
@@ -184,7 +174,6 @@ const SupervisorDashboard = ({
             myMigrationCode={myMigrationCode}
             isDarkMode={isDarkMode}
             theme={theme}
-            showDialog={showDialog}
             isExporting={isExporting}
             onExport={exportProjects}
             onOpenProjects={filters.openProjectsView}

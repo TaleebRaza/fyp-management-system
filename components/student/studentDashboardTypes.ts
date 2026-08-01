@@ -117,5 +117,4 @@ export type StudentDashboardProps = {
   isDarkMode?: boolean;
   session: Session;
   showDialog: ShowDialog;
-  theme?: unknown;
 };

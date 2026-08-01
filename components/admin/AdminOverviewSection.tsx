@@ -15,7 +15,7 @@ export default function AdminOverviewSection({
 }) {
   return (
     <>
-      <DashboardGrid columns="four">
+      <DashboardGrid>
         <StatCard label="Total Students" value={stats.totalStudents} hint={`${stats.loadedStudents} visible in current view`} icon={<Users size={18} />} />
         <StatCard label="Supervisors" value={stats.supervisors} hint="Active supervisor accounts" icon={<UserCheck size={18} />} />
         <StatCard label="Active Students" value={stats.activeStudents} hint="Based on loaded student records" icon={<ShieldCheck size={18} />} />

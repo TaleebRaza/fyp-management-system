@@ -7,8 +7,6 @@ export type AdminDashboardProps = {
   showDialog: ShowDialog;
   registrationPolicy?: RegistrationPolicyDto;
   onRegistrationPolicyChange?: (policy: RegistrationPolicyDto) => void;
-  isDarkMode?: boolean;
-  theme?: unknown;
 };
 
 export type AdminSupervisor = {

@@ -51,13 +51,10 @@ async function fetchRegistrationPolicy(): Promise<RegistrationPolicyDto | null> 
 }
 
 const PORTAL_THEME = {
-  name: 'Professional',
   bg: 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]',
   text: 'text-[var(--color-accent)]',
   ring: 'focus:ring-[var(--color-accent)]/30',
   lightBg: 'bg-[var(--color-accent-soft)]',
-  gradient: '',
-  border: 'border-[var(--color-accent)]',
 };
 
 // --- MAIN APP ---
@@ -194,8 +191,6 @@ export default function App() {
   if (role === 'admin') {
           return (
         <AdminDashboard
-          isDarkMode={isDarkMode}
-          theme={PORTAL_THEME}
           session={session}
           showDialog={showDialog}
           registrationPolicy={registrationPolicy}
@@ -219,7 +214,6 @@ export default function App() {
     return (
       <StudentDashboard
         isDarkMode={isDarkMode}
-        theme={PORTAL_THEME}
         session={session}
         showDialog={showDialog}
       />
@@ -333,5 +327,4 @@ export default function App() {
     </div>
   );
 }
-
 

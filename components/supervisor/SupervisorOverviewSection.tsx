@@ -1,5 +1,4 @@
 import { CheckCircle, ChevronRight, Download, FileText, LayoutDashboard, Loader2, Users } from 'lucide-react';
-import type { ShowDialog } from '../../app/_components/PortalDialog';
 import BroadcastWidget from '../dashboards/BroadcastWidget';
 import { AvatarBadge, Badge, Button, DashboardGrid, DashboardPanel, EmptyState, SectionHeader, StatCard } from '../ui/SharedUI';
 import { getMemberNames, getStatusVariant } from './SupervisorProjectCard';
@@ -11,7 +10,6 @@ export default function SupervisorOverviewSection({
   myMigrationCode,
   isDarkMode,
   theme,
-  showDialog,
   isExporting,
   onExport,
   onOpenProjects,
@@ -22,7 +20,6 @@ export default function SupervisorOverviewSection({
   myMigrationCode: string;
   isDarkMode: boolean;
   theme: SupervisorTheme;
-  showDialog?: ShowDialog;
   isExporting: boolean;
   onExport: () => void;
   onOpenProjects: (filter: ProjectQueueFilter) => void;
@@ -76,7 +73,7 @@ export default function SupervisorOverviewSection({
               <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Share this only when another supervisor needs to transfer a team to you.</p>
             </div>
             <div className="grid gap-2">
-              <BroadcastWidget isDarkMode={isDarkMode} theme={theme} showDialog={showDialog} />
+              <BroadcastWidget isDarkMode={isDarkMode} theme={theme} />
               <Button variant="outline" onClick={onExport} disabled={isExporting}>
                 {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
                 {isExporting ? 'Exporting...' : 'Export Filtered Excel'}

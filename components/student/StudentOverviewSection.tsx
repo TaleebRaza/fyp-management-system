@@ -177,7 +177,7 @@ export default function StudentOverviewSection({
         </div>
       )}
 
-      <DashboardGrid columns="four">
+      <DashboardGrid>
         <StatCard
           label="Project Status"
           value={me?.status || 'Pending'}

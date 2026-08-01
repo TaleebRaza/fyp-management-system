@@ -4,8 +4,6 @@ import type { IconComponent } from "../shared/types";
 
 export type StyledInputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   icon?: IconComponent;
-  isDarkMode?: boolean;
-  theme?: unknown;
   wrapperClassName?: string;
 };
 

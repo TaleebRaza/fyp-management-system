@@ -3,17 +3,15 @@ import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { ProjectReviewProject } from '../../types/projectReview';
 
 export type SupervisorTheme = {
-  name?: string;
-  bg?: string;
-  text?: string;
-  ring?: string;
-  lightBg?: string;
-  border?: string;
+  bg: string;
+  text: string;
+  ring: string;
+  lightBg: string;
 };
 
 export type SupervisorDashboardProps = {
   isDarkMode?: boolean;
-  theme?: SupervisorTheme;
+  theme: SupervisorTheme;
   session: Session;
   showDialog?: ShowDialog;
 };

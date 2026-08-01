@@ -11,12 +11,3 @@ export const Card = ({ children, className = "" }: CommonProps) => (
     {children}
   </div>
 );
-
-// Compatibility export: existing dashboards still import GlassCard.
-// Keep the name for now to avoid a risky multi-file rename.
-export const GlassCard = ({
-  children,
-  className = "",
-}: CommonProps & { isDarkMode?: boolean }) => (
-  <Card className={className}>{children}</Card>
-);

@@ -5,7 +5,7 @@ import { signIn } from 'next-auth/react';
 import { ArrowRight, Loader2, Lock, LogIn, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import { GlassCard, StyledInput } from '../ui/SharedUI';
+import { Card, StyledInput } from '../ui/SharedUI';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import PasswordResetFlow from './PasswordResetFlow';
 
@@ -90,7 +90,7 @@ export default function LoginView({
             onBack={() => setIsResetMode(false)}
           />
         ) : (
-          <GlassCard className="w-full p-0">
+          <Card className="w-full p-0">
             <div className="border-b border-[var(--color-border)] px-5 py-5 sm:px-6">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
@@ -176,7 +176,7 @@ export default function LoginView({
                 </button>
               </p>
             </div>
-          </GlassCard>
+          </Card>
         )}
       </section>
     </motion.div>
