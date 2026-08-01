@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { signOut } from 'next-auth/react';
 
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
 import {
@@ -108,6 +109,17 @@ export function usePasswordResetFlow({ showDialog, onBack }: UsePasswordResetFlo
       });
 
       if (result.ok) {
+        try {
+          await signOut({ redirect: false });
+        } catch {
+          onBack();
+          showDialog({
+            title: 'Password updated',
+            message: `${result.message} Other open tabs could not be signed out automatically. Please sign out of them before signing in again.`,
+          });
+          return;
+        }
+
         onBack();
         showDialog({ title: 'Password updated', message: result.message });
         return;
