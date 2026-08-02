@@ -16,6 +16,7 @@
     "storage:ledger:repair": "node --env-file-if-exists=.env.local scripts/audit-storage-integrity.mjs --repair",
     "indexes:refactor:audit": "node --env-file-if-exists=.env.local scripts/audit-refactor-indexes.mjs",
     "indexes:refactor:apply": "node --env-file-if-exists=.env.local scripts/apply-refactor-indexes.mjs --apply",
+    "rate-limit:ttl:apply": "node --env-file-if-exists=.env.local scripts/update-rate-limit-ttl.mjs --apply",
     "verify:refactor": "npm run lint && npm run test:unit && npm run build",
     "test": "npm run test:unit"
   },

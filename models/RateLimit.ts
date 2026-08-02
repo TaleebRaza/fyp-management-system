@@ -14,12 +14,12 @@ const RateLimitSchema = new Schema({
     type: Number, 
     default: 1 
   },
-  // Automatically deletes the document from MongoDB after 3600 seconds (1 hour)
+  // Automatically deletes the document from MongoDB after 7200 seconds (2 hours)
   // This completely eliminates database bloat on the free tier
   createdAt: { 
     type: Date, 
     default: Date.now, 
-    expires: 3600 
+    expires: 7200
   }
 });
 

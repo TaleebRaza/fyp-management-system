@@ -58,6 +58,23 @@ export async function consumeRateLimit(identifier: string, maxRequests: number):
   };
 }
 
+export async function isRateLimitExceeded(identifier: string, maxRequests: number) {
+  const normalizedIdentifier = normalizeRateLimitIdentifier(identifier);
+
+  if (!normalizedIdentifier) {
+    throw new Error('Rate limit identifier is required.');
+  }
+
+  if (!Number.isInteger(maxRequests) || maxRequests < 1) {
+    throw new Error('Rate limit maxRequests must be a positive integer.');
+  }
+
+  return Boolean(await RateLimit.exists({
+    identifier: normalizedIdentifier,
+    count: { $gte: maxRequests },
+  }));
+}
+
 export async function refundRateLimit(identifier: string) {
   const normalizedIdentifier = normalizeRateLimitIdentifier(identifier);
 
