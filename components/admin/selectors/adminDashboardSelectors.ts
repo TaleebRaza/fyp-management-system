@@ -3,6 +3,7 @@ import type {
   AdminStudent,
   AdminSupervisor,
 } from '../adminDashboardTypes';
+export { buildAcademicBatchOptions as createAdminBatchOptions } from '../../../config/academicOptions';
 
 export function filterAdminSupervisors(
   supervisors: AdminSupervisor[],
@@ -43,17 +44,6 @@ export function buildAdminStats(
     pendingStudents,
     supervisors: supervisorCount,
   };
-}
-
-export function createAdminBatchOptions(currentYear: number): string[] {
-  const options: string[] = [];
-
-  for (let year = 2021; year <= currentYear + 1; year += 1) {
-    options.push(`Spring ${year}`);
-    options.push(`Fall ${year}`);
-  }
-
-  return options;
 }
 
 export function clampSupervisorExtraSlots(

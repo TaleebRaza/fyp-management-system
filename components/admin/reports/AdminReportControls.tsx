@@ -1,6 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { BarChart3, Loader2 } from 'lucide-react';
-import { Button, Select } from '../../ui/SharedUI';
+import { Button, Select } from '../../ui';
 import { REPORT_OPTIONS } from './reportDefinitions';
 import type { ReportId } from './reportTypes';
 

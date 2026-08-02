@@ -24,7 +24,7 @@ import {
   type SupervisorTab,
 } from '../supervisor/hooks';
 import type { SupervisorDashboardProps } from '../supervisor/supervisorDashboardTypes';
-import { Button, DashboardShell } from '../ui/SharedUI';
+import { Button, DashboardShell } from '../ui';
 
 const SupervisorDashboard = ({
   isDarkMode = false,

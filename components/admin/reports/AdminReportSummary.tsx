@@ -1,5 +1,5 @@
 import { AlertCircle, FileText, UserCheck, Users } from 'lucide-react';
-import { DashboardGrid, StatCard } from '../../ui/SharedUI';
+import { DashboardGrid, StatCard } from '../../ui';
 import type { AdminReportsData } from '../adminDashboardTypes';
 
 export function AdminReportSummary({ data }: { data: AdminReportsData }) {

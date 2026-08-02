@@ -7,7 +7,7 @@ import { Loader2, LogIn, Pencil, Settings } from 'lucide-react';
 import {
   Button,
   DashboardShell,
-} from '../ui/SharedUI';
+} from '../ui';
 import FinePaymentPanel from '../student/FinePaymentPanel';
 import StudentOverviewSection from '../student/StudentOverviewSection';
 import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';

@@ -1,5 +1,5 @@
 import { AlertCircle, BarChart3, GraduationCap, ShieldCheck, UserCheck, Users } from 'lucide-react';
-import { Button, DashboardGrid, DashboardPanel, SectionHeader, StatCard } from '../ui/SharedUI';
+import { Button, DashboardGrid, DashboardPanel, SectionHeader, StatCard } from '../ui';
 import type { AdminStats } from './adminDashboardTypes';
 
 export default function AdminOverviewSection({

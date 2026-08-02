@@ -6,7 +6,7 @@ import {
   DashboardPanel,
   SectionHeader,
   StyledInput,
-} from '../ui/SharedUI';
+} from '../ui';
 import { VoiceChat } from '../ui/VoiceChat';
 import { EXPANDED_TEAM_SIZE } from '../../lib/teamCapacity';
 import type { ProjectMember, SupervisorOption } from './studentDashboardTypes';

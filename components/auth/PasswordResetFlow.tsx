@@ -3,7 +3,7 @@
 import { Lock } from 'lucide-react';
 
 import type { ShowDialog } from '../../app/_components/PortalDialog';
-import { Card } from '../ui/SharedUI';
+import { Card } from '../ui';
 import { SetNewPasswordForm } from './password-reset/SetNewPasswordForm';
 import { VerifyAcademicDetailsForm } from './password-reset/VerifyAcademicDetailsForm';
 import { usePasswordResetFlow } from './password-reset/usePasswordResetFlow';

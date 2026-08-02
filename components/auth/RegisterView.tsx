@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, CheckCircle, Loader2, Lock, Mail, User } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Card, Select, StyledInput } from '../ui/SharedUI';
+import { Card, Select, StyledInput } from '../ui';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { RegistrationPolicyDto } from '../../types/registrationPolicy';
 import { isValidRollNo, normalizeRollNo } from '../../lib/rollNo';

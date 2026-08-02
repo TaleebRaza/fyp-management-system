@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Download, FileText, Loader2, Search } from 'lucide-react';
-import { Button, DashboardGrid, DashboardPanel, EmptyState, SectionHeader, Select, StyledInput } from '../ui/SharedUI';
+import { Button, DashboardGrid, DashboardPanel, EmptyState, SectionHeader, Select, StyledInput } from '../ui';
 import SupervisorProjectCard from './SupervisorProjectCard';
 import type { ProjectQueueFilter, SupervisorProject } from './supervisorDashboardTypes';
 

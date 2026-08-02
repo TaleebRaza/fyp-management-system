@@ -18,7 +18,7 @@ import {
   LinkifiedText,
   SectionHeader,
   StatCard,
-} from '../ui/SharedUI';
+} from '../ui';
 import {
   Timeline,
   getProjectStageLabel,

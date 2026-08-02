@@ -1,5 +1,5 @@
 import { BarChart3 } from 'lucide-react';
-import { DashboardPanel, SectionHeader } from '../../ui/SharedUI';
+import { DashboardPanel, SectionHeader } from '../../ui';
 import type { AdminReportsData } from '../adminDashboardTypes';
 import type { ReportOption, ReportRow } from './reportTypes';
 

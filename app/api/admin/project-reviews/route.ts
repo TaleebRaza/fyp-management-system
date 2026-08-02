@@ -18,13 +18,9 @@ import {
   PUBLIC_REGISTRATION_POLICY_TAG,
 } from '../../../../lib/publicContentCache';
 import { requireCurrentUser } from '../../../../lib/security/auth';
-import { normalizeText } from '../../../../lib/security/input';
+import { isRecord, normalizeText } from '../../../../lib/security/input';
 
 export const dynamic = 'force-dynamic';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function parsePositiveInteger(value: string | null, fallback: number, max: number) {
   const parsed = Number(value);

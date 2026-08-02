@@ -1,11 +1,10 @@
+import { isRecord } from '../../../lib/security/input';
+
 export type DashboardQuote = {
   id: number;
   text: string;
   author: string;
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 export const parseDashboardQuote = (value: unknown): DashboardQuote | null => {
   if (!isRecord(value)) return null;

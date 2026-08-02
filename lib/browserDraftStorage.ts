@@ -1,3 +1,5 @@
+import { isRecord } from './security/input';
+
 const PORTAL_DRAFT_PREFIX = 'fyp-portal:';
 const DRAFT_VERSION = 1;
 const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -19,10 +21,6 @@ type StoredFileDraft = {
   blob: Blob;
   savedAt: number;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export function isBrowserDraftExpired(savedAt: unknown, now = Date.now()) {
   return !Number.isFinite(savedAt) || now - Number(savedAt) > DRAFT_MAX_AGE_MS;

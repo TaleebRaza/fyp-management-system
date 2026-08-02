@@ -2,7 +2,7 @@ import type { ChangeEvent } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
 import { PROGRAM_MAP } from '../../../config/appSettings';
-import { Button, Dialog } from '../../ui/SharedUI';
+import { Button, Dialog } from '../../ui';
 import type { AcademicForm } from '../studentDashboardTypes';
 
 export type AcademicUpdateDialogProps = {

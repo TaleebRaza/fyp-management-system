@@ -6,7 +6,7 @@ import {
   SectionHeader,
   StyledInput,
   TextArea,
-} from '../ui/SharedUI';
+} from '../ui';
 import ProjectDomainSelector from './ProjectDomainSelector';
 import { PROJECT_SUBMISSIONS_CLOSED_MESSAGE } from '../../lib/projectSubmissionPolicy';
 

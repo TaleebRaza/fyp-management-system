@@ -1,6 +1,6 @@
 import { CheckCircle, Filter, Loader2, Search, Trash2, User } from 'lucide-react';
 import { PROGRAM_MAP } from '../../config/appSettings';
-import { AvatarBadge, Badge, Button, DashboardPanel, SectionHeader, Select, StyledInput } from '../ui/SharedUI';
+import { AvatarBadge, Badge, Button, DashboardPanel, SectionHeader, Select, StyledInput } from '../ui';
 import type { AdminStudent, StudentPagination } from './adminDashboardTypes';
 
 const getProgramName = (program?: string) => {

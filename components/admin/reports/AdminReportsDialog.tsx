@@ -1,5 +1,5 @@
 import { BarChart3, Download, ExternalLink, FileText, Loader2 } from 'lucide-react';
-import { Button, Dialog } from '../../ui/SharedUI';
+import { Button, Dialog } from '../../ui';
 import type { AdminReportsData } from '../adminDashboardTypes';
 import { AdminReportControls } from './AdminReportControls';
 import { AdminReportPreview } from './AdminReportPreview';

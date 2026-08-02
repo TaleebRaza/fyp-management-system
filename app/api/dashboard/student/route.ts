@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose, { ClientSession } from 'mongoose';
+import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
@@ -35,7 +35,7 @@ import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/ac
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
 import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import { requireCurrentUser } from '../../../../lib/security/auth';
-import { createInviteCode } from '../../../../lib/security/inviteCode';
+import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { escapeHtml, isRecord, normalizeText } from '../../../../lib/security/input';
 import { normalizeStorageKey } from '../../../../lib/security/storage';
 import {
@@ -52,39 +52,6 @@ import {
 export const dynamic = 'force-dynamic';
 
 const NAME_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-
-async function createFreshStudentProject(
-  studentId: mongoose.Types.ObjectId,
-  session: ClientSession,
-  supervisorId: mongoose.Types.ObjectId | null = null
-) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const inviteCode = createInviteCode();
-
-      const newProject = new Project({
-        supervisorId,
-        members: [studentId],
-        inviteCode,
-        stage: 'PROPOSAL',
-        status: 'Pending',
-        title: '',
-        titleFingerprint: '',
-        domain: '',
-        domains: [],
-        pdfUrl: '',
-        pdfSize: 0,
-      });
-
-      await newProject.save({ session });
-      return newProject;
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== 11000) throw error;
-    }
-  }
-
-  throw new Error('Failed to generate a unique project invite code.');
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -403,11 +370,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const freshProject = await createFreshStudentProject(
-          student._id,
-          session,
-          targetSupervisor._id
-        );
+        const freshProject = await createProjectWithUniqueInviteCode({
+          supervisorId: targetSupervisor._id,
+          members: [student._id],
+          stage: 'PROPOSAL',
+          status: 'Pending',
+          title: '',
+          titleFingerprint: '',
+          domain: '',
+          domains: [],
+          pdfUrl: '',
+          pdfSize: 0,
+        }, session);
 
         student.supervisorId = targetSupervisor._id;
         student.projectId = freshProject._id;

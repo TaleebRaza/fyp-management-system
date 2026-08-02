@@ -14,7 +14,7 @@ import {
   Users,
 } from 'lucide-react';
 
-import { Button, DashboardShell } from '../ui/SharedUI';
+import { Button, DashboardShell } from '../ui';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
 import FineManagementPanel from '../admin/FineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';

@@ -3,7 +3,7 @@
 import type { ChangeEvent, FormEvent } from 'react';
 import { CheckCircle, Loader2, Lock } from 'lucide-react';
 
-import { StyledInput } from '../../ui/SharedUI';
+import { StyledInput } from '../../ui';
 
 type SetNewPasswordFormProps = {
   rollNo: string;

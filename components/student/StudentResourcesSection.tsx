@@ -1,5 +1,5 @@
 import { ExternalLink, FileText, Loader2, RefreshCcw, Settings } from 'lucide-react';
-import { Button, DashboardPanel, SectionHeader } from '../ui/SharedUI';
+import { Button, DashboardPanel, SectionHeader } from '../ui';
 import { getProjectStageLabel } from '../ui/Timeline';
 import type { WordTemplate } from './studentDashboardTypes';
 

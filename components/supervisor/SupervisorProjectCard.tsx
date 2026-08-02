@@ -5,7 +5,7 @@ import {
   getProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../config/projectDomains';
-import { AvatarBadge, Badge } from '../ui/SharedUI';
+import { AvatarBadge, Badge } from '../ui';
 import { isProjectAwaitingReview } from '../../lib/projectReviewPolicy';
 import type { SupervisorProject } from './supervisorDashboardTypes';
 

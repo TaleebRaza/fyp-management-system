@@ -1,5 +1,4 @@
-import mongoose, { ClientSession } from 'mongoose';
-import { createInviteCode } from './security/inviteCode';
+import mongoose from 'mongoose';
 
 import connectToDatabase from './mongodb';
 import { PROGRAM_MAP } from '../config/appSettings';
@@ -8,6 +7,7 @@ import User from '../models/User';
 import Project from '../models/Project';
 import { releaseSupervisorProjectSlot } from './supervisorCapacity';
 import { enqueueDeletedProjectStorage } from './projectStorageCleanup';
+import { createProjectWithUniqueInviteCode } from './projectCreation';
 
 const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MIN_BATCH_YEAR = 2021;
@@ -61,35 +61,6 @@ function formatCooldown(ms: number) {
   }
 
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-}
-
-async function createFreshStudentProject(studentId: mongoose.Types.ObjectId, session: ClientSession) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const inviteCode = createInviteCode();
-
-      const newProject = new Project({
-        supervisorId: null,
-        members: [studentId],
-        inviteCode,
-        title: '',
-        titleFingerprint: '',
-        domain: '',
-        pdfUrl: '',
-        pdfSize: 0,
-        status: 'Pending',
-        maxTeamSize: 2,
-        stage: 'PROPOSAL',
-      });
-
-      await newProject.save({ session });
-      return newProject;
-    } catch (error) {
-      if ((error as { code?: unknown })?.code !== 11000) throw error;
-    }
-  }
-
-  throw new Error('Failed to generate a unique project invite code.');
 }
 
 export async function resetStudentAcademicInfo({
@@ -192,7 +163,18 @@ export async function resetStudentAcademicInfo({
       }
     }
 
-    const newProject = await createFreshStudentProject(student._id, mongoSession);
+    const newProject = await createProjectWithUniqueInviteCode({
+      supervisorId: null,
+      members: [student._id],
+      title: '',
+      titleFingerprint: '',
+      domain: '',
+      pdfUrl: '',
+      pdfSize: 0,
+      status: 'Pending',
+      maxTeamSize: 2,
+      stage: 'PROPOSAL',
+    }, mongoSession);
 
     student.program = finalProgram;
     student.batch = finalBatch;

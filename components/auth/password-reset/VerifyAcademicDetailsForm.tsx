@@ -3,7 +3,7 @@
 import type { ChangeEvent, FormEvent } from 'react';
 import { CheckCircle, Loader2, User } from 'lucide-react';
 
-import { Select, StyledInput } from '../../ui/SharedUI';
+import { Select, StyledInput } from '../../ui';
 import type { PasswordResetSupervisor } from './passwordResetTypes';
 
 type VerifyAcademicDetailsFormProps = {

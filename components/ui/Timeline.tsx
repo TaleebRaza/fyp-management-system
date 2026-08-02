@@ -1,5 +1,5 @@
 import { CheckCircle } from 'lucide-react';
-import { DashboardPanel, SectionHeader } from './SharedUI';
+import { DashboardPanel, SectionHeader } from '.';
 
 const PROJECT_STAGES = [
   { id: 'PROPOSAL', label: 'Proposal' },

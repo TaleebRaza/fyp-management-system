@@ -1,6 +1,6 @@
 import { CheckCircle, Copy, Loader2 } from 'lucide-react';
 
-import { Button, Dialog } from '../../ui/SharedUI';
+import { Button, Dialog } from '../../ui';
 import type { WordTemplate } from '../studentDashboardTypes';
 
 export type TemplatePreviewDialogProps = {

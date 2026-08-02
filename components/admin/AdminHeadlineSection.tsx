@@ -1,6 +1,6 @@
 import type { FormEventHandler } from 'react';
 import { Megaphone, Trash2 } from 'lucide-react';
-import { Button, DashboardPanel, LinkifiedText, SectionHeader, StyledInput } from '../ui/SharedUI';
+import { Button, DashboardPanel, LinkifiedText, SectionHeader, StyledInput } from '../ui';
 
 export default function AdminHeadlineSection({
   headlineInput,

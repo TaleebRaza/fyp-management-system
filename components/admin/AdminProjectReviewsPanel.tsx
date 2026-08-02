@@ -5,7 +5,7 @@ import { Loader2, LockKeyhole, UnlockKeyhole } from 'lucide-react';
 
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import { PROGRAM_MAP } from '../../config/appSettings';
-import { Button } from '../ui/SharedUI';
+import { Button } from '../ui';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import { getProgramName } from '../supervisor/SupervisorProjectCard';

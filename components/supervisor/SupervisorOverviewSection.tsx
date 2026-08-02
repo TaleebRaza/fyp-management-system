@@ -1,6 +1,6 @@
 import { CheckCircle, ChevronRight, Download, FileText, LayoutDashboard, Loader2, Users } from 'lucide-react';
 import BroadcastWidget from '../dashboards/BroadcastWidget';
-import { AvatarBadge, Badge, Button, DashboardGrid, DashboardPanel, EmptyState, SectionHeader, StatCard } from '../ui/SharedUI';
+import { AvatarBadge, Badge, Button, DashboardGrid, DashboardPanel, EmptyState, SectionHeader, StatCard } from '../ui';
 import { getMemberNames, getStatusVariant } from './SupervisorProjectCard';
 import type { ProjectQueueFilter, SupervisorDashboardStats, SupervisorProject, SupervisorTheme } from './supervisorDashboardTypes';
 

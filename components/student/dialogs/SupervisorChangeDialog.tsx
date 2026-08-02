@@ -1,7 +1,7 @@
 import type { ChangeEvent } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
-import { Button, Dialog } from '../../ui/SharedUI';
+import { Button, Dialog } from '../../ui';
 import type { SupervisorOption } from '../studentDashboardTypes';
 
 export type SupervisorChangeDialogProps = {

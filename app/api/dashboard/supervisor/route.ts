@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import mongoose, { ClientSession } from 'mongoose';
+import mongoose from 'mongoose';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
 import { requireCurrentUser } from '../../../../lib/security/auth';
-import { createInviteCode } from '../../../../lib/security/inviteCode';
+import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
 import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../lib/teamCapacity';
 import { reviewProject } from '../../../../lib/projectReview';
@@ -20,21 +20,6 @@ import {
 } from '../../../../lib/supervisorCapacity';
 
 export const dynamic = 'force-dynamic';
-
-async function createProjectWithUniqueInviteCode(projectData: Record<string, unknown>, session: ClientSession) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const inviteCode = createInviteCode();
-      const project = new Project({ ...projectData, inviteCode });
-      await project.save({ session });
-      return project;
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== 11000) throw error;
-    }
-  }
-
-  throw new Error('Failed to generate a unique project invite code.');
-}
 
 export async function GET(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['supervisor']);

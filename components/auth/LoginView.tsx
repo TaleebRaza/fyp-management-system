@@ -5,7 +5,7 @@ import { signIn } from 'next-auth/react';
 import { ArrowRight, Loader2, Lock, LogIn, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import { Card, StyledInput } from '../ui/SharedUI';
+import { Card, StyledInput } from '../ui';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import PasswordResetFlow from './PasswordResetFlow';
 

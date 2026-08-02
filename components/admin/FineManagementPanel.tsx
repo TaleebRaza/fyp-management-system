@@ -19,7 +19,7 @@ import {
   SectionHeader,
   StyledInput,
   TextArea,
-} from '../ui/SharedUI';
+} from '../ui';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { FineRestrictionSummary } from '../../lib/fineRestriction';
 import {

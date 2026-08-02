@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertTriangle, CircleDollarSign, RefreshCcw } from 'lucide-react';
-import { Button, DashboardPanel, SectionHeader } from '../ui/SharedUI';
+import { Button, DashboardPanel, SectionHeader } from '../ui';
 import type { FineRestriction } from './studentDashboardTypes';
 
 const formatMoney = (value: unknown) => `PKR ${Math.max(Number(value) || 0, 0).toLocaleString()}`;

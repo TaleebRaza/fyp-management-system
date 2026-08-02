@@ -2,7 +2,7 @@ import type { FormEventHandler } from 'react';
 import { Loader2, Mail, MailX, PlusCircle, Search, Trash2, Users } from 'lucide-react';
 import { APP_SETTINGS } from '../../config/appSettings';
 import { MAX_EXTRA_SUPERVISOR_SLOTS } from '../../lib/supervisorSlots';
-import { AvatarBadge, Badge, Button, DashboardPanel, Dialog, SectionHeader, StyledInput } from '../ui/SharedUI';
+import { AvatarBadge, Badge, Button, DashboardPanel, Dialog, SectionHeader, StyledInput } from '../ui';
 import type { AdminSupervisor } from './adminDashboardTypes';
 
 export default function AdminSupervisorsSection({

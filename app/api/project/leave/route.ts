@@ -1,40 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose, { ClientSession } from 'mongoose';
+import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { requireCurrentUser } from '../../../../lib/security/auth';
-import { createInviteCode } from '../../../../lib/security/inviteCode';
+import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 
 const ONLY_MEMBER_CODE = 'ONLY_MEMBER_CANNOT_LEAVE';
 const TEAM_CHANGED_CODE = 'TEAM_CHANGED';
-
-async function createFreshProject(studentId: mongoose.Types.ObjectId, session: ClientSession) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      const project = new Project({
-        supervisorId: null,
-        members: [studentId],
-        inviteCode: createInviteCode(),
-        title: '',
-        titleFingerprint: '',
-        domain: '',
-        domains: [],
-        pdfUrl: '',
-        pdfSize: 0,
-        status: 'Pending',
-        stage: 'PROPOSAL',
-      });
-
-      await project.save({ session });
-      return project;
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== 11000) throw error;
-    }
-  }
-
-  throw new Error('Failed to generate a unique project invite code.');
-}
 
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
@@ -123,7 +96,18 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        const freshProject = await createFreshProject(student._id, session);
+        const freshProject = await createProjectWithUniqueInviteCode({
+          supervisorId: null,
+          members: [student._id],
+          title: '',
+          titleFingerprint: '',
+          domain: '',
+          domains: [],
+          pdfUrl: '',
+          pdfSize: 0,
+          status: 'Pending',
+          stage: 'PROPOSAL',
+        }, session);
 
         // Remove every piece of project state inherited from the previous team.
         student.projectId = freshProject._id;
