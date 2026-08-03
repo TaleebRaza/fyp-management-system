@@ -1,0 +1,1 @@
+export const MAX_VOICE_NOTES_PER_SENDER = 3;

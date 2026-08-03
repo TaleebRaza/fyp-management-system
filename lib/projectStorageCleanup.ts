@@ -1,5 +1,6 @@
 import type { ClientSession } from 'mongoose';
 import VoiceNote from '../models/VoiceNote';
+import VoiceNoteQuota from '../models/VoiceNoteQuota';
 import { normalizeStorageKey } from './security/storageKey';
 import { collectStorageDeletionTargets } from './storageDeletionTargets';
 import { findSharedStorageKeys } from './storageReferenceSafety';
@@ -58,6 +59,7 @@ export async function enqueueDeletedProjectStorage({
   if (voiceNotes.length > 0) {
     await VoiceNote.deleteMany({ _id: { $in: voiceNotes.map((note) => note._id) } }, { session });
   }
+  await VoiceNoteQuota.deleteMany({ projectId: project._id }, { session });
 
   return {
     queuedDeletionBytes: deletionTargets.reduce((sum, target) => sum + target.bytes, 0),

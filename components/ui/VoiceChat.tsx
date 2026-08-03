@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Mic, Play, RefreshCw, Square } from 'lucide-react';
+import { Loader2, Mic, Play, RefreshCw, Square, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { MAX_VOICE_NOTES_PER_SENDER } from '../../lib/voiceNoteLimit';
 
 type VoiceMessage = {
   _id: string;
@@ -26,6 +27,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
   const [recordingTime, setRecordingTime] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [messages, setMessages] = useState<VoiceMessage[]>([]);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -189,8 +191,36 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
     }
   }, [fetchMessages, projectId, revokeBlobUrl]);
 
+  const deleteVoiceNote = useCallback(async (noteId: string) => {
+    if (deletingIds.includes(noteId)) return;
+
+    setDeletingIds((previous) => [...previous, noteId]);
+    try {
+      const response = await fetch('/api/voice', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteId }),
+      });
+      const data: { error?: string } = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to delete voice note.');
+
+      if (playingId === noteId) {
+        audioRef.current?.pause();
+        setPlayingId(null);
+      }
+      setMessages((previous) => previous.filter((message) => message._id !== noteId));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to delete voice note.');
+    } finally {
+      setDeletingIds((previous) => previous.filter((id) => id !== noteId));
+    }
+  }, [deletingIds, playingId]);
+
+  const voiceNoteCount = messages.filter((message) => message.senderId._id === currentUserId).length;
+  const hasReachedVoiceNoteLimit = voiceNoteCount >= MAX_VOICE_NOTES_PER_SENDER;
+
   const startRecording = async () => {
-    if (isUploading || isRecording || recordingInFlightRef.current) return;
+    if (isUploading || isRecording || hasReachedVoiceNoteLimit || recordingInFlightRef.current) return;
 
     recordingInFlightRef.current = true;
     try {
@@ -274,7 +304,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
         <h4 className="text-xs font-black uppercase tracking-widest opacity-60 flex items-center gap-2">
           <Mic size={14} className={theme.text} /> Voice Chat
         </h4>
-        <span className="text-[10px] font-bold opacity-40 uppercase">Auto-deletes after 10m</span>
+        <span className="text-[10px] font-bold opacity-40 uppercase">{voiceNoteCount}/{MAX_VOICE_NOTES_PER_SENDER} yours</span>
       </div>
 
       <div className="flex-1 max-h-48 overflow-y-auto space-y-2 custom-scrollbar pr-1">
@@ -301,15 +331,29 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
                   </span>
                 </div>
               </div>
-              {message.uploadError && message.finalizeKey && (
-                <button
-                  type="button"
-                  onClick={() => void retryFinalization(message)}
-                  className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-red-300 px-2 text-[10px] font-bold text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
-                >
-                  <RefreshCw size={12} /> Retry
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {message.uploadError && message.finalizeKey && (
+                  <button
+                    type="button"
+                    onClick={() => void retryFinalization(message)}
+                    className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-red-300 px-2 text-[10px] font-bold text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                  >
+                    <RefreshCw size={12} /> Retry
+                  </button>
+                )}
+                {message.senderId._id === currentUserId && !message._id.startsWith('temp-') && (
+                  <button
+                    type="button"
+                    aria-label="Delete this voice note"
+                    title="Delete this voice note"
+                    disabled={deletingIds.includes(message._id)}
+                    onClick={() => void deleteVoiceNote(message._id)}
+                    className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                  >
+                    {deletingIds.includes(message._id) ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={13} />}
+                  </button>
+                )}
+              </div>
             </div>
           ))
         )}
@@ -329,8 +373,8 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
             </motion.button>
           </div>
         ) : (
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} disabled={isUploading} onClick={() => void startRecording()} className={`w-full h-10 rounded-xl text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-colors ${isUploading ? 'bg-neutral-500 cursor-not-allowed' : theme.bg}`}>
-            {isUploading ? <><Loader2 size={16} className="animate-spin" /> Uploading...</> : <><Mic size={16} /> Record Note (Max 60s)</>}
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} disabled={isUploading || hasReachedVoiceNoteLimit} onClick={() => void startRecording()} className={`w-full h-10 rounded-xl text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-colors ${(isUploading || hasReachedVoiceNoteLimit) ? 'bg-neutral-500 cursor-not-allowed' : theme.bg}`}>
+            {isUploading ? <><Loader2 size={16} className="animate-spin" /> Uploading...</> : (hasReachedVoiceNoteLimit ? <>Delete a note to record another</> : <><Mic size={16} /> Record Note (Max 60s)</>)}
           </motion.button>
         )}
       </div>

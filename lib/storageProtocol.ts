@@ -9,9 +9,12 @@ import { randomUUID } from 'node:crypto';
 import StorageDeletionOutbox from '../models/StorageDeletionOutbox';
 import SystemConfig from '../models/SystemConfig';
 import UploadReservation from '../models/UploadReservation';
+import VoiceNote from '../models/VoiceNote';
+import VoiceNoteQuota from '../models/VoiceNoteQuota';
 import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from './s3-client';
 import { hasExpectedStorageMagic, type StorageUploadKind } from './storageValidation';
 import { getStorageObjectKind, normalizeStorageKey } from './security/storageKey';
+import { MAX_VOICE_NOTES_PER_SENDER } from './voiceNoteLimit';
 
 const MAX_DELETION_ATTEMPTS = 8;
 const MAX_DELETION_BATCH_SIZE = 100;
@@ -119,6 +122,47 @@ function isSameReservation(existing: {
     && String(existing.expectedContentType) === input.expectedContentType;
 }
 
+async function reserveVoiceNoteSlot(input: ReserveUploadInput, session: ClientSession) {
+  if (!input.projectId) throw new StorageProtocolError('Voice-note uploads require a project.', 400);
+
+  const existingNoteCount = await VoiceNote.countDocuments({
+    projectId: input.projectId,
+    senderId: input.ownerId,
+  }).session(session);
+  await VoiceNoteQuota.updateOne(
+    { ownerId: input.ownerId, projectId: input.projectId },
+    { $setOnInsert: { count: existingNoteCount } },
+    { upsert: true, session }
+  );
+  const claimed = await VoiceNoteQuota.updateOne(
+    {
+      ownerId: input.ownerId,
+      projectId: input.projectId,
+      count: { $lt: MAX_VOICE_NOTES_PER_SENDER },
+    },
+    { $inc: { count: 1 } },
+    { session }
+  );
+  if (claimed.modifiedCount !== 1) {
+    throw new StorageProtocolError(
+      `You can keep a maximum of ${MAX_VOICE_NOTES_PER_SENDER} voice notes per project. Delete one to record another.`,
+      409
+    );
+  }
+}
+
+export async function releaseVoiceNoteSlot(
+  ownerId: string,
+  projectId: string,
+  session: ClientSession
+) {
+  await VoiceNoteQuota.updateOne(
+    { ownerId, projectId, count: { $gt: 0 } },
+    { $inc: { count: -1 } },
+    { session }
+  );
+}
+
 export async function reserveUpload(input: ReserveUploadInput) {
   assertReservationInput(input);
 
@@ -134,6 +178,8 @@ export async function reserveUpload(input: ReserveUploadInput) {
       }
       return existing;
     }
+
+    if (input.kind === 'voice') await reserveVoiceNoteSlot(input, session);
 
     const capacity = await SystemConfig.updateOne(
       {
@@ -209,6 +255,10 @@ export async function cancelUploadReservation(
     await assertStorageLedgerReady(session);
     const reservation = await UploadReservation.findOne({ key, ownerId }).session(session);
     if (!reservation || reservation.state !== 'pending') return false;
+
+    if (reservation.kind === 'voice' && reservation.projectId) {
+      await releaseVoiceNoteSlot(String(reservation.ownerId), String(reservation.projectId), session);
+    }
 
     await enqueueStorageDeletion(
       {

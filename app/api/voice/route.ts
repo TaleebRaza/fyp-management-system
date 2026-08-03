@@ -6,8 +6,12 @@ import { hasProjectAccess, requireCurrentUser } from '../../../lib/security/auth
 import { isOwnedVoiceKey } from '../../../lib/security/voice';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 import {
+  assertStorageLedgerReady,
+  enqueueStorageDeletion,
   finalizeUploadReservation,
+  releaseVoiceNoteSlot,
   StorageProtocolError,
+  withStorageTransaction,
 } from '../../../lib/storageProtocol';
 
 export const dynamic = 'force-dynamic';
@@ -118,5 +122,48 @@ export async function PATCH(req: NextRequest) {
   } catch {
     console.error('voice_mark_played_failed');
     return NextResponse.json({ error: 'Failed to update note' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req);
+  if (!currentUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const { noteId } = await req.json();
+    if (!mongoose.Types.ObjectId.isValid(String(noteId))) {
+      return NextResponse.json({ error: 'Invalid voice note.' }, { status: 400 });
+    }
+
+    await connectToDatabase();
+    const note = await VoiceNote.findById(noteId).select('projectId').lean();
+    if (!note || !await hasProjectAccess(currentUser, note.projectId.toString())) {
+      return NextResponse.json({ error: 'Voice note not found or access denied.' }, { status: 403 });
+    }
+
+    const deleted = await withStorageTransaction(async (session) => {
+      await assertStorageLedgerReady(session);
+      const ownedNote = await VoiceNote.findOne({ _id: noteId, senderId: currentUser.id })
+        .select('projectId blobUrl fileSize')
+        .session(session);
+      if (!ownedNote) return false;
+
+      await enqueueStorageDeletion(
+        { key: ownedNote.blobUrl, bytes: ownedNote.fileSize, reason: 'voice-deleted-by-sender' },
+        session
+      );
+      await VoiceNote.deleteOne({ _id: ownedNote._id }, { session });
+      await releaseVoiceNoteSlot(currentUser.id, ownedNote.projectId.toString(), session);
+      return true;
+    });
+    if (!deleted) return NextResponse.json({ error: 'Voice note not found or access denied.' }, { status: 403 });
+
+    return NextResponse.json({ message: 'Voice note deleted' });
+  } catch (error) {
+    console.error('voice_delete_failed');
+    if (error instanceof StorageProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
+    return NextResponse.json({ error: 'Failed to delete voice note' }, { status: 500 });
   }
 }
