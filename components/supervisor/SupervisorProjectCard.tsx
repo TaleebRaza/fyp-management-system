@@ -65,15 +65,49 @@ export const isProjectReviewable = (project: SupervisorProject) =>
 export default function SupervisorProjectCard({
   project,
   onOpen,
+  compact = false,
 }: {
   project: SupervisorProject;
   onOpen: (project: SupervisorProject) => void;
+  compact?: boolean;
 }) {
   const memberNames = getMemberNames(project);
   const memberRollNumbers = getMemberRollNumbers(project);
   const pdfKey = getSafePdfKey(project.pdfUrl);
   const isReviewable = isProjectReviewable(project);
   const domainLabels = getProjectDomainDisplayLabels(project);
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(project)}
+        className="group flex min-h-full flex-col rounded-xl border border-pink-500/70 bg-pink-50/80 p-3 text-left shadow-sm ring-1 ring-pink-500/20 transition-colors hover:bg-pink-50 dark:bg-pink-500/10 dark:hover:bg-pink-500/15"
+        aria-label={`Open project review for ${memberNames}`}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <AvatarBadge name={memberNames} className="h-9 w-9 rounded-lg text-xs" />
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-bold text-[var(--color-text)]">{memberNames}</h3>
+            <p className="mt-0.5 truncate text-xs font-semibold text-[var(--color-text-muted)]">{memberRollNumbers}</p>
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Badge variant="muted" className="min-w-0 flex-1 justify-center truncate">{getProgramName(getProjectProgram(project))}</Badge>
+          <Badge variant="muted" className="min-w-0 flex-1 justify-center truncate">{project.batch || 'Not assigned'}</Badge>
+        </div>
+        <div className="mt-2.5 flex">
+          <Badge variant="muted" className="max-w-full truncate">Supervisor: {project.supervisorName || 'Not assigned'}</Badge>
+        </div>
+
+        <div className="mt-3 border-t border-pink-500/20 pt-2.5">
+          <p className="text-xs text-[var(--color-text-muted)]">Project title</p>
+          <p className="mt-0.5 line-clamp-2 text-sm font-bold leading-5 text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet.'}</p>
+        </div>
+      </button>
+    );
+  }
 
   return (
     <button

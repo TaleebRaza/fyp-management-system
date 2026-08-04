@@ -246,6 +246,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
               description: 'There are no submitted projects awaiting a review right now.',
             }}
             onOpenProject={setSelectedProject}
+            compactCards
             headerActions={
               <Button
                 variant={projectSubmissionsOpen ? 'danger' : 'success'}
@@ -275,26 +276,40 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
             role="group"
             aria-label={`Review queue pagination, page ${page} of ${pagination.totalPages}`}
           >
-            <button
-              type="button"
-              className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-lg font-black text-[var(--color-text)] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-              disabled={isLoading || page <= 1}
-              onClick={() => setPage((currentPage) => Math.max(currentPage - 1, 1))}
-              aria-label="Previous review queue page"
-              title="Previous page"
-            >
-              {'<'}
-            </button>
-            <button
-              type="button"
-              className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-lg font-black text-[var(--color-text)] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-              disabled={isLoading || page >= pagination.totalPages}
-              onClick={() => setPage((currentPage) => currentPage + 1)}
-              aria-label="Next review queue page"
-              title="Next page"
-            >
-              {'>'}
-            </button>
+            <div className="pointer-events-auto relative">
+              {page > 1 && (
+                <span className="pointer-events-none absolute -right-1 -top-2 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-black text-black shadow-sm">
+                  {page - 1}
+                </span>
+              )}
+              <button
+                type="button"
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-lg font-black text-[var(--color-text)] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-lg"
+                disabled={isLoading || page <= 1}
+                onClick={() => setPage((currentPage) => Math.max(currentPage - 1, 1))}
+                aria-label={page > 1 ? `Previous review queue page, ${page - 1}` : 'Previous review queue page'}
+                title={page > 1 ? `Page ${page - 1}` : 'Previous page'}
+              >
+                {'<'}
+              </button>
+            </div>
+            <div className="pointer-events-auto relative">
+              {page < pagination.totalPages && (
+                <span className="pointer-events-none absolute -right-1 -top-2 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-black text-black shadow-sm">
+                  {page + 1}
+                </span>
+              )}
+              <button
+                type="button"
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-lg font-black text-[var(--color-text)] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-lg"
+                disabled={isLoading || page >= pagination.totalPages}
+                onClick={() => setPage((currentPage) => currentPage + 1)}
+                aria-label={page < pagination.totalPages ? `Next review queue page, ${page + 1}` : 'Next review queue page'}
+                title={page < pagination.totalPages ? `Page ${page + 1}` : 'Next page'}
+              >
+                {'>'}
+              </button>
+            </div>
           </div>
         )}
       </div>
