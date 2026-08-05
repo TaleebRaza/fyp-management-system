@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
+const BROADCAST_MIME_TYPE = 'audio/webm';
+const BROADCAST_AUDIO_BIT_RATE = 16_000;
+
 export type AudioRecorderState = {
   audioBlob: Blob | null;
   audioUrl: string | null;
@@ -74,6 +77,11 @@ export function useAudioRecorder(): AudioRecorderState {
     recordingRequestRef.current = requestId;
 
     try {
+      if (!MediaRecorder.isTypeSupported(BROADCAST_MIME_TYPE)) {
+        alert('This browser does not support WebM audio recording.');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       if (!mountedRef.current || recordingRequestRef.current !== requestId) {
@@ -86,7 +94,10 @@ export function useAudioRecorder(): AudioRecorderState {
       chunksRef.current = [];
       streamRef.current = stream;
 
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: BROADCAST_MIME_TYPE,
+        audioBitsPerSecond: BROADCAST_AUDIO_BIT_RATE,
+      });
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event: BlobEvent) => {
@@ -96,7 +107,7 @@ export function useAudioRecorder(): AudioRecorderState {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const blob = new Blob(chunksRef.current, { type: BROADCAST_MIME_TYPE });
         chunksRef.current = [];
         mediaRecorderRef.current = null;
         stopStream();

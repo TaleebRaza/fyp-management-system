@@ -112,15 +112,16 @@ export function useBroadcastSubmit({
           broadcastSize: finalSize,
         }),
       });
+      const data: { error?: string } = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error('Failed to save broadcast');
+        throw new Error(data.error || 'Failed to save broadcast.');
       }
 
       setSuccess(true);
       scheduleCompletion(onPublishComplete);
-    } catch {
-      alert('Error publishing broadcast. Please try again.');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Error publishing broadcast. Please try again.');
     } finally {
       inFlightRef.current = false;
       setIsSubmitting(false);
