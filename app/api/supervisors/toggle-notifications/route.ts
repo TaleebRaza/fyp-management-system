@@ -4,9 +4,11 @@ import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import mongoose from 'mongoose';
 import { parseBoolean } from '../../../../lib/security/input';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
-  if (!await requireCurrentUser(req, ['admin'])) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
@@ -26,6 +28,12 @@ export async function POST(req: NextRequest) {
     if (result.matchedCount !== 1) {
       return NextResponse.json({ error: 'Supervisor not found.' }, { status: 404 });
     }
+
+    await recordPortalActivity({
+      action: 'admin-supervisor-updated',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
     
     return NextResponse.json({ message: 'Notification settings updated' }, { status: 200 });
   } catch {

@@ -15,6 +15,7 @@ import {
 } from '../../../../lib/fineRestriction';
 import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationFine';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 import { FINE_RESTRICTION_DEFINITIONS } from '../../../../types/registrationPolicy';
 import {
   invalidatePublicContent,
@@ -168,6 +169,12 @@ export async function PATCH(req: NextRequest) {
       const updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument);
       invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
 
+      await recordPortalActivity({
+        action: 'admin-fines-updated',
+        actorId: token.id,
+        actorRole: token.role,
+      });
+
       return NextResponse.json({
         message: 'Fine payment details saved.',
         finePayment: updatedPolicy.finePayment,
@@ -200,6 +207,14 @@ export async function PATCH(req: NextRequest) {
       }
       invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
 
+      if (!policy.lateFineAccrual.paused) {
+        await recordPortalActivity({
+          action: 'admin-fines-updated',
+          actorId: token.id,
+          actorRole: token.role,
+        });
+      }
+
       return NextResponse.json({
         message: 'Late-registration fine compounding is paused.',
         lateFineAccrual: updatedPolicy.lateFineAccrual,
@@ -228,6 +243,14 @@ export async function PATCH(req: NextRequest) {
         updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument || policyDocument);
       }
       invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
+
+      if (policy.lateFineAccrual.paused) {
+        await recordPortalActivity({
+          action: 'admin-fines-updated',
+          actorId: token.id,
+          actorRole: token.role,
+        });
+      }
 
       return NextResponse.json({
         message: 'Late-registration fine compounding has resumed from the frozen amount.',
@@ -259,6 +282,12 @@ export async function PATCH(req: NextRequest) {
       );
       const updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument);
       invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
+
+      await recordPortalActivity({
+        action: 'admin-fines-updated',
+        actorId: token.id,
+        actorRole: token.role,
+      });
 
       return NextResponse.json({
         message: body.enabled
@@ -316,6 +345,14 @@ export async function PATCH(req: NextRequest) {
           },
           { status: 409 }
         );
+      }
+
+      if (currentRestriction) {
+        await recordPortalActivity({
+          action: 'admin-fines-updated',
+          actorId: token.id,
+          actorRole: token.role,
+        });
       }
 
       return NextResponse.json({

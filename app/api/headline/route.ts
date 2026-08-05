@@ -8,6 +8,7 @@ import {
   PUBLIC_HEADLINE_TAG,
 } from '../../../lib/publicContentCache';
 import { publicJson } from '../../../lib/publicResponse';
+import { recordPortalActivity } from '../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,12 @@ export async function POST(req: NextRequest) {
       await Headline.create({ text: normalizedText, isActive: true });
     }
     invalidatePublicContent(PUBLIC_HEADLINE_TAG);
+
+    await recordPortalActivity({
+      action: 'admin-headline-updated',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
     
     return NextResponse.json({ message: 'Headline updated successfully!' }, { status: 200 });
   } catch {

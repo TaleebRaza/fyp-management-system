@@ -3,6 +3,7 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import mongoose from 'mongoose';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,8 @@ function isValidEmail(value: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!await requireCurrentUser(req, ['admin'])) {
+    const currentUser = await requireCurrentUser(req, ['admin']);
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
     }
 
@@ -49,6 +51,14 @@ export async function POST(req: NextRequest) {
     if (!updatedUser) {
       return NextResponse.json({ error: 'User not found.' }, { status: 404 });
     }
+
+    await recordPortalActivity({
+      action: updatedUser.role === 'supervisor'
+        ? 'admin-supervisor-updated'
+        : 'admin-student-updated',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
 
     return NextResponse.json(
       {

@@ -18,6 +18,10 @@ import {
   releaseSupervisorProjectSlot,
   reserveSupervisorProjectSlot,
 } from '../../../../lib/supervisorCapacity';
+import {
+  projectReviewActivityAction,
+  recordPortalActivity,
+} from '../../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -141,6 +145,12 @@ export async function POST(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: 'Student not found' }, { status: 404 });
       }
+
+      await recordPortalActivity({
+        action: projectReviewActivityAction(status),
+        actorId: currentUser.id,
+        actorRole: currentUser.role,
+      });
 
       return NextResponse.json({ message: 'Status updated and timeline advanced!' }, { status: 200 });
     }
@@ -321,6 +331,12 @@ export async function POST(req: NextRequest) {
         await session.commitTransaction();
         session.endSession();
 
+        await recordPortalActivity({
+          action: 'supervisor-student-migrated',
+          actorId: currentUser.id,
+          actorRole: currentUser.role,
+        });
+
         return NextResponse.json({ message: 'Student migrated successfully. Project status and timeline were preserved.' }, { status: 200 });
       } catch (error) {
         await session.abortTransaction();
@@ -385,6 +401,11 @@ export async function POST(req: NextRequest) {
         }
 
         await session.commitTransaction();
+        await recordPortalActivity({
+          action: 'supervisor-team-removed',
+          actorId: currentUser.id,
+          actorRole: currentUser.role,
+        });
         return NextResponse.json({ message: 'Team removed successfully.' }, { status: 200 });
       } catch {
         if (session.inTransaction()) await session.abortTransaction();
@@ -410,6 +431,12 @@ export async function POST(req: NextRequest) {
       if (!expandedProject) {
         return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
       }
+
+      await recordPortalActivity({
+        action: 'supervisor-team-expanded',
+        actorId: currentUser.id,
+        actorRole: currentUser.role,
+      });
 
       return NextResponse.json(
         { message: 'This team can now add a third member.' },

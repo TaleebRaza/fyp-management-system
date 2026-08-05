@@ -13,6 +13,7 @@ import {
   withStorageTransaction,
 } from '../../../../../lib/storageProtocol';
 import User from '../../../../../models/User';
+import { recordPortalActivity } from '../../../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,6 +97,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    await recordPortalActivity({
+      action: 'supervisor-broadcast-published',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
+
     return NextResponse.json({ message: 'Broadcast published successfully!' }, { status: 200 });
   } catch (error) {
     console.error('broadcast_publish_failed');
@@ -124,6 +131,12 @@ export async function DELETE(req: NextRequest) {
       supervisor.broadcastSize = 0;
       supervisor.broadcastCreatedAt = null;
       await supervisor.save({ session });
+    });
+
+    await recordPortalActivity({
+      action: 'supervisor-broadcast-cleared',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
     });
 
     return NextResponse.json({ message: 'Broadcast cleared.' }, { status: 200 });

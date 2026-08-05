@@ -12,6 +12,7 @@ import {
   invalidatePublicContent,
   PUBLIC_REGISTRATION_POLICY_TAG,
 } from '../../../../lib/publicContentCache';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -149,6 +150,12 @@ export async function PUT(req: NextRequest) {
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
     invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
+
+    await recordPortalActivity({
+      action: 'admin-registration-updated',
+      actorId: token.id,
+      actorRole: token.role,
+    });
 
     return NextResponse.json({
       message: isOpen

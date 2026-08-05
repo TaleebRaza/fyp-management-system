@@ -10,10 +10,12 @@ import {
   invalidatePublicContent,
   PUBLIC_SUPERVISORS_TAG,
 } from '../../../lib/publicContentCache';
+import { recordPortalActivity } from '../../../lib/portalActivityLog';
 import User from '../../../models/User';
 
 export async function POST(req: NextRequest) {
-  if (!await requireCurrentUser(req, ['admin'])) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
@@ -48,6 +50,12 @@ export async function POST(req: NextRequest) {
       occupiedSlots: 0,
     }).save();
     invalidatePublicContent(PUBLIC_SUPERVISORS_TAG);
+
+    await recordPortalActivity({
+      action: 'admin-supervisor-added',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
 
     return NextResponse.json({ message: 'Supervisor added successfully.' }, { status: 201 });
   } catch (error) {

@@ -4,9 +4,11 @@ import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import mongoose from 'mongoose';
 import { parseBoolean } from '../../../../lib/security/input';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
-  if (!await requireCurrentUser(req, ['admin'])) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
@@ -26,6 +28,12 @@ export async function POST(req: NextRequest) {
     if (updatedUser.matchedCount !== 1) {
         return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
+
+    await recordPortalActivity({
+      action: 'admin-student-updated',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
 
     return NextResponse.json({
         message: `Student account ${nextIsActive ? 'restored' : 'deactivated'} successfully`

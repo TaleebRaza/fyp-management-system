@@ -14,6 +14,7 @@ import { requireCurrentUser } from '../../../../lib/security/auth';
 import { getTeamCapacity } from '../../../../lib/teamCapacity';
 import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
   if (!currentUser) {
@@ -185,7 +186,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
       });
 
-      if (response.status === 200) await refundRateLimit(rateLimitKey);
+      if (response.status === 200) {
+        await refundRateLimit(rateLimitKey);
+        await recordPortalActivity({
+          action: 'student-team-joined',
+          actorId: currentUser.id,
+          actorRole: currentUser.role,
+        });
+      }
       return response;
     } finally {
       // Ensure the session is always closed to prevent memory leaks

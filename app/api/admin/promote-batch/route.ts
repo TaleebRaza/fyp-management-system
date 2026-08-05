@@ -3,9 +3,11 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { normalizeText } from '../../../../lib/security/input';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
-  if (!await requireCurrentUser(req, ['admin'])) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
@@ -23,6 +25,14 @@ export async function POST(req: NextRequest) {
       { $set: { semester: '8th Semester' } },
       { runValidators: true }
     );
+
+    if (result.modifiedCount > 0) {
+      await recordPortalActivity({
+        action: 'admin-student-updated',
+        actorId: currentUser.id,
+        actorRole: currentUser.role,
+      });
+    }
 
     return NextResponse.json({ 
       message: `Successfully promoted ${result.modifiedCount} students in ${normalizedBatch} to 8th Semester!`

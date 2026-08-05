@@ -17,6 +17,10 @@ import {
   invalidatePublicContent,
   PUBLIC_REGISTRATION_POLICY_TAG,
 } from '../../../../lib/publicContentCache';
+import {
+  projectReviewActivityAction,
+  recordPortalActivity,
+} from '../../../../lib/portalActivityLog';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
 
@@ -81,7 +85,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!await requireCurrentUser(req, ['admin'])) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
@@ -122,6 +127,12 @@ export async function POST(req: NextRequest) {
         { status: result.reason === 'not-reviewable' ? 409 : 404 }
       );
     }
+
+    await recordPortalActivity({
+      action: projectReviewActivityAction(body.status),
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
 
     return NextResponse.json({ message: 'Project review recorded.' }, { status: 200 });
   } catch (error) {
@@ -164,6 +175,12 @@ export async function PATCH(req: NextRequest) {
     );
     const policy = serializeRegistrationPolicy(updated);
     invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
+
+    await recordPortalActivity({
+      action: 'admin-project-submissions-updated',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
 
     return NextResponse.json({
       message: policy.projectSubmissionsOpen

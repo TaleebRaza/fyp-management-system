@@ -7,6 +7,7 @@ import Project from '../../models/Project';
 import User from '../../models/User';
 import { buildRollNoRegex, normalizeRollNo } from '../rollNo';
 import { consumeRateLimit } from '../rateLimit';
+import { isPortalActivityActorRole, recordPortalActivity } from '../portalActivityLog';
 import { matchesPasswordResetKnowledge } from '../security/passwordResetKnowledge';
 import {
   parsePasswordResetCompletionInput,
@@ -158,7 +159,17 @@ export async function completePasswordReset(input: unknown): Promise<PasswordRes
     }
   );
 
-  return updateResult.modifiedCount === 1
-    ? result(200, { message: 'Password successfully updated! You can now log in.' })
-    : result(400, { error: INVALID_TOKEN_ERROR });
+  if (updateResult.modifiedCount !== 1) {
+    return result(400, { error: INVALID_TOKEN_ERROR });
+  }
+
+  if (isPortalActivityActorRole(user.role)) {
+    await recordPortalActivity({
+      action: 'password-changed',
+      actorId: user._id.toString(),
+      actorRole: user.role,
+    });
+  }
+
+  return result(200, { message: 'Password successfully updated! You can now log in.' });
 }

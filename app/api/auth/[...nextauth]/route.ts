@@ -6,6 +6,10 @@ import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
 import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
 import { isBcryptHash } from "../../../../lib/security/password";
 import { consumeRateLimit, hashRateLimitIdentifier, isRateLimitExceeded } from "../../../../lib/rateLimit";
+import {
+  isPortalActivityActorRole,
+  recordPortalActivity,
+} from '../../../../lib/portalActivityLog';
 
 const LOGIN_ATTEMPT_LIMIT = 5;
 
@@ -90,7 +94,14 @@ const handler = NextAuth({
           await User.findByIdAndUpdate(user._id, { $set: { monthlyLoginCount: 1, lastLoginMonth: currentMonth } });
         }
         // ----------------------------------------
-        
+
+        if (isPortalActivityActorRole(user.role)) {
+          await recordPortalActivity({
+            action: 'login',
+            actorId: user._id.toString(),
+            actorRole: user.role,
+          });
+        }
         return {
           id: user._id.toString(),
           name: user.name,
@@ -121,6 +132,18 @@ const handler = NextAuth({
   session: {
     strategy: "jwt",
     // We can remove the hardcoded 2-hour maxAge, as the browser closure will now handle termination
+  },
+  events: {
+    async signOut(message) {
+      const token = 'token' in message ? message.token : null;
+      if (!token || typeof token.id !== 'string' || !isPortalActivityActorRole(token.role)) return;
+
+      await recordPortalActivity({
+        action: 'logout',
+        actorId: token.id,
+        actorRole: token.role,
+      });
+    },
   },
   secret: process.env.NEXTAUTH_SECRET,
 });

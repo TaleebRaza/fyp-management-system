@@ -28,6 +28,7 @@ import {
   capacityReservationError,
   reserveSupervisorProjectSlot,
 } from '../../../lib/supervisorCapacity';
+import { recordPortalActivity } from '../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
   try {
@@ -199,6 +200,12 @@ export async function POST(req: NextRequest) {
       newStudent.projectId = newProject._id;
       await newStudent.save({ session });
       await session.commitTransaction();
+
+      await recordPortalActivity({
+        action: 'student-registered',
+        actorId: newStudent._id.toString(),
+        actorRole: 'student',
+      });
 
       const punishmentMessage = registrationPunishment.active
         ? registrationPunishment.category === 'fine'

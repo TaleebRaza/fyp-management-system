@@ -5,6 +5,7 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 const ONLY_MEMBER_CODE = 'ONLY_MEMBER_CANNOT_LEAVE';
 const TEAM_CHANGED_CODE = 'TEAM_CHANGED';
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     const session = await mongoose.startSession();
 
     try {
-      return await session.withTransaction(async () => {
+      const response = await session.withTransaction(async () => {
         const student = await User.findOne({
           _id: currentUser.id,
           role: 'student',
@@ -134,6 +135,16 @@ export async function POST(req: NextRequest) {
           { status: 200 }
         );
       });
+
+      if (response.status === 200) {
+        await recordPortalActivity({
+          action: 'student-team-left',
+          actorId: currentUser.id,
+          actorRole: currentUser.role,
+        });
+      }
+
+      return response;
     } finally {
       session.endSession();
     }

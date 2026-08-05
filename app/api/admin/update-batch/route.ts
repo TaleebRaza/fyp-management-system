@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
   try {
-    if (!await requireCurrentUser(req, ['admin'])) {
+    const currentUser = await requireCurrentUser(req, ['admin']);
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
     }
 
@@ -15,6 +17,12 @@ export async function POST(req: NextRequest) {
       newBatch,
       actor: 'admin',
       enforceStudentCooldown: false,
+    });
+
+    await recordPortalActivity({
+      action: 'admin-student-updated',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
     });
 
     return NextResponse.json(result, { status: 200 });

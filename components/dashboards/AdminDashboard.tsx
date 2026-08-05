@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   LogIn,
+  ScrollText,
   Users,
 } from 'lucide-react';
 
@@ -46,11 +47,23 @@ const AdminProjectReviewsPanel = dynamic(loadAdminProjectReviewsPanel, {
   ),
 });
 
+const AdminActivityLogsPanel = dynamic(
+  () => import('../admin/AdminActivityLogsPanel'),
+  {
+    loading: () => (
+      <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">
+        Loading activity logs...
+      </div>
+    ),
+  }
+);
+
 type AdminTab =
   | 'overview'
   | 'supervisors'
   | 'students'
   | 'reviews'
+  | 'logs'
   | 'registration'
   | 'fines';
 
@@ -125,6 +138,13 @@ const AdminDashboard = ({
       icon: <ClipboardCheck size={18} />,
       active: activeTab === 'reviews',
       onClick: () => setActiveTab('reviews'),
+    },
+    {
+      id: 'logs',
+      label: 'Logs',
+      icon: <ScrollText size={18} />,
+      active: activeTab === 'logs',
+      onClick: () => setActiveTab('logs'),
     },
     {
       id: 'registration',
@@ -258,6 +278,8 @@ const AdminDashboard = ({
         {activeTab === 'reviews' && (
           <AdminProjectReviewsPanel showDialog={showDialog} />
         )}
+
+        {activeTab === 'logs' && <AdminActivityLogsPanel />}
         {activeTab === 'fines' && (
           <FineManagementPanel showDialog={showDialog} />
         )}

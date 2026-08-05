@@ -48,6 +48,7 @@ import {
   finalizeUploadReservation,
   StorageProtocolError,
 } from '../../../../lib/storageProtocol';
+import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -233,6 +234,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      await recordPortalActivity({
+        action: 'student-name-updated',
+        actorId: currentUser.id,
+        actorRole: currentUser.role,
+      });
+
       return NextResponse.json(
         { message: 'Name updated. You can change it again after 24 hours.', name: updatedStudent.name },
         { status: 200 }
@@ -254,6 +261,11 @@ export async function POST(req: NextRequest) {
           newBatch: typeof body.batch === 'string' ? body.batch : undefined,
           actor: 'student',
           enforceStudentCooldown: true,
+        });
+        await recordPortalActivity({
+          action: 'student-academic-details-updated',
+          actorId: currentUser.id,
+          actorRole: currentUser.role,
         });
         return NextResponse.json(result, { status: 200 });
       } catch (error) {
@@ -401,6 +413,12 @@ export async function POST(req: NextRequest) {
         await session.commitTransaction();
         session.endSession();
 
+        await recordPortalActivity({
+          action: 'student-supervisor-updated',
+          actorId: currentUser.id,
+          actorRole: currentUser.role,
+        });
+
         return NextResponse.json(
           {
             message: leftTeam
@@ -495,6 +513,11 @@ export async function POST(req: NextRequest) {
         // 5. Commit the transaction ONLY if no other request modified the count during our process
         await session.commitTransaction();
         session.endSession();
+        await recordPortalActivity({
+          action: 'student-supervisor-updated',
+          actorId: currentUser.id,
+          actorRole: currentUser.role,
+        });
         return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
 
       } catch (transactionError) {
@@ -779,6 +802,12 @@ export async function POST(req: NextRequest) {
 
         return true;
       },
+    });
+
+    await recordPortalActivity({
+      action: 'project-submitted',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
     });
 
     return NextResponse.json({ message: 'Project Submitted!' }, { status: 200 });
