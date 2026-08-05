@@ -147,6 +147,8 @@ export default function AdminActivityLogsPanel() {
           {entries.map((entry, index) => {
             const detail = ACTION_DETAILS[entry.action];
             const Icon = detail.icon;
+            const showActorIdentity = entry.actorRole !== 'admin' && Boolean(entry.actorName);
+            const actorIdentifier = entry.actorRollNo || entry.actorId;
             return (
               <div
                 key={`${entry.occurredAt}-${index}`}
@@ -157,8 +159,20 @@ export default function AdminActivityLogsPanel() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-[var(--color-text)]">
-                    {formatRole(entry.actorRole)} {detail.label.toLowerCase()}
+                    {showActorIdentity
+                      ? entry.actorName
+                      : `${formatRole(entry.actorRole)} ${detail.label.toLowerCase()}`}
                   </p>
+                  {showActorIdentity && actorIdentifier && (
+                    <p className="mt-0.5 text-xs font-semibold text-[var(--color-text-muted)]">
+                      {actorIdentifier}
+                    </p>
+                  )}
+                  {showActorIdentity && (
+                    <p className="mt-0.5 text-xs font-medium text-[var(--color-text-muted)]">
+                      {formatRole(entry.actorRole)} {detail.label.toLowerCase()}
+                    </p>
+                  )}
                   <time className="mt-0.5 block text-xs font-medium text-[var(--color-text-muted)]" dateTime={new Date(entry.occurredAt).toISOString()}>
                     {formatTime(entry.occurredAt)}
                   </time>

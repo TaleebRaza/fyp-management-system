@@ -5,7 +5,7 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
-import { recordPortalActivity } from '../../../../lib/portalActivityLog';
+import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
 
 const ONLY_MEMBER_CODE = 'ONLY_MEMBER_CANNOT_LEAVE';
 const TEAM_CHANGED_CODE = 'TEAM_CHANGED';
@@ -137,11 +137,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (response.status === 200) {
-        await recordPortalActivity({
-          action: 'student-team-left',
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
-        });
+        await recordCurrentUserActivity('student-team-left', currentUser);
       }
 
       return response;

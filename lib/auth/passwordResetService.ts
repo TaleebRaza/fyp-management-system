@@ -168,6 +168,8 @@ export async function completePasswordReset(input: unknown): Promise<PasswordRes
       action: 'password-changed',
       actorId: user._id.toString(),
       actorRole: user.role,
+      actorName: user.name,
+      actorRollNo: user.rollNo,
     });
   }
 

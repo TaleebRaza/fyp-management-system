@@ -48,7 +48,7 @@ import {
   finalizeUploadReservation,
   StorageProtocolError,
 } from '../../../../lib/storageProtocol';
-import { recordPortalActivity } from '../../../../lib/portalActivityLog';
+import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -234,11 +234,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      await recordPortalActivity({
-        action: 'student-name-updated',
-        actorId: currentUser.id,
-        actorRole: currentUser.role,
-      });
+      await recordCurrentUserActivity('student-name-updated', currentUser);
 
       return NextResponse.json(
         { message: 'Name updated. You can change it again after 24 hours.', name: updatedStudent.name },
@@ -262,11 +258,7 @@ export async function POST(req: NextRequest) {
           actor: 'student',
           enforceStudentCooldown: true,
         });
-        await recordPortalActivity({
-          action: 'student-academic-details-updated',
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
-        });
+        await recordCurrentUserActivity('student-academic-details-updated', currentUser);
         return NextResponse.json(result, { status: 200 });
       } catch (error) {
         if (error instanceof AcademicResetError) {
@@ -413,11 +405,7 @@ export async function POST(req: NextRequest) {
         await session.commitTransaction();
         session.endSession();
 
-        await recordPortalActivity({
-          action: 'student-supervisor-updated',
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
-        });
+        await recordCurrentUserActivity('student-supervisor-updated', currentUser);
 
         return NextResponse.json(
           {
@@ -513,11 +501,7 @@ export async function POST(req: NextRequest) {
         // 5. Commit the transaction ONLY if no other request modified the count during our process
         await session.commitTransaction();
         session.endSession();
-        await recordPortalActivity({
-          action: 'student-supervisor-updated',
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
-        });
+        await recordCurrentUserActivity('student-supervisor-updated', currentUser);
         return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
 
       } catch (transactionError) {
@@ -804,11 +788,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await recordPortalActivity({
-      action: 'project-submitted',
-      actorId: currentUser.id,
-      actorRole: currentUser.role,
-    });
+    await recordCurrentUserActivity('project-submitted', currentUser);
 
     return NextResponse.json({ message: 'Project Submitted!' }, { status: 200 });
   } catch (error) {

@@ -20,7 +20,7 @@ import {
 } from '../../../../lib/supervisorCapacity';
 import {
   projectReviewActivityAction,
-  recordPortalActivity,
+  recordCurrentUserActivity,
 } from '../../../../lib/portalActivityLog';
 
 export const dynamic = 'force-dynamic';
@@ -146,11 +146,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Student not found' }, { status: 404 });
       }
 
-      await recordPortalActivity({
-        action: projectReviewActivityAction(status),
-        actorId: currentUser.id,
-        actorRole: currentUser.role,
-      });
+      await recordCurrentUserActivity(projectReviewActivityAction(status), currentUser);
 
       return NextResponse.json({ message: 'Status updated and timeline advanced!' }, { status: 200 });
     }
@@ -331,11 +327,7 @@ export async function POST(req: NextRequest) {
         await session.commitTransaction();
         session.endSession();
 
-        await recordPortalActivity({
-          action: 'supervisor-student-migrated',
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
-        });
+        await recordCurrentUserActivity('supervisor-student-migrated', currentUser);
 
         return NextResponse.json({ message: 'Student migrated successfully. Project status and timeline were preserved.' }, { status: 200 });
       } catch (error) {
@@ -401,11 +393,7 @@ export async function POST(req: NextRequest) {
         }
 
         await session.commitTransaction();
-        await recordPortalActivity({
-          action: 'supervisor-team-removed',
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
-        });
+        await recordCurrentUserActivity('supervisor-team-removed', currentUser);
         return NextResponse.json({ message: 'Team removed successfully.' }, { status: 200 });
       } catch {
         if (session.inTransaction()) await session.abortTransaction();
@@ -432,11 +420,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
       }
 
-      await recordPortalActivity({
-        action: 'supervisor-team-expanded',
-        actorId: currentUser.id,
-        actorRole: currentUser.role,
-      });
+      await recordCurrentUserActivity('supervisor-team-expanded', currentUser);
 
       return NextResponse.json(
         { message: 'This team can now add a third member.' },

@@ -100,6 +100,8 @@ const handler = NextAuth({
             action: 'login',
             actorId: user._id.toString(),
             actorRole: user.role,
+            actorName: user.name,
+            actorRollNo: user.rollNo,
           });
         }
         return {
@@ -117,6 +119,7 @@ const handler = NextAuth({
         token.id = user.id;
         token.role = user.role;
         token.rollNo = user.rollNo;
+        token.name = user.name;
       }
       return token;
     },
@@ -142,6 +145,8 @@ const handler = NextAuth({
         action: 'logout',
         actorId: token.id,
         actorRole: token.role,
+        actorName: typeof token.name === 'string' ? token.name : undefined,
+        actorRollNo: token.rollNo,
       });
     },
   },

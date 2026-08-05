@@ -10,6 +10,8 @@ const PortalActivityEntrySchema = new Schema(
       enum: ['admin', 'supervisor', 'student'],
       required: true,
     },
+    actorName: { type: String, trim: true, maxlength: 100 },
+    actorRollNo: { type: String, trim: true, maxlength: 40 },
     occurredAt: { type: Date, required: true },
   },
   { _id: false }

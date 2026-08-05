@@ -205,6 +205,8 @@ export async function POST(req: NextRequest) {
         action: 'student-registered',
         actorId: newStudent._id.toString(),
         actorRole: 'student',
+        actorName: newStudent.name,
+        actorRollNo: newStudent.rollNo,
       });
 
       const punishmentMessage = registrationPunishment.active

@@ -14,7 +14,7 @@ import { requireCurrentUser } from '../../../../lib/security/auth';
 import { getTeamCapacity } from '../../../../lib/teamCapacity';
 import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
-import { recordPortalActivity } from '../../../../lib/portalActivityLog';
+import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
   if (!currentUser) {
@@ -188,11 +188,7 @@ export async function POST(req: NextRequest) {
 
       if (response.status === 200) {
         await refundRateLimit(rateLimitKey);
-        await recordPortalActivity({
-          action: 'student-team-joined',
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
-        });
+        await recordCurrentUserActivity('student-team-joined', currentUser);
       }
       return response;
     } finally {

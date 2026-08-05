@@ -40,10 +40,15 @@ export type PortalActivityEntry = {
   action: PortalActivityAction;
   actorId: string;
   actorRole: UserRole;
+  actorName?: string;
+  actorRollNo?: string;
   occurredAt: Date;
 };
 
-export type PortalActivityInput = Pick<PortalActivityEntry, 'action' | 'actorId' | 'actorRole'>;
+export type PortalActivityInput = Pick<
+  PortalActivityEntry,
+  'action' | 'actorId' | 'actorRole' | 'actorName' | 'actorRollNo'
+>;
 
 export function isPortalActivityActorRole(value: unknown): value is UserRole {
   return value === 'admin' || value === 'supervisor' || value === 'student';

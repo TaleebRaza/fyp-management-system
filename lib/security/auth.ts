@@ -11,6 +11,8 @@ export type UserRole = 'admin' | 'supervisor' | 'student';
 export type CurrentUser = {
   id: string;
   role: UserRole;
+  name: string;
+  rollNo: string;
 };
 
 const USER_ROLES: UserRole[] = ['admin', 'supervisor', 'student'];
@@ -28,12 +30,17 @@ export async function requireCurrentUser(
 
   await connectToDatabase();
   const user = await User.findOne({ _id: token.id, isActive: true })
-    .select('_id role')
+    .select('_id role name rollNo')
     .lean();
 
   if (!user || !USER_ROLES.includes(user.role as UserRole)) return null;
 
-  const currentUser = { id: user._id.toString(), role: user.role as UserRole };
+  const currentUser = {
+    id: user._id.toString(),
+    role: user.role as UserRole,
+    name: String(user.name || '').trim(),
+    rollNo: String(user.rollNo || '').trim(),
+  };
   return !allowedRoles || allowedRoles.includes(currentUser.role) ? currentUser : null;
 }
 

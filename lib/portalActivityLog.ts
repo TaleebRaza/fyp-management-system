@@ -3,9 +3,11 @@ import {
   createPortalActivityUpdate,
   PORTAL_ACTIVITY_LOG_ID,
   PORTAL_ACTIVITY_PAGE_SIZE,
+  type PortalActivityAction,
   type PortalActivityEntry,
   type PortalActivityInput,
 } from './portalActivityLogPolicy';
+import type { CurrentUser } from './security/auth';
 
 export * from './portalActivityLogPolicy';
 
@@ -23,6 +25,19 @@ export async function recordPortalActivity(input: PortalActivityInput) {
   } catch {
     console.error('portal_activity_log_write_failed');
   }
+}
+
+export async function recordCurrentUserActivity(
+  action: PortalActivityAction,
+  currentUser: CurrentUser
+) {
+  await recordPortalActivity({
+    action,
+    actorId: currentUser.id,
+    actorRole: currentUser.role,
+    actorName: currentUser.name,
+    actorRollNo: currentUser.rollNo,
+  });
 }
 
 export async function getPortalActivityPage(page: number) {
