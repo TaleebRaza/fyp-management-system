@@ -97,7 +97,7 @@ export async function getAdminProjectReviewQueue(
   const limit = clampInteger(options.limit, DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE);
   const search = String(options.search || '').trim();
   const program = String(options.program || '').trim();
-  const searchRegex = search ? new RegExp(`^${escapeRegex(search)}`, 'i') : null;
+  const searchRegex = search ? new RegExp(escapeRegex(search), 'i') : null;
 
   const filterLookupStarted = performance.now();
   const [programStudentIds, searchStudentIds, searchSupervisorIds] = await Promise.all([
