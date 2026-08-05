@@ -57,12 +57,11 @@ export async function withStorageTransaction<T>(operation: (session: ClientSessi
   const session = await mongoose.startSession();
 
   try {
-    let value: T | undefined;
+    let value!: T;
     await session.withTransaction(async () => {
       value = await operation(session);
     });
 
-    if (value === undefined) throw new Error('Storage transaction returned no result.');
     return value;
   } finally {
     await session.endSession();

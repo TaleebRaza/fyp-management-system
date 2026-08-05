@@ -26,6 +26,13 @@ test('storage reservations keep pending bytes and atomically claimed deletion wo
   assert.doesNotMatch(protocol, /\$setOnInsert: \{ usedBytes: 0, reservedBytes: 0 \}/);
 });
 
+test('storage transactions allow callbacks that only write state', async () => {
+  const protocol = await read('lib/storageProtocol.ts');
+
+  assert.match(protocol, /let value!: T;/);
+  assert.doesNotMatch(protocol, /Storage transaction returned no result/);
+});
+
 test('submission and review enqueue email work without awaiting SMTP', async () => {
   const [outbox, student, review] = await Promise.all([
     read('lib/emailOutbox.ts'),
