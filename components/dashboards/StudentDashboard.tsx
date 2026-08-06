@@ -13,6 +13,7 @@ import StudentOverviewSection from '../student/StudentOverviewSection';
 import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';
 import StudentResourcesSection from '../student/StudentResourcesSection';
 import StudentTeamSection from '../student/StudentTeamSection';
+import StudentReviewOutcomeScreen from '../student/StudentReviewOutcomeScreen';
 import {
   AcademicUpdateDialog,
   SupervisorChangeDialog,
@@ -239,6 +240,13 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
   return (
     <>
+      <StudentReviewOutcomeScreen
+        userId={currentUserId}
+        projectId={project?._id}
+        projectVersion={project?.version}
+        status={me?.status || project?.status}
+        remarks={me?.remarks}
+      />
       <DashboardShell
         title={`Good day, ${me?.name || session?.user?.name || 'Student'}`}
         description={`Final Year Project · ${currentProgramName} · ${me?.batch || 'Batch not set'}`}

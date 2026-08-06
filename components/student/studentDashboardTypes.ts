@@ -42,6 +42,7 @@ export type ProjectMember = {
 
 type StudentProjectSummary = {
   _id?: string;
+  version?: number;
   status?: string;
   stage?: string;
   domain?: string;

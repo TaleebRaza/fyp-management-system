@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
         : null,
       student.projectId
         ? Project.findById(student.projectId)
-            .select('_id members status stage domain domains pdfUrl inviteCode maxTeamSize ratings')
+            .select('_id members status stage version domain domains pdfUrl inviteCode maxTeamSize ratings')
             .lean()
         : null,
       getOrCreateRegistrationPolicy(),
