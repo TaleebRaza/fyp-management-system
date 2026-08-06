@@ -166,3 +166,35 @@ test('preserves supervisor notification and slot request bodies', async () => {
 test('does not prefetch review data when the admin dashboard loads', () => {
   assert.equal('prefetchAdminProjectReviews' in api, false);
 });
+
+test('downloads project ratings with all server-side filter values', async () => {
+  const expectedBlob = new Blob(['xlsx']);
+
+  await withMockFetch(async (url, init) => {
+    assert.equal(
+      url,
+      '/api/admin/project-ratings-export?round=proposal&projectIdea=6&technicalMerit=0&documentationQuality=8'
+    );
+    assert.deepEqual(init, { cache: 'no-store' });
+    return {
+      ok: true,
+      headers: {
+        get(name) {
+          return name === 'Content-Disposition'
+            ? 'attachment; filename="project-ratings-proposal-2026-08-06.xlsx"'
+            : null;
+        },
+      },
+      async blob() {
+        return expectedBlob;
+      },
+    };
+  }, async () => {
+    const result = await api.getProjectRatingsExport({
+      round: 'proposal',
+      minimums: { projectIdea: 6, technicalMerit: 0, documentationQuality: 8 },
+    });
+    assert.equal(result.blob, expectedBlob);
+    assert.equal(result.filename, 'project-ratings-proposal-2026-08-06.xlsx');
+  });
+});

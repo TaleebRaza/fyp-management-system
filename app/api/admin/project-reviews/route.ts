@@ -114,10 +114,26 @@ export async function POST(req: NextRequest) {
       studentId,
       status: body.status,
       remarks: normalizeText(body.remarks, 2000) || 'No remarks provided.',
-      requireAwaitingReview: true,
+      expectedStage: normalizeText(body.expectedStage, 32),
+      expectedVersion: body.expectedVersion,
+      approverId: currentUser.id,
+      ratings: body.ratings,
     });
 
     if (!result.success) {
+      const invalidMessage = result.reason === 'invalid-request'
+        ? 'The project stage or version is invalid.'
+        : result.reason === 'ratings-required'
+          ? 'All three ratings must be whole numbers from 1 through 10.'
+          : result.reason === 'ratings-not-allowed'
+            ? 'Ratings are only allowed when approving a Proposal or Thesis submission.'
+            : null;
+      if (invalidMessage) {
+        return NextResponse.json(
+          { error: invalidMessage },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         {
           error: result.reason === 'not-reviewable'

@@ -5,6 +5,7 @@ import {
   normalizeProjectDomainIds,
 } from '../config/projectDomains';
 import { DEFAULT_TEAM_SIZE, getTeamCapacity } from '../config/appSettings';
+import { getSafeProjectRatings } from '../config/projectRatings';
 import Project from '../models/Project';
 import User from '../models/User';
 import type { ProjectReviewProject } from '../types/projectReview';
@@ -19,6 +20,8 @@ type QueueProjectRecord = {
   pdfUrl?: string;
   status?: string;
   stage?: string;
+  version?: number;
+  ratings?: unknown;
   maxTeamSize?: number;
 };
 
@@ -175,7 +178,7 @@ export async function getAdminProjectReviewQueue(
   const projectQueryStarted = performance.now();
   const [projects, total] = await Promise.all([
     Project.find(projectFilter)
-      .select('_id supervisorId members title domain domains pdfUrl status stage maxTeamSize')
+      .select('_id supervisorId members title domain domains pdfUrl status stage version ratings maxTeamSize')
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -234,6 +237,8 @@ export async function getAdminProjectReviewQueue(
       pdfUrl: project.pdfUrl,
       status: project.status,
       stage: project.stage || 'PROPOSAL',
+      version: Number(project.version || 0),
+      ratings: getSafeProjectRatings(project.ratings),
       maxTeamSize: getTeamCapacity(project.maxTeamSize) || DEFAULT_TEAM_SIZE,
       program: firstMember.program || 'N/A',
       batch: firstMember.batch || 'N/A',

@@ -4,6 +4,7 @@ import type {
   AdminSupervisor,
   StudentPagination,
 } from '../adminDashboardTypes';
+import type { ProjectRatingsExportFilters } from '../../../config/projectRatings';
 
 type JsonObject = Record<string, unknown>;
 
@@ -139,6 +140,30 @@ export async function getAdminReports(): Promise<AdminReportsData> {
   }
 
   return data;
+}
+
+export async function getProjectRatingsExport(filters: ProjectRatingsExportFilters) {
+  const params = new URLSearchParams({
+    round: filters.round,
+    projectIdea: String(filters.minimums.projectIdea),
+    technicalMerit: String(filters.minimums.technicalMerit),
+    documentationQuality: String(filters.minimums.documentationQuality),
+  });
+  const response = await fetch(`/api/admin/project-ratings-export?${params.toString()}`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const data = await readJson<{ error?: string }>(response);
+    throw new Error(data.error || 'Failed to generate the project ratings export.');
+  }
+
+  const blob = await response.blob();
+  if (blob.size === 0) throw new Error('The project ratings export was empty.');
+
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+    || `project-ratings-${filters.round}.xlsx`;
+  return { blob, filename };
 }
 
 export async function createAdminSupervisor(input: {

@@ -8,6 +8,7 @@ import {
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
 import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../config/appSettings';
+import { getSafeProjectRatings, type ProjectRatings } from '../../../../config/projectRatings';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
@@ -41,14 +42,16 @@ export async function GET(req: NextRequest) {
     const projectIds = students.map(s => s.projectId).filter(Boolean);
     const projects = projectIds.length > 0
       ? await Project.find({ _id: { $in: projectIds } })
-          .select('_id stage maxTeamSize domains domain')
+          .select('_id stage version ratings maxTeamSize domains domain')
           .lean()
       : [];
-    const projectMetadata = projects.reduce<Record<string, { stage: string; maxTeamSize: number; domains: string[]; domain: string }>>((acc, p) => {
+    const projectMetadata = projects.reduce<Record<string, { stage: string; version: number; ratings?: ProjectRatings; maxTeamSize: number; domains: string[]; domain: string }>>((acc, p) => {
       const domainIds = normalizeProjectDomainIds(p.domains, p.domain);
 
       acc[p._id.toString()] = {
         stage: p.stage,
+        version: Number(p.version || 0),
+        ratings: getSafeProjectRatings(p.ratings),
         maxTeamSize: getTeamCapacity(p.maxTeamSize),
         domains: domainIds,
         domain: formatProjectDomainLabels(domainIds, p.domain),
@@ -85,6 +88,8 @@ export async function GET(req: NextRequest) {
           status: student.status,
           remarks: student.remarks,
           stage: projectMetadata[pId]?.stage || 'PROPOSAL',
+          version: projectMetadata[pId]?.version || 0,
+          ratings: projectMetadata[pId]?.ratings,
           maxTeamSize: projectMetadata[pId]?.maxTeamSize || DEFAULT_TEAM_SIZE,
           program: student.program || 'N/A',
           batch: student.batch || 'N/A',
@@ -124,7 +129,7 @@ export async function POST(req: NextRequest) {
     // Read the body once only. Reading req.json() twice breaks migration.
     const body: unknown = await req.json();
     if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor action.' }, { status: 400 });
-    const { action, studentId, status, remarks, migrationCode, projectId } = body;
+    const { action, studentId, status, remarks, expectedStage, expectedVersion, ratings, migrationCode, projectId } = body;
     if (!['updateStatus', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown supervisor action.' }, { status: 400 });
     }
@@ -139,11 +144,31 @@ export async function POST(req: NextRequest) {
         studentId: requestedStudentId,
         status,
         remarks: normalizeText(remarks, 2000) || 'No remarks provided.',
+        expectedStage: normalizeText(expectedStage, 32),
+        expectedVersion,
+        approverId: currentUser.id,
+        ratings,
         supervisorId: currentUser.id,
       });
 
       if (!result.success) {
-        return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+        const invalidMessage = result.reason === 'invalid-request'
+          ? 'The project stage or version is invalid.'
+          : result.reason === 'ratings-required'
+            ? 'All three ratings must be whole numbers from 1 through 10.'
+            : result.reason === 'ratings-not-allowed'
+              ? 'Ratings are only allowed when approving a Proposal or Thesis submission.'
+              : null;
+        if (invalidMessage) {
+          return NextResponse.json(
+            { error: invalidMessage },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { error: result.reason === 'not-reviewable' ? 'This project review is stale or no longer pending.' : 'Project not found.' },
+          { status: result.reason === 'not-reviewable' ? 409 : 404 }
+        );
       }
 
       await recordCurrentUserActivity(projectReviewActivityAction(status), currentUser);

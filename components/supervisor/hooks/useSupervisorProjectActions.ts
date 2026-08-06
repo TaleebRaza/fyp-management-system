@@ -7,6 +7,7 @@ import {
 } from '../api/supervisorDashboardApi';
 import { getMemberNames } from '../SupervisorProjectCard';
 import type { SupervisorProject } from '../supervisorDashboardTypes';
+import type { ProjectRatingValues } from '../../../config/projectRatings';
 import { getSupervisorErrorMessage } from '../utils/supervisorErrors';
 import type {
   SupervisorConfirmationRequest,
@@ -56,37 +57,50 @@ export function useSupervisorProjectActions({
   );
 
   const handleAction = useCallback(
-    (triggerStudentId: string, newStatus: string) => {
+    (
+      project: SupervisorProject,
+      newStatus: string,
+      approval?: { ratings: ProjectRatingValues; remarks: string }
+    ) => {
+      const submitReview = async (remarks: string, ratings?: ProjectRatingValues) => {
+        setIsProcessingAction(true);
+        try {
+          await updateSupervisorProjectStatus({
+            studentId: project.triggerStudentId,
+            status: newStatus,
+            remarks: String(remarks || '').trim() || 'No remarks provided.',
+            expectedStage: project.stage || 'PROPOSAL',
+            expectedVersion: Number(project.version || 0),
+            ...(ratings ? { ratings } : {}),
+          });
+          closeProject();
+          await refreshProjects();
+          notify(
+            'Project updated',
+            `The project has been marked as ${newStatus}.`
+          );
+        } catch (error) {
+          notify(
+            'Action failed',
+            getSupervisorErrorMessage(
+              error,
+              'Failed to update project status. Please check your connection and try again.'
+            )
+          );
+        } finally {
+          setIsProcessingAction(false);
+        }
+      };
+
+      if (approval) {
+        void submitReview(approval.remarks, approval.ratings);
+        return;
+      }
+
       requestRemarks(
         `${newStatus} Project`,
         `Add optional remarks for marking this team's project as ${newStatus}:`,
-        async (remarksValue) => {
-          setIsProcessingAction(true);
-          try {
-            await updateSupervisorProjectStatus({
-              studentId: triggerStudentId,
-              status: newStatus,
-              remarks:
-                String(remarksValue || '').trim() || 'No remarks provided.',
-            });
-            closeProject();
-            await refreshProjects();
-            notify(
-              'Project updated',
-              `The project has been marked as ${newStatus}.`
-            );
-          } catch (error) {
-            notify(
-              'Action failed',
-              getSupervisorErrorMessage(
-                error,
-                'Failed to update project status. Please check your connection and try again.'
-              )
-            );
-          } finally {
-            setIsProcessingAction(false);
-          }
-        }
+        (remarksValue) => submitReview(remarksValue)
       );
     },
     [closeProject, notify, refreshProjects, requestRemarks]

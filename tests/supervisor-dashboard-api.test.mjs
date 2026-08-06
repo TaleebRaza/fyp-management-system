@@ -45,6 +45,13 @@ test('status updates preserve the current action payload', async () => {
       studentId: 'student-1',
       status: 'Approved',
       remarks: 'Looks good.',
+      expectedStage: 'PROPOSAL',
+      expectedVersion: 4,
+      ratings: {
+        projectIdea: 8,
+        technicalMerit: 7,
+        documentationQuality: 9,
+      },
     },
     async (...args) => {
       calls.push(args);
@@ -61,6 +68,13 @@ test('status updates preserve the current action payload', async () => {
       studentId: 'student-1',
       status: 'Approved',
       remarks: 'Looks good.',
+      expectedStage: 'PROPOSAL',
+      expectedVersion: 4,
+      ratings: {
+        projectIdea: 8,
+        technicalMerit: 7,
+        documentationQuality: 9,
+      },
     }),
   });
 });

@@ -282,6 +282,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             isAnnouncementPanelOpen={isAnnouncementPanelOpen}
             onToggleAnnouncements={() => setIsAnnouncementPanelOpen((previous) => !previous)}
             currentStage={currentStage}
+            projectRatings={project?.ratings}
             projectMembers={projectMembers}
             savedDomainLabels={savedDomainLabels}
             savedDomainText={savedDomainText}

@@ -1,3 +1,4 @@
+import type { ProjectRatingValues } from '../../../config/projectRatings';
 import type { SupervisorProject } from '../supervisorDashboardTypes';
 
 export type SupervisorFetch = typeof fetch;
@@ -78,6 +79,9 @@ export function updateSupervisorProjectStatus(
     studentId: string;
     status: string;
     remarks: string;
+    expectedStage: string;
+    expectedVersion: number;
+    ratings?: ProjectRatingValues;
   },
   fetchImpl: SupervisorFetch = fetch
 ) {
@@ -87,6 +91,9 @@ export function updateSupervisorProjectStatus(
       studentId: input.studentId,
       status: input.status,
       remarks: input.remarks,
+      expectedStage: input.expectedStage,
+      expectedVersion: input.expectedVersion,
+      ...(input.ratings ? { ratings: input.ratings } : {}),
     },
     'Server failed to process the request.',
     fetchImpl

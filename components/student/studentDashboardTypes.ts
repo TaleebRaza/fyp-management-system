@@ -1,6 +1,7 @@
 import type { Session } from 'next-auth';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { FineRestrictionPolicy } from '../../types/registrationPolicy';
+import type { ProjectRatings } from '../../config/projectRatings';
 
 export type WordTemplate = {
   id: string;
@@ -49,6 +50,7 @@ type StudentProjectSummary = {
   inviteCode?: string;
   maxTeamSize?: number;
   members?: ProjectMember[];
+  ratings?: ProjectRatings;
 };
 
 type SupervisorBroadcast = {

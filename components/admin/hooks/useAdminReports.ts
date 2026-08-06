@@ -1,15 +1,26 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
 import type { AdminReportsData } from '../adminDashboardTypes';
+import type {
+  ProjectRatingCategoryKey,
+  ProjectRatingRound,
+  ProjectRatingsExportFilters,
+} from '../../../config/projectRatings';
 import {
   buildCsv,
   buildReportHtml,
+  downloadBlob,
   downloadTextFile,
   REPORT_OPTIONS,
   toReportRows,
   type ReportOption,
 } from '../AdminReports';
-import { getAdminReports } from '../api/adminDashboardApi';
+import { getAdminReports, getProjectRatingsExport } from '../api/adminDashboardApi';
+
+const DEFAULT_RATING_EXPORT_FILTERS: ProjectRatingsExportFilters = {
+  round: 'proposal',
+  minimums: { projectIdea: 0, technicalMerit: 0, documentationQuality: 0 },
+};
 
 export function useAdminReports(showDialog: ShowDialog) {
   const [isOpen, setIsOpen] = useState(false);
@@ -17,6 +28,8 @@ export function useAdminReports(showDialog: ShowDialog) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] =
     useState<ReportOption['id']>('studentsPerSupervisor');
+  const [ratingExportFilters, setRatingExportFilters] = useState(DEFAULT_RATING_EXPORT_FILTERS);
+  const [isDownloadingRatings, setIsDownloadingRatings] = useState(false);
 
   const selectedReport = useMemo(
     () =>
@@ -84,6 +97,37 @@ export function useAdminReports(showDialog: ShowDialog) {
     downloadTextFile(csv, `${selectedReport.id}-report.csv`, 'text/csv');
   }, [rows, selectedReport.id]);
 
+  const setRatingExportRound = useCallback((round: ProjectRatingRound) => {
+    setRatingExportFilters((current) => ({ ...current, round }));
+  }, []);
+
+  const setRatingExportMinimum = useCallback(
+    (category: ProjectRatingCategoryKey, value: number) => {
+      setRatingExportFilters((current) => ({
+        ...current,
+        minimums: { ...current.minimums, [category]: value },
+      }));
+    },
+    []
+  );
+
+  const downloadProjectRatings = useCallback(async () => {
+    setIsDownloadingRatings(true);
+    try {
+      const { blob, filename } = await getProjectRatingsExport(ratingExportFilters);
+      downloadBlob(blob, filename);
+    } catch (error) {
+      showDialog({
+        title: 'Ratings export failed',
+        message: error instanceof Error
+          ? error.message
+          : 'Unable to download project ratings right now.',
+      });
+    } finally {
+      setIsDownloadingRatings(false);
+    }
+  }, [ratingExportFilters, showDialog]);
+
   return {
     isOpen,
     data,
@@ -98,5 +142,10 @@ export function useAdminReports(showDialog: ShowDialog) {
     openReportInNewTab,
     downloadHtmlReport,
     downloadCsvReport,
+    ratingExportFilters,
+    isDownloadingRatings,
+    setRatingExportRound,
+    setRatingExportMinimum,
+    downloadProjectRatings,
   };
 }

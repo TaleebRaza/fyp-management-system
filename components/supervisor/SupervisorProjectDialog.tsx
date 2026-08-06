@@ -1,7 +1,16 @@
+import { useState } from 'react';
 import { ArrowRightLeft, CheckCircle, ExternalLink, FileText, Globe, Loader2, UserMinus, Users, Wrench } from 'lucide-react';
 import { EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../config/appSettings';
+import {
+  getProjectRatingRound,
+  parseProjectRatingValues,
+  type ProjectRatingCategoryKey,
+  type ProjectRatingValues,
+} from '../../config/projectRatings';
+import { ApprovalRatingForm, type PendingProjectRatings } from '../project-ratings/ApprovalRatingForm';
+import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
 import { AvatarBadge, Badge, Button, DashboardPanel, Dialog, EmptyState, SectionHeader, StyledInput } from '../ui';
-import { Timeline } from '../ui/Timeline';
+import { Timeline, getProjectStageLabel } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';
 import {
   getMemberNames,
@@ -41,38 +50,102 @@ export default function SupervisorProjectDialog({
   project: SupervisorProject | null;
   onClose: () => void;
   isProcessingAction: boolean;
-  onAction: (studentId: string, status: string) => void;
+  onAction: (
+    project: SupervisorProject,
+    status: string,
+    approval?: { ratings: ProjectRatingValues; remarks: string }
+  ) => void;
   voiceNotes?: VoiceNotes;
   management?: ProjectManagement;
 }) {
+  const [isApprovalFormOpen, setIsApprovalFormOpen] = useState(false);
+  const [approvalRatings, setApprovalRatings] = useState<PendingProjectRatings>({});
+  const [approvalRemarks, setApprovalRemarks] = useState('');
   const selectedPdfKey = getSafePdfKey(project?.pdfUrl);
   const domainLabels = getProjectDomainDisplayLabels(project);
+  const completeRatings = parseProjectRatingValues(approvalRatings);
+  const isSubmittedForReview = project?.status === 'Submitted For Review';
+
+  const handleApprove = () => {
+    if (!project) return;
+    if (getProjectRatingRound(project.stage)) {
+      setApprovalRatings({});
+      setApprovalRemarks('');
+      setIsApprovalFormOpen(true);
+      return;
+    }
+    onAction(project, 'Approved');
+  };
+
+  const handleRatingChange = (category: ProjectRatingCategoryKey, value: number) => {
+    setApprovalRatings((current) => ({ ...current, [category]: value }));
+  };
 
   return (
     <Dialog
       open={!!project}
-      onClose={onClose}
-      title={getMemberNames(project)}
+      onClose={isProcessingAction ? () => undefined : onClose}
+      title={isApprovalFormOpen ? 'Approve project and save ratings' : getMemberNames(project)}
       description={project ? `${getMemberRollNumbers(project)} · ${getProgramName(getProjectProgram(project))} · ${project.batch || 'No batch'} · ${project.semester || 'No semester'}${project.supervisorName ? ` · Supervisor: ${project.supervisorName}` : ''}` : ''}
       size="xl"
       footer={
         project ? (
-          <>
-            <Button variant="outline" onClick={onClose}>Close</Button>
-            <Button variant="success" disabled={!project.projectTitle || !project.pdfUrl || project.status === 'Approved' || isProcessingAction} onClick={() => onAction(project.triggerStudentId, 'Approved')}>
-              {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}Approve
-            </Button>
-            <Button variant="accent" disabled={!project.projectTitle || !project.pdfUrl || project.status === 'Changes Requested' || isProcessingAction} onClick={() => onAction(project.triggerStudentId, 'Changes Requested')}>
-              {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}Request Changes
-            </Button>
-            <Button variant="danger" disabled={!project.projectTitle || !project.pdfUrl || project.status === 'Rejected' || isProcessingAction} onClick={() => onAction(project.triggerStudentId, 'Rejected')}>
-              {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <UserMinus size={16} />}Reject
-            </Button>
-          </>
+          isApprovalFormOpen ? (
+            <>
+              <Button variant="outline" disabled={isProcessingAction} onClick={() => setIsApprovalFormOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="project-approval-rating-form"
+                variant="success"
+                disabled={!completeRatings || isProcessingAction}
+              >
+                {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
+                {isProcessingAction ? 'Approving...' : 'Approve and save ratings'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose}>Close</Button>
+              <Button variant="success" disabled={!project.projectTitle || !project.pdfUrl || !isSubmittedForReview || isProcessingAction} onClick={handleApprove}>
+                {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}Approve
+              </Button>
+              <Button variant="accent" disabled={!project.projectTitle || !project.pdfUrl || !isSubmittedForReview || isProcessingAction} onClick={() => onAction(project, 'Changes Requested')}>
+                {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}Request Changes
+              </Button>
+              <Button variant="danger" disabled={!project.projectTitle || !project.pdfUrl || !isSubmittedForReview || isProcessingAction} onClick={() => onAction(project, 'Rejected')}>
+                {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <UserMinus size={16} />}Reject
+              </Button>
+            </>
+          )
         ) : null
       }
     >
-      {project && (
+      {project && isApprovalFormOpen ? (
+        <form
+          id="project-approval-rating-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (completeRatings) {
+              onAction(project, 'Approved', {
+                ratings: completeRatings,
+                remarks: approvalRemarks,
+              });
+            }
+          }}
+        >
+          <ApprovalRatingForm
+            ratings={approvalRatings}
+            remarks={approvalRemarks}
+            stageLabel={getProjectStageLabel(project.stage || 'PROPOSAL')}
+            version={Number(project.version || 0)}
+            disabled={isProcessingAction}
+            onRatingChange={handleRatingChange}
+            onRemarksChange={setApprovalRemarks}
+          />
+        </form>
+      ) : project ? (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
@@ -113,6 +186,14 @@ export default function SupervisorProjectDialog({
           </DashboardPanel>
 
           <DashboardPanel>
+            <SectionHeader title="Project Ratings" description="Permanent ratings recorded when earlier stages were approved." />
+            <ProjectRatingsDisplay ratings={project.ratings} stage={project.stage || 'PROPOSAL'} />
+            {project.stage === 'PROPOSAL' ? (
+              <p className="text-sm text-[var(--color-text-muted)]">Ratings appear after a stage is approved.</p>
+            ) : null}
+          </DashboardPanel>
+
+          <DashboardPanel>
             <SectionHeader title="Team Members" description="Students currently attached to this project." />
             <div className="grid gap-3 md:grid-cols-2">
               {(project.members || []).map((member) => (
@@ -149,7 +230,7 @@ export default function SupervisorProjectDialog({
             </div>
           </DashboardPanel>}
         </div>
-      )}
+      ) : null}
     </Dialog>
   );
 }

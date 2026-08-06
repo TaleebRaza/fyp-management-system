@@ -10,6 +10,7 @@ import {
   normalizeProjectDomainIds,
   validateProjectDomainIds,
 } from '../../../../config/projectDomains';
+import { getSafeProjectRatings } from '../../../../config/projectRatings';
 
 import {
   buildFineRestriction,
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
         : null,
       student.projectId
         ? Project.findById(student.projectId)
-            .select('_id members status stage domain domains pdfUrl inviteCode maxTeamSize')
+            .select('_id members status stage domain domains pdfUrl inviteCode maxTeamSize ratings')
             .lean()
         : null,
       getOrCreateRegistrationPolicy(),
@@ -122,7 +123,7 @@ export async function GET(req: NextRequest) {
         }
       : null;
 
-    const projectRecord = project as { domains?: unknown; domain?: unknown } | null;
+    const projectRecord = project as { domains?: unknown; domain?: unknown; ratings?: unknown } | null;
     const studentRecord = student as { domains?: unknown; domain?: unknown };
     const storedDomainIds =
       Array.isArray(projectRecord?.domains) && projectRecord.domains.length > 0
@@ -151,6 +152,7 @@ export async function GET(req: NextRequest) {
           members: safeProjectMembers,
           domains: normalizedDomains,
           domain: normalizedDomainText,
+          ratings: getSafeProjectRatings(projectRecord.ratings),
         }
       : projectRecord;
 

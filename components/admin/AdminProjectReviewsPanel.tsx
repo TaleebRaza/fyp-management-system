@@ -5,6 +5,7 @@ import { Loader2, LockKeyhole, UnlockKeyhole } from 'lucide-react';
 
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import { PROGRAM_MAP } from '../../config/appSettings';
+import type { ProjectRatingValues } from '../../config/projectRatings';
 import { Button } from '../ui';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
@@ -125,65 +126,80 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
     setProgramFilter(value);
   };
 
-  const handleAction = (studentId: string, status: string) => {
-    const projectBeingReviewed = selectedProject;
+  const handleAction = (
+    projectBeingReviewed: SupervisorProject,
+    status: string,
+    approval?: { ratings: ProjectRatingValues; remarks: string }
+  ) => {
     const supervisorName = projectBeingReviewed?.supervisorName || 'the assigned supervisor';
+
+    const submitReview = async (remarks = '', ratings?: ProjectRatingValues) => {
+      setIsProcessingAction(true);
+
+      try {
+        const response = await fetch('/api/admin/project-reviews', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: projectBeingReviewed.triggerStudentId,
+            status,
+            remarks,
+            expectedStage: projectBeingReviewed.stage || 'PROPOSAL',
+            expectedVersion: Number(projectBeingReviewed.version || 0),
+            ...(ratings ? { ratings } : {}),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to record the project review.');
+        }
+
+        setSelectedProject(null);
+
+        setProjects((currentProjects) =>
+          currentProjects.filter((project) => project._id !== projectBeingReviewed._id)
+        );
+        setPagination((current) => {
+          const total = Math.max(current.total - 1, 0);
+          return {
+            ...current,
+            total,
+            totalPages: total === 0 ? 0 : Math.ceil(total / current.limit),
+          };
+        });
+
+        showDialog({
+          title: 'Project updated',
+          message: `The project has been marked as ${status}.`,
+        });
+
+        if (projects.length === 1 && page > 1) {
+          setPage((currentPage) => Math.max(currentPage - 1, 1));
+        } else {
+          void fetchProjects({ showLoading: false, forceRefresh: true });
+        }
+      } catch (error) {
+        showDialog({
+          title: 'Action failed',
+          message: getErrorMessage(error, 'Unable to update this project right now.'),
+        });
+      } finally {
+        setIsProcessingAction(false);
+      }
+    };
+
+    if (approval) {
+      void submitReview(approval.remarks, approval.ratings);
+      return;
+    }
 
     showDialog({
       type: 'prompt',
       title: `${status} Project`,
       message: `Add optional remarks for ${supervisorName}'s review of this team.`,
       placeholder: 'Write remarks for this team...',
-      onConfirm: async (remarks = '') => {
-        setIsProcessingAction(true);
-
-        try {
-          const response = await fetch('/api/admin/project-reviews', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ studentId, status, remarks }),
-          });
-          const data = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(data.error || 'Failed to record the project review.');
-          }
-
-          setSelectedProject(null);
-
-          if (projectBeingReviewed) {
-            setProjects((currentProjects) =>
-              currentProjects.filter((project) => project._id !== projectBeingReviewed._id)
-            );
-            setPagination((current) => {
-              const total = Math.max(current.total - 1, 0);
-              return {
-                ...current,
-                total,
-                totalPages: total === 0 ? 0 : Math.ceil(total / current.limit),
-              };
-            });
-          }
-
-          showDialog({
-            title: 'Project updated',
-            message: `The project has been marked as ${status}.`,
-          });
-
-          if (projects.length === 1 && page > 1) {
-            setPage((currentPage) => Math.max(currentPage - 1, 1));
-          } else {
-            void fetchProjects({ showLoading: false, forceRefresh: true });
-          }
-        } catch (error) {
-          showDialog({
-            title: 'Action failed',
-            message: getErrorMessage(error, 'Unable to update this project right now.'),
-          });
-        } finally {
-          setIsProcessingAction(false);
-        }
-      },
+      onConfirm: submitReview,
     });
   };
 

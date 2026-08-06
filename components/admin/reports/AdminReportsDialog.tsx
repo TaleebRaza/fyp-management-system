@@ -4,7 +4,13 @@ import type { AdminReportsData } from '../adminDashboardTypes';
 import { AdminReportControls } from './AdminReportControls';
 import { AdminReportPreview } from './AdminReportPreview';
 import { AdminReportSummary } from './AdminReportSummary';
+import { ProjectRatingsExportForm } from './ProjectRatingsExportForm';
 import type { ReportOption, ReportRow } from './reportTypes';
+import type {
+  ProjectRatingCategoryKey,
+  ProjectRatingRound,
+  ProjectRatingsExportFilters,
+} from '../../../config/projectRatings';
 
 export function AdminReportsDialog({
   open,
@@ -19,6 +25,11 @@ export function AdminReportsDialog({
   onDownloadCsv,
   onDownloadHtml,
   onOpenReport,
+  ratingExportFilters,
+  isDownloadingRatings,
+  onRatingRoundChange,
+  onRatingMinimumChange,
+  onDownloadRatings,
 }: {
   open: boolean;
   onClose: () => void;
@@ -32,6 +43,11 @@ export function AdminReportsDialog({
   onDownloadCsv: () => void;
   onDownloadHtml: () => void;
   onOpenReport: () => void;
+  ratingExportFilters: ProjectRatingsExportFilters;
+  isDownloadingRatings: boolean;
+  onRatingRoundChange: (round: ProjectRatingRound) => void;
+  onRatingMinimumChange: (category: ProjectRatingCategoryKey, value: number) => void;
+  onDownloadRatings: () => void;
 }) {
   return (
     <Dialog
@@ -58,32 +74,42 @@ export function AdminReportsDialog({
         </div>
       }
     >
-      {isLoading ? (
-        <div className="flex min-h-80 flex-col items-center justify-center">
-          <Loader2 className="mb-3 animate-spin text-[var(--color-accent)]" size={36} />
-          <p className="text-sm font-bold text-[var(--color-text)]">Loading reports...</p>
-        </div>
-      ) : !data ? (
-        <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-          <BarChart3 className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
-          <p className="text-sm font-bold text-[var(--color-text)]">No report data loaded</p>
-          <Button className="mt-4" onClick={onRefresh}>Load Reports</Button>
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <AdminReportControls
-            selectedReportId={selectedReportId}
-            onSelectedReportChange={onSelectedReportChange}
-            onRefresh={onRefresh}
-            isLoading={isLoading}
-          />
-          <AdminReportSummary data={data} />
-          <AdminReportPreview data={data} selectedReport={selectedReport} rows={rows} />
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">
-            Reports are generated from aggregated counts returned by the API. Downloaded HTML and CSV files are created in your browser with Blob URLs, so they do not consume R2 storage or create saved report files on Vercel.
+      <div className="space-y-5">
+        <ProjectRatingsExportForm
+          filters={ratingExportFilters}
+          isDownloading={isDownloadingRatings}
+          onRoundChange={onRatingRoundChange}
+          onMinimumChange={onRatingMinimumChange}
+          onDownload={onDownloadRatings}
+        />
+
+        {isLoading ? (
+          <div className="flex min-h-80 flex-col items-center justify-center">
+            <Loader2 className="mb-3 animate-spin text-[var(--color-accent)]" size={36} />
+            <p className="text-sm font-bold text-[var(--color-text)]">Loading reports...</p>
           </div>
-        </div>
-      )}
+        ) : !data ? (
+          <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
+            <BarChart3 className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
+            <p className="text-sm font-bold text-[var(--color-text)]">No report data loaded</p>
+            <Button className="mt-4" onClick={onRefresh}>Load Reports</Button>
+          </div>
+        ) : (
+          <>
+            <AdminReportControls
+              selectedReportId={selectedReportId}
+              onSelectedReportChange={onSelectedReportChange}
+              onRefresh={onRefresh}
+              isLoading={isLoading}
+            />
+            <AdminReportSummary data={data} />
+            <AdminReportPreview data={data} selectedReport={selectedReport} rows={rows} />
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">
+              Reports are generated from aggregated counts returned by the API. Downloaded HTML and CSV files are created in your browser with Blob URLs, so they do not consume R2 storage or create saved report files on Vercel.
+            </div>
+          </>
+        )}
+      </div>
     </Dialog>
   );
 }

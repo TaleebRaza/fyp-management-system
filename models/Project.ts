@@ -1,6 +1,37 @@
 // models/Project.ts
 import mongoose, { Schema } from 'mongoose';
 
+const RatingSnapshotSchema = new Schema({
+  projectIdea: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 10,
+    validate: Number.isInteger,
+  },
+  technicalMerit: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 10,
+    validate: Number.isInteger,
+  },
+  documentationQuality: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 10,
+    validate: Number.isInteger,
+  },
+  ratedAt: { type: Date, required: true },
+  ratedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+}, { _id: false });
+
+const ProjectRatingsSchema = new Schema({
+  proposal: { type: RatingSnapshotSchema, default: undefined },
+  thesis: { type: RatingSnapshotSchema, default: undefined },
+}, { _id: false });
+
 const ProjectSchema = new Schema({
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -16,7 +47,8 @@ const ProjectSchema = new Schema({
   pdfSize: { type: Number, default: 0 }, // <-- NEW: track size of the uploaded PDF
   status: { type: String, default: 'Pending' },
   version: { type: Number, default: 0, min: 0 },
-    maxTeamSize: { type: Number, enum: [2, 3], default: 2 },
+  maxTeamSize: { type: Number, enum: [2, 3], default: 2 },
+  ratings: { type: ProjectRatingsSchema, default: undefined },
   
   stage: { 
     type: String, 

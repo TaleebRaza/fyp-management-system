@@ -1,3 +1,5 @@
+import type { ProjectRatings } from '../config/projectRatings';
+
 export type ProjectReviewMember = {
   _id?: string;
   name?: string;
@@ -21,6 +23,8 @@ export type ProjectReviewProject = {
   tools?: string;
   status?: string;
   stage?: string;
+  version?: number;
+  ratings?: ProjectRatings;
   pdfUrl?: string;
   maxTeamSize?: number;
 };

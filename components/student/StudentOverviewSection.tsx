@@ -25,6 +25,8 @@ import {
   getProjectStageProgress,
 } from '../ui/Timeline';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
+import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
+import type { ProjectRatings } from '../../config/projectRatings';
 import type {
   AnnouncementItem,
   ProjectMember,
@@ -54,6 +56,7 @@ export default function StudentOverviewSection({
   isAnnouncementPanelOpen,
   onToggleAnnouncements,
   currentStage,
+  projectRatings,
   projectMembers,
   savedDomainLabels,
   savedDomainText,
@@ -69,6 +72,7 @@ export default function StudentOverviewSection({
   isAnnouncementPanelOpen: boolean;
   onToggleAnnouncements: () => void;
   currentStage: string;
+  projectRatings?: ProjectRatings;
   projectMembers: ProjectMember[];
   savedDomainLabels: string[];
   savedDomainText: string;
@@ -281,6 +285,8 @@ export default function StudentOverviewSection({
                   <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">{me.remarks}</p>
                 </div>
               )}
+
+              <ProjectRatingsDisplay ratings={projectRatings} stage={currentStage} />
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">

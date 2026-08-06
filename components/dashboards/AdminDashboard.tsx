@@ -313,6 +313,11 @@ const AdminDashboard = ({
         onDownloadCsv={reports.downloadCsvReport}
         onDownloadHtml={reports.downloadHtmlReport}
         onOpenReport={reports.openReportInNewTab}
+        ratingExportFilters={reports.ratingExportFilters}
+        isDownloadingRatings={reports.isDownloadingRatings}
+        onRatingRoundChange={reports.setRatingExportRound}
+        onRatingMinimumChange={reports.setRatingExportMinimum}
+        onDownloadRatings={reports.downloadProjectRatings}
       />
     </>
   );

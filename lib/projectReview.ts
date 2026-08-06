@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 import Project from '../models/Project';
 import User from '../models/User';
 import { enqueueNotificationEmail } from './emailOutbox';
@@ -13,21 +15,33 @@ import {
 import {
   isProjectAwaitingReview,
   type ProjectReviewStatus,
+  validateProjectReviewRatings,
 } from './projectReviewPolicy';
 
 type ReviewProjectRequest = {
   studentId: string;
   status: ProjectReviewStatus;
   remarks: string;
+  expectedStage: string;
+  expectedVersion: unknown;
+  approverId: string;
+  ratings?: unknown;
   supervisorId?: string;
-  requireAwaitingReview?: boolean;
 };
 
 type ReviewProjectResult =
   | { success: true }
-  | { success: false; reason: 'not-found' | 'not-reviewable' };
+  | {
+      success: false;
+      reason:
+        | 'not-found'
+        | 'not-reviewable'
+        | 'invalid-request'
+        | 'ratings-required'
+        | 'ratings-not-allowed';
+    };
 
-function reviewFailure(reason: 'not-found' | 'not-reviewable'): ReviewProjectResult {
+function reviewFailure(reason: Exclude<ReviewProjectResult, { success: true }>['reason']): ReviewProjectResult {
   return { success: false, reason };
 }
 
@@ -63,9 +77,29 @@ export async function reviewProject({
   studentId,
   status,
   remarks,
+  expectedStage,
+  expectedVersion,
+  approverId,
+  ratings,
   supervisorId,
-  requireAwaitingReview = false,
 }: ReviewProjectRequest): Promise<ReviewProjectResult> {
+  if (
+    !mongoose.Types.ObjectId.isValid(approverId) ||
+    !['PROPOSAL', 'THESIS_DRAFT', 'FINAL_DELIVERABLES'].includes(expectedStage) ||
+    typeof expectedVersion !== 'number' ||
+    !Number.isSafeInteger(expectedVersion) ||
+    expectedVersion < 0
+  ) {
+    return reviewFailure('invalid-request');
+  }
+
+  const ratingValidation = validateProjectReviewRatings({
+    status,
+    stage: expectedStage,
+    ratings,
+  });
+  if (!ratingValidation.success) return reviewFailure(ratingValidation.reason);
+
   const review = await withStorageTransaction(async (session) => {
     const triggerStudent = await User.findOne({
       _id: studentId,
@@ -81,8 +115,16 @@ export async function reviewProject({
       members: triggerStudent._id,
       ...(supervisorId ? { supervisorId } : {}),
     }).session(session);
-    if (!project || (requireAwaitingReview && !isProjectAwaitingReview(project))) {
-      return { result: reviewFailure(project ? 'not-reviewable' : 'not-found') };
+    if (!project) {
+      return { result: reviewFailure('not-found') };
+    }
+    if (
+      !isProjectAwaitingReview(project) ||
+      project.stage !== expectedStage ||
+      Number(project.version || 0) !== expectedVersion ||
+      (ratingValidation.ratingRound && project.ratings?.[ratingValidation.ratingRound])
+    ) {
+      return { result: reviewFailure('not-reviewable') };
     }
 
     const assignedSupervisorId = String(project.supervisorId || '');
@@ -99,20 +141,42 @@ export async function reviewProject({
     if (teamMembers.length === 0) return { result: reviewFailure('not-found') };
 
     const reviewState = nextProjectReviewState(status, project.stage);
+    const updateConditions: Record<string, unknown>[] = [
+      expectedVersion === 0
+        ? { $or: [{ version: 0 }, { version: { $exists: false } }] }
+        : { version: expectedVersion },
+    ];
+    if (ratingValidation.ratingRound) {
+      updateConditions.push({ [`ratings.${ratingValidation.ratingRound}`]: null });
+    }
+
+    const ratingSnapshot = ratingValidation.ratingRound
+      ? {
+          ...ratingValidation.ratings,
+          ratedAt: new Date(),
+          ratedBy: approverId,
+        }
+      : null;
     const projectUpdate = await Project.updateOne(
       {
         _id: project._id,
         supervisorId: project.supervisorId,
-        $or: [{ version: Number(project.version || 0) }, { version: { $exists: false } }],
+        stage: expectedStage,
+        status: 'Submitted For Review',
+        pdfUrl: { $type: 'string', $ne: '' },
+        $and: updateConditions,
       },
       {
         $set: {
           status: reviewState.finalStatus,
           ...(reviewState.newStage ? { stage: reviewState.newStage, pdfUrl: '', pdfSize: 0 } : {}),
+          ...(ratingValidation.ratingRound && ratingSnapshot
+            ? { [`ratings.${ratingValidation.ratingRound}`]: ratingSnapshot }
+            : {}),
         },
         $inc: { version: 1 },
       },
-      { session }
+      { session, runValidators: true }
     );
     if (projectUpdate.modifiedCount !== 1) {
       return { result: reviewFailure('not-reviewable') };

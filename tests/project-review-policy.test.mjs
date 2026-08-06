@@ -9,6 +9,7 @@ const {
   REVIEWED_PROJECT_STATUSES,
   isProjectAwaitingReview,
   isProjectReviewStatus,
+  validateProjectReviewRatings,
 } = await importTypeScriptModule('lib/projectReviewPolicy.ts');
 
 test('project review statuses remain restricted to final supervisor decisions', () => {
@@ -29,13 +30,42 @@ test('project review statuses remain restricted to final supervisor decisions', 
 });
 
 test('only submitted projects without a final decision wait for review', () => {
-  assert.equal(isProjectAwaitingReview({ pdfUrl: 'https://files.test/proposal.pdf', status: 'Pending' }), true);
-  assert.equal(isProjectAwaitingReview({ pdfUrl: ' proposal.pdf ', status: '' }), true);
+  assert.equal(isProjectAwaitingReview({ pdfUrl: 'https://files.test/proposal.pdf', status: 'Submitted For Review' }), true);
 
+  assert.equal(isProjectAwaitingReview({ pdfUrl: 'proposal.pdf', status: 'Pending' }), false);
   assert.equal(isProjectAwaitingReview({ pdfUrl: '', status: 'Pending' }), false);
   assert.equal(isProjectAwaitingReview({ pdfUrl: 'proposal.pdf', status: 'Approved' }), false);
   assert.equal(isProjectAwaitingReview({ pdfUrl: 'proposal.pdf', status: 'Rejected' }), false);
   assert.equal(isProjectAwaitingReview({ pdfUrl: 'proposal.pdf', status: 'Changes Requested' }), false);
+});
+
+test('review rating rules require scores only for proposal and thesis approvals', () => {
+  const ratings = {
+    projectIdea: 8,
+    technicalMerit: 7,
+    documentationQuality: 9,
+  };
+
+  assert.deepEqual(
+    validateProjectReviewRatings({ status: 'Approved', stage: 'PROPOSAL', ratings }),
+    { success: true, ratingRound: 'proposal', ratings }
+  );
+  assert.deepEqual(
+    validateProjectReviewRatings({ status: 'Approved', stage: 'THESIS_DRAFT', ratings }),
+    { success: true, ratingRound: 'thesis', ratings }
+  );
+  assert.deepEqual(
+    validateProjectReviewRatings({ status: 'Approved', stage: 'PROPOSAL' }),
+    { success: false, reason: 'ratings-required' }
+  );
+  assert.deepEqual(
+    validateProjectReviewRatings({ status: 'Approved', stage: 'FINAL_DELIVERABLES' }),
+    { success: true, ratingRound: null, ratings: null }
+  );
+  assert.deepEqual(
+    validateProjectReviewRatings({ status: 'Rejected', stage: 'PROPOSAL', ratings }),
+    { success: false, reason: 'ratings-not-allowed' }
+  );
 });
 
 test('projects count as approved after advancing beyond the proposal stage', () => {
