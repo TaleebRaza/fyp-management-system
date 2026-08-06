@@ -3,7 +3,7 @@ import type { ClientSession } from 'mongoose';
 import { APP_SETTINGS } from '../config/appSettings';
 import User from '../models/User';
 
-export type CapacityReservation = 'reserved' | 'full' | 'uninitialized' | 'missing';
+type CapacityReservation = 'reserved' | 'full' | 'uninitialized' | 'missing';
 
 const NUMERIC_COUNTER = { $type: 'number' };
 

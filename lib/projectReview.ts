@@ -3,7 +3,7 @@ import User from '../models/User';
 import { enqueueNotificationEmail } from './emailOutbox';
 import { findSharedStorageKeys } from './storageReferenceSafety';
 import { escapeHtml } from './security/input';
-import { normalizeStorageKey } from './security/storage';
+import { normalizeStorageKey } from './storageValidation';
 import {
   assertStorageLedgerReady,
   enqueueStorageDeletion,

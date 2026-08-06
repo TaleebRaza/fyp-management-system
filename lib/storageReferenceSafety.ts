@@ -2,7 +2,7 @@ import type { ClientSession } from 'mongoose';
 import Project from '../models/Project';
 import User from '../models/User';
 import VoiceNote from '../models/VoiceNote';
-import { normalizeStorageKey } from './security/storageKey';
+import { normalizeStorageKey } from './storageValidation';
 
 function excludingIds(ids: unknown[]) {
   return ids.length > 0 ? { _id: { $nin: ids } } : {};

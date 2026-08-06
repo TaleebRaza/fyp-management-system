@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Mic, Play, RefreshCw, Square, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { MAX_VOICE_NOTES_PER_SENDER } from '../../lib/voiceNoteLimit';
+import { APP_SETTINGS } from '../../config/appSettings';
 
 type VoiceMessage = {
   _id: string;
@@ -217,7 +217,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
   }, [deletingIds, playingId]);
 
   const voiceNoteCount = messages.filter((message) => message.senderId._id === currentUserId).length;
-  const hasReachedVoiceNoteLimit = voiceNoteCount >= MAX_VOICE_NOTES_PER_SENDER;
+  const hasReachedVoiceNoteLimit = voiceNoteCount >= APP_SETTINGS.MAX_VOICE_NOTES_PER_SENDER;
 
   const startRecording = async () => {
     if (isUploading || isRecording || hasReachedVoiceNoteLimit || recordingInFlightRef.current) return;
@@ -304,7 +304,7 @@ export const VoiceChat = ({ projectId, currentUserId, theme, isDarkMode }: Voice
         <h4 className="text-xs font-black uppercase tracking-widest opacity-60 flex items-center gap-2">
           <Mic size={14} className={theme.text} /> Voice Chat
         </h4>
-        <span className="text-[10px] font-bold opacity-40 uppercase">{voiceNoteCount}/{MAX_VOICE_NOTES_PER_SENDER} yours</span>
+        <span className="text-[10px] font-bold opacity-40 uppercase">{voiceNoteCount}/{APP_SETTINGS.MAX_VOICE_NOTES_PER_SENDER} yours</span>
       </div>
 
       <div className="flex-1 max-h-48 overflow-y-auto space-y-2 custom-scrollbar pr-1">

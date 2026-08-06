@@ -8,10 +8,10 @@ import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
+import { getTeamCapacity } from '../../../../config/appSettings';
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
 import { consumeRateLimit, refundRateLimit } from '../../../../lib/rateLimit';
 import { requireCurrentUser } from '../../../../lib/security/auth';
-import { getTeamCapacity } from '../../../../lib/teamCapacity';
 import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
 import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';

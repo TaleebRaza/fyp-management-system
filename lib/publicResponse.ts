@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createPublicEtag } from './publicEtag';
+import { createHash } from 'node:crypto';
 
 const PUBLIC_CACHE_CONTROL = 'public, max-age=60, must-revalidate';
 
-export function publicJson(request: NextRequest, body: unknown) {
+type PublicRequest = Pick<Request, 'headers'>;
+
+export function createPublicEtag(body: unknown) {
+  return `"${createHash('sha256').update(JSON.stringify(body)).digest('base64url')}"`;
+}
+
+export function publicJson(request: PublicRequest, body: unknown) {
   const etag = createPublicEtag(body);
   const headers = {
     'Cache-Control': PUBLIC_CACHE_CONTROL,
@@ -11,8 +16,8 @@ export function publicJson(request: NextRequest, body: unknown) {
   };
 
   if (request.headers.get('if-none-match') === etag) {
-    return new NextResponse(null, { status: 304, headers });
+    return new Response(null, { status: 304, headers });
   }
 
-  return NextResponse.json(body, { headers });
+  return Response.json(body, { headers });
 }

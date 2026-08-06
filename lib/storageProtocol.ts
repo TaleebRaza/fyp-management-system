@@ -11,10 +11,14 @@ import SystemConfig from '../models/SystemConfig';
 import UploadReservation from '../models/UploadReservation';
 import VoiceNote from '../models/VoiceNote';
 import VoiceNoteQuota from '../models/VoiceNoteQuota';
+import { APP_SETTINGS } from '../config/appSettings';
 import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from './s3-client';
-import { hasExpectedStorageMagic, type StorageUploadKind } from './storageValidation';
-import { getStorageObjectKind, normalizeStorageKey } from './security/storageKey';
-import { MAX_VOICE_NOTES_PER_SENDER } from './voiceNoteLimit';
+import {
+  getStorageObjectKind,
+  hasExpectedStorageMagic,
+  normalizeStorageKey,
+  type StorageUploadKind,
+} from './storageValidation';
 
 const MAX_DELETION_ATTEMPTS = 8;
 const MAX_DELETION_BATCH_SIZE = 100;
@@ -137,14 +141,14 @@ async function reserveVoiceNoteSlot(input: ReserveUploadInput, session: ClientSe
     {
       ownerId: input.ownerId,
       projectId: input.projectId,
-      count: { $lt: MAX_VOICE_NOTES_PER_SENDER },
+      count: { $lt: APP_SETTINGS.MAX_VOICE_NOTES_PER_SENDER },
     },
     { $inc: { count: 1 } },
     { session }
   );
   if (claimed.modifiedCount !== 1) {
     throw new StorageProtocolError(
-      `You can keep a maximum of ${MAX_VOICE_NOTES_PER_SENDER} voice notes per project. Delete one to record another.`,
+      `You can keep a maximum of ${APP_SETTINGS.MAX_VOICE_NOTES_PER_SENDER} voice notes per project. Delete one to record another.`,
       409
     );
   }

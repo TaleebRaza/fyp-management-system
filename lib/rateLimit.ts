@@ -18,7 +18,7 @@ export function hashRateLimitIdentifier(identifier: string) {
   return createHash('sha256').update(normalizeRateLimitIdentifier(identifier)).digest('hex');
 }
 
-export function getTrustedClientIp(headers: HeaderSource) {
+function getTrustedClientIp(headers: HeaderSource) {
   return headers.get('x-vercel-forwarded-for')
     || headers.get('x-real-ip')
     || 'unknown';

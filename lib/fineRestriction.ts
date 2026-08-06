@@ -41,13 +41,6 @@ export const COLLECTED_STUDENT_FINE_FILTER = {
   ],
 };
 
-export type FinePaymentDetails = {
-  methodLabel: string;
-  accountTitle: string;
-  accountNumber: string;
-  instructions: string;
-};
-
 export type FineRestrictionSummary = {
   active: true;
   lateRegistrationFine: {
@@ -80,7 +73,7 @@ export type FineRestrictedUser = {
   } | null;
 };
 
-export type CollectedFineSummary = {
+type CollectedFineSummary = {
   lateRegistrationFine: {
     amount: number;
     daysLate: number;

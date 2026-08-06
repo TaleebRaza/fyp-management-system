@@ -37,7 +37,7 @@ import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { escapeHtml, isRecord, normalizeText } from '../../../../lib/security/input';
-import { normalizeStorageKey } from '../../../../lib/security/storage';
+import { normalizeStorageKey } from '../../../../lib/storageValidation';
 import {
   capacityReservationError,
   releaseSupervisorProjectSlot,

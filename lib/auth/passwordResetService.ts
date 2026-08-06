@@ -23,7 +23,7 @@ const INVALID_TOKEN_ERROR = 'Account recovery has expired. Verify your details a
 
 type PasswordResetBody = Record<string, unknown>;
 
-export type PasswordResetServiceResult = {
+type PasswordResetServiceResult = {
   status: number;
   body: PasswordResetBody;
 };

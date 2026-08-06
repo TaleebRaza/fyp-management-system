@@ -7,10 +7,10 @@ import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
+import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../config/appSettings';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
-import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../lib/teamCapacity';
 import { reviewProject } from '../../../../lib/projectReview';
 import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
 import {

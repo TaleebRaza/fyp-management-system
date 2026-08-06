@@ -1,4 +1,4 @@
-import { normalizeStorageKey } from './security/storageKey';
+import { normalizeStorageKey } from './storageValidation';
 
 type StorageSource = {
   key: unknown;

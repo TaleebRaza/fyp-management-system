@@ -1,7 +1,7 @@
 import type { ClientSession } from 'mongoose';
 import VoiceNote from '../models/VoiceNote';
 import VoiceNoteQuota from '../models/VoiceNoteQuota';
-import { normalizeStorageKey } from './security/storageKey';
+import { normalizeStorageKey } from './storageValidation';
 import { collectStorageDeletionTargets } from './storageDeletionTargets';
 import { findSharedStorageKeys } from './storageReferenceSafety';
 import {

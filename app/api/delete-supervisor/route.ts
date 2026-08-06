@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import User from '../../../models/User';
 import Project from '../../../models/Project';
 import { requireCurrentUser } from '../../../lib/security/auth';
-import { normalizeStorageKey } from '../../../lib/security/storageKey';
+import { normalizeStorageKey } from '../../../lib/storageValidation';
 import { findSharedStorageKeys } from '../../../lib/storageReferenceSafety';
 import {
   assertStorageLedgerReady,

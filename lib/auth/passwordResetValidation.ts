@@ -5,7 +5,7 @@ import { normalizeRollNo } from '../rollNo';
 import { normalizeText } from '../security/input';
 import { validatePassword } from '../security/password';
 
-export type PasswordResetKnowledgeInput = {
+type PasswordResetKnowledgeInput = {
   rollNo: string;
   supervisorId: string;
   batch: string;
@@ -13,7 +13,7 @@ export type PasswordResetKnowledgeInput = {
   teammateRollNo: string;
 };
 
-export type PasswordResetCompletionInput = {
+type PasswordResetCompletionInput = {
   rollNo: string;
   resetToken: string;
   newPassword: string;

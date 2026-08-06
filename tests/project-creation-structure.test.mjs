@@ -9,6 +9,7 @@ test('project invite-code creation is centralized', async () => {
     readFile(new URL('../app/api/dashboard/student/route.ts', import.meta.url), 'utf8'),
     readFile(new URL('../app/api/dashboard/supervisor/route.ts', import.meta.url), 'utf8'),
     readFile(new URL('../app/api/project/leave/route.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/register/route.ts', import.meta.url), 'utf8'),
   ]);
 
   assert.match(projectCreation, /for \(let attempt = 0; attempt < 5; attempt\+\+\)/);

@@ -4,10 +4,10 @@ import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../config/projectDomains';
+import { DEFAULT_TEAM_SIZE, getTeamCapacity } from '../config/appSettings';
 import Project from '../models/Project';
 import User from '../models/User';
 import type { ProjectReviewProject } from '../types/projectReview';
-import { DEFAULT_TEAM_SIZE, getTeamCapacity } from './teamCapacity';
 
 type QueueProjectRecord = {
   _id: unknown;

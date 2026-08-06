@@ -8,7 +8,7 @@ import {
   StyledInput,
 } from '../ui';
 import { VoiceChat } from '../ui/VoiceChat';
-import { EXPANDED_TEAM_SIZE } from '../../lib/teamCapacity';
+import { EXPANDED_TEAM_SIZE } from '../../config/appSettings';
 import type { ProjectMember, SupervisorOption } from './studentDashboardTypes';
 
 const DASHBOARD_THEME = {

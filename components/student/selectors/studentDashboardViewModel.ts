@@ -4,7 +4,7 @@ import {
   getProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../../config/projectDomains';
-import { getTeamCapacity } from '../../../lib/teamCapacity';
+import { getTeamCapacity } from '../../../config/appSettings';
 import type {
   AnnouncementItem,
   StudentDashboardData,

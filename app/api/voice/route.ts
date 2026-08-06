@@ -3,8 +3,8 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../../../lib/mongodb';
 import VoiceNote from '../../../models/VoiceNote';
 import { hasProjectAccess, requireCurrentUser } from '../../../lib/security/auth';
-import { isOwnedVoiceKey } from '../../../lib/security/voice';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
+import { isOwnedVoiceKey } from '../../../lib/storageValidation';
 import {
   assertStorageLedgerReady,
   enqueueStorageDeletion,

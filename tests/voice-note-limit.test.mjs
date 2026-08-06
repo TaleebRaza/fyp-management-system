@@ -6,7 +6,7 @@ import { importTypeScriptModule } from './support/importTypeScript.mjs';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-const { MAX_VOICE_NOTES_PER_SENDER } = await importTypeScriptModule('lib/voiceNoteLimit.ts');
+const { APP_SETTINGS } = await importTypeScriptModule('config/appSettings.ts');
 
 test('voice notes reserve three sender slots per project and release one when deleted', async () => {
   const [protocol, route, chat, quota] = await Promise.all([
@@ -16,9 +16,9 @@ test('voice notes reserve three sender slots per project and release one when de
     read('models/VoiceNoteQuota.ts'),
   ]);
 
-  assert.equal(MAX_VOICE_NOTES_PER_SENDER, 3);
-  assert.match(protocol, /MAX_VOICE_NOTES_PER_SENDER/);
-  assert.match(protocol, /count: \{ \$lt: MAX_VOICE_NOTES_PER_SENDER \}/);
+  assert.equal(APP_SETTINGS.MAX_VOICE_NOTES_PER_SENDER, 3);
+  assert.match(protocol, /APP_SETTINGS\.MAX_VOICE_NOTES_PER_SENDER/);
+  assert.match(protocol, /count: \{ \$lt: APP_SETTINGS\.MAX_VOICE_NOTES_PER_SENDER \}/);
   assert.match(protocol, /releaseVoiceNoteSlot/);
   assert.match(quota, /VoiceNoteQuotaSchema\.index\(\{ ownerId: 1, projectId: 1 \}, \{ unique: true \}\)/);
   assert.match(route, /export async function DELETE/);

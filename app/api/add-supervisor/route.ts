@@ -3,9 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { normalizeRollNo } from '../../../lib/rollNo';
 import { requireCurrentUser } from '../../../lib/security/auth';
-import { isRecord, normalizeText } from '../../../lib/security/input';
+import {
+  isRecord,
+  isValidEmailAddress,
+  normalizeEmailAddress,
+  normalizeText,
+} from '../../../lib/security/input';
 import { validatePassword } from '../../../lib/security/password';
-import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
 import {
   invalidatePublicContent,
   PUBLIC_SUPERVISORS_TAG,

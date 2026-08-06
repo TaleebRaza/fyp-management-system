@@ -1,7 +1,7 @@
 import { APP_SETTINGS } from '../config/appSettings';
 import type { LateFineAccrualPolicy } from '../types/registrationPolicy';
 
-export type LateRegistrationAssessment = {
+type LateRegistrationAssessment = {
   daysLate: number;
   fineAmount: number;
 };

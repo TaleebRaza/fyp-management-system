@@ -4,7 +4,7 @@ import connectToDatabase from '../../../../lib/mongodb';
 import { normalizeRollNo } from '../../../../lib/rollNo';
 import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
-import { isValidEmailAddress, normalizeEmailAddress } from '../../../../lib/studentIdentity';
+import { isValidEmailAddress, normalizeEmailAddress } from '../../../../lib/security/input';
 
 export const dynamic = 'force-dynamic';
 

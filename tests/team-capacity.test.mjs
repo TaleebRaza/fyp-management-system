@@ -7,7 +7,7 @@ const {
   DEFAULT_TEAM_SIZE,
   EXPANDED_TEAM_SIZE,
   getTeamCapacity,
-} = await importTypeScriptModule('lib/teamCapacity.ts');
+} = await importTypeScriptModule('config/appSettings.ts');
 
 test('team capacity defaults to two members', () => {
   assert.equal(DEFAULT_TEAM_SIZE, 2);

@@ -15,3 +15,13 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseBoolean(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
 }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function normalizeEmailAddress(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+export function isValidEmailAddress(value: unknown) {
+  return EMAIL_PATTERN.test(normalizeEmailAddress(value));
+}

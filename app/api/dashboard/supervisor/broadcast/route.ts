@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../../lib/mongodb';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { isRecord, normalizeText } from '../../../../../lib/security/input';
-import { normalizeStorageKey } from '../../../../../lib/security/storage';
+import { normalizeStorageKey } from '../../../../../lib/storageValidation';
 import { findSharedStorageKeys } from '../../../../../lib/storageReferenceSafety';
 import {
   assertStorageLedgerReady,

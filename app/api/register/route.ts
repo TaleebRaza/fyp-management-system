@@ -3,14 +3,12 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
-import Project from '../../../models/Project';
 import RollNumberClaim from '../../../models/RollNumberClaim';
 import {
   buildRollNoRegex,
   isValidRollNo,
   normalizeRollNo,
 } from '../../../lib/rollNo';
-import { isValidEmailAddress, normalizeEmailAddress } from '../../../lib/studentIdentity';
 import { PROGRAM_MAP } from '../../../config/appSettings';
 import { calculateLateRegistrationFine } from '../../../lib/lateRegistrationFine';
 import RegistrationPolicy from '../../../models/RegistrationPolicy';
@@ -21,8 +19,12 @@ import {
   serializeRegistrationPolicy,
 } from '../../../lib/registrationPolicy';
 import { validatePassword } from '../../../lib/security/password';
-import { createInviteCode } from '../../../lib/security/inviteCode';
-import { normalizeText } from '../../../lib/security/input';
+import {
+  isValidEmailAddress,
+  normalizeEmailAddress,
+  normalizeText,
+} from '../../../lib/security/input';
+import { createProjectWithUniqueInviteCode } from '../../../lib/projectCreation';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 import {
   capacityReservationError,
@@ -190,12 +192,10 @@ export async function POST(req: NextRequest) {
 
       await newStudent.save({ session });
 
-      const newProject = new Project({
+      const newProject = await createProjectWithUniqueInviteCode({
         supervisorId: supervisorId || null,
         members: [newStudent._id],
-        inviteCode: createInviteCode(),
-      });
-      await newProject.save({ session });
+      }, session);
 
       newStudent.projectId = newProject._id;
       await newStudent.save({ session });

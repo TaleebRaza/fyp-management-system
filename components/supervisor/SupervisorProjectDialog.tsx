@@ -1,5 +1,5 @@
 import { ArrowRightLeft, CheckCircle, ExternalLink, FileText, Globe, Loader2, UserMinus, Users, Wrench } from 'lucide-react';
-import { EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../lib/teamCapacity';
+import { EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../config/appSettings';
 import { AvatarBadge, Badge, Button, DashboardPanel, Dialog, EmptyState, SectionHeader, StyledInput } from '../ui';
 import { Timeline } from '../ui/Timeline';
 import { VoiceChat } from '../ui/VoiceChat';

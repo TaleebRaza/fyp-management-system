@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import { processEmailOutbox } from '../../../../lib/emailOutbox';
 import { hasValidCronAuthorization } from '../../../../lib/security/cron';
-import { normalizeStorageKey } from '../../../../lib/security/storage';
+import { normalizeStorageKey } from '../../../../lib/storageValidation';
 import { collectStorageDeletionTargets } from '../../../../lib/storageDeletionTargets';
 import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import {

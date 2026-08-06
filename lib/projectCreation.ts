@@ -1,7 +1,16 @@
-import { ClientSession } from 'mongoose';
+import { randomInt } from 'node:crypto';
+import type { ClientSession } from 'mongoose';
 
 import Project from '../models/Project';
-import { createInviteCode } from './security/inviteCode';
+
+const INVITE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function createInviteCode(length = 6) {
+  return Array.from(
+    { length },
+    () => INVITE_CODE_ALPHABET[randomInt(INVITE_CODE_ALPHABET.length)]
+  ).join('');
+}
 
 export async function createProjectWithUniqueInviteCode(
   projectData: Record<string, unknown>,

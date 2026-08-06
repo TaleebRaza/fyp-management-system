@@ -2,8 +2,7 @@ import Project from '../../models/Project';
 import User from '../../models/User';
 import VoiceNote from '../../models/VoiceNote';
 import { CurrentUser, hasProjectAccess } from './auth';
-import { getStorageObjectKind } from './storageKey';
-export { getStorageObjectKind, normalizeStorageKey } from './storageKey';
+import { getStorageObjectKind } from '../storageValidation';
 
 function keyMatcher(key: string) {
   return new RegExp(`(?:^|/)${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);

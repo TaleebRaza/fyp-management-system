@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import EmailOutbox from '../models/EmailOutbox';
 import { isEmailConfigured, sendNotificationEmail } from './mailer';
-import { isValidEmailAddress, normalizeEmailAddress } from './studentIdentity';
+import { isValidEmailAddress, normalizeEmailAddress } from './security/input';
 
 const MAX_EMAIL_ATTEMPTS = 8;
 const MAX_BATCH_SIZE = 100;

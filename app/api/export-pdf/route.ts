@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import ExcelJS from 'exceljs';
 
-import { EXPANDED_TEAM_SIZE } from '../../../lib/teamCapacity';
+import { EXPANDED_TEAM_SIZE } from '../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import User from '../../../models/User';
