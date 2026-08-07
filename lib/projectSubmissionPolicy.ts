@@ -9,3 +9,10 @@ export function areProjectSubmissionsOpen(
 ) {
   return policy?.projectSubmissionsOpen !== false;
 }
+
+export function hasPreviousProjectSubmission(
+  project: { version?: unknown } | null | undefined
+): boolean {
+  const version = Number(project?.version ?? 0);
+  return Number.isFinite(version) && version > 0;
+}

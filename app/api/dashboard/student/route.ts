@@ -28,8 +28,7 @@ import {
   serializeRegistrationPolicy,
 } from '../../../../lib/registrationPolicy';
 import {
-  areProjectSubmissionsOpen,
-  PROJECT_SUBMISSIONS_CLOSED_CODE,
+  hasPreviousProjectSubmission,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../../../lib/projectSubmissionPolicy';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
@@ -543,14 +542,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
-    const submissionPolicy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
-    if (!areProjectSubmissionsOpen(submissionPolicy)) {
-      return NextResponse.json(
-        { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },
-        { status: 403 }
-      );
-    }
-
     const title = normalizeText(body.title, 200);
     const description = normalizeText(body.desc, 2_000);
     const tools = normalizeText(body.tools, 1_000);
@@ -666,18 +657,6 @@ export async function POST(req: NextRequest) {
       ownerId: submissionStudentId,
       kind: 'pdf',
       commit: async (session, uploadedObject) => {
-        const acceptedSubmissionPolicy = await RegistrationPolicy.findOneAndUpdate(
-          {
-            policyKey: REGISTRATION_POLICY_KEY,
-            projectSubmissionsOpen: { $ne: false },
-          },
-          { $inc: { projectSubmissionsAccepted: 1 } },
-          { new: true, session }
-        );
-        if (!acceptedSubmissionPolicy) {
-          throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
-        }
-
         const studentInTransaction = await User.findOne({
           _id: submissionStudentId,
           role: 'student',
@@ -685,12 +664,25 @@ export async function POST(req: NextRequest) {
         if (!studentInTransaction?.projectId) {
           throw new StorageProtocolError('Project record not found for this student.', 409);
         }
-
         const project = await Project.findOne({
           _id: studentInTransaction.projectId,
           members: studentInTransaction._id,
         }).session(session);
         if (!project) throw new StorageProtocolError('Project membership changed. Refresh and try again.', 409);
+
+        const acceptedSubmissionPolicy = await RegistrationPolicy.findOneAndUpdate(
+          hasPreviousProjectSubmission(project)
+            ? { policyKey: REGISTRATION_POLICY_KEY }
+            : {
+                policyKey: REGISTRATION_POLICY_KEY,
+                projectSubmissionsOpen: { $ne: false },
+              },
+          { $inc: { projectSubmissionsAccepted: 1 } },
+          { new: true, session }
+        );
+        if (!acceptedSubmissionPolicy) {
+          throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
+        }
 
         const oldPdfKey = normalizeStorageKey(project.pdfUrl);
         if (project.pdfUrl && !oldPdfKey) {

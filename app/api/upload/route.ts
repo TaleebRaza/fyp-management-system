@@ -4,6 +4,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
+import Project from '../../../models/Project';
 import {
   buildFineRestriction,
   FINE_RESTRICTION_CODE,
@@ -17,6 +18,7 @@ import { requireCurrentUser } from '../../../lib/security/auth';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../lib/registrationPolicy';
 import {
   areProjectSubmissionsOpen,
+  hasPreviousProjectSubmission,
   PROJECT_SUBMISSIONS_CLOSED_CODE,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../../lib/projectSubmissionPolicy';
@@ -41,7 +43,9 @@ export async function POST(req: NextRequest) {
     }
 
     const submissionPolicy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
-    if (!areProjectSubmissionsOpen(submissionPolicy)) {
+    const submissionsOpen = areProjectSubmissionsOpen(submissionPolicy);
+
+    if (!submissionsOpen && currentUser.role !== 'student') {
       return NextResponse.json(
         { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },
         { status: 403 }
@@ -63,6 +67,21 @@ export async function POST(req: NextRequest) {
       .lean();
     if (!student) {
       return NextResponse.json({ error: 'Student account not found.' }, { status: 404 });
+    }
+
+    if (!submissionsOpen) {
+      const project = student.projectId
+        ? await Project.findOne({ _id: student.projectId, members: student._id })
+            .select('version')
+            .lean()
+        : null;
+
+      if (!hasPreviousProjectSubmission(project)) {
+        return NextResponse.json(
+          { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },
+          { status: 403 }
+        );
+      }
     }
 
     const fineRestriction = buildFineRestriction(student);

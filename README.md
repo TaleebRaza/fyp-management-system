@@ -472,7 +472,7 @@ Unauthorized copying, redistribution, resale, or reproduction of the private imp
 
 ## 👨‍💻 Author
 
-**Taleeb Raza**
+**Your Name**
 
 Final Year Project Developer
 

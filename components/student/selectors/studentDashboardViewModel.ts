@@ -87,7 +87,8 @@ export function buildStudentDashboardViewModel(
   const canSubmitByStatus = ['Pending', 'Rejected', 'Changes Requested'].includes(
     me?.status || ''
   );
-  const projectSubmissionsOpen = data?.projectSubmissionsOpen !== false;
+  const projectSubmissionsOpen =
+    data?.projectSubmissionsOpen !== false || Number(project?.version || 0) > 0;
 
   return {
     me,
