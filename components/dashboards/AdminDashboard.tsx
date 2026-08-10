@@ -112,6 +112,7 @@ const AdminDashboard = ({
     {
       id: 'overview',
       label: 'Overview',
+      section: 'Dashboard',
       icon: <LayoutDashboard size={18} />,
       active: activeTab === 'overview',
       onClick: () => setActiveTab('overview'),
@@ -119,6 +120,7 @@ const AdminDashboard = ({
     {
       id: 'supervisors',
       label: 'Supervisors',
+      section: 'People',
       icon: <Users size={18} />,
       active: activeTab === 'supervisors',
       badge: supervisors.supervisors.length,
@@ -127,6 +129,7 @@ const AdminDashboard = ({
     {
       id: 'students',
       label: 'Students',
+      section: 'People',
       icon: <GraduationCap size={18} />,
       active: activeTab === 'students',
       badge: students.pagination.total || students.students.length,
@@ -135,20 +138,15 @@ const AdminDashboard = ({
     {
       id: 'reviews',
       label: 'Project Reviews',
+      section: 'Portal Operations',
       icon: <ClipboardCheck size={18} />,
       active: activeTab === 'reviews',
       onClick: () => setActiveTab('reviews'),
     },
     {
-      id: 'logs',
-      label: 'Logs',
-      icon: <ScrollText size={18} />,
-      active: activeTab === 'logs',
-      onClick: () => setActiveTab('logs'),
-    },
-    {
       id: 'registration',
       label: 'Registration',
+      section: 'Portal Operations',
       icon: <LockKeyhole size={18} />,
       active: activeTab === 'registration',
       badge: registrationPolicy?.isOpen === false ? 'Closed' : 'Open',
@@ -169,6 +167,7 @@ const AdminDashboard = ({
     {
       id: 'fines',
       label: 'Fines',
+      section: 'Portal Operations',
       icon: <CircleDollarSign size={18} />,
       active: activeTab === 'fines',
       onClick: () => setActiveTab('fines'),
@@ -176,8 +175,17 @@ const AdminDashboard = ({
     {
       id: 'reports',
       label: 'Reports',
+      section: 'Insights & Audit',
       icon: <BarChart3 size={18} />,
       onClick: reports.openReports,
+    },
+    {
+      id: 'logs',
+      label: 'Logs',
+      section: 'Insights & Audit',
+      icon: <ScrollText size={18} />,
+      active: activeTab === 'logs',
+      onClick: () => setActiveTab('logs'),
     },
   ];
 

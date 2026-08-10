@@ -9,6 +9,7 @@ import { DashboardQuote } from "./DashboardQuote";
 export type DashboardNavItem = {
   id: string;
   label: string;
+  section?: string;
   icon?: React.ReactNode;
   active?: boolean;
   badge?: React.ReactNode;
@@ -83,6 +84,7 @@ export const DashboardShell = ({
   }, [mobileMenuOpen]);
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
+  const navSections = [...new Set(navItems.map((item) => item.section))];
 
   const renderNavItem = (item: DashboardNavItem) => (
     <button
@@ -152,14 +154,30 @@ export const DashboardShell = ({
       </div>
 
       <nav
-        className="mt-8 flex flex-col gap-1.5"
+        className="portal-scrollbar mt-8 min-h-0 flex-1 space-y-5 overflow-y-auto pr-1"
         aria-label="Dashboard navigation"
       >
-        {navItems.map(renderNavItem)}
+        {navSections.map((section) => (
+          <div
+            key={section || 'navigation'}
+            className="space-y-1.5"
+            role={section ? 'group' : undefined}
+            aria-label={section}
+          >
+            {section && (
+              <p className="px-3 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-[var(--color-text-soft)]">
+                {section}
+              </p>
+            )}
+            {navItems
+              .filter((item) => item.section === section)
+              .map(renderNavItem)}
+          </div>
+        ))}
       </nav>
 
       {user && (
-        <div className="mt-auto pt-6">
+        <div className="mt-6">
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
             <div className="flex items-center gap-3">
               <AvatarBadge name={user.name} initials={user.initials} />
