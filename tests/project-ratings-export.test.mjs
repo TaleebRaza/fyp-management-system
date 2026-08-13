@@ -142,6 +142,16 @@ test('creates a valid workbook with headers even when no projects match', async 
     worksheet.getRow(1).values.slice(1),
     exportModule.PROJECT_RATINGS_EXPORT_COLUMNS.map((column) => column.header)
   );
+  for (const excludedHeader of [
+    'Project ID',
+    'Rating Date',
+    'Reviewer Name',
+    'Reviewer Role',
+    'Supervisor Email',
+    'Student Email',
+  ]) {
+    assert.ok(!worksheet.getRow(1).values.includes(excludedHeader));
+  }
 });
 
 test('uses the dated filename and a dedicated admin-only, storage-free route', async () => {

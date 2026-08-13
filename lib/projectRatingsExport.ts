@@ -12,7 +12,6 @@ import {
 } from '../config/projectRatings';
 
 export const PROJECT_RATINGS_EXPORT_COLUMNS = [
-  { header: 'Project ID', key: 'projectId', width: 26 },
   { header: 'Project Title', key: 'projectTitle', width: 40 },
   { header: 'Domains', key: 'domains', width: 36 },
   { header: 'Current Stage', key: 'currentStage', width: 20 },
@@ -21,14 +20,9 @@ export const PROJECT_RATINGS_EXPORT_COLUMNS = [
   { header: 'Project Idea', key: 'projectIdea', width: 16 },
   { header: 'Technical Merit', key: 'technicalMerit', width: 18 },
   { header: 'Documentation Quality', key: 'documentationQuality', width: 24 },
-  { header: 'Rating Date', key: 'ratingDate', width: 20 },
-  { header: 'Reviewer Name', key: 'reviewerName', width: 24 },
-  { header: 'Reviewer Role', key: 'reviewerRole', width: 18 },
   { header: 'Supervisor Name', key: 'supervisorName', width: 24 },
-  { header: 'Supervisor Email', key: 'supervisorEmail', width: 30 },
   { header: 'Student Name', key: 'studentName', width: 24 },
   { header: 'Student Roll Number', key: 'studentRollNumber', width: 20 },
-  { header: 'Student Email', key: 'studentEmail', width: 30 },
   { header: 'Student Program', key: 'studentProgram', width: 18 },
   { header: 'Student Batch', key: 'studentBatch', width: 18 },
   { header: 'Student Semester', key: 'studentSemester', width: 18 },
@@ -226,8 +220,7 @@ export function populateProjectRatingsWorkbook(
   worksheet.columns = PROJECT_RATINGS_EXPORT_COLUMNS.map((column) => ({ ...column }));
   worksheet.getRow(1).font = { bold: true };
   worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-  worksheet.autoFilter = 'A1:T1';
-  worksheet.getColumn('ratingDate').numFmt = 'yyyy-mm-dd hh:mm';
+  worksheet.autoFilter = 'A1:N1';
   worksheet.addRows(rows);
   return worksheet;
 }
