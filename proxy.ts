@@ -47,10 +47,44 @@ function isProtectedRoute(path: string): boolean {
 }
 
 export default withAuth(
-  function proxy(req) {
+  async function proxy(req) {
     const token = req.nextauth.token;
     const path = req.nextUrl.pathname;
     const role = token?.role;
+    const isRequiredAuthRoute = path.startsWith('/api/auth/')
+      && path !== '/api/auth/forgot-password'
+      && path !== '/api/auth/reset-password';
+
+    if (path !== '/api/portal-status') {
+      try {
+        const statusResponse = await fetch(new URL('/api/portal-status', req.url), {
+          cache: 'no-store',
+        });
+        const portal = statusResponse.ok
+          ? await statusResponse.json() as { paused?: boolean; reason?: string }
+          : { paused: true, reason: 'Portal availability could not be verified.' };
+
+        if (
+          portal?.paused
+          && path.startsWith('/api/')
+          && !isRequiredAuthRoute
+          && role !== 'admin'
+        ) {
+          return NextResponse.json(
+            { code: 'PORTAL_PAUSED', error: portal.reason },
+            { status: 503 }
+          );
+        }
+      } catch (error) {
+        console.error('Portal pause enforcement failed:', error);
+        if (path.startsWith('/api/') && !isRequiredAuthRoute && role !== 'admin') {
+          return NextResponse.json(
+            { code: 'PORTAL_UNAVAILABLE', error: 'Portal availability could not be verified.' },
+            { status: 503 }
+          );
+        }
+      }
+    }
 
     if (ADMIN_ROUTES.some((route) => matchesProtectedRoute(path, route)) && role !== 'admin') {
       return NextResponse.json(

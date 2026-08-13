@@ -35,6 +35,7 @@ const AdminDashboard = dynamic(() => import('../components/dashboards/AdminDashb
 // Fixed compatibility adapter for the existing dashboard/auth theme props.
 // This is not a theme engine.
 type IntroState = 'checking' | 'showing' | 'complete';
+type PortalStatus = { paused: boolean; reason: string };
 
 const INTRO_SESSION_KEY = 'fyp_intro_seen';
 const INTRO_SAFETY_TIMEOUT_MS = 7000;
@@ -67,6 +68,7 @@ export default function App() {
   );
   const [isClient, setIsClient] = useState(false);
   const [introState, setIntroState] = useState<IntroState>('checking');
+  const [portalStatus, setPortalStatus] = useState<PortalStatus | null>(null);
   const [dialog, setDialog] = useState<PortalDialogState>({
     isOpen: false,
     type: 'alert',
@@ -81,6 +83,24 @@ export default function App() {
   });
 
   const { data: session, status } = useSession();
+
+  const loadPortalStatus = useCallback(async () => {
+    try {
+      const response = await fetch('/api/portal-status', { cache: 'no-store' });
+      if (response.ok) setPortalStatus(await response.json());
+    } catch (error) {
+      console.error('Unable to load portal status:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(loadPortalStatus, 0);
+    window.addEventListener('focus', loadPortalStatus);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', loadPortalStatus);
+    };
+  }, [loadPortalStatus]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -195,8 +215,22 @@ export default function App() {
           showDialog={showDialog}
           registrationPolicy={registrationPolicy}
           onRegistrationPolicyChange={setRegistrationPolicy}
+          portalPaused={portalStatus?.paused}
+          portalPauseReason={portalStatus?.reason}
+          onPortalPauseChange={(paused, reason) => setPortalStatus({ paused, reason })}
         />
       );
+  }
+
+  if (portalStatus?.paused) {
+    return (
+      <LoginView
+        onRegister={() => {}}
+        showDialog={showDialog}
+        portalPaused
+        portalPauseReason={portalStatus.reason}
+      />
+    );
   }
 
   if (role === 'supervisor') {
@@ -260,9 +294,11 @@ export default function App() {
       <LoginView
         onRegister={() => setIsRegistering(true)}
         showDialog={showDialog}
+        portalPaused={portalStatus?.paused}
+        portalPauseReason={portalStatus?.reason}
       />
     );
-  }, [status, session, isDarkMode, isRegistering, supervisorsList, showDialog, registrationPolicy, loadRegistrationPolicy]);
+  }, [status, session, isDarkMode, isRegistering, supervisorsList, showDialog, registrationPolicy, loadRegistrationPolicy, portalStatus]);
 
   if (!isClient || status === 'loading') {
     return (
@@ -327,4 +363,3 @@ export default function App() {
     </div>
   );
 }
-

@@ -7,6 +7,9 @@ export type AdminDashboardProps = {
   showDialog: ShowDialog;
   registrationPolicy?: RegistrationPolicyDto;
   onRegistrationPolicyChange?: (policy: RegistrationPolicyDto) => void;
+  portalPaused?: boolean;
+  portalPauseReason?: string;
+  onPortalPauseChange?: (paused: boolean, reason: string) => void;
 };
 
 export type AdminSupervisor = {

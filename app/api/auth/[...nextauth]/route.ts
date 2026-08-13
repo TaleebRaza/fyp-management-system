@@ -10,6 +10,7 @@ import {
   isPortalActivityActorRole,
   recordPortalActivity,
 } from '../../../../lib/portalActivityLog';
+import { getPortalPause } from '../../../../lib/portalPause';
 
 const LOGIN_ATTEMPT_LIMIT = 5;
 
@@ -31,6 +32,7 @@ const handler = NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
+        const portal = await getPortalPause();
         await connectToDatabase();
 
         const normalizedRollNo = normalizeRollNo(credentials?.rollNo);
@@ -63,6 +65,10 @@ const handler = NextAuth({
 
         if (!user) {
           await denyLogin();
+        }
+
+        if (portal.paused && user.role !== 'admin') {
+          throw new Error(portal.reason);
         }
         
         // Security Lockout Check

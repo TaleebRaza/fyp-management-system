@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   LogIn,
+  PauseCircle,
   ScrollText,
   Users,
 } from 'lucide-react';
@@ -72,8 +73,12 @@ const AdminDashboard = ({
   showDialog,
   registrationPolicy,
   onRegistrationPolicyChange,
+  portalPaused = false,
+  portalPauseReason = '',
+  onPortalPauseChange,
 }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [isUpdatingPortal, setIsUpdatingPortal] = useState(false);
   const headline = useAdminHeadline(showDialog);
   const students = useAdminStudents(showDialog);
   const supervisors = useAdminSupervisors(
@@ -81,6 +86,40 @@ const AdminDashboard = ({
     students.refreshStudents
   );
   const reports = useAdminReports(showDialog);
+
+  const updatePortal = async (paused: boolean, reason = portalPauseReason) => {
+        setIsUpdatingPortal(true);
+        try {
+          const response = await fetch('/api/admin/portal-status', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paused, reason }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error);
+          onPortalPauseChange?.(result.paused, result.reason);
+        } catch (error) {
+          showDialog({
+            title: 'Portal status not changed',
+            message: error instanceof Error ? error.message : 'Please try again.',
+          });
+        } finally {
+          setIsUpdatingPortal(false);
+        }
+  };
+
+  const togglePortal = () => {
+    showDialog({
+      type: portalPaused ? 'confirm' : 'prompt',
+      title: portalPaused ? 'Reopen the portal?' : 'Pause the portal?',
+      message: portalPaused
+        ? 'Students and supervisors will regain access immediately.'
+        : 'Enter the maintenance, feature addition, or feature removal message everyone should see.',
+      defaultValue: portalPauseReason,
+      placeholder: 'The portal is temporarily unavailable for maintenance.',
+      onConfirm: (reason) => updatePortal(!portalPaused, reason),
+    });
+  };
 
   useAdminProjectReviewPrefetch(loadAdminProjectReviewsPanel);
 
@@ -206,6 +245,14 @@ const AdminDashboard = ({
         }}
         actions={
           <div className="grid gap-2 sm:flex">
+            <Button
+              variant={portalPaused ? 'success' : 'danger'}
+              disabled={isUpdatingPortal}
+              onClick={togglePortal}
+            >
+              <PauseCircle size={16} />
+              {portalPaused ? 'Reopen Portal' : 'Pause Portal'}
+            </Button>
             <Button variant="outline" onClick={reports.openReports}>
               <BarChart3 size={16} />
               Reports

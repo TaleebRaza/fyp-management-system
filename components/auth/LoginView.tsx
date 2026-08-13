@@ -12,9 +12,13 @@ import PasswordResetFlow from './PasswordResetFlow';
 export default function LoginView({
   onRegister,
   showDialog,
+  portalPaused = false,
+  portalPauseReason,
 }: {
   onRegister: () => void;
   showDialog: ShowDialog;
+  portalPaused?: boolean;
+  portalPauseReason?: string;
 }) {
   const [isResetMode, setIsResetMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -102,13 +106,15 @@ export default function LoginView({
                     Sign in to FYP Portal
                   </h2>
                   <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                    Secure portal access
+                    {portalPaused ? 'Administrator access only' : 'Secure portal access'}
                   </p>
                 </div>
               </div>
 
               <p className="mt-4 text-sm leading-6 text-[var(--color-text-muted)]">
-                Access your final year project workspace, submissions, reviews, and supervisor updates.
+                {portalPaused
+                  ? portalPauseReason
+                  : 'Access your final year project workspace, submissions, reviews, and supervisor updates.'}
               </p>
             </div>
 
@@ -142,7 +148,7 @@ export default function LoginView({
                   />
                 </div>
 
-                <div className="flex items-center justify-end">
+                {!portalPaused && <div className="flex items-center justify-end">
                   <button
                     type="button"
                     onClick={() => setIsResetMode(true)}
@@ -150,7 +156,7 @@ export default function LoginView({
                   >
                     Forgot password?
                   </button>
-                </div>
+                </div>}
 
                 <button
                   disabled={isLoading}
@@ -164,7 +170,7 @@ export default function LoginView({
               </form>
             </div>
 
-            <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4 text-center sm:px-6">
+            {!portalPaused && <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4 text-center sm:px-6">
               <p className="text-sm text-[var(--color-text-muted)]">
                 New student?{' '}
                 <button
@@ -175,7 +181,7 @@ export default function LoginView({
                   Create an account
                 </button>
               </p>
-            </div>
+            </div>}
           </Card>
         )}
       </section>
