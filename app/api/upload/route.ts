@@ -20,8 +20,10 @@ import {
   areProjectSubmissionsOpen,
   hasPreviousProjectSubmission,
   isProjectComplete,
+  isProjectSubmissionPendingReview,
   PROJECT_COMPLETE_CODE,
   PROJECT_COMPLETE_MESSAGE,
+  PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE,
   PROJECT_SUBMISSIONS_CLOSED_CODE,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../../lib/projectSubmissionPolicy';
@@ -82,6 +84,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { code: PROJECT_COMPLETE_CODE, error: PROJECT_COMPLETE_MESSAGE },
         { status: 403 }
+      );
+    }
+
+    if (isProjectSubmissionPendingReview(project)) {
+      return NextResponse.json(
+        { error: PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE },
+        { status: 409 }
       );
     }
 

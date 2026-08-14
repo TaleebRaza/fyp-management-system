@@ -30,7 +30,9 @@ import {
 import {
   hasPreviousProjectSubmission,
   isProjectComplete,
+  isProjectSubmissionPendingReview,
   PROJECT_COMPLETE_MESSAGE,
+  PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../../../lib/projectSubmissionPolicy';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
@@ -673,6 +675,9 @@ export async function POST(req: NextRequest) {
         if (!project) throw new StorageProtocolError('Project membership changed. Refresh and try again.', 409);
         if (isProjectComplete(project)) {
           throw new StorageProtocolError(PROJECT_COMPLETE_MESSAGE, 403);
+        }
+        if (isProjectSubmissionPendingReview(project)) {
+          throw new StorageProtocolError(PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE, 409);
         }
 
         const acceptedSubmissionPolicy = await RegistrationPolicy.findOneAndUpdate(

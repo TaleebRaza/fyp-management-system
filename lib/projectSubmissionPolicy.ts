@@ -6,6 +6,8 @@ export const PROJECT_SUBMISSIONS_CLOSED_MESSAGE =
 export const PROJECT_COMPLETE_CODE = 'PROJECT_COMPLETE';
 export const PROJECT_COMPLETE_MESSAGE =
   'Project submissions are closed because the final deliverables have been approved.';
+export const PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE =
+  'This project is awaiting review. You can submit again after the supervisor or administrator reviews it.';
 
 export function areProjectSubmissionsOpen(
   policy: Pick<RegistrationPolicyDto, 'projectSubmissionsOpen'> | null | undefined
@@ -18,6 +20,12 @@ export function hasPreviousProjectSubmission(
 ): boolean {
   const version = Number(project?.version ?? 0);
   return Number.isFinite(version) && version > 0;
+}
+
+export function isProjectSubmissionPendingReview(
+  project: { status?: unknown } | null | undefined
+): boolean {
+  return project?.status === 'Submitted For Review';
 }
 
 export function isProjectComplete(

@@ -10,6 +10,7 @@ import {
 import ProjectDomainSelector from './ProjectDomainSelector';
 import {
   PROJECT_COMPLETE_MESSAGE,
+  PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../lib/projectSubmissionPolicy';
 
@@ -23,6 +24,7 @@ export default function StudentProjectSubmissionSection({
   projectSubmissionsOpen,
   hasAssignedSupervisor,
   projectSubmissionComplete,
+  projectSubmissionPendingReview,
   onSubmit,
   title,
   onTitleChange,
@@ -47,6 +49,7 @@ export default function StudentProjectSubmissionSection({
   projectSubmissionsOpen: boolean;
   hasAssignedSupervisor: boolean;
   projectSubmissionComplete: boolean;
+  projectSubmissionPendingReview: boolean;
   onSubmit: FormEventHandler<HTMLFormElement>;
   title: string;
   onTitleChange: (value: string) => void;
@@ -111,6 +114,17 @@ export default function StudentProjectSubmissionSection({
             <Lock size={18} className="mt-0.5 text-[var(--color-text-muted)]" />
             <p className="text-sm leading-6 text-[var(--color-text-muted)]">
               {PROJECT_COMPLETE_MESSAGE}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {projectSubmissionPendingReview && (
+        <div className="mb-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+          <div className="flex items-start gap-3">
+            <Lock size={18} className="mt-0.5 shrink-0 text-[var(--color-text-muted)]" />
+            <p className="text-sm leading-6 text-[var(--color-text-muted)]">
+              {PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE}
             </p>
           </div>
         </div>

@@ -103,8 +103,8 @@ test('students still need an assigned supervisor to submit', () => {
   assert.equal(result.canSubmit, false);
 });
 
-test('student review status does not block submissions before final approval', () => {
-  for (const status of ['Approved', 'Rejected', 'Changes Requested', 'Submitted For Review']) {
+test('reviewed projects can be resubmitted before final approval', () => {
+  for (const status of ['Approved', 'Rejected', 'Changes Requested']) {
     const result = selectors.buildStudentDashboardViewModel(
       {
         student: { status, supervisorId: 'sup-1' },
@@ -115,8 +115,24 @@ test('student review status does not block submissions before final approval', (
     );
 
     assert.equal(result.projectSubmissionComplete, false);
+    assert.equal(result.projectSubmissionPendingReview, false);
     assert.equal(result.canSubmit, true);
   }
+});
+
+test('a project awaiting review locks the student submission form', () => {
+  const result = selectors.buildStudentDashboardViewModel(
+    {
+      student: { status: 'Submitted For Review', supervisorId: 'sup-1' },
+      project: { status: 'Submitted For Review', stage: 'PROPOSAL' },
+    },
+    '',
+    ''
+  );
+
+  assert.equal(result.projectSubmissionComplete, false);
+  assert.equal(result.projectSubmissionPendingReview, true);
+  assert.equal(result.canSubmit, false);
 });
 
 test('approved final deliverables close project submissions', () => {

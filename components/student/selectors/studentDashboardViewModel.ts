@@ -9,7 +9,10 @@ import type {
   AnnouncementItem,
   StudentDashboardData,
 } from '../studentDashboardTypes';
-import { isProjectComplete } from '../../../lib/projectSubmissionPolicy';
+import {
+  isProjectComplete,
+  isProjectSubmissionPendingReview,
+} from '../../../lib/projectSubmissionPolicy';
 import { getStudentFineRestrictionState } from '../workflows/studentFineRestriction';
 
 export function getStudentProgramName(program?: string): string {
@@ -87,6 +90,7 @@ export function buildStudentDashboardViewModel(
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
   const hasAssignedSupervisor = Boolean(me?.supervisorId);
   const projectSubmissionComplete = isProjectComplete(project);
+  const projectSubmissionPendingReview = isProjectSubmissionPendingReview(project);
   const projectSubmissionsOpen =
     data?.projectSubmissionsOpen !== false || Number(project?.version || 0) > 0;
 
@@ -112,10 +116,12 @@ export function buildStudentDashboardViewModel(
     isUnassigned,
     hasAssignedSupervisor,
     projectSubmissionComplete,
+    projectSubmissionPendingReview,
     projectSubmissionsOpen,
     canSubmit:
       hasAssignedSupervisor &&
       !projectSubmissionComplete &&
+      !projectSubmissionPendingReview &&
       projectSubmissionsOpen &&
       !fineState.isFineRestricted,
     isSupervisorChangeLocked:

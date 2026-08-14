@@ -90,6 +90,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     isUnassigned,
     hasAssignedSupervisor,
     projectSubmissionComplete,
+    projectSubmissionPendingReview,
     canSubmit,
     projectSubmissionsOpen,
     isSupervisorChangeLocked,
@@ -306,6 +307,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             projectSubmissionsOpen={projectSubmissionsOpen}
             hasAssignedSupervisor={hasAssignedSupervisor}
             projectSubmissionComplete={projectSubmissionComplete}
+            projectSubmissionPendingReview={projectSubmissionPendingReview}
             onSubmit={handleSubmitProject}
             title={title}
             onTitleChange={setTitle}

@@ -22,6 +22,13 @@ test('only approved final deliverables mark a project complete', () => {
   assert.equal(policy.isProjectComplete(), false);
 });
 
+test('submitted projects remain locked until a review decision is recorded', () => {
+  assert.equal(policy.isProjectSubmissionPendingReview({ status: 'Submitted For Review' }), true);
+  assert.equal(policy.isProjectSubmissionPendingReview({ status: 'Pending' }), false);
+  assert.equal(policy.isProjectSubmissionPendingReview({ status: 'Rejected' }), false);
+  assert.equal(policy.isProjectSubmissionPendingReview(), false);
+});
+
 test('upload signing and project submission both enforce project completion', async () => {
   const [uploadRoute, studentRoute] = await Promise.all([
     read('app/api/upload/route.ts'),
@@ -30,6 +37,8 @@ test('upload signing and project submission both enforce project completion', as
 
   assert.match(uploadRoute, /if \(isProjectComplete\(project\)\)/);
   assert.match(studentRoute, /if \(isProjectComplete\(project\)\)/);
+  assert.match(uploadRoute, /if \(isProjectSubmissionPendingReview\(project\)\)/);
+  assert.match(studentRoute, /if \(isProjectSubmissionPendingReview\(project\)\)/);
   assert.match(uploadRoute, /PROJECT_COMPLETE_CODE/);
   assert.match(studentRoute, /PROJECT_COMPLETE_MESSAGE/);
 });
