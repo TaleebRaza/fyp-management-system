@@ -80,6 +80,13 @@ const UserSchema = new Schema({
   broadcastContent: { type: String, default: null },
   broadcastSize: { type: Number, default: 0 },
   broadcastCreatedAt: { type: Date, default: null },
+
+  studentMessageId: { type: String, default: null, maxlength: 128 },
+  studentMessageType: { type: String, enum: ['text', 'audio', null], default: null },
+  studentMessageContent: { type: String, default: null, maxlength: 500 },
+  studentMessageSize: { type: Number, default: 0, min: 0 },
+  studentMessageCreatedAt: { type: Date, default: null },
+  studentMessageAcknowledgedAt: { type: Date, default: null },
 }, {
   timestamps: true
 });
@@ -108,6 +115,16 @@ UserSchema.index({ role: 1, program: 1, batch: 1, status: 1, createdAt: -1 });
 UserSchema.index({ role: 1, program: 1, createdAt: -1 });
 UserSchema.index({ role: 1, batch: 1, createdAt: -1 });
 UserSchema.index({ role: 1, status: 1, createdAt: -1 });
+
+UserSchema.index(
+  { role: 1, studentMessageCreatedAt: -1 },
+  {
+    partialFilterExpression: {
+      role: 'student',
+      studentMessageCreatedAt: { $type: 'date' },
+    },
+  }
+);
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 

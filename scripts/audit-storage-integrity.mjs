@@ -113,6 +113,7 @@ try {
     projects,
     voiceNotes,
     supervisors,
+    studentMessages,
     reservations,
     deletionTargets,
     storageConfigs,
@@ -129,6 +130,10 @@ try {
     database.collection('users').find(
       { role: 'supervisor', broadcastType: 'audio' },
       { projection: { broadcastContent: 1 } }
+    ).toArray(),
+    database.collection('users').find(
+      { role: 'student', studentMessageType: 'audio' },
+      { projection: { studentMessageContent: 1 } }
     ).toArray(),
     database.collection('uploadreservations').find(
       {},
@@ -159,6 +164,9 @@ try {
   for (const voiceNote of voiceNotes) addReference('voice-note', voiceNote._id, voiceNote.blobUrl);
   for (const supervisor of supervisors) {
     addReference('broadcast', supervisor._id, supervisor.broadcastContent);
+  }
+  for (const student of studentMessages) {
+    addReference('student-message', student._id, student.studentMessageContent);
   }
 
   const projectIds = new Set(

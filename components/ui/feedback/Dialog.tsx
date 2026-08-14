@@ -16,6 +16,7 @@ export type DialogProps = {
   onClose: () => void;
   size?: DialogSize;
   closeLabel?: string;
+  closeDisabled?: boolean;
 };
 
 const dialogSizes: Record<DialogSize, string> = {
@@ -34,6 +35,7 @@ export const Dialog = ({
   onClose,
   size = "md",
   closeLabel = "Close dialog",
+  closeDisabled = false,
 }: DialogProps) => {
   if (!open || typeof document === "undefined") return null;
 
@@ -48,7 +50,7 @@ export const Dialog = ({
         type="button"
         aria-label={closeLabel}
         className="portal-dialog-backdrop absolute inset-0 cursor-default bg-black/60"
-        onClick={onClose}
+        onClick={closeDisabled ? undefined : onClose}
       />
       <div
         className={cn(
@@ -74,6 +76,7 @@ export const Dialog = ({
             variant="ghost"
             className="min-h-9 rounded-lg px-3"
             onClick={onClose}
+            disabled={closeDisabled}
             aria-label={closeLabel}
           >
             ×

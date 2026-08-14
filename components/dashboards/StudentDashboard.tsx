@@ -14,6 +14,7 @@ import StudentProjectSubmissionSection from '../student/StudentProjectSubmission
 import StudentResourcesSection from '../student/StudentResourcesSection';
 import StudentTeamSection from '../student/StudentTeamSection';
 import StudentReviewOutcomeScreen from '../student/StudentReviewOutcomeScreen';
+import StudentMessageWidget from '../student/StudentMessageWidget';
 import {
   AcademicUpdateDialog,
   SupervisorChangeDialog,
@@ -369,6 +370,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
           />
         )}
       </DashboardShell>
+
+      <StudentMessageWidget isDarkMode={Boolean(isDarkMode)} />
 
       <SupervisorChangeDialog
         open={isSupervisorWarningOpen}

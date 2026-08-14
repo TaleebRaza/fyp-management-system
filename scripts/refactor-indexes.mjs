@@ -30,6 +30,15 @@ export const refactorIndexes = {
         },
       },
     },
+    {
+      key: { role: 1, studentMessageCreatedAt: -1 },
+      options: {
+        partialFilterExpression: {
+          role: 'student',
+          studentMessageCreatedAt: { $type: 'date' },
+        },
+      },
+    },
   ],
   storagedeletionoutboxes: [
     { key: { key: 1 }, options: { unique: true } },
@@ -47,6 +56,13 @@ export const refactorIndexes = {
     { key: { key: 1 }, options: { unique: true } },
     { key: { ownerId: 1, idempotencyKey: 1 }, options: { unique: true } },
     { key: { state: 1, expiresAt: 1, _id: 1 } },
+    {
+      key: { ownerId: 1, kind: 1 },
+      options: {
+        unique: true,
+        partialFilterExpression: { kind: 'student-message', state: 'pending' },
+      },
+    },
   ],
   systemconfigs: [
     { key: { configKey: 1 }, options: { unique: true } },

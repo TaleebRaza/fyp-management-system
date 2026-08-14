@@ -4,12 +4,14 @@ import { Mic, Type } from 'lucide-react';
 import type { BroadcastMode } from './broadcastTypes';
 
 type BroadcastModeSelectorProps = {
+  disabled?: boolean;
   isDarkMode: boolean;
   mode: BroadcastMode;
   onChange: (mode: BroadcastMode) => void;
 };
 
 export function BroadcastModeSelector({
+  disabled = false,
   isDarkMode,
   mode,
   onChange,
@@ -23,6 +25,8 @@ export function BroadcastModeSelector({
       }`}
     >
       <button
+        type="button"
+        disabled={disabled}
         onClick={() => onChange('text')}
         className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${
           mode === 'text'
@@ -35,6 +39,8 @@ export function BroadcastModeSelector({
         <Type size={16} /> Text
       </button>
       <button
+        type="button"
+        disabled={disabled}
         onClick={() => onChange('audio')}
         className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${
           mode === 'audio'

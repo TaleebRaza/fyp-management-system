@@ -32,7 +32,7 @@ export class StorageProtocolError extends Error {
 }
 
 type ReserveUploadInput = {
-  key: string;
+  key: string | ((objectId: string) => string);
   ownerId: string;
   kind: StorageUploadKind;
   projectId?: string;
@@ -94,12 +94,12 @@ export async function assertStorageLedgerReady(session: ClientSession) {
   }
 }
 
-function assertReservationInput(input: ReserveUploadInput) {
+function assertReservationInput(input: ReserveUploadInput, key: string) {
   const expectedObjectKind = input.kind === 'pdf' ? 'proposal' : input.kind;
   if (
-    !input.key
-    || normalizeStorageKey(input.key) !== input.key
-    || getStorageObjectKind(input.key) !== expectedObjectKind
+    !key
+    || normalizeStorageKey(key) !== key
+    || getStorageObjectKind(key) !== expectedObjectKind
     || !input.ownerId
     || !input.idempotencyKey
     || input.idempotencyKey.length > 128
@@ -108,6 +108,15 @@ function assertReservationInput(input: ReserveUploadInput) {
   }
   if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes <= 0) {
     throw new StorageProtocolError('A valid upload size is required.', 400);
+  }
+  if (
+    input.kind === 'student-message'
+    && (
+      input.expectedBytes > APP_SETTINGS.STUDENT_MESSAGE.MAX_AUDIO_BYTES
+      || input.expectedContentType !== APP_SETTINGS.STUDENT_MESSAGE.AUDIO_CONTENT_TYPE
+    )
+  ) {
+    throw new StorageProtocolError('Invalid student message audio reservation.', 400);
   }
 }
 
@@ -118,7 +127,8 @@ function isSameReservation(existing: {
   expectedBytes: unknown;
   expectedContentType: unknown;
 }, input: ReserveUploadInput) {
-  return String(existing.key) === input.key
+  const keyMatches = typeof input.key === 'function' || String(existing.key) === input.key;
+  return keyMatches
     && String(existing.kind) === input.kind
     && String(existing.projectId || '') === String(input.projectId || '')
     && Number(existing.expectedBytes) === input.expectedBytes
@@ -167,50 +177,105 @@ export async function releaseVoiceNoteSlot(
 }
 
 export async function reserveUpload(input: ReserveUploadInput) {
-  assertReservationInput(input);
+  if (!input.ownerId || !input.idempotencyKey || input.idempotencyKey.length > 128) {
+    throw new StorageProtocolError('Invalid upload reservation.', 400);
+  }
+  if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes <= 0) {
+    throw new StorageProtocolError('A valid upload size is required.', 400);
+  }
 
-  return await withStorageTransaction(async (session) => {
-    await assertStorageLedgerReady(session);
-    const existing = await UploadReservation.findOne({
+  if (input.kind === 'student-message') {
+    const expired = await UploadReservation.findOne({
       ownerId: input.ownerId,
-      idempotencyKey: input.idempotencyKey,
-    }).session(session);
-    if (existing) {
-      if (!isSameReservation(existing, input)) {
-        throw new StorageProtocolError('Upload idempotency key was reused with different data.', 409);
+      kind: 'student-message',
+      state: 'pending',
+      expiresAt: { $lte: new Date() },
+    }).select('key ownerId').lean();
+    if (expired) {
+      await cancelUploadReservation(expired.key, String(expired.ownerId), 'expired-upload');
+    }
+  }
+
+  try {
+    return await withStorageTransaction(async (session) => {
+      await assertStorageLedgerReady(session);
+      const existing = await UploadReservation.findOne({
+        ownerId: input.ownerId,
+        idempotencyKey: input.idempotencyKey,
+      }).session(session);
+      if (existing) {
+        if (!isSameReservation(existing, input)) {
+          throw new StorageProtocolError('Upload idempotency key was reused with different data.', 409);
+        }
+        if (input.kind === 'student-message') {
+          if (existing.state !== 'pending') {
+            throw new StorageProtocolError('This message upload is no longer active.', 409);
+          }
+          if (existing.expiresAt.getTime() <= Date.now()) {
+            throw new StorageProtocolError('Upload reservation has expired. Record the message again.', 409);
+          }
+        }
+        return existing;
       }
-      return existing;
-    }
 
-    if (input.kind === 'voice') await reserveVoiceNoteSlot(input, session);
+      if (input.kind === 'student-message') {
+        const pending = await UploadReservation.findOne({
+          ownerId: input.ownerId,
+          kind: 'student-message',
+          state: 'pending',
+        }).session(session);
+        if (pending) {
+          if (pending.expiresAt.getTime() > Date.now()) {
+            throw new StorageProtocolError('Another message upload is already in progress.', 409);
+          }
+          throw new StorageProtocolError('The previous upload expired. Try again.', 409);
+        }
+      }
 
-    const capacity = await SystemConfig.updateOne(
-      {
-        configKey: 'storage',
-        $expr: {
-          $lte: [
-            {
-              $add: [
-                { $ifNull: ['$usedBytes', 0] },
-                { $ifNull: ['$reservedBytes', 0] },
-                input.expectedBytes,
-              ],
-            },
-            MAX_STORAGE_BYTES,
-          ],
+      const key = typeof input.key === 'function' ? input.key(randomUUID()) : input.key;
+      assertReservationInput(input, key);
+
+      if (input.kind === 'voice') await reserveVoiceNoteSlot({ ...input, key }, session);
+
+      const capacity = await SystemConfig.updateOne(
+        {
+          configKey: 'storage',
+          $expr: {
+            $lte: [
+              {
+                $add: [
+                  { $ifNull: ['$usedBytes', 0] },
+                  { $ifNull: ['$reservedBytes', 0] },
+                  input.expectedBytes,
+                ],
+              },
+              MAX_STORAGE_BYTES,
+            ],
+          },
         },
-      },
-      { $inc: { reservedBytes: input.expectedBytes } },
-      { session }
-    );
-    if (capacity.modifiedCount !== 1) {
-      throw new StorageProtocolError('System storage capacity reached.', 403);
-    }
+        { $inc: { reservedBytes: input.expectedBytes } },
+        { session }
+      );
+      if (capacity.modifiedCount !== 1) {
+        throw new StorageProtocolError('System storage capacity reached.', 403);
+      }
 
-    const reservation = new UploadReservation(input);
-    await reservation.save({ session });
-    return reservation;
-  });
+      const reservation = new UploadReservation({ ...input, key });
+      await reservation.save({ session });
+      return reservation;
+    });
+  } catch (error) {
+    if (
+      input.kind === 'student-message'
+      && typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && error.code === 11000
+    ) {
+      throw new StorageProtocolError('Another message upload is already in progress.', 409);
+    }
+    throw error;
+  }
 }
 
 export async function enqueueStorageDeletion(
@@ -249,6 +314,29 @@ export async function enqueueStorageDeletion(
   );
 }
 
+async function cancelUploadReservationInSession(
+  reservation: InstanceType<typeof UploadReservation>,
+  reason: string,
+  session: ClientSession
+) {
+  if (reservation.kind === 'voice' && reservation.projectId) {
+    await releaseVoiceNoteSlot(String(reservation.ownerId), String(reservation.projectId), session);
+  }
+
+  await enqueueStorageDeletion(
+    {
+      key: reservation.key,
+      bytes: 0,
+      reservedBytes: reservation.expectedBytes,
+      reason,
+    },
+    session
+  );
+
+  reservation.state = 'cancelled';
+  await reservation.save({ session });
+}
+
 export async function cancelUploadReservation(
   key: string,
   ownerId: string,
@@ -259,22 +347,7 @@ export async function cancelUploadReservation(
     const reservation = await UploadReservation.findOne({ key, ownerId }).session(session);
     if (!reservation || reservation.state !== 'pending') return false;
 
-    if (reservation.kind === 'voice' && reservation.projectId) {
-      await releaseVoiceNoteSlot(String(reservation.ownerId), String(reservation.projectId), session);
-    }
-
-    await enqueueStorageDeletion(
-      {
-        key: reservation.key,
-        bytes: 0,
-        reservedBytes: reservation.expectedBytes,
-        reason,
-      },
-      session
-    );
-
-    reservation.state = 'cancelled';
-    await reservation.save({ session });
+    await cancelUploadReservationInSession(reservation, reason, session);
     return true;
   });
 }

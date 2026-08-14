@@ -16,6 +16,12 @@ const keyAudits = [
     prefix: 'broadcasts/',
     filter: { role: 'supervisor', broadcastType: 'audio' },
   },
+  {
+    collection: 'users',
+    field: 'studentMessageContent',
+    prefix: 'student-messages/',
+    filter: { role: 'student', studentMessageType: 'audio' },
+  },
 ];
 
 async function auditKeys({ collection: collectionName, field, prefix, filter }) {

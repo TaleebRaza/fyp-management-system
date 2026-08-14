@@ -5,6 +5,13 @@ export const APP_SETTINGS = {
   // Voice notes retained per sender in each project.
   MAX_VOICE_NOTES_PER_SENDER: 3,
 
+  STUDENT_MESSAGE: {
+    MAX_TEXT_LENGTH: 500,
+    MAX_AUDIO_SECONDS: 60,
+    MAX_AUDIO_BYTES: 1024 * 1024,
+    AUDIO_CONTENT_TYPE: 'audio/webm',
+  },
+
   // Late-registration policy.
   // Students registering on or before DEADLINE_DATE in Asia/Karachi pay no fine.
   // Every Pakistan calendar day after the deadline adds FINE_PER_DAY.

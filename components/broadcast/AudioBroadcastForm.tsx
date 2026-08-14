@@ -13,6 +13,9 @@ type AudioBroadcastFormProps = {
   onStartRecording: () => void;
   onStopRecording: () => void;
   theme?: BroadcastTheme;
+  disabled?: boolean;
+  recordLabel?: string;
+  clearLabel?: string;
 };
 
 export function AudioBroadcastForm({
@@ -25,6 +28,9 @@ export function AudioBroadcastForm({
   onStartRecording,
   onStopRecording,
   theme,
+  disabled = false,
+  recordLabel = 'Record voice message',
+  clearLabel = 'Delete & Rerecord',
 }: AudioBroadcastFormProps) {
   return (
     <div
@@ -44,6 +50,9 @@ export function AudioBroadcastForm({
 
       {!hasAudio && (
         <button
+          type="button"
+          disabled={disabled}
+          aria-label={isRecording ? 'Stop recording' : recordLabel}
           onClick={isRecording ? onStopRecording : onStartRecording}
           className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-all ${
             isRecording
@@ -61,10 +70,12 @@ export function AudioBroadcastForm({
 
       {hasAudio && (
         <button
+          type="button"
+          disabled={disabled}
           onClick={onClearAudio}
           className="text-sm font-bold text-red-500 hover:text-red-600 mt-2"
         >
-          Delete &amp; Rerecord
+          {clearLabel}
         </button>
       )}
     </div>

@@ -39,6 +39,18 @@ async function canAccessBroadcast(currentUser: CurrentUser, broadcastContent: st
   }));
 }
 
+async function canAccessStudentMessage(currentUser: CurrentUser, studentMessageContent: string) {
+  const student = await User.findOne({
+    role: 'student',
+    studentMessageType: 'audio',
+    studentMessageContent,
+  }).select('_id').lean();
+
+  return Boolean(student && (
+    currentUser.role === 'admin' || currentUser.id === student._id.toString()
+  ));
+}
+
 async function canAccessLegacyStoredObject(currentUser: CurrentUser, key: string) {
   const matcher = keyMatcher(key);
   const [project, voiceNote, broadcastOwner] = await Promise.all([
@@ -70,6 +82,8 @@ export async function canAccessStoredObject(currentUser: CurrentUser, key: strin
       return canAccessVoice(currentUser, key);
     case 'broadcast':
       return canAccessBroadcast(currentUser, key);
+    case 'student-message':
+      return canAccessStudentMessage(currentUser, key);
     default:
       return canAccessLegacyStoredObject(currentUser, key);
   }

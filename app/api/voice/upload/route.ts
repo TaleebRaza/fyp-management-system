@@ -12,6 +12,8 @@ import {
   StorageProtocolError,
 } from '../../../../lib/storageProtocol';
 import { buildStorageKey } from '../../../../lib/storageValidation';
+import { APP_SETTINGS } from '../../../../config/appSettings';
+import { isRecord } from '../../../../lib/security/input';
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,33 +29,49 @@ export async function POST(req: NextRequest) {
 
     await connectToDatabase();
     
-    const { contentType, fileSize, projectId, idempotencyKey } = await req.json();
+    const body: unknown = await req.json().catch(() => null);
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: 'Invalid upload request.' }, { status: 400 });
+    }
+    const { contentType, fileSize, projectId, idempotencyKey, purpose } = body;
+    const isStudentMessage = purpose === 'student-message';
 
-    if (contentType !== 'audio/webm') {
+    if (contentType !== APP_SETTINGS.STUDENT_MESSAGE.AUDIO_CONTENT_TYPE) {
       return NextResponse.json({ error: 'Voice notes must use the audio/webm format.' }, { status: 400 });
     }
 
-    // 2. Strict 1MB size limit for voice notes
-    if (!Number.isSafeInteger(Number(fileSize)) || Number(fileSize) <= 0 || Number(fileSize) > 1 * 1024 * 1024) {
+    if (
+      !Number.isSafeInteger(Number(fileSize))
+      || Number(fileSize) <= 0
+      || Number(fileSize) > APP_SETTINGS.STUDENT_MESSAGE.MAX_AUDIO_BYTES
+    ) {
       return NextResponse.json({ error: 'Voice note exceeds 1MB limit.' }, { status: 400 });
     }
     if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) {
       return NextResponse.json({ error: 'A valid upload idempotency key is required.' }, { status: 400 });
     }
 
-    const isVoiceNote = Boolean(projectId);
+    if (isStudentMessage && currentUser.role !== 'student') {
+      return NextResponse.json({ error: 'Student access required.' }, { status: 401 });
+    }
+    if (isStudentMessage && projectId) {
+      return NextResponse.json({ error: 'Student messages cannot target a project.' }, { status: 400 });
+    }
+
+    const isVoiceNote = !isStudentMessage && Boolean(projectId);
     if (isVoiceNote && !await hasProjectAccess(currentUser, String(projectId))) {
       return NextResponse.json({ error: 'Project not found or access denied.' }, { status: 403 });
     }
 
-    if (!isVoiceNote && currentUser.role !== 'supervisor') {
+    if (!isStudentMessage && !isVoiceNote && currentUser.role !== 'supervisor') {
       return NextResponse.json({ error: 'Project ID required for voice notes.' }, { status: 400 });
     }
 
-    const kind = isVoiceNote ? 'voice' : 'broadcast';
-    const key = buildStorageKey(kind, currentUser.id, idempotencyKey, isVoiceNote ? String(projectId) : undefined);
+    const kind = isStudentMessage ? 'student-message' : isVoiceNote ? 'voice' : 'broadcast';
     const reservation = await reserveUpload({
-      key,
+      key: isStudentMessage
+        ? (messageId) => buildStorageKey('student-message', currentUser.id, messageId)
+        : buildStorageKey(kind, currentUser.id, idempotencyKey, isVoiceNote ? String(projectId) : undefined),
       ownerId: currentUser.id,
       kind,
       projectId: isVoiceNote ? String(projectId) : undefined,
@@ -66,8 +84,8 @@ export async function POST(req: NextRequest) {
     // 4. Create Presigned URL strictly for this specific key
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
-      Key: key,
-      ContentType: contentType || 'audio/webm',
+      Key: reservation.key,
+      ContentType: APP_SETTINGS.STUDENT_MESSAGE.AUDIO_CONTENT_TYPE,
     });
 
     // Generate a URL that self-destructs in 60 seconds
@@ -75,11 +93,11 @@ export async function POST(req: NextRequest) {
     try {
       uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
     } catch (error) {
-      await cancelUploadReservation(key, currentUser.id, 'signing-failed');
+      await cancelUploadReservation(reservation.key, currentUser.id, 'signing-failed');
       throw error;
     }
 
-    return NextResponse.json({ uploadUrl, key, reservationId: String(reservation._id) });
+    return NextResponse.json({ uploadUrl, key: reservation.key, reservationId: String(reservation._id) });
   } catch (error) {
     console.error('voice_upload_url_failed');
     if (error instanceof StorageProtocolError) {

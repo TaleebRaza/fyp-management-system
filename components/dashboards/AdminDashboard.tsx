@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   LogIn,
+  MessagesSquare,
   PauseCircle,
   ScrollText,
   Users,
@@ -22,6 +23,7 @@ import FineManagementPanel from '../admin/FineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';
 import AdminHeadlineSection from '../admin/AdminHeadlineSection';
 import AdminStudentsSection from '../admin/AdminStudentsSection';
+import StudentMessagesPanel from '../admin/StudentMessagesPanel';
 import AdminSupervisorsSection, {
   SupervisorSlotEditorDialog,
 } from '../admin/AdminSupervisorsSection';
@@ -63,6 +65,7 @@ type AdminTab =
   | 'overview'
   | 'supervisors'
   | 'students'
+  | 'messages'
   | 'reviews'
   | 'logs'
   | 'registration'
@@ -181,6 +184,14 @@ const AdminDashboard = ({
       icon: <ClipboardCheck size={18} />,
       active: activeTab === 'reviews',
       onClick: () => setActiveTab('reviews'),
+    },
+    {
+      id: 'messages',
+      label: 'Messages',
+      section: 'Portal Operations',
+      icon: <MessagesSquare size={18} />,
+      active: activeTab === 'messages',
+      onClick: () => setActiveTab('messages'),
     },
     {
       id: 'registration',
@@ -333,6 +344,8 @@ const AdminDashboard = ({
         {activeTab === 'reviews' && (
           <AdminProjectReviewsPanel showDialog={showDialog} />
         )}
+
+        {activeTab === 'messages' && <StudentMessagesPanel />}
 
         {activeTab === 'logs' && <AdminActivityLogsPanel />}
         {activeTab === 'fines' && (

@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { APP_SETTINGS } from '../../../config/appSettings';
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
-const BROADCAST_MIME_TYPE = 'audio/webm';
+const BROADCAST_MIME_TYPE = APP_SETTINGS.STUDENT_MESSAGE.AUDIO_CONTENT_TYPE;
 const BROADCAST_AUDIO_BIT_RATE = 16_000;
 
 export type AudioRecorderState = {
@@ -125,9 +126,9 @@ export function useAudioRecorder(): AudioRecorderState {
 
       timerRef.current = setInterval(() => {
         setRecordingTime((previous) => {
-          if (previous >= 59) {
+          if (previous >= APP_SETTINGS.STUDENT_MESSAGE.MAX_AUDIO_SECONDS - 1) {
             queueMicrotask(stopRecording);
-            return 60;
+            return APP_SETTINGS.STUDENT_MESSAGE.MAX_AUDIO_SECONDS;
           }
           return previous + 1;
         });

@@ -1,13 +1,14 @@
-export type StorageUploadKind = 'pdf' | 'voice' | 'broadcast';
+export type StorageUploadKind = 'pdf' | 'voice' | 'broadcast' | 'student-message';
 
 const MAX_STORAGE_KEY_LENGTH = 500;
 
-type StorageObjectKind = 'proposal' | 'voice' | 'broadcast';
+type StorageObjectKind = 'proposal' | 'voice' | 'broadcast' | 'student-message';
 
 const STORAGE_PREFIXES: Record<StorageObjectKind, string> = {
   proposal: 'proposals/',
   voice: 'voicenotes/',
   broadcast: 'broadcasts/',
+  'student-message': 'student-messages/',
 };
 
 function decodeStoragePath(value: string) {
@@ -54,6 +55,12 @@ export function isOwnedVoiceKey(key: unknown, userId: string, projectId: string)
   return typeof key === 'string' && key.startsWith(`voicenotes/${userId}/${projectId}/`);
 }
 
+export function isOwnedStudentMessageKey(key: unknown, userId: string) {
+  return typeof key === 'string'
+    && key.startsWith(`student-messages/${userId}/`)
+    && key.endsWith('.webm');
+}
+
 export function buildStorageKey(
   kind: StorageUploadKind,
   ownerId: string,
@@ -62,6 +69,7 @@ export function buildStorageKey(
 ) {
   if (kind === 'pdf') return `proposals/${ownerId}/${objectId}.pdf`;
   if (kind === 'broadcast') return `broadcasts/${ownerId}/${objectId}.webm`;
+  if (kind === 'student-message') return `student-messages/${ownerId}/${objectId}.webm`;
   if (!projectId) throw new Error('Voice-note uploads require a project.');
   return `voicenotes/${ownerId}/${projectId}/${objectId}.webm`;
 }

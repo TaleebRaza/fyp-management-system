@@ -13,12 +13,14 @@ export async function findSharedStorageKeys({
   excludedProjectIds = [],
   excludedVoiceNoteIds = [],
   excludedSupervisorIds = [],
+  excludedStudentIds = [],
   session,
 }: {
   keys: string[];
   excludedProjectIds?: unknown[];
   excludedVoiceNoteIds?: unknown[];
   excludedSupervisorIds?: unknown[];
+  excludedStudentIds?: unknown[];
   session: ClientSession;
 }) {
   const candidateKeys = new Set(keys);
@@ -39,11 +41,18 @@ export async function findSharedStorageKeys({
     broadcastType: 'audio',
     broadcastContent: { $exists: true, $nin: ['', null] },
   }).select('broadcastContent').session(session).lean();
+  const students = await User.find({
+    ...excludingIds(excludedStudentIds),
+    role: 'student',
+    studentMessageType: 'audio',
+    studentMessageContent: { $exists: true, $nin: ['', null] },
+  }).select('studentMessageContent').session(session).lean();
 
   const referencedKeys = [
     ...projects.map((project) => normalizeStorageKey(project.pdfUrl)),
     ...voiceNotes.map((voiceNote) => normalizeStorageKey(voiceNote.blobUrl)),
     ...supervisors.map((supervisor) => normalizeStorageKey(supervisor.broadcastContent)),
+    ...students.map((student) => normalizeStorageKey(student.studentMessageContent)),
   ];
 
   return new Set(
