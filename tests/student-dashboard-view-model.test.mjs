@@ -29,7 +29,8 @@ test('builds student permissions, team capacity, and secure PDF URL', () => {
     ''
   );
 
-  assert.equal(result.canSubmitByStatus, true);
+  assert.equal(result.hasAssignedSupervisor, true);
+  assert.equal(result.projectSubmissionComplete, false);
   assert.equal(result.canSubmit, true);
   assert.equal(result.canShareInviteCode, true);
   assert.equal(result.canLeaveTeam, false);
@@ -63,14 +64,13 @@ test('combines admin and supervisor announcements without changing labels', () =
 test('fine restrictions continue to block project submission', () => {
   const result = selectors.buildStudentDashboardViewModel(
     {
-      student: { status: 'Pending' },
+      student: { status: 'Pending', supervisorId: 'sup-1' },
       fineRestriction: { active: true, isCurrentStudent: true },
     },
     '',
     ''
   );
 
-  assert.equal(result.canSubmitByStatus, true);
   assert.equal(result.isFineRestricted, true);
   assert.equal(result.canSubmit, false);
 });
@@ -78,14 +78,57 @@ test('fine restrictions continue to block project submission', () => {
 test('closed project submissions block eligible students before fine rules apply', () => {
   const result = selectors.buildStudentDashboardViewModel(
     {
-      student: { status: 'Pending' },
+      student: { status: 'Pending', supervisorId: 'sup-1' },
       projectSubmissionsOpen: false,
     },
     '',
     ''
   );
 
-  assert.equal(result.canSubmitByStatus, true);
   assert.equal(result.projectSubmissionsOpen, false);
+  assert.equal(result.canSubmit, false);
+});
+
+test('students still need an assigned supervisor to submit', () => {
+  const result = selectors.buildStudentDashboardViewModel(
+    {
+      student: { status: 'Pending' },
+      project: { status: 'Pending', stage: 'PROPOSAL' },
+    },
+    '',
+    ''
+  );
+
+  assert.equal(result.hasAssignedSupervisor, false);
+  assert.equal(result.canSubmit, false);
+});
+
+test('student review status does not block submissions before final approval', () => {
+  for (const status of ['Approved', 'Rejected', 'Changes Requested', 'Submitted For Review']) {
+    const result = selectors.buildStudentDashboardViewModel(
+      {
+        student: { status, supervisorId: 'sup-1' },
+        project: { status, stage: 'THESIS_DRAFT' },
+      },
+      '',
+      ''
+    );
+
+    assert.equal(result.projectSubmissionComplete, false);
+    assert.equal(result.canSubmit, true);
+  }
+});
+
+test('approved final deliverables close project submissions', () => {
+  const result = selectors.buildStudentDashboardViewModel(
+    {
+      student: { status: 'Approved', supervisorId: 'sup-1' },
+      project: { status: 'Approved', stage: 'FINAL_DELIVERABLES' },
+    },
+    '',
+    ''
+  );
+
+  assert.equal(result.projectSubmissionComplete, true);
   assert.equal(result.canSubmit, false);
 });

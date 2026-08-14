@@ -29,6 +29,8 @@ import {
 } from '../../../../lib/registrationPolicy';
 import {
   hasPreviousProjectSubmission,
+  isProjectComplete,
+  PROJECT_COMPLETE_MESSAGE,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../../../lib/projectSubmissionPolicy';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
@@ -669,6 +671,9 @@ export async function POST(req: NextRequest) {
           members: studentInTransaction._id,
         }).session(session);
         if (!project) throw new StorageProtocolError('Project membership changed. Refresh and try again.', 409);
+        if (isProjectComplete(project)) {
+          throw new StorageProtocolError(PROJECT_COMPLETE_MESSAGE, 403);
+        }
 
         const acceptedSubmissionPolicy = await RegistrationPolicy.findOneAndUpdate(
           hasPreviousProjectSubmission(project)

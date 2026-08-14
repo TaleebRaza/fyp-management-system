@@ -13,7 +13,6 @@ import StudentOverviewSection from '../student/StudentOverviewSection';
 import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';
 import StudentResourcesSection from '../student/StudentResourcesSection';
 import StudentTeamSection from '../student/StudentTeamSection';
-import StudentReviewOutcomeScreen from '../student/StudentReviewOutcomeScreen';
 import StudentMessageWidget from '../student/StudentMessageWidget';
 import {
   AcademicUpdateDialog,
@@ -89,7 +88,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     savedDomainText,
     pdfUrl,
     isUnassigned,
-    canSubmitByStatus,
+    hasAssignedSupervisor,
+    projectSubmissionComplete,
     canSubmit,
     projectSubmissionsOpen,
     isSupervisorChangeLocked,
@@ -185,7 +185,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     tools,
     file,
     existingPdfUrl: pdfUrl,
-    status: me?.status,
+    hasAssignedSupervisor,
+    projectSubmissionComplete,
     projectSubmissionsOpen,
     isFineRestricted,
     isOwnFineRestricted,
@@ -241,13 +242,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
 
   return (
     <>
-      <StudentReviewOutcomeScreen
-        userId={currentUserId}
-        projectId={project?._id}
-        projectVersion={project?.version}
-        status={me?.status || project?.status}
-        remarks={me?.remarks}
-      />
       <DashboardShell
         title={`Good day, ${me?.name || session?.user?.name || 'Student'}`}
         description={`Final Year Project · ${currentProgramName} · ${me?.batch || 'Batch not set'}`}
@@ -310,8 +304,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             isOwnFineRestricted={isOwnFineRestricted}
             onOpenFine={() => setActiveTab('fine')}
             projectSubmissionsOpen={projectSubmissionsOpen}
-            canSubmitByStatus={canSubmitByStatus}
-            status={me?.status}
+            hasAssignedSupervisor={hasAssignedSupervisor}
+            projectSubmissionComplete={projectSubmissionComplete}
             onSubmit={handleSubmitProject}
             title={title}
             onTitleChange={setTitle}

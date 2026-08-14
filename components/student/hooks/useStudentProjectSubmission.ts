@@ -7,7 +7,10 @@ import {
   uploadStudentPdf,
 } from '../api/studentDashboardApi';
 import type { StudentDashboardProps } from '../studentDashboardTypes';
-import { PROJECT_SUBMISSIONS_CLOSED_MESSAGE } from '../../../lib/projectSubmissionPolicy';
+import {
+  PROJECT_COMPLETE_MESSAGE,
+  PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
+} from '../../../lib/projectSubmissionPolicy';
 
 type UseStudentProjectSubmissionOptions = {
   userId: string;
@@ -17,7 +20,8 @@ type UseStudentProjectSubmissionOptions = {
   tools: string;
   file: File | null;
   existingPdfUrl?: string;
-  status?: string;
+  hasAssignedSupervisor: boolean;
+  projectSubmissionComplete: boolean;
   projectSubmissionsOpen: boolean;
   isFineRestricted: boolean;
   isOwnFineRestricted: boolean;
@@ -40,7 +44,8 @@ export function useStudentProjectSubmission({
   tools,
   file,
   existingPdfUrl,
-  status,
+  hasAssignedSupervisor,
+  projectSubmissionComplete,
   projectSubmissionsOpen,
   isFineRestricted,
   isOwnFineRestricted,
@@ -51,14 +56,25 @@ export function useStudentProjectSubmission({
   showDialog,
 }: UseStudentProjectSubmissionOptions) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const canSubmitByStatus = ['Pending', 'Rejected', 'Changes Requested'].includes(
-    status || ''
-  );
 
   const handleSubmitProject = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
+      if (projectSubmissionComplete) {
+        showDialog({
+          title: 'Project complete',
+          message: PROJECT_COMPLETE_MESSAGE,
+        });
+        return;
+      }
+      if (!hasAssignedSupervisor) {
+        showDialog({
+          title: 'Supervisor required',
+          message: 'Assign a supervisor before submitting your project.',
+        });
+        return;
+      }
       if (!projectSubmissionsOpen) {
         showDialog({
           title: 'Submissions closed',
@@ -71,13 +87,6 @@ export function useStudentProjectSubmission({
         showDialog({
           title: isOwnFineRestricted ? 'Fine payment required' : 'Team fine pending',
           message: teamFineMessage,
-        });
-        return;
-      }
-      if (!canSubmitByStatus) {
-        showDialog({
-          title: 'Submission closed',
-          message: `Submissions are closed while your project status is ${status}.`,
         });
         return;
       }
@@ -134,19 +143,19 @@ export function useStudentProjectSubmission({
       }
     },
     [
-      canSubmitByStatus,
       clearStoredProjectDraft,
       description,
       existingPdfUrl,
       file,
+      hasAssignedSupervisor,
       isFineRestricted,
       isOwnFineRestricted,
       openFineTab,
+      projectSubmissionComplete,
       projectSubmissionsOpen,
       refreshDashboard,
       selectedDomains,
       showDialog,
-      status,
       teamFineMessage,
       title,
       tools,

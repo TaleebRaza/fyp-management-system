@@ -19,6 +19,9 @@ import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../.
 import {
   areProjectSubmissionsOpen,
   hasPreviousProjectSubmission,
+  isProjectComplete,
+  PROJECT_COMPLETE_CODE,
+  PROJECT_COMPLETE_MESSAGE,
   PROJECT_SUBMISSIONS_CLOSED_CODE,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../../lib/projectSubmissionPolicy';
@@ -69,13 +72,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Student account not found.' }, { status: 404 });
     }
 
-    if (!submissionsOpen) {
-      const project = student.projectId
-        ? await Project.findOne({ _id: student.projectId, members: student._id })
-            .select('version')
-            .lean()
-        : null;
+    const project = student.projectId
+      ? await Project.findOne({ _id: student.projectId, members: student._id })
+          .select('version stage status')
+          .lean()
+      : null;
 
+    if (isProjectComplete(project)) {
+      return NextResponse.json(
+        { code: PROJECT_COMPLETE_CODE, error: PROJECT_COMPLETE_MESSAGE },
+        { status: 403 }
+      );
+    }
+
+    if (!submissionsOpen) {
       if (!hasPreviousProjectSubmission(project)) {
         return NextResponse.json(
           { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },

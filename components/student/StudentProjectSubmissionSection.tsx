@@ -8,7 +8,10 @@ import {
   TextArea,
 } from '../ui';
 import ProjectDomainSelector from './ProjectDomainSelector';
-import { PROJECT_SUBMISSIONS_CLOSED_MESSAGE } from '../../lib/projectSubmissionPolicy';
+import {
+  PROJECT_COMPLETE_MESSAGE,
+  PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
+} from '../../lib/projectSubmissionPolicy';
 
 export default function StudentProjectSubmissionSection({
   pdfUrl,
@@ -18,8 +21,8 @@ export default function StudentProjectSubmissionSection({
   isOwnFineRestricted,
   onOpenFine,
   projectSubmissionsOpen,
-  canSubmitByStatus,
-  status,
+  hasAssignedSupervisor,
+  projectSubmissionComplete,
   onSubmit,
   title,
   onTitleChange,
@@ -42,8 +45,8 @@ export default function StudentProjectSubmissionSection({
   isOwnFineRestricted: boolean;
   onOpenFine: () => void;
   projectSubmissionsOpen: boolean;
-  canSubmitByStatus: boolean;
-  status?: string;
+  hasAssignedSupervisor: boolean;
+  projectSubmissionComplete: boolean;
   onSubmit: FormEventHandler<HTMLFormElement>;
   title: string;
   onTitleChange: (value: string) => void;
@@ -102,13 +105,23 @@ export default function StudentProjectSubmissionSection({
         </div>
       )}
 
-      {!canSubmitByStatus && (
+      {projectSubmissionComplete && (
         <div className="mb-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
           <div className="flex items-start gap-3">
             <Lock size={18} className="mt-0.5 text-[var(--color-text-muted)]" />
             <p className="text-sm leading-6 text-[var(--color-text-muted)]">
-              Submissions are closed while your project status is{' '}
-              <strong className="text-[var(--color-text)]">{status}</strong>.
+              {PROJECT_COMPLETE_MESSAGE}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!hasAssignedSupervisor && (
+        <div className="mb-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+          <div className="flex items-start gap-3">
+            <Lock size={18} className="mt-0.5 text-[var(--color-text-muted)]" />
+            <p className="text-sm leading-6 text-[var(--color-text-muted)]">
+              Assign a supervisor before submitting your project.
             </p>
           </div>
         </div>
