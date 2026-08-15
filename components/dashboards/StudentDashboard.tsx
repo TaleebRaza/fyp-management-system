@@ -83,9 +83,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     canLeaveTeam,
     currentStage,
     currentProgramName,
-    toolsList,
-    savedDomainLabels,
-    savedDomainText,
     pdfUrl,
     isUnassigned,
     hasAssignedSupervisor,
@@ -286,11 +283,9 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             isAnnouncementPanelOpen={isAnnouncementPanelOpen}
             onToggleAnnouncements={() => setIsAnnouncementPanelOpen((previous) => !previous)}
             currentStage={currentStage}
+            projectStatus={project?.status}
             projectRatings={project?.ratings}
             projectMembers={projectMembers}
-            savedDomainLabels={savedDomainLabels}
-            savedDomainText={savedDomainText}
-            toolsList={toolsList}
             getSecureMediaUrl={getSecureMediaUrl}
             onOpenProject={() => setActiveTab('project')}
             onOpenTeam={() => setActiveTab('team')}

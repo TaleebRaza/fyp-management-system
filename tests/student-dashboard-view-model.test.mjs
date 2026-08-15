@@ -148,3 +148,20 @@ test('approved final deliverables close project submissions', () => {
   assert.equal(result.projectSubmissionComplete, true);
   assert.equal(result.canSubmit, false);
 });
+
+test('project status pill prioritizes review decisions over stage approval', () => {
+  assert.equal(selectors.getStudentProjectStatusPill('Pending', 'PROPOSAL'), null);
+  assert.equal(selectors.getStudentProjectStatusPill('Pending'), null);
+  assert.equal(
+    selectors.getStudentProjectStatusPill('Pending', 'THESIS_DRAFT'),
+    'Project Approved'
+  );
+  assert.equal(
+    selectors.getStudentProjectStatusPill('Changes Requested', 'THESIS_DRAFT'),
+    'Changes Requested'
+  );
+  assert.equal(
+    selectors.getStudentProjectStatusPill('Rejected', 'FINAL_DELIVERABLES'),
+    'Rejected'
+  );
+});

@@ -15,6 +15,22 @@ import {
 } from '../../../lib/projectSubmissionPolicy';
 import { getStudentFineRestrictionState } from '../workflows/studentFineRestriction';
 
+export type StudentProjectStatusPill =
+  | 'Project Approved'
+  | 'Changes Requested'
+  | 'Rejected';
+
+export function getStudentProjectStatusPill(
+  status?: string,
+  stage?: string
+): StudentProjectStatusPill | null {
+  if (status === 'Rejected') return 'Rejected';
+  if (status === 'Changes Requested') return 'Changes Requested';
+  return stage === 'THESIS_DRAFT' || stage === 'FINAL_DELIVERABLES'
+    ? 'Project Approved'
+    : null;
+}
+
 export function getStudentProgramName(program?: string): string {
   if (!program) return 'No program';
   return (PROGRAM_MAP as Record<string, string>)[program] || program;

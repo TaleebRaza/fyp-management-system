@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import {
   AvatarBadge,
-  Badge,
   Button,
   DashboardGrid,
   DashboardPanel,
@@ -27,6 +26,10 @@ import {
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
 import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
 import type { ProjectRatings } from '../../config/projectRatings';
+import {
+  getStudentProjectStatusPill,
+  type StudentProjectStatusPill,
+} from './selectors/studentDashboardViewModel';
 import type {
   AnnouncementItem,
   ProjectMember,
@@ -48,6 +51,15 @@ const formatAnnouncementTime = (value?: string | Date | null) => {
   }).format(date);
 };
 
+const projectStatusPillClasses: Record<StudentProjectStatusPill, string> = {
+  'Project Approved':
+    'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-200',
+  'Changes Requested':
+    'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200',
+  Rejected:
+    'border-red-300 bg-red-100 text-red-800 dark:border-red-700 dark:bg-red-950/70 dark:text-red-200',
+};
+
 export default function StudentOverviewSection({
   me,
   supervisor,
@@ -56,11 +68,9 @@ export default function StudentOverviewSection({
   isAnnouncementPanelOpen,
   onToggleAnnouncements,
   currentStage,
+  projectStatus,
   projectRatings,
   projectMembers,
-  savedDomainLabels,
-  savedDomainText,
-  toolsList,
   getSecureMediaUrl,
   onOpenProject,
   onOpenTeam,
@@ -72,15 +82,15 @@ export default function StudentOverviewSection({
   isAnnouncementPanelOpen: boolean;
   onToggleAnnouncements: () => void;
   currentStage: string;
+  projectStatus?: string;
   projectRatings?: ProjectRatings;
   projectMembers: ProjectMember[];
-  savedDomainLabels: string[];
-  savedDomainText: string;
-  toolsList: string[];
   getSecureMediaUrl: (url?: string) => string;
   onOpenProject: () => void;
   onOpenTeam: () => void;
 }) {
+  const projectStatusPill = getStudentProjectStatusPill(projectStatus, currentStage);
+
   return (
     <div className="space-y-7 sm:space-y-6">
       <LateRegistrationFineBanner
@@ -184,7 +194,11 @@ export default function StudentOverviewSection({
       <DashboardGrid>
         <StatCard
           label="Project Status"
-          value={me?.status || 'Pending'}
+          value={
+            me?.status === 'Pending'
+              ? 'Upload Your Files For Review'
+              : me?.status || 'Pending'
+          }
           icon={<ClipboardCheck size={18} />}
         />
         <StatCard
@@ -211,7 +225,7 @@ export default function StudentOverviewSection({
         <DashboardPanel>
           <SectionHeader
             title="Project Information"
-            description="Your current title, domains, tools, and supervisor review status."
+            description="Your project review progress and team details."
             action={
               <Button variant="outline" onClick={onOpenProject}>
                 Edit Project
@@ -221,6 +235,16 @@ export default function StudentOverviewSection({
 
           {me?.projectTitle ? (
             <div className="space-y-5">
+              {projectStatusPill && (
+                <div className="text-center">
+                  <span
+                    className={`inline-flex rounded-full border px-6 py-3 text-lg font-extrabold shadow-sm ${projectStatusPillClasses[projectStatusPill]}`}
+                  >
+                    {projectStatusPill}
+                  </span>
+                </div>
+              )}
+
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
                   Project Title
@@ -230,63 +254,45 @@ export default function StudentOverviewSection({
                 </h3>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                    Domains
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {savedDomainLabels.length > 0 ? (
-                      savedDomainLabels.map((domainLabel) => (
-                        <Badge key={domainLabel} variant="accent">
-                          {domainLabel}
-                        </Badge>
-                      ))
-                    ) : savedDomainText ? (
-                      <Badge variant="muted">{savedDomainText}</Badge>
-                    ) : (
-                      <span className="text-sm text-[var(--color-text-muted)]">Not provided</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                    Tools
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {toolsList.length > 0 ? (
-                      toolsList.map((tool) => (
-                        <Badge key={tool} variant="accent">
-                          {tool}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-sm text-[var(--color-text-muted)]">Not provided</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div>
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Description
+                  Supervisor Remarks
                 </p>
-                <p className="mt-2 text-sm leading-7 text-[var(--color-text-muted)]">
-                  {me.projectDesc || 'No description submitted.'}
+                <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
+                  {me.remarks || 'No remarks from your supervisor yet.'}
                 </p>
               </div>
 
-              {me.remarks && (
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                    Supervisor Remarks
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">{me.remarks}</p>
+              <section>
+                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+                  Ratings
+                </p>
+                <div className="mt-2">
+                  <ProjectRatingsDisplay ratings={projectRatings} stage={currentStage} />
+                  {currentStage === 'PROPOSAL' && (
+                    <p className="text-sm text-[var(--color-text-muted)]">
+                      Ratings appear after proposal approval.
+                    </p>
+                  )}
                 </div>
-              )}
+              </section>
 
-              <ProjectRatingsDisplay ratings={projectRatings} stage={currentStage} />
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+                  Team Members
+                </p>
+                {projectMembers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-sm font-semibold text-[var(--color-text)]">
+                    {projectMembers.map((member) => (
+                      <li key={member._id}>{member.name}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                    No team members available.
+                  </p>
+                )}
+              </div>
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
