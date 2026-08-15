@@ -63,31 +63,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 3. Resolve affected students from canonical Project membership.
-      const affectedProjects = await Project.find({ supervisorId: id })
-        .select('members')
-        .session(session)
-        .lean();
-
-      const affectedStudentIds = Array.from(new Set(
-        affectedProjects.flatMap((project) =>
-          (project.members || []).map((memberId: unknown) => String(memberId))
-        )
-      ));
-
-      await User.updateMany(
-        { _id: { $in: affectedStudentIds }, role: 'student' },
-        { $set: {
-            supervisorId: null,
-            status: 'Unassigned',
-            remarks: 'Your supervisor was removed from the system. Please select a new one.'
-          }
-        },
-        { session }
-      );
-
-      // 4. CRITICAL FIX: Unassign the supervisor from any active PROJECTS
-      // If we don't do this, projects will be tied to a deleted ID, crashing the portal.
+      // 3. Unassign the supervisor from canonical Project records.
       await Project.updateMany(
         { supervisorId: id },
         { $set: { supervisorId: null } },

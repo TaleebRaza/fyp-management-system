@@ -388,7 +388,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const freshProject = await createProjectWithUniqueInviteCode({
+        await createProjectWithUniqueInviteCode({
           supervisorId: targetSupervisor._id,
           members: [student._id],
           stage: 'PROPOSAL',
@@ -400,23 +400,7 @@ export async function POST(req: NextRequest) {
           pdfUrl: '',
           pdfSize: 0,
         }, session);
-
-        student.supervisorId = targetSupervisor._id;
-        student.projectId = freshProject._id;
-        student.status = 'Pending';
-        student.remarks = leftTeam
-          ? 'You changed supervisor and left your previous team. You are starting fresh under the new supervisor.'
-          : 'You changed supervisor and started fresh. Your previous project data was reset.';
-        student.projectTitle = '';
-        student.projectDesc = '';
-        student.domain = '';
-        student.domains = [];
-        student.tools = '';
-        student.pdfUrl = '';
-
-        await student.save({ session });
-
-        await session.commitTransaction();
+await session.commitTransaction();
         session.endSession();
 
         await recordCurrentUserActivity('student-supervisor-updated', currentUser);
@@ -491,26 +475,15 @@ export async function POST(req: NextRequest) {
         }
 
                 const supObjectId = new mongoose.Types.ObjectId(supervisor._id);
-        // Project owns the relationship; User fields remain compatibility shadows during Stage 1.
+        // Project owns the student/project relationship.
         if (existingProject) {
           await Project.findByIdAndUpdate(
             existingProject._id,
             { $set: { supervisorId: supObjectId } },
             { session }
           );
-          await User.updateMany(
-            { _id: { $in: existingProject.members }, role: 'student' },
-            {
-              $set: {
-                supervisorId: supObjectId,
-                status: existingProject.status || 'Pending',
-                remarks: existingProject.reviewRemarks || '',
-              },
-            },
-            { session }
-          );
-        } else {
-          const freshProject = await createProjectWithUniqueInviteCode({
+} else {
+          await createProjectWithUniqueInviteCode({
             supervisorId: supObjectId,
             members: [triggeringStudent._id],
             stage: 'PROPOSAL',
@@ -522,19 +495,7 @@ export async function POST(req: NextRequest) {
             pdfUrl: '',
             pdfSize: 0,
           }, session);
-          await User.findByIdAndUpdate(
-            body.id,
-            {
-              $set: {
-                projectId: freshProject._id,
-                supervisorId: supObjectId,
-                status: 'Pending',
-                remarks: '',
-              },
-            },
-            { session }
-          );
-        }
+}
 
         // 5. Commit the transaction ONLY if no other request modified the count during our process
         await session.commitTransaction();
@@ -760,24 +721,7 @@ export async function POST(req: NextRequest) {
         if (updatedProject.modifiedCount !== 1) {
           throw new StorageProtocolError('Project changed while submitting. Refresh and try again.', 409);
         }
-
-                await User.updateMany(
-          { _id: { $in: project.members }, role: 'student' },
-          {
-            $set: {
-              projectTitle: title,
-              projectDesc: description,
-              domain: normalizedDomainText,
-              domains: selectedDomainIds,
-              tools,
-              pdfUrl: uploadedKey,
-              status: 'Submitted For Review',
-            },
-          },
-          { session }
-        );
-
-        if (oldPdfKey && oldPdfKey !== uploadedKey) {
+if (oldPdfKey && oldPdfKey !== uploadedKey) {
           const sharedKeys = await findSharedStorageKeys({
             keys: [oldPdfKey],
             excludedProjectIds: [project._id],

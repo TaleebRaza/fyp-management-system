@@ -178,20 +178,7 @@ export async function reviewProject({
     if (projectUpdate.modifiedCount !== 1) {
       return { result: reviewFailure('not-reviewable') };
     }
-
-    await User.updateMany(
-      { _id: { $in: teamMembers.map((member) => member._id) } },
-      {
-        $set: {
-          status: reviewState.finalStatus,
-          remarks: remarks || reviewState.notificationMessage,
-          ...(reviewState.newStage ? { pdfUrl: '' } : {}),
-        },
-      },
-      { session }
-    );
-
-    if (reviewState.newStage && project.pdfUrl) {
+if (reviewState.newStage && project.pdfUrl) {
       await assertStorageLedgerReady(session);
       const key = normalizeStorageKey(project.pdfUrl);
       if (!key) {

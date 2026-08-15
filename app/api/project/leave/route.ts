@@ -99,18 +99,6 @@ export async function POST(req: NextRequest) {
           status: 'Pending',
           stage: 'PROPOSAL',
         }, session);
-
-        // Remove every piece of project state inherited from the previous team.
-        student.projectId = freshProject._id;
-        student.supervisorId = null;
-        student.status = 'Unassigned';
-        student.remarks = 'You left your previous team and started a new project. Choose a supervisor or share your new invite code.';
-        student.projectTitle = '';
-        student.projectDesc = '';
-        student.domain = '';
-        student.domains = [];
-        student.tools = '';
-        student.pdfUrl = '';
         student.migrationCode = undefined;
         await student.save({ session });
 

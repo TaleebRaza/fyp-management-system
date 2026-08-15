@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import { normalizeRollNo } from '../../../../lib/rollNo';
 import User from '../../../../models/User';
+import Project from '../../../../models/Project';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isValidEmailAddress, normalizeEmailAddress } from '../../../../lib/security/input';
 
@@ -89,7 +90,47 @@ export async function GET(req: NextRequest) {
     }
 
     if (status && status !== 'All') {
-      filters.push({ status });
+
+      const statusProjects = await Project.find(
+
+        status === 'Unassigned'
+
+          ? { supervisorId: { $type: 'objectId' } }
+
+          : { supervisorId: { $type: 'objectId' }, status }
+
+      )
+
+        .select('members')
+
+        .lean();
+
+
+      const statusProjectMemberIds = Array.from(new Set(
+
+        statusProjects.flatMap((project) =>
+
+          (project.members || []).map((memberId: unknown) => String(memberId))
+
+        )
+
+      ))
+
+        .filter((memberId) => mongoose.Types.ObjectId.isValid(memberId))
+
+        .map((memberId) => new mongoose.Types.ObjectId(memberId));
+
+
+      filters.push(
+
+        status === 'Unassigned'
+
+          ? { _id: { $nin: statusProjectMemberIds } }
+
+          : { _id: { $in: statusProjectMemberIds } }
+
+      );
+
     }
 
     if (search) {
@@ -128,7 +169,6 @@ export async function GET(req: NextRequest) {
       'program',
       'batch',
       'semester',
-      'status',
       'isActive',
       'monthlyLoginCount',
       'createdAt',
@@ -150,11 +190,40 @@ export async function GET(req: NextRequest) {
       filterMetaPromise,
     ]);
 
+    type StudentProjectStatusRow = {
+      members?: unknown[];
+      supervisorId?: unknown;
+      status?: string;
+    };
+
+    const pageStudentIds = students.map((student) => student._id);
+    const projectRows = pageStudentIds.length > 0
+      ? await Project.find({ members: { $in: pageStudentIds } })
+          .select('members supervisorId status')
+          .lean() as unknown as StudentProjectStatusRow[]
+      : [];
+
+    const statusByStudent = new Map<string, string>();
+    for (const project of projectRows) {
+      const canonicalStatus = project.supervisorId
+        ? (project.status || 'Pending')
+        : 'Unassigned';
+
+      for (const memberId of project.members || []) {
+        statusByStudent.set(String(memberId), canonicalStatus);
+      }
+    }
+
+    const studentsWithStatus = students.map((student) => ({
+      ...student,
+      status: statusByStudent.get(String(student._id)) || 'Unassigned',
+    }));
+
     const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json(
       {
-        students,
+        students: studentsWithStatus,
         pagination: {
           page,
           limit,

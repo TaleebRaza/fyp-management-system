@@ -179,28 +179,7 @@ export async function POST(req: NextRequest) {
           }
         }
     // 6. Inherit EVERY piece of state from the existing teammate
-        student.projectId = joinedProject._id;
-
-        student.supervisorId = joinedProject.supervisorId;
-
-        student.status = joinedProject.status || 'Pending';
-
-        student.remarks = joinedProject.reviewRemarks || '';
-
-        student.projectTitle = joinedProject.title || '';
-
-        student.projectDesc = joinedProject.description || '';
-
-        student.domain = inheritedDomainText;
-
-        student.domains = inheritedDomainIds;
-
-        student.tools = joinedProject.tools || '';
-
-        student.pdfUrl = joinedProject.pdfUrl || '';
-        await student.save({ session });
-
-        return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
+return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });
       });
 
       if (response.status === 200) {

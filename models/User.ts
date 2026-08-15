@@ -8,25 +8,14 @@ const UserSchema = new Schema({
   rollNo: { type: String, required: true, unique: true, set: normalizeRollNo, maxlength: 40 },
   password: { type: String, required: true, select: false },
   role: { type: String, enum: ['admin', 'supervisor', 'student'], required: true },
-  
+
   program: { type: String, enum: ['BSCS', 'BSAI', 'BSTN', 'BSSE', 'BSCYS', 'BSROB', 'BSDS'], required: false },
-  
+
   batch: { type: String, required: false }, // e.g., "Fall 2026"
   semester: { type: String, default: '7th Semester' }, // Default for new signups
 
-  supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  status: { type: String, default: 'Unassigned' },
-  remarks: { type: String, default: '' },
-  projectTitle: { type: String, default: '' },
-  pdfUrl: { type: String, default: '' },
-  
+
   migrationCode: { type: String, required: false, trim: true, maxlength: 32, select: false },
-  projectDesc: { type: String, required: false },
-  // Legacy display string retained while existing routes and exports are upgraded.
-  domain: { type: String, default: '' },
-  // Canonical multi-select project domain identifiers shared by the whole team.
-  domains: { type: [String], default: [] },
-  tools: { type: String, required: false },
   notificationsEnabled: { type: Boolean, default: true },
   extraSlots: {
     type: Number,
@@ -37,11 +26,11 @@ const UserSchema = new Schema({
   },
   // Written only after the explicit capacity reconciliation/backfill has verified it.
   occupiedSlots: { type: Number, default: 0, min: 0 },
-  isActive: { type: Boolean, default: true }, 
-  
+  isActive: { type: Boolean, default: true },
+
   monthlyLoginCount: { type: Number, default: 0 },
   lastLoginMonth: { type: String, default: '' },
-  
+
   resetCode: { type: String, required: false, select: false },
   resetCodeExpiry: { type: Date, required: false, select: false },
   lastPasswordChange: { type: Date, required: false },
@@ -73,7 +62,6 @@ const UserSchema = new Schema({
     imposedAt: { type: Date, default: null },
     resolvedAt: { type: Date, default: null },
   },
-  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
 
   // --- NEW: Supervisor Broadcast Fields ---
   broadcastType: { type: String, enum: ['text', 'audio', null], default: null },
@@ -98,23 +86,15 @@ const UserSchema = new Schema({
 // Speeds up role-based reads such as supervisor lists and student lists.
 UserSchema.index({ role: 1 });
 
-// Speeds up supervisor capacity checks and student lookups by supervisor.
-UserSchema.index({ role: 1, supervisorId: 1 });
 
-// Speeds up fetching project members and supervisor/team references.
-UserSchema.index({ projectId: 1 });
-UserSchema.index({ supervisorId: 1 });
 
 // Speeds up the default admin student list: newest students first.
 UserSchema.index({ role: 1, createdAt: -1 });
 
-// Speeds up admin student filters when filtering by program, batch, and status together.
-UserSchema.index({ role: 1, program: 1, batch: 1, status: 1, createdAt: -1 });
 
 // Speeds up common single-filter admin views without forcing MongoDB to scan all students.
 UserSchema.index({ role: 1, program: 1, createdAt: -1 });
 UserSchema.index({ role: 1, batch: 1, createdAt: -1 });
-UserSchema.index({ role: 1, status: 1, createdAt: -1 });
 
 UserSchema.index(
   { role: 1, studentMessageCreatedAt: -1 },

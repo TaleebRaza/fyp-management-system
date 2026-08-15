@@ -268,26 +268,14 @@ export async function POST(req: NextRequest) {
           oldProject.domain = domainText;
           oldProject.domains = domainIds;
           await oldProject.save({ session });
-
-          studentInTx.supervisorId = targetSup._id;
-          studentInTx.projectId = oldProject._id;
-          studentInTx.status = oldProject.status || 'Pending';
-          studentInTx.remarks = oldProject.reviewRemarks || '';
-          studentInTx.projectTitle = oldProject.title || '';
-          studentInTx.projectDesc = oldProject.description || '';
-          studentInTx.domain = domainText;
-          studentInTx.domains = domainIds;
-          studentInTx.tools = oldProject.tools || '';
-          studentInTx.pdfUrl = oldProject.pdfUrl || '';
-          await studentInTx.save({ session });
-        } else {
+} else {
           await Project.findByIdAndUpdate(
             oldProject._id,
             { $pull: { members: studentInTx._id } },
             { session }
           );
 
-          const newProject = await createProjectWithUniqueInviteCode(
+          await createProjectWithUniqueInviteCode(
             {
               supervisorId: targetSup._id,
               members: [studentInTx._id],
@@ -306,19 +294,7 @@ export async function POST(req: NextRequest) {
             },
             session
           );
-
-          studentInTx.supervisorId = targetSup._id;
-          studentInTx.projectId = newProject._id;
-          studentInTx.status = newProject.status || 'Pending';
-          studentInTx.remarks = newProject.reviewRemarks || '';
-          studentInTx.projectTitle = newProject.title || '';
-          studentInTx.projectDesc = newProject.description || '';
-          studentInTx.domain = domainText;
-          studentInTx.domains = domainIds;
-          studentInTx.tools = newProject.tools || '';
-          studentInTx.pdfUrl = '';
-          await studentInTx.save({ session });
-        }
+}
 
         await session.commitTransaction();
         session.endSession();
@@ -378,23 +354,7 @@ export async function POST(req: NextRequest) {
 
         project.supervisorId = null;
         await project.save({ session });
-
-        await User.updateMany(
-          { _id: { $in: project.members }, role: 'student' },
-          {
-            $set: {
-              supervisorId: null,
-              status: 'Unassigned',
-              projectTitle: project.title || '',
-              projectDesc: project.description || '',
-              pdfUrl: project.pdfUrl || '',
-              remarks: project.reviewRemarks || '',
-            },
-          },
-          { session, runValidators: true }
-        );
-
-        await session.commitTransaction();
+await session.commitTransaction();
         await recordCurrentUserActivity('supervisor-team-removed', currentUser);
         return NextResponse.json({ message: 'Team removed successfully.' }, { status: 200 });
       } catch {

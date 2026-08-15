@@ -12,11 +12,6 @@ import { createProjectWithUniqueInviteCode } from './projectCreation';
 const PROGRAM_BATCH_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MIN_BATCH_YEAR = 2021;
 
-const ADMIN_ACADEMIC_RESET_MESSAGE =
-  'Your academic information was updated by an Admin. Please choose a supervisor again or join a team to begin.';
-
-const STUDENT_SELF_ACADEMIC_RESET_MESSAGE =
-  'You changed your academic information and accepted the progress reset. Please choose a supervisor again or join a team to begin.';
 
 type AcademicResetActor = 'admin' | 'student';
 
@@ -161,7 +156,7 @@ export async function resetStudentAcademicInfo({
       }
     }
 
-    const newProject = await createProjectWithUniqueInviteCode({
+    await createProjectWithUniqueInviteCode({
       supervisorId: null,
       members: [student._id],
       title: '',
@@ -176,18 +171,7 @@ export async function resetStudentAcademicInfo({
 
     student.program = finalProgram;
     student.batch = finalBatch;
-    student.supervisorId = null;
-    student.projectId = newProject._id;
-    student.status = 'Unassigned';
-    student.remarks = actor === 'admin' ? ADMIN_ACADEMIC_RESET_MESSAGE : STUDENT_SELF_ACADEMIC_RESET_MESSAGE;
-    student.projectTitle = '';
-    student.projectDesc = '';
-    student.domain = '';
-    student.domains = [];
-    student.tools = '';
-    student.pdfUrl = '';
-
-    if (actor === 'student') {
+if (actor === 'student') {
       student.lastProgramBatchChangeAt = new Date();
     }
 

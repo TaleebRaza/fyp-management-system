@@ -61,7 +61,6 @@ type PdfReview = {
 type UserReportFacets = {
   supervisors: SupervisorRow[];
   studentsPerSupervisor: SupervisorCountRow[];
-  studentStatus: CountRow[];
   studentActivity: CountRow[];
   programs: CountRow[];
   batches: CountRow[];
@@ -111,11 +110,28 @@ export async function GET(req: NextRequest) {
             studentsPerSupervisor: [
               { $match: { role: 'student' } },
               {
+                $lookup: {
+                  from: 'projects',
+                  let: { studentId: '$_id' },
+                  pipeline: [
+                    { $match: { $expr: { $in: ['$$studentId', '$members'] } } },
+                    { $project: { supervisorId: 1 } },
+                    { $limit: 1 },
+                  ],
+                  as: 'canonicalProjects',
+                },
+              },
+              {
+                $set: {
+                  canonicalProject: { $arrayElemAt: ['$canonicalProjects', 0] },
+                },
+              },
+              {
                 $group: {
                   _id: {
                     $cond: [
-                      { $eq: [{ $type: '$supervisorId' }, 'objectId'] },
-                      '$supervisorId',
+                      { $eq: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
+                      '$canonicalProject.supervisorId',
                       'unassigned',
                     ],
                   },
@@ -124,11 +140,6 @@ export async function GET(req: NextRequest) {
                   deactivated: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
                 },
               },
-              { $sort: { total: -1 } },
-            ],
-            studentStatus: [
-              { $match: { role: 'student' } },
-              { $group: { _id: { $ifNull: ['$status', 'No Status'] }, total: { $sum: 1 } } },
               { $sort: { total: -1 } },
             ],
             studentActivity: [
@@ -247,6 +258,23 @@ export async function GET(req: NextRequest) {
             studentTotals: [
               { $match: { role: 'student' } },
               {
+                $lookup: {
+                  from: 'projects',
+                  let: { studentId: '$_id' },
+                  pipeline: [
+                    { $match: { $expr: { $in: ['$$studentId', '$members'] } } },
+                    { $project: { supervisorId: 1 } },
+                    { $limit: 1 },
+                  ],
+                  as: 'canonicalProjects',
+                },
+              },
+              {
+                $set: {
+                  canonicalProject: { $arrayElemAt: ['$canonicalProjects', 0] },
+                },
+              },
+              {
                 $group: {
                   _id: null,
                   students: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
@@ -254,12 +282,20 @@ export async function GET(req: NextRequest) {
                   deactivatedStudents: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
                   assignedStudents: {
                     $sum: {
-                      $cond: [{ $eq: [{ $type: '$supervisorId' }, 'objectId'] }, 1, 0],
+                      $cond: [
+                        { $eq: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
+                        1,
+                        0,
+                      ],
                     },
                   },
                   unassignedStudents: {
                     $sum: {
-                      $cond: [{ $ne: [{ $type: '$supervisorId' }, 'objectId'] }, 1, 0],
+                      $cond: [
+                        { $ne: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
+                        1,
+                        0,
+                      ],
                     },
                   },
                 },
