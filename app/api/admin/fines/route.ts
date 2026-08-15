@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
+import Project from '../../../../models/Project';
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import {
   REGISTRATION_POLICY_KEY,
@@ -77,13 +78,44 @@ async function findRestrictedStudents(searchTerm = '') {
 
   const studentDocuments = await User.find(studentFilter)
     .select(
-      '_id name rollNo program batch status projectId lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
+      '_id name rollNo program batch lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
     )
     .sort({ createdAt: -1 })
     .limit(STUDENT_LIMIT)
     .lean();
 
-  return studentDocuments.map(serializeStudent).filter(Boolean);
+  type FineProjectRow = {
+    members?: unknown[];
+    supervisorId?: unknown;
+    status?: string;
+  };
+
+  const studentIds = studentDocuments.map((student) => student._id);
+  const projectRows = studentIds.length > 0
+    ? await Project.find({ members: { $in: studentIds } })
+        .select('members supervisorId status')
+        .lean() as unknown as FineProjectRow[]
+    : [];
+
+  const statusByStudent = new Map<string, string>();
+  for (const project of projectRows) {
+    const projectStatus = project.supervisorId
+      ? (project.status || 'Pending')
+      : 'Unassigned';
+
+    for (const memberId of project.members || []) {
+      statusByStudent.set(String(memberId), projectStatus);
+    }
+  }
+
+  return (studentDocuments as unknown as RestrictedStudentRecord[])
+    .map((student) =>
+      serializeStudent({
+        ...student,
+        status: statusByStudent.get(String(student._id)) || 'Unassigned',
+      })
+    )
+    .filter(Boolean);
 }
 
 async function buildInitialResponsePayload() {

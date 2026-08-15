@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     try {
       // 2. Delete the supervisor
       const deletedSupervisor = await User.findOneAndDelete({ _id: id, role: 'supervisor' }, { session });
-      
+
       if (!deletedSupervisor) {
         await session.abortTransaction();
         session.endSession();
@@ -63,14 +63,25 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 3. Safely unassign any STUDENTS that belonged to this supervisor
+      // 3. Resolve affected students from canonical Project membership.
+      const affectedProjects = await Project.find({ supervisorId: id })
+        .select('members')
+        .session(session)
+        .lean();
+
+      const affectedStudentIds = Array.from(new Set(
+        affectedProjects.flatMap((project) =>
+          (project.members || []).map((memberId: unknown) => String(memberId))
+        )
+      ));
+
       await User.updateMany(
-        { supervisorId: id, role: 'student' },
-        { $set: { 
-            supervisorId: null, 
-            status: 'Unassigned', 
-            remarks: 'Your supervisor was removed from the system. Please select a new one.' 
-          } 
+        { _id: { $in: affectedStudentIds }, role: 'student' },
+        { $set: {
+            supervisorId: null,
+            status: 'Unassigned',
+            remarks: 'Your supervisor was removed from the system. Please select a new one.'
+          }
         },
         { session }
       );

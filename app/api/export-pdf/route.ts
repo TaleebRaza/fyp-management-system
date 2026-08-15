@@ -5,6 +5,7 @@ import { EXPANDED_TEAM_SIZE } from '../../../config/appSettings';
 import { getSupervisorMaxSlots } from '../../../lib/supervisorSlots';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import User from '../../../models/User';
+import Project from '../../../models/Project';
 
 function filenameSegment(value: string, fallback: string) {
   const normalized = value
@@ -37,24 +38,49 @@ export async function GET(req: NextRequest) {
     }
 
     const exportLimit = getSupervisorMaxSlots(supervisor) * EXPANDED_TEAM_SIZE;
-    const query: Record<string, unknown> = {
-      role: 'student',
-      $or: [{ supervisorId }, { supervisorId: String(supervisorId) }],
+
+    type ExportProjectRow = {
+      members?: unknown[];
+      title?: string;
+      tools?: string;
+      description?: string;
+    };
+    type ExportStudentRow = {
+      _id: unknown;
+      name?: string;
+      rollNo?: string;
+      program?: string;
+      batch?: string;
+      semester?: string;
     };
 
-    if (batchFilter !== 'All') {
-      query.batch = batchFilter;
-    }
+    const projectRows = await Project.find({ supervisorId })
+      .select('members title tools description')
+      .lean() as unknown as ExportProjectRow[];
 
-    if (programFilter !== 'All') {
-      query.program = programFilter;
-    }
+    const projectByMember = new Map<string, ExportProjectRow>();
+    const memberIds = Array.from(new Set(
+      projectRows.flatMap((project) =>
+        (project.members || []).map((memberId) => {
+          projectByMember.set(String(memberId), project);
+          return memberId;
+        })
+      )
+    ));
+
+    const query: Record<string, unknown> = {
+      _id: { $in: memberIds },
+      role: 'student',
+    };
+    if (batchFilter !== 'All') query.batch = batchFilter;
+    if (programFilter !== 'All') query.program = programFilter;
 
     const studentRows = await User.find(query)
-      .select('name rollNo program batch semester projectTitle tools projectDesc')
+      .select('_id name rollNo program batch semester')
       .sort({ rollNo: 1, _id: 1 })
       .limit(exportLimit + 1)
-      .lean();
+      .lean() as unknown as ExportStudentRow[];
+
     const isTruncated = studentRows.length > exportLimit;
     const students = studentRows.slice(0, exportLimit);
 
@@ -77,15 +103,16 @@ export async function GET(req: NextRequest) {
     worksheet.getRow(1).font = { bold: true };
 
     for (const student of students) {
+      const project = projectByMember.get(String(student._id));
       worksheet.addRow({
         name: student.name,
         rollNo: student.rollNo,
         program: student.program || 'N/A',
         batch: student.batch || 'N/A',
         semester: student.semester || '7th Semester',
-        title: student.projectTitle || 'N/A',
-        tools: student.tools || 'N/A',
-        desc: student.projectDesc || 'N/A',
+        title: project?.title || 'N/A',
+        tools: project?.tools || 'N/A',
+        desc: project?.description || 'N/A',
       });
     }
 

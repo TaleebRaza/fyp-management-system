@@ -67,18 +67,16 @@ export async function POST(req: NextRequest) {
     if (currentUser.role === 'student') {
     const student = await User.findOne({ _id: currentUser.id, role: 'student' })
       .select(
-        '_id projectId lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
+        '_id lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
       )
       .lean();
     if (!student) {
       return NextResponse.json({ error: 'Student account not found.' }, { status: 404 });
     }
 
-    const project = student.projectId
-      ? await Project.findOne({ _id: student.projectId, members: student._id })
-          .select('version stage status')
-          .lean()
-      : null;
+    const project = await Project.findOne({ members: student._id })
+      .select('_id version stage status')
+      .lean();
 
     if (isProjectComplete(project)) {
       return NextResponse.json(
@@ -104,7 +102,7 @@ export async function POST(req: NextRequest) {
     }
 
     const fineRestriction = buildFineRestriction(student);
-    const teamFineRestriction = await getTeamFineRestriction(student.projectId, student._id);
+    const teamFineRestriction = await getTeamFineRestriction(project?._id, student._id);
     const fineRestrictions = teamFineRestriction
       ? serializeRegistrationPolicy(await getOrCreateRegistrationPolicy()).fineRestrictions
       : null;

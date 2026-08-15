@@ -35,17 +35,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
         }
 
-        if (!student.projectId) {
-          return NextResponse.json(
-            {
-              code: ONLY_MEMBER_CODE,
-              error: 'You are not currently part of a team that you can leave.',
-            },
-            { status: 409 }
-          );
-        }
-
-        const currentProject = await Project.findById(student.projectId).session(session);
+        const currentProject = await Project.findOne({ members: student._id }).session(session);
         if (!currentProject) {
           return NextResponse.json(
             { error: 'Your current project record could not be found.' },

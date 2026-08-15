@@ -72,9 +72,9 @@ export async function verifyPasswordResetKnowledge(input: unknown): Promise<Pass
   if (!user) return result(400, { error: DETAILS_MISMATCH_ERROR });
 
   if (user.role === 'student') {
-    const project = user.projectId
-      ? await Project.findOne({ _id: user.projectId, members: user._id }).select('members').lean()
-      : null;
+    const project = await Project.findOne({ members: user._id })
+      .select('members supervisorId')
+      .lean();
     const projectMembers = Array.isArray(project?.members) ? project.members : [];
     const teammateIds = projectMembers.filter(
       (memberId: unknown) => String(memberId) !== String(user._id)
@@ -86,7 +86,7 @@ export async function verifyPasswordResetKnowledge(input: unknown): Promise<Pass
     const detailsMatch = matchesPasswordResetKnowledge(
       {
         rollNo: normalizeRollNo(user.rollNo),
-        supervisorId: user.supervisorId ? String(user.supervisorId) : 'none',
+        supervisorId: project?.supervisorId ? String(project.supervisorId) : 'none',
         batch: String(user.batch || '').trim(),
         program: String(user.program || '').trim().toUpperCase(),
         teammateRollNos: (teammates as Array<{ rollNo?: unknown }>).map((teammate) =>

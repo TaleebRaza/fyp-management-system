@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
         const student = await User.findOne({ _id: currentUser.id, role: 'student' }).session(session);
         if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
+        const currentProject = await Project.findOne({ members: student._id }).session(session);
+
         const fineRestriction = buildFineRestriction(student);
         if (fineRestriction) {
           return NextResponse.json(
@@ -86,33 +88,41 @@ export async function POST(req: NextRequest) {
           firstMember = await User.findById(targetProject.members[0]).session(session);
           if (firstMember) {
             if (firstMember.program !== student.program) {
-              return NextResponse.json({ 
-                error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.` 
+              return NextResponse.json({
+                error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.`
               }, { status: 403 });
             }
             if (firstMember.batch !== student.batch) {
-              return NextResponse.json({ 
-                error: `Batch Mismatch! You are in ${student.batch || 'an unknown batch'}, but this team belongs to ${firstMember.batch || 'another batch'} students.` 
+              return NextResponse.json({
+                error: `Batch Mismatch! You are in ${student.batch || 'an unknown batch'}, but this team belongs to ${firstMember.batch || 'another batch'} students.`
               }, { status: 403 });
             }
 
           }
         }
 
-        const projectDomains = (targetProject as { domains?: unknown }).domains;
-        const memberDomains = (firstMember as { domains?: unknown } | null)?.domains;
-        const memberDomain = (firstMember as { domain?: string } | null)?.domain;
         const inheritedDomainIds = normalizeProjectDomainIds(
-          Array.isArray(projectDomains) && projectDomains.length > 0
-            ? projectDomains
-            : memberDomains,
-          targetProject.domain || memberDomain
-        );
-        const inheritedDomainText = formatProjectDomainLabels(
-          inheritedDomainIds,
-          targetProject.domain || memberDomain
+
+
+          targetProject.domains,
+
+
+          targetProject.domain
+
+
         );
 
+
+        const inheritedDomainText = formatProjectDomainLabels(
+
+
+          inheritedDomainIds,
+
+
+          targetProject.domain
+
+
+        );
         // 4. Guard the final write as well as the read-time check.
         // session.withTransaction retries this whole callback with freshly loaded documents.
         const joinedProject = await Project.findOneAndUpdate(
@@ -142,45 +152,52 @@ export async function POST(req: NextRequest) {
         }
 
         // 5. Ghost Data Purge
-        if (student.projectId && student.projectId.toString() !== targetProject._id.toString()) {
-          const oldProject = await Project.findById(student.projectId).session(session);
-          if (oldProject) {
-            if (oldProject.members.length === 1 && oldProject.members[0].toString() === studentId) {
-              await enqueueDeletedProjectStorage({
-                project: oldProject,
-                extraPdfUrls: [student.pdfUrl],
-                reason: 'team-join',
-                session,
-              });
-              if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
-                throw new Error('Unable to release previous supervisor capacity.');
-              }
-              await Project.findByIdAndDelete(student.projectId, { session });
-            } else {
-              await Project.findByIdAndUpdate(student.projectId, {
-                $pull: { members: studentId }
-              }, { session });
+        if (currentProject && currentProject._id.toString() !== targetProject._id.toString()) {
+          if (
+            currentProject.members.length === 1 &&
+            currentProject.members[0].toString() === studentId
+          ) {
+            await enqueueDeletedProjectStorage({
+              project: currentProject,
+              extraPdfUrls: [currentProject.pdfUrl],
+              reason: 'team-join',
+              session,
+            });
+            if (
+              currentProject.supervisorId &&
+              !await releaseSupervisorProjectSlot(currentProject.supervisorId, session)
+            ) {
+              throw new Error('Unable to release previous supervisor capacity.');
             }
+            await Project.findByIdAndDelete(currentProject._id, { session });
+          } else {
+            await Project.findByIdAndUpdate(
+              currentProject._id,
+              { $pull: { members: studentId } },
+              { session }
+            );
           }
         }
-
-        // 6. Inherit EVERY piece of state from the existing teammate
+    // 6. Inherit EVERY piece of state from the existing teammate
         student.projectId = joinedProject._id;
-        
-        if (firstMember) {
-          student.supervisorId = firstMember.supervisorId;
-          student.status = firstMember.status;
-          student.remarks = firstMember.remarks;
-          student.projectTitle = firstMember.projectTitle;
-          student.projectDesc = firstMember.projectDesc;
-          student.domain = inheritedDomainText;
-          student.domains = inheritedDomainIds;
-          student.tools = firstMember.tools;
-          student.pdfUrl = firstMember.pdfUrl;
-        } else {
-          student.supervisorId = targetProject.supervisorId;
-        }
 
+        student.supervisorId = joinedProject.supervisorId;
+
+        student.status = joinedProject.status || 'Pending';
+
+        student.remarks = joinedProject.reviewRemarks || '';
+
+        student.projectTitle = joinedProject.title || '';
+
+        student.projectDesc = joinedProject.description || '';
+
+        student.domain = inheritedDomainText;
+
+        student.domains = inheritedDomainIds;
+
+        student.tools = joinedProject.tools || '';
+
+        student.pdfUrl = joinedProject.pdfUrl || '';
         await student.save({ session });
 
         return NextResponse.json({ message: 'Successfully joined the team!' }, { status: 200 });

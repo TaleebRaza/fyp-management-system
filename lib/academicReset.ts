@@ -128,9 +128,7 @@ export async function resetStudentAcademicInfo({
       }
     }
 
-    const oldProject = student.projectId
-      ? await Project.findById(student.projectId).session(mongoSession)
-      : null;
+    const oldProject = await Project.findOne({ members: student._id }).session(mongoSession);
 
     let queuedDeletionBytes = 0;
 
@@ -144,7 +142,7 @@ export async function resetStudentAcademicInfo({
       if (isOnlyMember) {
         const cleanup = await enqueueDeletedProjectStorage({
           project: oldProject,
-          extraPdfUrls: [student.pdfUrl],
+          extraPdfUrls: [oldProject.pdfUrl],
           reason: 'academic-reset',
           session: mongoSession,
         });

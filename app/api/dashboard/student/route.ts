@@ -316,7 +316,9 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
         }
 
-        if (String(student.supervisorId || '') === newSupervisorId) {
+        const oldProject = await Project.findOne({ members: student._id }).session(session);
+
+        if (String(oldProject?.supervisorId || '') === newSupervisorId) {
           await session.abortTransaction();
           session.endSession();
           return NextResponse.json({ error: 'You are already assigned to this supervisor.' }, { status: 400 });
@@ -341,11 +343,6 @@ export async function POST(req: NextRequest) {
           session.endSession();
           return NextResponse.json({ error: capacityReservationError(reservation) }, { status: reservation === 'missing' ? 404 : 409 });
         }
-
-        const oldProject = student.projectId
-          ? await Project.findById(student.projectId).session(session)
-          : null;
-
         if (oldProject) {
           const projectIsLocked = oldProject.status === 'Approved' || oldProject.stage !== 'PROPOSAL';
 
@@ -370,7 +367,7 @@ export async function POST(req: NextRequest) {
           if (isOnlyMember) {
             const cleanup = await enqueueDeletedProjectStorage({
               project: oldProject,
-              extraPdfUrls: [student.pdfUrl],
+              extraPdfUrls: [oldProject.pdfUrl],
               reason: 'supervisor-change',
               session,
             });
@@ -549,7 +546,7 @@ export async function POST(req: NextRequest) {
         // Safe Fallback: Abort all changes if anything fails
         await session.abortTransaction();
         session.endSession();
-        throw transactionError; 
+        throw transactionError;
       }
     }
 
@@ -560,7 +557,7 @@ export async function POST(req: NextRequest) {
       if (!title) return '';
       const cleanTitle = title.toLowerCase().replace(/[^\w\s]/g, '');
       const stopWords = new Set([
-        'a', 'an', 'the', 'for', 'and', 'nor', 'but', 'or', 'yet', 'so', 'of', 'at', 'by', 'from', 'in', 'into', 'on', 'to', 'with', 'using', 'based', 
+        'a', 'an', 'the', 'for', 'and', 'nor', 'but', 'or', 'yet', 'so', 'of', 'at', 'by', 'from', 'in', 'into', 'on', 'to', 'with', 'using', 'based',
         'system', 'smart', 'advanced', 'iot', 'project', 'application', 'app', 'web', 'design', 'implementation', 'development'
       ]);
       return cleanTitle.split(/\s+/).filter(word => word.length > 0 && !stopWords.has(word)).sort().join('-');
@@ -673,7 +670,7 @@ export async function POST(req: NextRequest) {
 
     // --- NEW: Dynamic Title Deduplication Engine ---
     const fingerprint = generateFingerprint(title);
-    
+
         const duplicateProject = await Project.findOne({
       titleFingerprint: fingerprint,
       _id: { $ne: triggeringProject._id }, // Ignore our own current team
@@ -688,7 +685,7 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
-    
+
     const uploadedKey = normalizeStorageKey(pdfUrl);
     if (!uploadedKey || !uploadedKey.startsWith(`proposals/${submissionStudentId}/`)) {
       return NextResponse.json({ error: 'Invalid uploaded PDF.' }, { status: 400 });

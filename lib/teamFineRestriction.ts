@@ -1,4 +1,5 @@
 import User from '../models/User';
+import Project from '../models/Project';
 import {
   buildFineRestriction,
   OUTSTANDING_STUDENT_FINE_FILTER,
@@ -49,10 +50,18 @@ export async function getTeamFineRestriction(
   currentStudentId: unknown
 ): Promise<TeamFineRestriction | null> {
   const currentId = String(currentStudentId || '');
-  const scope = projectId ? { projectId } : { _id: currentId };
+  let memberScope: Record<string, unknown> = { _id: currentId };
+
+  if (projectId) {
+    const project = await Project.findById(projectId).select('members').lean();
+    const memberIds = Array.isArray(project?.members) ? project.members : [];
+    if (memberIds.length === 0) return null;
+    memberScope = { _id: { $in: memberIds } };
+  }
+
   const members = await User.find({
     ...OUTSTANDING_STUDENT_FINE_FILTER,
-    ...scope,
+    ...memberScope,
   })
     .select(TEAM_FINE_FIELDS)
     .lean();
