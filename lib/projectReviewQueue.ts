@@ -16,7 +16,6 @@ type QueueProjectRecord = {
     members: unknown[];
   title?: string;
   description?: string;
-  domain?: string;
   domains?: unknown;
   tools?: string;
   pdfUrl?: string;
@@ -82,11 +81,6 @@ function buildUserSearchClauses(regex: RegExp) {
     { program: regex },
     { batch: regex },
     { semester: regex },
-    { projectTitle: regex },
-    { projectDesc: regex },
-    { domain: regex },
-    { domains: regex },
-    { tools: regex },
   ];
 }
 
@@ -146,7 +140,6 @@ export async function getAdminProjectReviewQueue(
         const searchConditions: Record<string, unknown>[] = [
       { title: searchRegex },
       { description: searchRegex },
-      { domain: searchRegex },
       { domains: searchRegex },
       { tools: searchRegex },
       { status: searchRegex },
@@ -177,7 +170,7 @@ export async function getAdminProjectReviewQueue(
   const projectQueryStarted = performance.now();
   const [projects, total] = await Promise.all([
     Project.find(projectFilter)
-      .select('_id supervisorId members title description domain domains tools pdfUrl status stage version ratings maxTeamSize')
+      .select('_id supervisorId members title description domains tools pdfUrl status stage version ratings maxTeamSize')
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -215,7 +208,7 @@ export async function getAdminProjectReviewQueue(
     const supervisor = project.supervisorId
       ? usersById.get(String(project.supervisorId))
       : undefined;
-        const domainIds = normalizeProjectDomainIds(project.domains, project.domain);
+        const domainIds = normalizeProjectDomainIds(project.domains);
 
     return [{
       _id: String(project._id),
@@ -225,7 +218,7 @@ export async function getAdminProjectReviewQueue(
         : 'Assigned Supervisor',
             projectTitle: project.title,
       projectDesc: project.description,
-      domain: formatProjectDomainLabels(domainIds, project.domain),
+      domain: formatProjectDomainLabels(domainIds),
       domains: domainIds,
       tools: project.tools,
       pdfUrl: project.pdfUrl,

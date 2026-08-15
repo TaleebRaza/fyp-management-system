@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
 
         const [project, policyDocument] = await Promise.all([
       Project.findOne({ members: student._id })
-        .select('_id supervisorId members title description status reviewRemarks stage version domain domains tools pdfUrl inviteCode maxTeamSize ratings')
+        .select('_id supervisorId members title description status reviewRemarks stage version domains tools pdfUrl inviteCode maxTeamSize ratings')
         .lean(),
       getOrCreateRegistrationPolicy(),
     ]);
@@ -131,20 +131,13 @@ export async function GET(req: NextRequest) {
       status?: string;
       reviewRemarks?: string;
       domains?: unknown;
-      domain?: unknown;
       tools?: string;
       pdfUrl?: string;
       ratings?: unknown;
     } | null;
     const studentRecord = student as Record<string, unknown>;
-    const normalizedDomains = normalizeProjectDomainIds(
-      projectRecord?.domains,
-      projectRecord?.domain
-    );
-    const normalizedDomainText = formatProjectDomainLabels(
-      normalizedDomains,
-      projectRecord?.domain
-    );
+    const normalizedDomains = normalizeProjectDomainIds(projectRecord?.domains);
+    const normalizedDomainText = formatProjectDomainLabels(normalizedDomains);
     const studentResponse = {
       ...studentRecord,
       supervisorId: projectRecord?.supervisorId || null,
@@ -395,7 +388,6 @@ export async function POST(req: NextRequest) {
           status: 'Pending',
           title: '',
           titleFingerprint: '',
-          domain: '',
           domains: [],
           pdfUrl: '',
           pdfSize: 0,
@@ -490,7 +482,6 @@ await session.commitTransaction();
             status: 'Pending',
             title: '',
             titleFingerprint: '',
-            domain: '',
             domains: [],
             pdfUrl: '',
             pdfSize: 0,
@@ -707,7 +698,6 @@ await session.commitTransaction();
               title,
               description,
               titleFingerprint: fingerprint,
-              domain: normalizedDomainText,
               domains: selectedDomainIds,
               tools,
               pdfUrl: uploadedKey,

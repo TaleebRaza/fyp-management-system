@@ -4,10 +4,7 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import {
-  formatProjectDomainLabels,
-  normalizeProjectDomainIds,
-} from '../../../../config/projectDomains';
+import { normalizeProjectDomainIds } from '../../../../config/projectDomains';
 import { getTeamCapacity } from '../../../../config/appSettings';
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
 import { consumeRateLimit, refundRateLimit } from '../../../../lib/rateLimit';
@@ -101,28 +98,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const inheritedDomainIds = normalizeProjectDomainIds(
-
-
-          targetProject.domains,
-
-
-          targetProject.domain
-
-
-        );
-
-
-        const inheritedDomainText = formatProjectDomainLabels(
-
-
-          inheritedDomainIds,
-
-
-          targetProject.domain
-
-
-        );
+        const inheritedDomainIds = normalizeProjectDomainIds(targetProject.domains);
         // 4. Guard the final write as well as the read-time check.
         // session.withTransaction retries this whole callback with freshly loaded documents.
         const joinedProject = await Project.findOneAndUpdate(
@@ -133,10 +109,7 @@ export async function POST(req: NextRequest) {
           },
           {
             $addToSet: { members: studentId },
-            $set: {
-              domains: inheritedDomainIds,
-              domain: inheritedDomainText,
-            },
+            $set: { domains: inheritedDomainIds },
           },
           { new: true, session }
         );

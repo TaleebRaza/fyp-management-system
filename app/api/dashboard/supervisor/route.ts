@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   try {
     const [projects, supervisor] = await Promise.all([
       Project.find({ supervisorId: currentUser.id })
-        .select('_id members title description domain domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
+        .select('_id members title description domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
         .lean(),
       User.findById(currentUser.id).select('+migrationCode').lean(),
     ]);
@@ -44,7 +44,6 @@ export async function GET(req: NextRequest) {
       members?: unknown[];
       title?: string;
       description?: string;
-      domain?: string;
       domains?: unknown;
       tools?: string;
       pdfUrl?: string;
@@ -93,13 +92,13 @@ export async function GET(req: NextRequest) {
       const firstMember = members[0];
       if (!firstMember) return [];
 
-      const domainIds = normalizeProjectDomainIds(project.domains, project.domain);
+      const domainIds = normalizeProjectDomainIds(project.domains);
       return [{
         _id: String(project._id),
         triggerStudentId: String(firstMember._id),
         projectTitle: project.title,
         projectDesc: project.description,
-        domain: formatProjectDomainLabels(domainIds, project.domain),
+        domain: formatProjectDomainLabels(domainIds),
         domains: domainIds,
         tools: project.tools,
         pdfUrl: project.pdfUrl,
@@ -252,8 +251,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        const domainIds = normalizeProjectDomainIds(oldProject.domains, oldProject.domain);
-        const domainText = formatProjectDomainLabels(domainIds, oldProject.domain);
+        const domainIds = normalizeProjectDomainIds(oldProject.domains);
         const members = Array.isArray(oldProject.members) ? oldProject.members : [];
         const isOnlyMember =
           members.length <= 1 ||
@@ -265,7 +263,6 @@ export async function POST(req: NextRequest) {
           }
 
           oldProject.supervisorId = targetSup._id;
-          oldProject.domain = domainText;
           oldProject.domains = domainIds;
           await oldProject.save({ session });
 } else {
@@ -284,7 +281,6 @@ export async function POST(req: NextRequest) {
               title: oldProject.title || '',
               description: oldProject.description || '',
               titleFingerprint: oldProject.titleFingerprint || '',
-              domain: domainText,
               domains: domainIds,
               tools: oldProject.tools || '',
               reviewRemarks: oldProject.reviewRemarks || '',

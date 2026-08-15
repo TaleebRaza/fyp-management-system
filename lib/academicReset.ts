@@ -161,7 +161,7 @@ export async function resetStudentAcademicInfo({
       members: [student._id],
       title: '',
       titleFingerprint: '',
-      domain: '',
+      domains: [],
       pdfUrl: '',
       pdfSize: 0,
       status: 'Pending',

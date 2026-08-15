@@ -92,7 +92,6 @@ export async function POST(req: NextRequest) {
           members: [student._id],
           title: '',
           titleFingerprint: '',
-          domain: '',
           domains: [],
           pdfUrl: '',
           pdfSize: 0,

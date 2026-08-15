@@ -36,12 +36,10 @@ const ProjectSchema = new Schema({
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   inviteCode: { type: String, required: true, unique: true },
-  
+
     title: { type: String, default: '' },
   description: { type: String, default: '' },
   titleFingerprint: { type: String, default: '', index: true },
-  // Legacy display string retained for backwards compatibility and exports.
-  domain: { type: String, default: '' },
   // Canonical multi-select project domain identifiers.
   domains: { type: [String], default: [] },
   tools: { type: String, default: '' },
@@ -52,11 +50,11 @@ const ProjectSchema = new Schema({
   version: { type: Number, default: 0, min: 0 },
   maxTeamSize: { type: Number, enum: [2, 3], default: 2 },
   ratings: { type: ProjectRatingsSchema, default: undefined },
-  
-  stage: { 
-    type: String, 
-    enum: ['PROPOSAL', 'THESIS_DRAFT', 'FINAL_DELIVERABLES'], 
-    default: 'PROPOSAL' 
+
+  stage: {
+    type: String,
+    enum: ['PROPOSAL', 'THESIS_DRAFT', 'FINAL_DELIVERABLES'],
+    default: 'PROPOSAL'
   }
 }, { timestamps: true });
 
