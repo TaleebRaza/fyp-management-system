@@ -8,7 +8,7 @@ import {
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
 import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../config/appSettings';
-import { getSafeProjectRatings, type ProjectRatings } from '../../../../config/projectRatings';
+import { getSafeProjectRatings } from '../../../../config/projectRatings';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
@@ -31,84 +31,99 @@ export async function GET(req: NextRequest) {
   if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized supervisor request.' }, { status: 401 });
   }
-
   try {
-    const students = await User.find({ role: 'student', supervisorId: currentUser.id })
-      .select('_id name rollNo email program batch semester projectId projectTitle projectDesc domain domains tools pdfUrl status remarks')
-      .lean();
-    const supervisor = await User.findById(currentUser.id).select('+migrationCode').lean();
+    const [projects, supervisor] = await Promise.all([
+      Project.find({ supervisorId: currentUser.id })
+        .select('_id members title description domain domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
+        .lean(),
+      User.findById(currentUser.id).select('+migrationCode').lean(),
+    ]);
 
-    // Fetch associated projects to get the timeline stage.
-    const projectIds = students.map(s => s.projectId).filter(Boolean);
-    const projects = projectIds.length > 0
-      ? await Project.find({ _id: { $in: projectIds } })
-          .select('_id stage version ratings maxTeamSize domains domain')
+    type SupervisorProjectRow = {
+      _id: unknown;
+      members?: unknown[];
+      title?: string;
+      description?: string;
+      domain?: string;
+      domains?: unknown;
+      tools?: string;
+      pdfUrl?: string;
+      status?: string;
+      reviewRemarks?: string;
+      stage?: string;
+      version?: number;
+      ratings?: unknown;
+      maxTeamSize?: number;
+    };
+
+    type SupervisorStudentRow = {
+      _id: unknown;
+      name?: string;
+      rollNo?: string;
+      email?: string;
+      program?: string;
+      batch?: string;
+      semester?: string;
+    };
+
+    const projectRows = projects as unknown as SupervisorProjectRow[];
+
+    const memberIds = Array.from(new Set(
+      projectRows.flatMap((project) =>
+        (project.members || []).map((memberId) => String(memberId))
+      )
+    ));
+
+    const students = memberIds.length > 0
+      ? await User.find({ _id: { $in: memberIds }, role: 'student' })
+          .select('_id name rollNo email program batch semester')
           .lean()
       : [];
-    const projectMetadata = projects.reduce<Record<string, { stage: string; version: number; ratings?: ProjectRatings; maxTeamSize: number; domains: string[]; domain: string }>>((acc, p) => {
-      const domainIds = normalizeProjectDomainIds(p.domains, p.domain);
 
-      acc[p._id.toString()] = {
-        stage: p.stage,
-        version: Number(p.version || 0),
-        ratings: getSafeProjectRatings(p.ratings),
-        maxTeamSize: getTeamCapacity(p.maxTeamSize),
-        domains: domainIds,
-        domain: formatProjectDomainLabels(domainIds, p.domain),
-      };
-      return acc;
-    }, {});
-    // --------------------------------------------------------------
+    const studentRows = students as unknown as SupervisorStudentRow[];
+    const studentsById = new Map(
+      studentRows.map((student) => [String(student._id), student])
+    );
 
-    const projectMap = new Map();
-
-    students.forEach((student) => {
-      const pId = student.projectId ? student.projectId.toString() : `legacy-${student._id.toString()}`;
-      
-      if (!projectMap.has(pId)) {
-        const metadata = projectMetadata[pId];
-        const domainIds = normalizeProjectDomainIds(
-          metadata?.domains?.length ? metadata.domains : student.domains,
-          metadata?.domain || student.domain
-        );
-        const domainText = formatProjectDomainLabels(
-          domainIds,
-          metadata?.domain || student.domain
-        );
-
-        projectMap.set(pId, {
-          _id: pId, 
-          triggerStudentId: student._id.toString(),
-          projectTitle: student.projectTitle,
-          projectDesc: student.projectDesc,
-          domain: domainText,
-          domains: domainIds,
-          tools: student.tools,
-          pdfUrl: student.pdfUrl,
-          status: student.status,
-          remarks: student.remarks,
-          stage: projectMetadata[pId]?.stage || 'PROPOSAL',
-          version: projectMetadata[pId]?.version || 0,
-          ratings: projectMetadata[pId]?.ratings,
-          maxTeamSize: projectMetadata[pId]?.maxTeamSize || DEFAULT_TEAM_SIZE,
-          program: student.program || 'N/A',
-          batch: student.batch || 'N/A',
-          semester: student.semester || '7th Semester',
-          members: []
-        });
-      }
-      
-      projectMap.get(pId).members.push({
-        _id: student._id,
-        name: student.name,
-        rollNo: student.rollNo,
-        email: student.email,
-        program: student.program || 'N/A'
+    const mappedProjects = projectRows.flatMap((project) => {
+      const members = (project.members || []).flatMap((memberId) => {
+        const student = studentsById.get(String(memberId));
+        return student ? [student] : [];
       });
+      const firstMember = members[0];
+      if (!firstMember) return [];
+
+      const domainIds = normalizeProjectDomainIds(project.domains, project.domain);
+      return [{
+        _id: String(project._id),
+        triggerStudentId: String(firstMember._id),
+        projectTitle: project.title,
+        projectDesc: project.description,
+        domain: formatProjectDomainLabels(domainIds, project.domain),
+        domains: domainIds,
+        tools: project.tools,
+        pdfUrl: project.pdfUrl,
+        status: project.status,
+        remarks: project.reviewRemarks,
+        stage: project.stage || 'PROPOSAL',
+        version: Number(project.version || 0),
+        ratings: getSafeProjectRatings(project.ratings),
+        maxTeamSize: getTeamCapacity(project.maxTeamSize) || DEFAULT_TEAM_SIZE,
+        program: firstMember.program || 'N/A',
+        batch: firstMember.batch || 'N/A',
+        semester: firstMember.semester || '7th Semester',
+        members: members.map((student) => ({
+          _id: student._id,
+          name: student.name,
+          rollNo: student.rollNo,
+          email: student.email,
+          program: student.program || 'N/A',
+        })),
+      }];
     });
 
     return NextResponse.json(
-      { projects: Array.from(projectMap.values()), migrationCode: supervisor?.migrationCode || '' },
+      { projects: mappedProjects, migrationCode: supervisor?.migrationCode || '' },
       { status: 200 }
     );
   } catch (error) {

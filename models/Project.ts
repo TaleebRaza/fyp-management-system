@@ -37,15 +37,18 @@ const ProjectSchema = new Schema({
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   inviteCode: { type: String, required: true, unique: true },
   
-  title: { type: String, default: '' },
+    title: { type: String, default: '' },
+  description: { type: String, default: '' },
   titleFingerprint: { type: String, default: '', index: true },
   // Legacy display string retained for backwards compatibility and exports.
   domain: { type: String, default: '' },
   // Canonical multi-select project domain identifiers.
   domains: { type: [String], default: [] },
+  tools: { type: String, default: '' },
   pdfUrl: { type: String, default: '' },
   pdfSize: { type: Number, default: 0 }, // <-- NEW: track size of the uploaded PDF
   status: { type: String, default: 'Pending' },
+  reviewRemarks: { type: String, default: '' },
   version: { type: Number, default: 0, min: 0 },
   maxTeamSize: { type: Number, enum: [2, 3], default: 2 },
   ratings: { type: ProjectRatingsSchema, default: undefined },
@@ -58,6 +61,7 @@ const ProjectSchema = new Schema({
 }, { timestamps: true });
 
 ProjectSchema.index({ status: 1, updatedAt: -1 });
+ProjectSchema.index({ members: 1 });
 
 const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);
 export default Project;

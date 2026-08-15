@@ -101,17 +101,14 @@ export async function reviewProject({
   if (!ratingValidation.success) return reviewFailure(ratingValidation.reason);
 
   const review = await withStorageTransaction(async (session) => {
-    const triggerStudent = await User.findOne({
+        const triggerStudent = await User.findOne({
       _id: studentId,
       role: 'student',
-      ...(supervisorId ? { supervisorId } : {}),
     })
-      .select('_id projectId')
+      .select('_id')
       .session(session);
-    if (!triggerStudent?.projectId) return { result: reviewFailure('not-found') };
-
+    if (!triggerStudent) return { result: reviewFailure('not-found') };
     const project = await Project.findOne({
-      _id: triggerStudent.projectId,
       members: triggerStudent._id,
       ...(supervisorId ? { supervisorId } : {}),
     }).session(session);
@@ -130,10 +127,9 @@ export async function reviewProject({
     const assignedSupervisorId = String(project.supervisorId || '');
     if (!assignedSupervisorId) return { result: reviewFailure('not-found') };
 
-    const teamMembers = await User.find({
+        const teamMembers = await User.find({
       _id: { $in: project.members },
       role: 'student',
-      projectId: project._id,
     })
       .select('_id email')
       .session(session)
@@ -167,8 +163,9 @@ export async function reviewProject({
         $and: updateConditions,
       },
       {
-        $set: {
+                $set: {
           status: reviewState.finalStatus,
+          reviewRemarks: remarks || reviewState.notificationMessage,
           ...(reviewState.newStage ? { stage: reviewState.newStage, pdfUrl: '', pdfSize: 0 } : {}),
           ...(ratingValidation.ratingRound && ratingSnapshot
             ? { [`ratings.${ratingValidation.ratingRound}`]: ratingSnapshot }

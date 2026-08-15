@@ -13,10 +13,12 @@ import type { ProjectReviewProject } from '../types/projectReview';
 type QueueProjectRecord = {
   _id: unknown;
   supervisorId?: unknown;
-  members: unknown[];
+    members: unknown[];
   title?: string;
+  description?: string;
   domain?: string;
   domains?: unknown;
+  tools?: string;
   pdfUrl?: string;
   status?: string;
   stage?: string;
@@ -31,14 +33,9 @@ type QueueUserRecord = {
   name?: string;
   rollNo?: string;
   email?: string;
-  program?: string;
+    program?: string;
   batch?: string;
   semester?: string;
-  projectTitle?: string;
-  projectDesc?: string;
-  domain?: string;
-  domains?: unknown;
-  tools?: string;
 };
 
 export type AdminProjectReviewQueueOptions = {
@@ -146,10 +143,12 @@ export async function getAdminProjectReviewQueue(
   }
 
   if (searchRegex) {
-    const searchConditions: Record<string, unknown>[] = [
+        const searchConditions: Record<string, unknown>[] = [
       { title: searchRegex },
+      { description: searchRegex },
       { domain: searchRegex },
       { domains: searchRegex },
+      { tools: searchRegex },
       { status: searchRegex },
       { stage: searchRegex },
     ];
@@ -178,7 +177,7 @@ export async function getAdminProjectReviewQueue(
   const projectQueryStarted = performance.now();
   const [projects, total] = await Promise.all([
     Project.find(projectFilter)
-      .select('_id supervisorId members title domain domains pdfUrl status stage version ratings maxTeamSize')
+      .select('_id supervisorId members title description domain domains tools pdfUrl status stage version ratings maxTeamSize')
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -197,7 +196,7 @@ export async function getAdminProjectReviewQueue(
   const userQueryStarted = performance.now();
   const users = relatedUserIds.length > 0
     ? await User.find({ _id: { $in: relatedUserIds } })
-        .select('_id role name rollNo email program batch semester projectTitle projectDesc domain domains tools')
+        .select('_id role name rollNo email program batch semester')
         .lean<QueueUserRecord[]>()
     : [];
   const userQueryMs = performance.now() - userQueryStarted;
@@ -216,12 +215,7 @@ export async function getAdminProjectReviewQueue(
     const supervisor = project.supervisorId
       ? usersById.get(String(project.supervisorId))
       : undefined;
-    const domainIds = normalizeProjectDomainIds(
-      Array.isArray(project.domains) && project.domains.length > 0
-        ? project.domains
-        : firstMember.domains,
-      project.domain || firstMember.domain
-    );
+        const domainIds = normalizeProjectDomainIds(project.domains, project.domain);
 
     return [{
       _id: String(project._id),
@@ -229,11 +223,11 @@ export async function getAdminProjectReviewQueue(
       supervisorName: supervisor?.role === 'supervisor'
         ? supervisor.name
         : 'Assigned Supervisor',
-      projectTitle: project.title || firstMember.projectTitle,
-      projectDesc: firstMember.projectDesc,
-      domain: formatProjectDomainLabels(domainIds, project.domain || firstMember.domain),
+            projectTitle: project.title,
+      projectDesc: project.description,
+      domain: formatProjectDomainLabels(domainIds, project.domain),
       domains: domainIds,
-      tools: firstMember.tools,
+      tools: project.tools,
       pdfUrl: project.pdfUrl,
       status: project.status,
       stage: project.stage || 'PROPOSAL',

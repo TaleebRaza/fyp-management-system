@@ -73,8 +73,8 @@ export async function GET(req: NextRequest) {
 
     // Use the authenticated student's ID and return only dashboard-safe fields.
     const student = await User.findOne({ _id: studentId, role: 'student' })
-      .select(
-        '_id name email rollNo role program batch semester supervisorId status remarks projectTitle pdfUrl projectDesc domain domains tools notificationsEnabled isActive projectId lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus lateRegistrationFineResolvedAt registrationPunishment'
+            .select(
+        '_id name email rollNo role program batch semester notificationsEnabled isActive lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus lateRegistrationFineResolvedAt registrationPunishment'
       )
       .lean();
 
@@ -84,20 +84,17 @@ export async function GET(req: NextRequest) {
 
     const fineRestriction = buildFineRestriction(student);
 
-    // Fetch independent dashboard relationships in parallel.
-    const [supervisor, project, policyDocument] = await Promise.all([
-      student.supervisorId
-        ? User.findById(student.supervisorId)
-            .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
-            .lean()
-        : null,
-      student.projectId
-        ? Project.findById(student.projectId)
-            .select('_id members status stage version domain domains pdfUrl inviteCode maxTeamSize ratings')
-            .lean()
-        : null,
+        const [project, policyDocument] = await Promise.all([
+      Project.findOne({ members: student._id })
+        .select('_id supervisorId members title description status reviewRemarks stage version domain domains tools pdfUrl inviteCode maxTeamSize ratings')
+        .lean(),
       getOrCreateRegistrationPolicy(),
     ]);
+    const supervisor = project?.supervisorId
+      ? await User.findById(project.supervisorId)
+          .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
+          .lean()
+      : null;
 
     const projectMembers = project?.members?.length
       ? await User.find({ _id: { $in: project.members }, role: 'student' })
@@ -126,23 +123,38 @@ export async function GET(req: NextRequest) {
         }
       : null;
 
-    const projectRecord = project as { domains?: unknown; domain?: unknown; ratings?: unknown } | null;
-    const studentRecord = student as { domains?: unknown; domain?: unknown };
-    const storedDomainIds =
-      Array.isArray(projectRecord?.domains) && projectRecord.domains.length > 0
-        ? projectRecord.domains
-        : studentRecord.domains;
+        const projectRecord = project as {
+      _id?: unknown;
+      supervisorId?: unknown;
+      title?: string;
+      description?: string;
+      status?: string;
+      reviewRemarks?: string;
+      domains?: unknown;
+      domain?: unknown;
+      tools?: string;
+      pdfUrl?: string;
+      ratings?: unknown;
+    } | null;
+    const studentRecord = student as Record<string, unknown>;
     const normalizedDomains = normalizeProjectDomainIds(
-      storedDomainIds,
-      projectRecord?.domain || studentRecord.domain
+      projectRecord?.domains,
+      projectRecord?.domain
     );
     const normalizedDomainText = formatProjectDomainLabels(
       normalizedDomains,
-      projectRecord?.domain || studentRecord.domain
+      projectRecord?.domain
     );
-
     const studentResponse = {
       ...studentRecord,
+      supervisorId: projectRecord?.supervisorId || null,
+      status: projectRecord?.supervisorId ? (projectRecord.status || 'Pending') : 'Unassigned',
+      remarks: projectRecord?.reviewRemarks || '',
+      projectTitle: projectRecord?.title || '',
+      projectDesc: projectRecord?.description || '',
+      tools: projectRecord?.tools || '',
+      pdfUrl: projectRecord?.pdfUrl || '',
+      projectId: projectRecord?._id || null,
       lateRegistrationDays: fineRestriction?.lateRegistrationFine?.daysLate || 0,
       lateRegistrationFine: fineRestriction?.lateRegistrationFine?.amount || 0,
       domains: normalizedDomains,
@@ -454,7 +466,8 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Student not found' }, { status: 404 });
         }
 
-        if (triggeringStudent.supervisorId && triggeringStudent.status !== 'Unassigned') {
+                const existingProject = await Project.findOne({ members: triggeringStudent._id }).session(session);
+        if (existingProject?.supervisorId) {
           await session.abortTransaction();
           session.endSession();
           return NextResponse.json(
@@ -480,25 +493,48 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: capacityReservationError(reservation) }, { status: reservation === 'missing' ? 404 : 409 });
         }
 
-        const supObjectId = new mongoose.Types.ObjectId(supervisor._id);
-
-        // 4. Update Project and Team Members inside the locked session
-        if (triggeringStudent.projectId) {
+                const supObjectId = new mongoose.Types.ObjectId(supervisor._id);
+        // Project owns the relationship; User fields remain compatibility shadows during Stage 1.
+        if (existingProject) {
           await Project.findByIdAndUpdate(
-            triggeringStudent.projectId, 
+            existingProject._id,
             { $set: { supervisorId: supObjectId } },
             { session }
           );
-
           await User.updateMany(
-            { projectId: triggeringStudent.projectId },
-            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            { _id: { $in: existingProject.members }, role: 'student' },
+            {
+              $set: {
+                supervisorId: supObjectId,
+                status: existingProject.status || 'Pending',
+                remarks: existingProject.reviewRemarks || '',
+              },
+            },
             { session }
           );
         } else {
+          const freshProject = await createProjectWithUniqueInviteCode({
+            supervisorId: supObjectId,
+            members: [triggeringStudent._id],
+            stage: 'PROPOSAL',
+            status: 'Pending',
+            title: '',
+            titleFingerprint: '',
+            domain: '',
+            domains: [],
+            pdfUrl: '',
+            pdfSize: 0,
+          }, session);
           await User.findByIdAndUpdate(
-            body.id, 
-            { $set: { supervisorId: supObjectId, status: 'Pending', remarks: '' } },
+            body.id,
+            {
+              $set: {
+                projectId: freshProject._id,
+                supervisorId: supObjectId,
+                status: 'Pending',
+                remarks: '',
+              },
+            },
             { session }
           );
         }
@@ -542,10 +578,15 @@ export async function POST(req: NextRequest) {
       _id: submissionStudentId,
       role: 'student',
     });
-    if (!triggeringStudent) {
+        if (!triggeringStudent) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
-
+    const triggeringProject = await Project.findOne({ members: triggeringStudent._id })
+      .select('_id')
+      .lean();
+    if (!triggeringProject) {
+      return NextResponse.json({ error: 'Project record not found for this student.' }, { status: 409 });
+    }
     const title = normalizeText(body.title, 200);
     const description = normalizeText(body.desc, 2_000);
     const tools = normalizeText(body.tools, 1_000);
@@ -555,8 +596,8 @@ export async function POST(req: NextRequest) {
     }
 
     const submissionFineRestriction = buildFineRestriction(triggeringStudent);
-    const submissionTeamFineRestriction = await getTeamFineRestriction(
-      triggeringStudent.projectId,
+        const submissionTeamFineRestriction = await getTeamFineRestriction(
+      triggeringProject._id,
       triggeringStudent._id
     );
     const fineRestrictions = submissionTeamFineRestriction
@@ -633,22 +674,19 @@ export async function POST(req: NextRequest) {
     // --- NEW: Dynamic Title Deduplication Engine ---
     const fingerprint = generateFingerprint(title);
     
-    if (triggeringStudent.projectId) {
-      const duplicateProject = await Project.findOne({
-        titleFingerprint: fingerprint,
-        _id: { $ne: triggeringStudent.projectId }, // Ignore our own current team
-        $or: [
-          { status: 'Approved' }, // Fully finished projects
-          { stage: { $in: ['THESIS_DRAFT', 'FINAL_DELIVERABLES'] } } // Projects that have already passed the Proposal stage
-        ]
-      });
-
-      if (duplicateProject) {
-        return NextResponse.json(
-          { error: 'A project utilizing these core concepts has already been approved for another team. Please select a unique topic.' },
-          { status: 409 }
-        );
-      }
+        const duplicateProject = await Project.findOne({
+      titleFingerprint: fingerprint,
+      _id: { $ne: triggeringProject._id }, // Ignore our own current team
+      $or: [
+        { status: 'Approved' }, // Fully finished projects
+        { stage: { $in: ['THESIS_DRAFT', 'FINAL_DELIVERABLES'] } } // Projects that have already passed the Proposal stage
+      ]
+    });
+    if (duplicateProject) {
+      return NextResponse.json(
+        { error: 'A project utilizing these core concepts has already been approved for another team. Please select a unique topic.' },
+        { status: 409 }
+      );
     }
     
     const uploadedKey = normalizeStorageKey(pdfUrl);
@@ -665,11 +703,10 @@ export async function POST(req: NextRequest) {
           _id: submissionStudentId,
           role: 'student',
         }).session(session);
-        if (!studentInTransaction?.projectId) {
-          throw new StorageProtocolError('Project record not found for this student.', 409);
+                if (!studentInTransaction) {
+          throw new StorageProtocolError('Student record not found.', 409);
         }
         const project = await Project.findOne({
-          _id: studentInTransaction.projectId,
           members: studentInTransaction._id,
         }).session(session);
         if (!project) throw new StorageProtocolError('Project membership changed. Refresh and try again.', 409);
@@ -708,11 +745,13 @@ export async function POST(req: NextRequest) {
             $or: [{ version: Number(project.version || 0) }, { version: { $exists: false } }],
           },
           {
-            $set: {
+                        $set: {
               title,
+              description,
               titleFingerprint: fingerprint,
               domain: normalizedDomainText,
               domains: selectedDomainIds,
+              tools,
               pdfUrl: uploadedKey,
               pdfSize: uploadedObject.actualBytes,
               status: 'Submitted For Review',
@@ -725,8 +764,8 @@ export async function POST(req: NextRequest) {
           throw new StorageProtocolError('Project changed while submitting. Refresh and try again.', 409);
         }
 
-        await User.updateMany(
-          { projectId: project._id, role: 'student' },
+                await User.updateMany(
+          { _id: { $in: project.members }, role: 'student' },
           {
             $set: {
               projectTitle: title,
@@ -756,7 +795,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const supervisorId = project.supervisorId || studentInTransaction.supervisorId;
+                const supervisorId = project.supervisorId;
         const supervisor = supervisorId
           ? await User.findOne({ _id: supervisorId, role: 'supervisor' })
               .select('email notificationsEnabled')

@@ -74,6 +74,7 @@ type UserReportFacets = {
 
 type ProjectReportFacets = {
   projectStatus: CountRow[];
+  studentStatus: CountRow[];
   projectStage: CountRow[];
   pdfReview: PdfReview[];
   projectTotals: Array<{ total: number }>;
@@ -274,7 +275,13 @@ export async function GET(req: NextRequest) {
       Project.aggregate<ProjectReportFacets>([
         {
           $facet: {
-            projectStatus: [
+                        projectStatus: [
+              { $group: { _id: { $ifNull: ['$status', 'Pending'] }, total: { $sum: 1 } } },
+              { $sort: { total: -1 } },
+            ],
+            studentStatus: [
+              { $match: { supervisorId: { $type: 'objectId' } } },
+              { $unwind: '$members' },
               { $group: { _id: { $ifNull: ['$status', 'Pending'] }, total: { $sum: 1 } } },
               { $sort: { total: -1 } },
             ],
@@ -434,8 +441,12 @@ export async function GET(req: NextRequest) {
     const students = Number(studentTotals.students || 0);
     const activeStudents = Number(studentTotals.activeStudents || 0);
     const deactivatedStudents = Number(studentTotals.deactivatedStudents || 0);
-    const assignedStudents = Number(studentTotals.assignedStudents || 0);
+        const assignedStudents = Number(studentTotals.assignedStudents || 0);
     const unassignedStudents = Number(studentTotals.unassignedStudents || 0);
+    const canonicalStudentStatus = [...(projectReport?.studentStatus || [])];
+    if (unassignedStudents > 0) {
+      canonicalStudentStatus.push({ _id: 'Unassigned', total: unassignedStudents });
+    }
     const pdfReviewSummary = [
       { label: 'Projects with PDF', total: Number(pdfReview.withPdf || 0) },
       { label: 'Waiting for Review', total: Number(pdfReview.waitingForReview || 0) },
@@ -465,7 +476,7 @@ export async function GET(req: NextRequest) {
         finedStudents,
         collectedFineStudents,
         studentsPerSupervisor,
-        studentStatusSummary: toLabelRows(userReport?.studentStatus || [], 'No Status'),
+                studentStatusSummary: toLabelRows(canonicalStudentStatus, 'No Status'),
         studentActivitySummary: toLabelRows(userReport?.studentActivity || [], 'Unknown'),
         programSummary: toLabelRows(userReport?.programs || [], 'No Program'),
         batchSummary: toLabelRows(userReport?.batches || [], 'No Batch'),

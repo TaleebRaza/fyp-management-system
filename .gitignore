@@ -8,7 +8,7 @@ node_modules
 .codex
 .agents
 .tools
-
+scripts
 AGENTS.md
 
 # Sentry Config File
