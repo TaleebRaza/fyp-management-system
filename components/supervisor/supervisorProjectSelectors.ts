@@ -66,7 +66,9 @@ export function filterSupervisorProjects(
         ? accessors.hasProjectSubmission(project)
         : filters.projectQueueFilter === 'review'
           ? accessors.isProjectReviewable(project)
-          : true;
+          : filters.projectQueueFilter === 'approved'
+            ? isProjectApproved(project)
+            : true;
 
     if (!matchesProgram || !matchesBatch || !matchesQueue) return false;
     if (!query) return true;

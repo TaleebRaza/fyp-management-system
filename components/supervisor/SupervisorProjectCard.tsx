@@ -66,16 +66,40 @@ export default function SupervisorProjectCard({
   project,
   onOpen,
   compact = false,
+  readOnly = false,
 }: {
   project: SupervisorProject;
   onOpen: (project: SupervisorProject) => void;
   compact?: boolean;
+  readOnly?: boolean;
 }) {
   const memberNames = getMemberNames(project);
   const memberRollNumbers = getMemberRollNumbers(project);
   const pdfKey = getSafePdfKey(project.pdfUrl);
   const isReviewable = isProjectReviewable(project);
   const domainLabels = getProjectDomainDisplayLabels(project);
+
+  if (readOnly) {
+    return (
+      <article className="flex min-h-full flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <AvatarBadge name={memberNames} className="h-11 w-11" />
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-bold text-[var(--color-text)]">{memberNames}</h3>
+              <p className="mt-1 truncate text-xs font-semibold text-[var(--color-text-muted)]">{memberRollNumbers}</p>
+            </div>
+          </div>
+          <Badge variant="success">Project Approved</Badge>
+        </div>
+
+        <div className="mt-4 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Project</p>
+          <p className="mt-2 line-clamp-2 text-sm font-bold leading-6 text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet.'}</p>
+        </div>
+      </article>
+    );
+  }
 
   if (compact) {
     return (

@@ -116,6 +116,15 @@ test('supervisor filters enforce program, batch, and queue selections together',
     ).map((project) => project._id),
     ['project-1', 'project-2']
   );
+
+  assert.deepEqual(
+    filterSupervisorProjects(
+      projects,
+      { ...defaultFilters, projectQueueFilter: 'approved' },
+      accessors
+    ).map((project) => project._id),
+    ['project-1', 'project-2']
+  );
 });
 
 test('supervisor search covers members, roll numbers, programs, project details, and domains', () => {

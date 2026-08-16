@@ -198,6 +198,7 @@ const SupervisorDashboard = ({
               projects={filters.filteredProjects}
               emptyState={filters.emptyProjectState}
               onOpenProject={actions.openProject}
+              readOnly={filters.projectQueueFilter === 'approved'}
             />
           </div>
         )}

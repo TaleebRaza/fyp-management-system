@@ -29,9 +29,9 @@ export default function SupervisorOverviewSection({
     <div className="space-y-7 sm:space-y-6">
       <DashboardGrid>
         <StatCard label="Assigned Teams" value={stats.assigned} hint="All assigned teams." icon={<Users size={20} />} onClick={() => onOpenProjects('all')} />
-        <StatCard label="Submitted Projects" value={stats.submitted} hint="Teams with a PDF attached. Click to filter." icon={<FileText size={20} />} onClick={() => onOpenProjects('submitted')} />
-        <StatCard label="Review Queue" value={stats.reviewQueue} hint="Submitted projects waiting for your decision. Click to filter." icon={<LayoutDashboard size={20} />} onClick={() => onOpenProjects('review')} />
-        <StatCard label="Approved" value={stats.approved} hint="Projects already approved." icon={<CheckCircle size={20} />} />
+        <StatCard label="New Documents" value={stats.submitted} hint="New Documents Submitted By Students" icon={<FileText size={20} />} onClick={() => onOpenProjects('submitted')} />
+        <StatCard label="Documents Left To Review" value={stats.reviewQueue} hint="Documents waiting for your decision. Click to filter." icon={<LayoutDashboard size={20} />} onClick={() => onOpenProjects('review')} />
+        <StatCard label="Approved Projects" value={stats.approved} hint="Projects already approved. Click to filter." icon={<CheckCircle size={20} />} onClick={() => onOpenProjects('approved')} />
       </DashboardGrid>
 
       <div className="grid gap-7 sm:gap-6 xl:grid-cols-[1fr_22rem]">

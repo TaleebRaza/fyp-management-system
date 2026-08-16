@@ -144,23 +144,27 @@ export function useSupervisorProjectFilters({
 
   const projectQueueTitle =
     projectQueueFilter === 'submitted'
-      ? 'Submitted Projects'
+      ? 'New Documents'
       : projectQueueFilter === 'review'
-        ? 'Review Queue'
-        : 'Assigned Projects';
+        ? 'Documents Left To Review'
+        : projectQueueFilter === 'approved'
+          ? 'Approved Projects'
+          : 'Assigned Projects';
   const projectQueueDescription =
     projectQueueFilter === 'submitted'
-      ? 'Showing teams with an attached PDF across all programs.'
+      ? 'New Documents Submitted By Students'
       : projectQueueFilter === 'review'
-        ? 'Showing submitted projects still waiting for your decision across all programs.'
-        : programFilter
-          ? `Showing ${getProgramName(programFilter)} projects only.`
-          : 'Showing all programs. Select a specific program from the sidebar to filter.';
+        ? 'Documents waiting for your decision. Click to filter.'
+        : projectQueueFilter === 'approved'
+          ? 'Showing approved projects across all programs.'
+          : programFilter
+            ? `Showing ${getProgramName(programFilter)} projects only.`
+            : 'Showing all programs. Select a specific program from the sidebar to filter.';
   const emptyProjectState =
     projectQueueFilter === 'submitted'
       ? {
-          title: 'No submitted projects found',
-          description: 'No teams in this view have attached a PDF yet.',
+          title: 'No new documents found',
+          description: 'No students in this view have submitted documents yet.',
         }
       : projectQueueFilter === 'review'
         ? {
@@ -168,6 +172,11 @@ export function useSupervisorProjectFilters({
             description:
               'There are no submitted, non-approved projects in this view right now.',
           }
+        : projectQueueFilter === 'approved'
+          ? {
+              title: 'No approved projects found',
+              description: 'Approved projects will appear here once a review is completed.',
+            }
         : {
             title: 'No matching projects',
             description:

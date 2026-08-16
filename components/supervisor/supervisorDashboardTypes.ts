@@ -18,7 +18,7 @@ export type SupervisorDashboardProps = {
 
 export type SupervisorProject = ProjectReviewProject;
 
-export type ProjectQueueFilter = 'all' | 'submitted' | 'review';
+export type ProjectQueueFilter = 'all' | 'submitted' | 'review' | 'approved';
 
 export type SupervisorDashboardStats = {
   assigned: number;
