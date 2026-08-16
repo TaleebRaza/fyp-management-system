@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { fetchSupervisorExport } from '../api/supervisorDashboardApi';
+import type { SupervisorProject } from '../supervisorDashboardTypes';
 import {
   downloadSupervisorBlob,
   getSupervisorExportFilename,
@@ -8,25 +8,27 @@ import { getSupervisorErrorMessage } from '../utils/supervisorErrors';
 import type { SupervisorNotify } from './useSupervisorFeedback';
 
 export function useSupervisorExport({
-  supervisorId,
+  projects,
   supervisorName,
   batchFilter,
   programFilter,
   notify,
 }: {
-  supervisorId: string;
+  projects: SupervisorProject[];
   supervisorName: string;
   batchFilter: string;
   programFilter: string;
   notify: SupervisorNotify;
 }) {
   const [isExporting, setIsExporting] = useState(false);
-
   const exportProjects = useCallback(async () => {
     setIsExporting(true);
     try {
-      const blob = await fetchSupervisorExport({
-        supervisorId,
+      const { buildSupervisorProjectsPdf } = await import(
+        '../utils/supervisorPdf'
+      );
+      const blob = await buildSupervisorProjectsPdf({
+        projects,
         supervisorName,
         batchFilter,
         programFilter,
@@ -40,19 +42,13 @@ export function useSupervisorExport({
         'Export failed',
         getSupervisorErrorMessage(
           error,
-          'An unexpected error occurred during export.'
+          'An unexpected error occurred during PDF export.'
         )
       );
     } finally {
       setIsExporting(false);
     }
-  }, [
-    batchFilter,
-    notify,
-    programFilter,
-    supervisorId,
-    supervisorName,
-  ]);
+  }, [batchFilter, notify, programFilter, projects, supervisorName]);
 
   return {
     isExporting,

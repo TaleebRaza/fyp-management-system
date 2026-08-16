@@ -1,5 +1,3 @@
-import type { Workbook } from 'exceljs';
-
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -11,22 +9,6 @@ import {
   type ProjectRatingsExportFilters,
 } from '../config/projectRatings';
 
-export const PROJECT_RATINGS_EXPORT_COLUMNS = [
-  { header: 'Project Title', key: 'projectTitle', width: 40 },
-  { header: 'Domains', key: 'domains', width: 36 },
-  { header: 'Current Stage', key: 'currentStage', width: 20 },
-  { header: 'Current Status', key: 'currentStatus', width: 22 },
-  { header: 'Rating Round', key: 'ratingRound', width: 16 },
-  { header: 'Project Idea', key: 'projectIdea', width: 16 },
-  { header: 'Technical Merit', key: 'technicalMerit', width: 18 },
-  { header: 'Documentation Quality', key: 'documentationQuality', width: 24 },
-  { header: 'Supervisor Name', key: 'supervisorName', width: 24 },
-  { header: 'Student Name', key: 'studentName', width: 24 },
-  { header: 'Student Roll Number', key: 'studentRollNumber', width: 20 },
-  { header: 'Student Program', key: 'studentProgram', width: 18 },
-  { header: 'Student Batch', key: 'studentBatch', width: 18 },
-  { header: 'Student Semester', key: 'studentSemester', width: 18 },
-] as const;
 
 export type ProjectRatingsExportProject = {
   _id: unknown;
@@ -61,7 +43,7 @@ export type ProjectRatingExportRow = {
   projectIdea: number;
   technicalMerit: number;
   documentationQuality: number;
-  ratingDate: Date;
+  ratingDate: string;
   reviewerName: string;
   reviewerRole: string;
   supervisorName: string;
@@ -137,7 +119,11 @@ function readSnapshot(project: ProjectRatingsExportProject, round: ProjectRating
   const ratingDate = new Date(ratedAt);
   if (!scores || Number.isNaN(ratingDate.getTime())) return null;
 
-  return { ...scores, ratingDate, reviewerId: String(record.ratedBy || '') };
+  return {
+    ...scores,
+    ratingDate: ratingDate.toISOString(),
+    reviewerId: String(record.ratedBy || ''),
+  };
 }
 
 export function getProjectRatingsExportUserIds(
@@ -212,19 +198,7 @@ export function buildProjectRatingsExportRows(
   );
 }
 
-export function populateProjectRatingsWorkbook(
-  workbook: Workbook,
-  rows: ProjectRatingExportRow[]
-) {
-  const worksheet = workbook.addWorksheet('Project Ratings');
-  worksheet.columns = PROJECT_RATINGS_EXPORT_COLUMNS.map((column) => ({ ...column }));
-  worksheet.getRow(1).font = { bold: true };
-  worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-  worksheet.autoFilter = 'A1:N1';
-  worksheet.addRows(rows);
-  return worksheet;
-}
 
 export function getProjectRatingsExportFilename(round: ProjectRatingRound, now = new Date()) {
-  return `project-ratings-${round}-${now.toISOString().slice(0, 10)}.xlsx`;
+  return `project-ratings-${round}-${now.toISOString().slice(0, 10)}.pdf`;
 }

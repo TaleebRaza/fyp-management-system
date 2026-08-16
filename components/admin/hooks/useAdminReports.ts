@@ -114,7 +114,16 @@ export function useAdminReports(showDialog: ShowDialog) {
   const downloadProjectRatings = useCallback(async () => {
     setIsDownloadingRatings(true);
     try {
-      const { blob, filename } = await getProjectRatingsExport(ratingExportFilters);
+      const { rows: ratingRows, filename } = await getProjectRatingsExport(
+        ratingExportFilters
+      );
+      const { buildProjectRatingsPdf } = await import(
+        '../reports/projectRatingsPdf'
+      );
+      const blob = await buildProjectRatingsPdf({
+        rows: ratingRows,
+        filters: ratingExportFilters,
+      });
       downloadBlob(blob, filename);
     } catch (error) {
       showDialog({

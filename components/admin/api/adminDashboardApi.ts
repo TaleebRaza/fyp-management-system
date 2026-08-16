@@ -5,8 +5,15 @@ import type {
   StudentPagination,
 } from '../adminDashboardTypes';
 import type { ProjectRatingsExportFilters } from '../../../config/projectRatings';
+import type { ProjectRatingExportRow } from '../../../lib/projectRatingsExport';
 
 type JsonObject = Record<string, unknown>;
+
+type ProjectRatingsExportResponse = JsonObject & {
+  rows?: ProjectRatingExportRow[];
+  filename?: string;
+  error?: string;
+};
 
 export type AdminMutationResult<T extends JsonObject = JsonObject> = {
   ok: boolean;
@@ -152,18 +159,15 @@ export async function getProjectRatingsExport(filters: ProjectRatingsExportFilte
   const response = await fetch(`/api/admin/project-ratings-export?${params.toString()}`, {
     cache: 'no-store',
   });
+  const data = await readJson<ProjectRatingsExportResponse>(response);
   if (!response.ok) {
-    const data = await readJson<{ error?: string }>(response);
-    throw new Error(data.error || 'Failed to generate the project ratings export.');
+    throw new Error(data.error || 'Failed to load the project ratings export data.');
   }
 
-  const blob = await response.blob();
-  if (blob.size === 0) throw new Error('The project ratings export was empty.');
-
-  const disposition = response.headers.get('Content-Disposition') || '';
-  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
-    || `project-ratings-${filters.round}.xlsx`;
-  return { blob, filename };
+  return {
+    rows: Array.isArray(data.rows) ? data.rows : [],
+    filename: data.filename || `project-ratings-${filters.round}.pdf`,
+  };
 }
 
 export async function createAdminSupervisor(input: {

@@ -14,12 +14,6 @@ export type SupervisorDashboardResponse = {
   migrationCode: string;
 };
 
-export type SupervisorExportRequest = {
-  supervisorId: string;
-  supervisorName: string;
-  batchFilter: string;
-  programFilter: string;
-};
 
 async function readJson(response: Response): Promise<JsonObject> {
   const value = await response.json().catch(() => ({}));
@@ -140,26 +134,3 @@ export function removeSupervisorTeam(
   );
 }
 
-export async function fetchSupervisorExport(
-  request: SupervisorExportRequest,
-  fetchImpl: SupervisorFetch = fetch
-) {
-  const response = await fetchImpl(
-    `/api/export-pdf?id=${encodeURIComponent(request.supervisorId)}` +
-      `&batch=${encodeURIComponent(request.batchFilter)}` +
-      `&program=${encodeURIComponent(request.programFilter || 'All')}`
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `Export failed. Server responded with status: ${response.status}.`
-    );
-  }
-
-  const blob = await response.blob();
-  if (blob.size === 0) {
-    throw new Error('The exported file was empty.');
-  }
-
-  return blob;
-}

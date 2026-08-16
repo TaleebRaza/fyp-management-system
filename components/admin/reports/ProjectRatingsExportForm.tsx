@@ -34,7 +34,7 @@ export function ProjectRatingsExportForm({
       </summary>
       <div className="border-t border-[var(--color-border)] p-4">
         <p className="text-sm leading-6 text-[var(--color-text-muted)]">
-          Download one Excel row per student. A minimum of zero leaves that category unfiltered.
+          Download a formatted PDF with one student entry per matching row. A minimum of zero leaves that category unfiltered.
         </p>
 
         <form className="mt-4 grid gap-4 lg:grid-cols-4" onSubmit={handleSubmit}>
@@ -74,7 +74,7 @@ export function ProjectRatingsExportForm({
           <div className="lg:col-span-4">
             <Button type="submit" disabled={isDownloading}>
               {isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-              {isDownloading ? 'Generating Excel...' : 'Download Excel'}
+              {isDownloading ? 'Generating PDF...' : 'Download PDF'}
             </Button>
           </div>
         </form>

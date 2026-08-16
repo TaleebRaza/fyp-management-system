@@ -167,34 +167,28 @@ test('does not prefetch review data when the admin dashboard loads', () => {
   assert.equal('prefetchAdminProjectReviews' in api, false);
 });
 
-test('downloads project ratings with all server-side filter values', async () => {
-  const expectedBlob = new Blob(['xlsx']);
-
+test('loads project ratings rows with all server-side filter values', async () => {
+  const expectedRows = [{ projectId: 'project-1', projectTitle: 'Example' }];
   await withMockFetch(async (url, init) => {
     assert.equal(
       url,
       '/api/admin/project-ratings-export?round=proposal&projectIdea=6&technicalMerit=0&documentationQuality=8'
     );
     assert.deepEqual(init, { cache: 'no-store' });
-    return {
-      ok: true,
-      headers: {
-        get(name) {
-          return name === 'Content-Disposition'
-            ? 'attachment; filename="project-ratings-proposal-2026-08-06.xlsx"'
-            : null;
-        },
-      },
-      async blob() {
-        return expectedBlob;
-      },
-    };
+    return jsonResponse({
+      rows: expectedRows,
+      filename: 'project-ratings-proposal-2026-08-06.pdf',
+    });
   }, async () => {
     const result = await api.getProjectRatingsExport({
       round: 'proposal',
-      minimums: { projectIdea: 6, technicalMerit: 0, documentationQuality: 8 },
+      minimums: {
+        projectIdea: 6,
+        technicalMerit: 0,
+        documentationQuality: 8,
+      },
     });
-    assert.equal(result.blob, expectedBlob);
-    assert.equal(result.filename, 'project-ratings-proposal-2026-08-06.xlsx');
+    assert.deepEqual(result.rows, expectedRows);
+    assert.equal(result.filename, 'project-ratings-proposal-2026-08-06.pdf');
   });
 });

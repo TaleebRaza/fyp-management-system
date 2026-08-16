@@ -3,16 +3,16 @@ import test from 'node:test';
 
 import { importTypeScriptModule } from './support/importTypeScript.mjs';
 
+const supervisorApi = await importTypeScriptModule(
+  'components/supervisor/api/supervisorDashboardApi.ts'
+);
 const {
   expandSupervisorTeam,
-  fetchSupervisorExport,
   loadSupervisorDashboard,
   migrateSupervisorStudent,
   removeSupervisorTeam,
   updateSupervisorProjectStatus,
-} = await importTypeScriptModule(
-  'components/supervisor/api/supervisorDashboardApi.ts'
-);
+} = supervisorApi;
 
 function jsonResponse(json, { ok = true, status = 200 } = {}) {
   return {
@@ -117,53 +117,6 @@ test('API errors use the server message without hiding it', async () => {
   );
 });
 
-test('export sends filters and lets the server derive the supervisor filename', async () => {
-  const calls = [];
-  const expectedBlob = new Blob(['report']);
-  const result = await fetchSupervisorExport(
-    {
-      supervisorId: 'sup 1',
-      supervisorName: 'Dr. Test User',
-      batchFilter: 'Fall 2023',
-      programFilter: '',
-    },
-    async (...args) => {
-      calls.push(args);
-      return {
-        ok: true,
-        status: 200,
-        async blob() {
-          return expectedBlob;
-        },
-      };
-    }
-  );
-
-  assert.equal(
-    calls[0][0],
-    '/api/export-pdf?id=sup%201&batch=Fall%202023&program=All'
-  );
-  assert.equal(result, expectedBlob);
-});
-
-test('export rejects an empty server file', async () => {
-  await assert.rejects(
-    () =>
-      fetchSupervisorExport(
-        {
-          supervisorId: 'sup-1',
-          supervisorName: 'Supervisor',
-          batchFilter: 'All',
-          programFilter: 'BSAI',
-        },
-        async () => ({
-          ok: true,
-          status: 200,
-          async blob() {
-            return new Blob([]);
-          },
-        })
-      ),
-    /exported file was empty/i
-  );
+test('supervisor API no longer contains a server-side file export client', () => {
+  assert.equal('fetchSupervisorExport' in supervisorApi, false);
 });

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import ExcelJS from 'exceljs';
 
 import { importTypeScriptModule } from './support/importTypeScript.mjs';
 
@@ -128,36 +127,15 @@ test('writes one sorted row per unique project member with shared project rating
   assert.equal(rows[1].supervisorEmail, 'sup@example.com');
 });
 
-test('creates a valid workbook with headers even when no projects match', async () => {
-  const workbook = new ExcelJS.Workbook();
-  exportModule.populateProjectRatingsWorkbook(workbook, []);
-  const buffer = await workbook.xlsx.writeBuffer();
-
-  const reopened = new ExcelJS.Workbook();
-  await reopened.xlsx.load(buffer);
-  const worksheet = reopened.getWorksheet('Project Ratings');
-  assert.ok(worksheet);
-  assert.equal(worksheet.rowCount, 1);
-  assert.deepEqual(
-    worksheet.getRow(1).values.slice(1),
-    exportModule.PROJECT_RATINGS_EXPORT_COLUMNS.map((column) => column.header)
-  );
-  for (const excludedHeader of [
-    'Project ID',
-    'Rating Date',
-    'Reviewer Name',
-    'Reviewer Role',
-    'Supervisor Email',
-    'Student Email',
-  ]) {
-    assert.ok(!worksheet.getRow(1).values.includes(excludedHeader));
-  }
+test('removes Excel workbook helpers from the ratings export module', () => {
+  assert.equal('populateProjectRatingsWorkbook' in exportModule, false);
+  assert.equal('PROJECT_RATINGS_EXPORT_COLUMNS' in exportModule, false);
 });
 
 test('uses the dated filename and a dedicated admin-only, storage-free route', async () => {
   assert.equal(
     exportModule.getProjectRatingsExportFilename('thesis', new Date('2026-08-06T10:00:00.000Z')),
-    'project-ratings-thesis-2026-08-06.xlsx'
+    'project-ratings-thesis-2026-08-06.pdf'
   );
 
   const route = await readFile(
@@ -167,5 +145,6 @@ test('uses the dated filename and a dedicated admin-only, storage-free route', a
   assert.match(route, /requireCurrentUser\(req, \['admin'\]\)/);
   assert.match(route, /Project\.find\(buildProjectRatingsExportFilter\(filters\)\)/);
   assert.equal((route.match(/User\.find\(/g) || []).length, 1);
-  assert.doesNotMatch(route, /s3|R2|writeFile|StorageDeletion/i);
+  assert.doesNotMatch(route, /s3|R2|writeFile|StorageDeletion|ExcelJS|writeBuffer/i);
+  assert.match(route, /NextResponse\.json\(/);
 });

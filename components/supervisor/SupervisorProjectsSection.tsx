@@ -53,7 +53,7 @@ export default function SupervisorProjectsSection({
             {!hideQueueFilterClear && queueFilter !== 'all' && onClearQueueFilter && <Button variant="outline" onClick={onClearQueueFilter}>Clear queue filter</Button>}
             {onExport && <Button variant="outline" onClick={onExport} disabled={isExporting}>
               {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-              {isExporting ? 'Exporting...' : 'Export Excel'}
+              {isExporting ? 'Exporting...' : 'Download PDF'}
             </Button>}
             {headerActions}
           </div>

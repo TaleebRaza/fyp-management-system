@@ -117,6 +117,8 @@ export async function GET(req: NextRequest) {
           rollNo: student.rollNo,
           email: student.email,
           program: student.program || 'N/A',
+          batch: student.batch || 'N/A',
+          semester: student.semester || '7th Semester',
         })),
       }];
     });

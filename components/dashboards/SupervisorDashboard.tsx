@@ -50,7 +50,7 @@ const SupervisorDashboard = ({
     setActiveTab,
   });
   const { isExporting, exportProjects } = useSupervisorExport({
-    supervisorId,
+    projects,
     supervisorName,
     batchFilter: filters.batchFilter,
     programFilter: filters.programFilter,
@@ -155,7 +155,7 @@ const SupervisorDashboard = ({
               ) : (
                 <Download size={16} />
               )}
-              {isExporting ? 'Exporting...' : 'Export'}
+              {isExporting ? 'Exporting...' : 'Download PDF'}
             </Button>
             <Button
               variant="danger"

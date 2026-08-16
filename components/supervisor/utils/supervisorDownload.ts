@@ -1,5 +1,5 @@
 export function getSupervisorExportFilename(supervisorName: string) {
-  return `fyp-report-${supervisorName.replace(/\s+/g, '-')}.xlsx`;
+  return `fyp-report-${supervisorName.replace(/\s+/g, '-')}.pdf`;
 }
 
 export function downloadSupervisorBlob(blob: Blob, filename: string) {

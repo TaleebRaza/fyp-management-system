@@ -76,7 +76,7 @@ export default function SupervisorOverviewSection({
               <BroadcastWidget isDarkMode={isDarkMode} theme={theme} />
               <Button variant="outline" onClick={onExport} disabled={isExporting}>
                 {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-                {isExporting ? 'Exporting...' : 'Export Filtered Excel'}
+                {isExporting ? 'Exporting...' : 'Download Filtered PDF'}
               </Button>
             </div>
           </div>

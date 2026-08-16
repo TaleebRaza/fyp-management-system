@@ -6,6 +6,8 @@ export type ProjectReviewMember = {
   rollNo?: string;
   email?: string;
   program?: string;
+  batch?: string;
+  semester?: string;
 };
 
 export type ProjectReviewProject = {
