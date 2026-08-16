@@ -19,6 +19,7 @@ import {
   getProjectDomainDisplayLabels,
   getProjectProgram,
   getSafePdfKey,
+  getStatusLabel,
   getStatusVariant,
 } from './SupervisorProjectCard';
 import type { SupervisorProject, SupervisorTheme } from './supervisorDashboardTypes';
@@ -150,7 +151,7 @@ export default function SupervisorProjectDialog({
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Status</p>
-              <div className="mt-2"><Badge variant={getStatusVariant(project.status)}>{project.status || 'Pending'}</Badge></div>
+              <div className="mt-2"><Badge variant={getStatusVariant(project.status)}>{getStatusLabel(project.status)}</Badge></div>
             </div>
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Batch</p>

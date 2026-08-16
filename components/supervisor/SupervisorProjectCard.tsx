@@ -18,6 +18,9 @@ export const getStatusVariant = (status?: string): BadgeVariant => {
   return 'muted';
 };
 
+export const getStatusLabel = (status?: string) =>
+  status === 'Pending' ? 'No New Docs' : status || 'Pending';
+
 const PROGRAM_ACRONYM_BY_NAME = Object.entries(PROGRAM_MAP).reduce<Record<string, string>>(
   (acronyms, [acronym, fullName]) => ({ ...acronyms, [fullName]: acronym }),
   {}
@@ -152,7 +155,7 @@ export default function SupervisorProjectCard({
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <Badge variant={getStatusVariant(project.status)}>{project.status || 'Pending'}</Badge>
+          <Badge variant={getStatusVariant(project.status)}>{getStatusLabel(project.status)}</Badge>
           {isReviewable && <span className="inline-flex items-center rounded-full border border-pink-500/40 bg-white/90 px-2.5 py-1 text-xs font-extrabold text-pink-700 shadow-sm dark:border-pink-300/30 dark:bg-pink-500/20 dark:text-pink-100">Waiting for review</span>}
         </div>
       </div>
