@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, MessageCircle, Send, Trash2 } from 'lucide-react';
+import { Loader2, MessageCircle, Send, Trash2, X } from 'lucide-react';
 
 import { APP_SETTINGS } from '../../config/appSettings';
 import { useAudioRecorder } from '../broadcast';
 import type { BroadcastMode } from '../broadcast';
 import { AudioBroadcastForm } from '../broadcast/AudioBroadcastForm';
 import { BroadcastModeSelector } from '../broadcast/BroadcastModeSelector';
-import { Badge, Button, Dialog, TextArea } from '../ui';
+import { Badge, Button, TextArea } from '../ui';
 
 type StudentMessage = {
   messageId: string;
@@ -185,119 +185,148 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
         <MessageCircle size={21} />
       </button>
 
-      <Dialog
-        open={isOpen}
-        title={message?.isAdminReply ? 'Admin reply' : 'Message admin'}
-        description={message?.isAdminReply
-          ? 'Send a new text or voice message to reply.'
-          : 'Send one text or voice message. You can replace it after the admin sees or hears it.'}
-        onClose={close}
-        closeDisabled={isMutating}
-        footer={canCompose && !isLoading ? (
-          <Button
-            onClick={() => void send()}
-            disabled={
-              isMutating
-              || (mode === 'text' ? !text.trim() : !audioBlob)
-            }
-          >
-            {isMutating ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            Send
-          </Button>
-        ) : undefined}
+      <section
+        aria-hidden={!isOpen}
+        aria-label="Message admin"
+        className={`fixed z-50 flex w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl transition-all duration-200 ease-out ${
+          isOpen
+            ? 'visible translate-y-0 scale-100 opacity-100'
+            : 'invisible pointer-events-none translate-y-3 scale-95 opacity-0'
+        }`}
+        style={{
+          bottom: 'calc(max(1rem, env(safe-area-inset-bottom)) + 4rem)',
+          right: 'max(1rem, env(safe-area-inset-right))',
+        }}
       >
-        {isLoading ? (
-          <div className="flex min-h-32 items-center justify-center text-sm font-semibold text-[var(--color-text-muted)]">
-            <Loader2 size={18} className="mr-2 animate-spin" />
-            Loading message...
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3">
+          <div>
+            <h2 className="font-bold text-[var(--color-text)]">
+              {message?.isAdminReply ? 'Admin reply' : 'Message admin'}
+            </h2>
+            <p className="mt-0.5 text-xs leading-5 text-[var(--color-text-muted)]">
+              {message?.isAdminReply
+                ? 'Send a new text or voice message to reply.'
+                : 'Send one text or voice message. You can replace it after the admin sees or hears it.'}
+            </p>
           </div>
-        ) : (
-          <div className="space-y-5">
-            {message && (
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <Badge variant={message.isAdminReply ? 'success' : message.acknowledgedAt ? 'success' : 'warning'}>
-                    {message.isAdminReply
-                      ? 'Admin reply'
-                      : message.acknowledgedAt
-                      ? message.type === 'audio' ? 'Heard' : 'Seen'
-                      : 'Pending'}
-                  </Badge>
-                  {!message.isAdminReply && (
-                    <Button
-                      variant="ghost"
-                      className="min-h-9 px-3 text-[var(--color-danger)]"
-                      disabled={isMutating}
-                      onClick={() => void remove()}
-                    >
-                      <Trash2 size={15} />
-                      Delete
-                    </Button>
+          <Button
+            variant="ghost"
+            className="min-h-9 rounded-lg px-2"
+            onClick={close}
+            disabled={isMutating}
+            aria-label="Close message window"
+          >
+            <X size={18} />
+          </Button>
+        </div>
+
+        <div className="portal-scrollbar max-h-[min(28rem,calc(100vh-12rem))] overflow-y-auto px-4 py-4">
+          {isLoading ? (
+            <div className="flex min-h-32 items-center justify-center text-sm font-semibold text-[var(--color-text-muted)]">
+              <Loader2 size={18} className="mr-2 animate-spin" />
+              Loading message...
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {message && (
+                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <Badge variant={message.isAdminReply ? 'success' : message.acknowledgedAt ? 'success' : 'warning'}>
+                      {message.isAdminReply
+                        ? 'Admin reply'
+                        : message.acknowledgedAt
+                        ? message.type === 'audio' ? 'Heard' : 'Seen'
+                        : 'Pending'}
+                    </Badge>
+                    {!message.isAdminReply && (
+                      <Button
+                        variant="ghost"
+                        className="min-h-9 px-3 text-[var(--color-danger)]"
+                        disabled={isMutating}
+                        onClick={() => void remove()}
+                      >
+                        <Trash2 size={15} />
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                  {message.type === 'text' ? (
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-text)]">
+                      {message.content}
+                    </p>
+                  ) : (
+                    <audio
+                      controls
+                      src={secureAudioUrl(message.content)}
+                      className="mt-3 w-full"
+                    />
+                  )}
+                  {!message.isAdminReply && !message.acknowledgedAt && (
+                    <p className="mt-3 text-xs font-semibold text-[var(--color-text-muted)]">
+                      You can delete this message, but cannot send another until the admin acknowledges it.
+                    </p>
                   )}
                 </div>
-                {message.type === 'text' ? (
-                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-text)]">
-                    {message.content}
-                  </p>
-                ) : (
-                  <audio
-                    controls
-                    src={secureAudioUrl(message.content)}
-                    className="mt-3 w-full"
-                  />
-                )}
-                {!message.isAdminReply && !message.acknowledgedAt && (
-                  <p className="mt-3 text-xs font-semibold text-[var(--color-text-muted)]">
-                    You can delete this message, but cannot send another until the admin acknowledges it.
-                  </p>
-                )}
-              </div>
-            )}
+              )}
 
-            {canCompose && (
-              <div>
-                <BroadcastModeSelector
-                  disabled={isMutating}
-                  isDarkMode={isDarkMode}
-                  mode={mode}
-                  onChange={setMode}
-                />
-                {mode === 'text' ? (
-                  <div>
-                    <TextArea
-                      value={text}
-                      disabled={isMutating}
-                      maxLength={APP_SETTINGS.STUDENT_MESSAGE.MAX_TEXT_LENGTH}
-                      placeholder="Write a short message to the admin..."
-                      onChange={(event) => setText(event.target.value)}
-                    />
-                    <p className="mt-1 text-right text-xs text-[var(--color-text-muted)]">
-                      {text.length}/{APP_SETTINGS.STUDENT_MESSAGE.MAX_TEXT_LENGTH}
-                    </p>
-                  </div>
-                ) : (
-                  <AudioBroadcastForm
-                    audioUrl={audioUrl}
-                    hasAudio={audioBlob !== null}
-                    isDarkMode={isDarkMode}
-                    isRecording={isRecording}
-                    recordingTime={recordingTime}
-                    onClearAudio={() => {
-                      clearAudio();
-                      audioUploadId.current = null;
-                    }}
-                    onStartRecording={() => void startRecording()}
-                    onStopRecording={stopRecording}
+              {canCompose && (
+                <div>
+                  <BroadcastModeSelector
                     disabled={isMutating}
+                    isDarkMode={isDarkMode}
+                    mode={mode}
+                    onChange={setMode}
                   />
-                )}
-              </div>
-            )}
+                  {mode === 'text' ? (
+                    <div>
+                      <TextArea
+                        value={text}
+                        disabled={isMutating}
+                        maxLength={APP_SETTINGS.STUDENT_MESSAGE.MAX_TEXT_LENGTH}
+                        placeholder="Write a short message to the admin..."
+                        onChange={(event) => setText(event.target.value)}
+                      />
+                      <p className="mt-1 text-right text-xs text-[var(--color-text-muted)]">
+                        {text.length}/{APP_SETTINGS.STUDENT_MESSAGE.MAX_TEXT_LENGTH}
+                      </p>
+                    </div>
+                  ) : (
+                    <AudioBroadcastForm
+                      audioUrl={audioUrl}
+                      hasAudio={audioBlob !== null}
+                      isDarkMode={isDarkMode}
+                      isRecording={isRecording}
+                      recordingTime={recordingTime}
+                      onClearAudio={() => {
+                        clearAudio();
+                        audioUploadId.current = null;
+                      }}
+                      onStartRecording={() => void startRecording()}
+                      onStopRecording={stopRecording}
+                      disabled={isMutating}
+                    />
+                  )}
+                </div>
+              )}
 
-            {error && <p role="alert" className="text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
+              {error && <p role="alert" className="text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
+            </div>
+          )}
+        </div>
+
+        {canCompose && !isLoading && (
+          <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3">
+            <Button
+              className="w-full"
+              onClick={() => void send()}
+              disabled={isMutating || (mode === 'text' ? !text.trim() : !audioBlob)}
+            >
+              {isMutating ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              Send
+            </Button>
           </div>
         )}
-      </Dialog>
+      </section>
     </>
   );
 }
