@@ -74,6 +74,7 @@ type AdminTab =
 const AdminDashboard = ({
   session,
   showDialog,
+  isDarkMode = false,
   registrationPolicy,
   onRegistrationPolicyChange,
   portalPaused = false,
@@ -345,7 +346,7 @@ const AdminDashboard = ({
           <AdminProjectReviewsPanel showDialog={showDialog} />
         )}
 
-        {activeTab === 'messages' && <StudentMessagesPanel />}
+        {activeTab === 'messages' && <StudentMessagesPanel isDarkMode={isDarkMode} />}
 
         {activeTab === 'logs' && <AdminActivityLogsPanel />}
         {activeTab === 'fines' && (

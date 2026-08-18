@@ -213,6 +213,7 @@ export default function App() {
         <AdminDashboard
           session={session}
           showDialog={showDialog}
+          isDarkMode={isDarkMode}
           registrationPolicy={registrationPolicy}
           onRegistrationPolicyChange={setRegistrationPolicy}
           portalPaused={portalStatus?.paused}

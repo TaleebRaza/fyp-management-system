@@ -17,6 +17,7 @@ type StudentMessage = {
   size: number;
   createdAt: string;
   acknowledgedAt: string | null;
+  isAdminReply: boolean;
 };
 
 type MessageResponse = {
@@ -166,7 +167,7 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
     }
   };
 
-  const canCompose = !message || Boolean(message.acknowledgedAt);
+  const canCompose = !message || message.isAdminReply || Boolean(message.acknowledgedAt);
 
   return (
     <>
@@ -186,8 +187,10 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
 
       <Dialog
         open={isOpen}
-        title="Message admin"
-        description="Send one text or voice message. You can replace it after the admin sees or hears it."
+        title={message?.isAdminReply ? 'Admin reply' : 'Message admin'}
+        description={message?.isAdminReply
+          ? 'Send a new text or voice message to reply.'
+          : 'Send one text or voice message. You can replace it after the admin sees or hears it.'}
         onClose={close}
         closeDisabled={isMutating}
         footer={canCompose && !isLoading ? (
@@ -213,20 +216,24 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
             {message && (
               <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <Badge variant={message.acknowledgedAt ? 'success' : 'warning'}>
-                    {message.acknowledgedAt
+                  <Badge variant={message.isAdminReply ? 'success' : message.acknowledgedAt ? 'success' : 'warning'}>
+                    {message.isAdminReply
+                      ? 'Admin reply'
+                      : message.acknowledgedAt
                       ? message.type === 'audio' ? 'Heard' : 'Seen'
                       : 'Pending'}
                   </Badge>
-                  <Button
-                    variant="ghost"
-                    className="min-h-9 px-3 text-[var(--color-danger)]"
-                    disabled={isMutating}
-                    onClick={() => void remove()}
-                  >
-                    <Trash2 size={15} />
-                    Delete
-                  </Button>
+                  {!message.isAdminReply && (
+                    <Button
+                      variant="ghost"
+                      className="min-h-9 px-3 text-[var(--color-danger)]"
+                      disabled={isMutating}
+                      onClick={() => void remove()}
+                    >
+                      <Trash2 size={15} />
+                      Delete
+                    </Button>
+                  )}
                 </div>
                 {message.type === 'text' ? (
                   <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-text)]">
@@ -239,7 +246,7 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
                     className="mt-3 w-full"
                   />
                 )}
-                {!message.acknowledgedAt && (
+                {!message.isAdminReply && !message.acknowledgedAt && (
                   <p className="mt-3 text-xs font-semibold text-[var(--color-text-muted)]">
                     You can delete this message, but cannot send another until the admin acknowledges it.
                   </p>

@@ -5,6 +5,7 @@ import type { RegistrationPolicyDto } from '../../types/registrationPolicy';
 export type AdminDashboardProps = {
   session: Session;
   showDialog: ShowDialog;
+  isDarkMode?: boolean;
   registrationPolicy?: RegistrationPolicyDto;
   onRegistrationPolicyChange?: (policy: RegistrationPolicyDto) => void;
   portalPaused?: boolean;

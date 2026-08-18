@@ -7,6 +7,7 @@ import { consumeRateLimitDimensions } from '../../../../../lib/rateLimit';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { isRecord } from '../../../../../lib/security/input';
 import { findSharedStorageKeys } from '../../../../../lib/storageReferenceSafety';
+import { getAdminReplySenderId, isAdminReply } from '../../../../../lib/studentMessageDirection';
 import {
   assertStorageLedgerReady,
   cancelUploadReservation,
@@ -44,6 +45,7 @@ function messageResponse(student: {
       size: Number(student.studentMessageSize || 0),
       createdAt: student.studentMessageCreatedAt,
       acknowledgedAt: student.studentMessageAcknowledgedAt || null,
+      isAdminReply: isAdminReply(student.studentMessageId),
     },
   };
 }
@@ -59,7 +61,10 @@ async function enqueueCurrentMessageDeletion(
   if (
     !key
     || getStorageObjectKind(key) !== 'student-message'
-    || !isOwnedStudentMessageKey(key, String(student._id))
+    || !isOwnedStudentMessageKey(
+      key,
+      getAdminReplySenderId(student.studentMessageId) || String(student._id)
+    )
   ) {
     throw new StorageProtocolError(
       'The stored message audio key is invalid. Run the storage integrity audit before changing it.',
@@ -97,7 +102,8 @@ async function replaceCurrentMessage(
 ) {
   const student = await User.findOne({ _id: studentId, role: 'student' }).session(session);
   if (!student) throw new StorageProtocolError('Student not found.', 404);
-  if (student.studentMessageId && !student.studentMessageAcknowledgedAt) {
+  const currentIsAdminReply = isAdminReply(student.studentMessageId);
+  if (student.studentMessageId && !currentIsAdminReply && !student.studentMessageAcknowledgedAt) {
     throw new StorageProtocolError('Your current message is still waiting for the admin.', 409);
   }
 
@@ -105,7 +111,7 @@ async function replaceCurrentMessage(
   const currentMessageGate = student.studentMessageId
     ? {
         studentMessageId: student.studentMessageId,
-        studentMessageAcknowledgedAt: { $ne: null },
+        ...(currentIsAdminReply ? {} : { studentMessageAcknowledgedAt: { $ne: null } }),
       }
     : {
         $or: [
@@ -271,6 +277,9 @@ export async function DELETE(req: NextRequest) {
         studentMessageId: messageId,
       }).session(session);
       if (!student) throw new StorageProtocolError('The current message changed. Refresh and try again.', 409);
+      if (isAdminReply(student.studentMessageId)) {
+        throw new StorageProtocolError('Admin replies can be replaced by sending a new message.', 409);
+      }
 
       await enqueueCurrentMessageDeletion(student, session, 'student-message-deleted');
       const cleared = await User.updateOne(
