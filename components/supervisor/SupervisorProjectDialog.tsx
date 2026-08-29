@@ -59,9 +59,11 @@ export default function SupervisorProjectDialog({
   voiceNotes?: VoiceNotes;
   management?: ProjectManagement;
 }) {
-  const [isApprovalFormOpen, setIsApprovalFormOpen] = useState(false);
+  const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
   const [approvalRatings, setApprovalRatings] = useState<PendingProjectRatings>({});
   const [approvalRemarks, setApprovalRemarks] = useState('');
+  const projectId = project?._id ?? null;
+  const isApprovalFormOpen = projectId !== null && approvalProjectId === projectId;
   const selectedPdfKey = getSafePdfKey(project?.pdfUrl);
   const domainLabels = getProjectDomainDisplayLabels(project);
   const completeRatings = parseProjectRatingValues(approvalRatings);
@@ -72,7 +74,7 @@ export default function SupervisorProjectDialog({
     if (getProjectRatingRound(project.stage)) {
       setApprovalRatings({});
       setApprovalRemarks('');
-      setIsApprovalFormOpen(true);
+      setApprovalProjectId(project._id);
       return;
     }
     onAction(project, 'Approved');
@@ -82,10 +84,17 @@ export default function SupervisorProjectDialog({
     setApprovalRatings((current) => ({ ...current, [category]: value }));
   };
 
+  const handleClose = () => {
+    setApprovalProjectId(null);
+    setApprovalRatings({});
+    setApprovalRemarks('');
+    onClose();
+  };
+
   return (
     <Dialog
       open={!!project}
-      onClose={isProcessingAction ? () => undefined : onClose}
+      onClose={isProcessingAction ? () => undefined : handleClose}
       title={isApprovalFormOpen ? 'Approve project and save ratings' : getMemberNames(project)}
       description={project ? `${getMemberRollNumbers(project)} · ${getProgramName(getProjectProgram(project))} · ${project.batch || 'No batch'} · ${project.semester || 'No semester'}${project.supervisorName ? ` · Supervisor: ${project.supervisorName}` : ''}` : ''}
       size="xl"
@@ -93,7 +102,7 @@ export default function SupervisorProjectDialog({
         project ? (
           isApprovalFormOpen ? (
             <>
-              <Button variant="outline" disabled={isProcessingAction} onClick={() => setIsApprovalFormOpen(false)}>
+              <Button variant="outline" disabled={isProcessingAction} onClick={() => setApprovalProjectId(null)}>
                 Cancel
               </Button>
               <Button
@@ -108,7 +117,7 @@ export default function SupervisorProjectDialog({
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={onClose}>Close</Button>
+              <Button variant="outline" onClick={handleClose}>Close</Button>
               <Button variant="success" disabled={!project.projectTitle || !project.pdfUrl || !isSubmittedForReview || isProcessingAction} onClick={handleApprove}>
                 {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}Approve
               </Button>

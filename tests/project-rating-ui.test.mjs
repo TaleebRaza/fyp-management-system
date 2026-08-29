@@ -32,6 +32,11 @@ test('approval is disabled until ratings are complete and while submission is ru
   assert.match(dialogSource, /type="submit"/);
 });
 
+test('approval state resets when a different project is opened', () => {
+  assert.match(dialogSource, /const isApprovalFormOpen = projectId !== null && approvalProjectId === projectId/);
+  assert.match(dialogSource, /setApprovalProjectId\(project\._id\)/);
+});
+
 test('rating visibility hides future rounds and identifies passed rounds', () => {
   assert.deepEqual(ratings.getCompletedProjectRatingRounds('PROPOSAL'), []);
   assert.deepEqual(ratings.getCompletedProjectRatingRounds('THESIS_DRAFT'), ['proposal']);
