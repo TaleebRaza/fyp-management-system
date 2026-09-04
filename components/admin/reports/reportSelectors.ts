@@ -63,6 +63,13 @@ export const toReportRows = (data: AdminReportsData | null, reportId: ReportId):
         value: Number(item.total || 0),
       }));
 
+    case 'supervisorLoginCounts':
+      return (data.supervisorLoginCounts || []).map((item) => ({
+        label: item.label || 'Unknown Supervisor',
+        value: Number(item.total || 0),
+        note: item.note,
+      }));
+
     case 'finedStudents':
       return toFineRows(data.finedStudents);
 

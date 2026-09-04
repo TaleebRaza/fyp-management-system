@@ -58,6 +58,14 @@ type PdfReview = {
   approved?: number;
 };
 
+type SupervisorLoginRow = {
+  _id: unknown;
+  name?: string;
+  rollNo?: string;
+  monthlyLoginCount?: number;
+  lastLoginMonth?: string;
+};
+
 type UserReportFacets = {
   supervisors: SupervisorRow[];
   studentsPerSupervisor: SupervisorCountRow[];
@@ -69,6 +77,7 @@ type UserReportFacets = {
   outstandingFineSummary: Array<{ total: number; totalFineAmount: number }>;
   studentTotals: StudentTotals[];
   supervisorCount: Array<{ total: number }>;
+  supervisorLoginCounts: SupervisorLoginRow[];
 };
 
 type ProjectReportFacets = {
@@ -305,13 +314,25 @@ export async function GET(req: NextRequest) {
               { $match: { role: 'supervisor' } },
               { $count: 'total' },
             ],
+            supervisorLoginCounts: [
+              { $match: { role: 'supervisor' } },
+              {
+                $project: {
+                  name: 1,
+                  rollNo: 1,
+                  monthlyLoginCount: { $ifNull: ['$monthlyLoginCount', 0] },
+                  lastLoginMonth: 1,
+                },
+              },
+              { $sort: { monthlyLoginCount: -1, name: 1 } },
+            ],
           },
         },
       ]),
       Project.aggregate<ProjectReportFacets>([
         {
           $facet: {
-                        projectStatus: [
+            projectStatus: [
               { $group: { _id: { $ifNull: ['$status', 'Pending'] }, total: { $sum: 1 } } },
               { $sort: { total: -1 } },
             ],
@@ -477,7 +498,7 @@ export async function GET(req: NextRequest) {
     const students = Number(studentTotals.students || 0);
     const activeStudents = Number(studentTotals.activeStudents || 0);
     const deactivatedStudents = Number(studentTotals.deactivatedStudents || 0);
-        const assignedStudents = Number(studentTotals.assignedStudents || 0);
+    const assignedStudents = Number(studentTotals.assignedStudents || 0);
     const unassignedStudents = Number(studentTotals.unassignedStudents || 0);
     const canonicalStudentStatus = [...(projectReport?.studentStatus || [])];
     if (unassignedStudents > 0) {
@@ -492,6 +513,17 @@ export async function GET(req: NextRequest) {
         total: Math.max(Number(pdfReview.totalProjects || 0) - Number(pdfReview.withPdf || 0), 0),
       },
     ];
+
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const supervisorLoginCounts = (userReport?.supervisorLoginCounts || []).map((row) => ({
+      label: row.name || row.rollNo || 'Unknown Supervisor',
+      total: Number(row.monthlyLoginCount || 0),
+      note: row.lastLoginMonth === currentMonth
+        ? 'Logged in this month'
+        : row.lastLoginMonth
+          ? `Last active ${row.lastLoginMonth}`
+          : 'No recorded logins',
+    }));
 
     return NextResponse.json(
       {
@@ -512,13 +544,14 @@ export async function GET(req: NextRequest) {
         finedStudents,
         collectedFineStudents,
         studentsPerSupervisor,
-                studentStatusSummary: toLabelRows(canonicalStudentStatus, 'No Status'),
+        studentStatusSummary: toLabelRows(canonicalStudentStatus, 'No Status'),
         studentActivitySummary: toLabelRows(userReport?.studentActivity || [], 'Unknown'),
         programSummary: toLabelRows(userReport?.programs || [], 'No Program'),
         batchSummary: toLabelRows(userReport?.batches || [], 'No Batch'),
         projectStatusSummary: toLabelRows(projectReport?.projectStatus || [], 'Pending'),
         projectStageSummary: toLabelRows(projectReport?.projectStage || [], 'PROPOSAL'),
         pdfReviewSummary,
+        supervisorLoginCounts,
       },
       {
         status: 200,

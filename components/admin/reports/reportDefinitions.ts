@@ -51,4 +51,9 @@ export const REPORT_OPTIONS: ReportOption[] = [
     label: 'Fines Collected',
     description: 'Shows monetary fines verified as collected, excluding waived fines.',
   },
+  {
+    id: 'supervisorLoginCounts',
+    label: 'Supervisor Login Activity',
+    description: 'Shows how many times each supervisor has logged in this month.',
+  },
 ];

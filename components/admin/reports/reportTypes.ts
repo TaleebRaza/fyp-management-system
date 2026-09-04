@@ -8,7 +8,8 @@ export type ReportId =
   | 'projectStageSummary'
   | 'pdfReviewSummary'
   | 'finedStudents'
-  | 'collectedFineStudents';
+  | 'collectedFineStudents'
+  | 'supervisorLoginCounts';
 
 export type ReportOption = {
   id: ReportId;

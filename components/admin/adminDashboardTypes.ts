@@ -66,6 +66,7 @@ type ReportSourceItem = {
   daysLate?: number;
   program?: string;
   batch?: string;
+  note?: string;
 };
 
 export type AdminReportsData = {
@@ -88,4 +89,5 @@ export type AdminReportsData = {
   pdfReviewSummary?: ReportSourceItem[];
   finedStudents?: ReportSourceItem[];
   collectedFineStudents?: ReportSourceItem[];
+  supervisorLoginCounts?: ReportSourceItem[]; 
 };
