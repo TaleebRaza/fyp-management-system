@@ -5,6 +5,7 @@ import connectToDatabase from '../mongodb';
 import Project from '../../models/Project';
 import User from '../../models/User';
 import { isSameOriginMutation } from './origin';
+import { getNextAuthSecret } from '../runtimeConfig';
 
 export type UserRole = 'admin' | 'supervisor' | 'student';
 
@@ -23,7 +24,7 @@ export async function requireCurrentUser(
 ): Promise<CurrentUser | null> {
   if (!isSameOriginMutation(req)) return null;
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({ req, secret: getNextAuthSecret() });
   if (!token || typeof token.id !== 'string' || !mongoose.Types.ObjectId.isValid(token.id)) {
     return null;
   }

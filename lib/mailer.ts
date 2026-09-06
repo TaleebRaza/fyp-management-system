@@ -1,26 +1,42 @@
 import nodemailer from 'nodemailer';
+import { isValidEmailAddress, normalizeEmailAddress } from './security/input';
+import { getMailConfiguration, type MailConfiguration } from './runtimeConfig';
 
 type SendMailOptions = {
   replyTo?: string;
   fromName?: string;
+  emailType?: 'test' | 'transactional';
 };
 
-const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'FYP Portal';
-const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || process.env.EMAIL_USER;
-
 export function isEmailConfigured() {
-  return Boolean(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD);
+  return Boolean(getMailConfiguration());
 }
 
-// Create a reusable transporter object using the default SMTP transport.
-// Keep this Gmail-based so the portal still works on the current free setup.
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD,
-  },
-});
+function createTransporter(configuration: MailConfiguration) {
+  if (configuration.transport === 'gmail') {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: configuration.username,
+        pass: configuration.password,
+      },
+    });
+  }
+
+  const transport = {
+    host: configuration.host,
+    port: configuration.port,
+    secure: configuration.tlsMode === 'tls',
+    requireTLS: configuration.tlsMode === 'starttls',
+    ignoreTLS: configuration.tlsMode === 'none',
+  };
+  return configuration.username && configuration.password
+    ? nodemailer.createTransport({
+        ...transport,
+        auth: { user: configuration.username, pass: configuration.password },
+      })
+    : nodemailer.createTransport(transport);
+}
 
 function stripHtml(htmlContent: string) {
   return htmlContent
@@ -44,37 +60,37 @@ export const sendNotificationEmail = async (
   textContent?: string,
   options: SendMailOptions = {}
 ) => {
-  if (!isEmailConfigured()) {
-    console.warn('Email credentials missing in environment. Email dispatch aborted.');
+  const configuration = getMailConfiguration();
+  if (!configuration) {
+    console.warn('email_not_configured');
     return false;
   }
 
-  const cleanTo = String(to || '').trim().toLowerCase();
+  const cleanTo = normalizeEmailAddress(to);
   const cleanSubject = String(subject || '').trim();
   const plainText = String(textContent || '').trim() || stripHtml(htmlContent);
-  const fromName = options.fromName || EMAIL_FROM_NAME;
-  const replyTo = options.replyTo || EMAIL_REPLY_TO;
+  const fromName = String(options.fromName || configuration.fromName).trim() || configuration.fromName;
+  const replyTo = options.replyTo || configuration.replyTo;
 
-  if (!cleanTo || !cleanSubject || !plainText) {
-    console.warn('Email dispatch aborted because recipient, subject, or content is missing.');
+  if (!isValidEmailAddress(cleanTo) || !cleanSubject || !plainText) {
+    console.warn('email_dispatch_invalid');
     return false;
   }
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${fromName}" <${process.env.EMAIL_USER}>`,
+    await createTransporter(configuration).sendMail({
+      from: { name: fromName, address: configuration.fromAddress },
       to: cleanTo,
       subject: cleanSubject,
       text: plainText,
       html: htmlContent,
       replyTo,
       headers: {
-        'X-Portal-Email-Type': 'transactional',
+        'X-Portal-Email-Type': options.emailType || 'transactional',
         'X-Portal-Source': 'fyp-portal',
       },
     });
 
-    void info;
     console.info('email_dispatched');
     return true;
   } catch {
@@ -82,3 +98,26 @@ export const sendNotificationEmail = async (
     return false;
   }
 };
+
+export async function verifyEmailConnection() {
+  const configuration = getMailConfiguration();
+  if (!configuration) return false;
+
+  try {
+    await createTransporter(configuration).verify();
+    return true;
+  } catch {
+    console.error('email_connection_verification_failed');
+    return false;
+  }
+}
+
+export function sendTestEmail(to: string) {
+  return sendNotificationEmail(
+    to,
+    'FYP Portal SMTP test',
+    '<p>This is a test email from the FYP Portal SMTP configuration.</p>',
+    'This is a test email from the FYP Portal SMTP configuration.',
+    { emailType: 'test' }
+  );
+}

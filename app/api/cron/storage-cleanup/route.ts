@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import connectToDatabase from '../../../../lib/mongodb';
+import { getCronSecret } from '../../../../lib/runtimeConfig';
 import { hasValidCronAuthorization } from '../../../../lib/security/cron';
 import {
   expireUploadReservations,
@@ -10,7 +11,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
-  if (!hasValidCronAuthorization(req.headers.get('authorization'), process.env.CRON_SECRET)) {
+  if (!hasValidCronAuthorization(req.headers.get('authorization'), getCronSecret())) {
     return NextResponse.json({ error: 'Unauthorized access.' }, { status: 401 });
   }
 

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { BUCKET_NAME, getS3Client } from '../../../../lib/s3-client';
+import { getBrowserS3Client, getStorageBucketName } from '../../../../lib/s3-client';
 import connectToDatabase from '../../../../lib/mongodb';
 import { hasProjectAccess, requireCurrentUser } from '../../../../lib/security/auth';
 import { consumeRateLimitDimensions } from '../../../../lib/rateLimit';
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Create Presigned URL strictly for this specific key
     const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
+      Bucket: getStorageBucketName(),
       Key: reservation.key,
       ContentType: APP_SETTINGS.STUDENT_MESSAGE.AUDIO_CONTENT_TYPE,
     });
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     // Generate a URL that self-destructs in 60 seconds
     let uploadUrl: string;
     try {
-      uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
+      uploadUrl = await getSignedUrl(getBrowserS3Client(), command, { expiresIn: 60 });
     } catch (error) {
       await cancelUploadReservation(reservation.key, currentUser.id, 'signing-failed');
       throw error;

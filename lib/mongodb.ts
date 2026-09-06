@@ -1,12 +1,5 @@
 import mongoose from 'mongoose';
-
-// Grab the secret connection string from our .env.local file
-const MONGODB_URI = process.env.MONGODB_URI;
-
-// If we forgot to put it in the file, throw a massive error to warn us
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
-}
+import { getMongoDbUri } from './runtimeConfig';
 
 type MongooseCache = {
   conn: typeof mongoose | null;
@@ -35,13 +28,14 @@ async function connectToDatabase() {
       socketTimeoutMS: 45000,         // Close inactive sockets cleanly
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI as string, opts).then((mongoose) => {
-      console.log("✅ Successfully connected to MongoDB with optimized serverless pooling!");
+    cached.promise = mongoose.connect(getMongoDbUri(), opts).then((mongoose) => {
+      console.info('mongodb_connected');
       return mongoose;
     }).catch((error) => {
-      console.error("❌ MongoDB connection pool initialization failed:", error);
+      void error;
+      console.error('mongodb_connection_failed');
       cached.promise = null; // Reset cache so subsequent invocations can retry cleanly
-      throw error;
+      throw new Error('Database connection failed.');
     });
   }
   

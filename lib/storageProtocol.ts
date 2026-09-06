@@ -12,7 +12,8 @@ import UploadReservation from '../models/UploadReservation';
 import VoiceNote from '../models/VoiceNote';
 import VoiceNoteQuota from '../models/VoiceNoteQuota';
 import { APP_SETTINGS } from '../config/appSettings';
-import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from './s3-client';
+import { getS3Client, getStorageBucketName } from './s3-client';
+import { getStorageQuotaBytes } from './runtimeConfig';
 import {
   getStorageObjectKind,
   hasExpectedStorageMagic,
@@ -183,6 +184,7 @@ export async function reserveUpload(input: ReserveUploadInput) {
   if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes <= 0) {
     throw new StorageProtocolError('A valid upload size is required.', 400);
   }
+  const storageQuotaBytes = getStorageQuotaBytes();
 
   if (input.kind === 'student-message') {
     const expired = await UploadReservation.findOne({
@@ -249,7 +251,7 @@ export async function reserveUpload(input: ReserveUploadInput) {
                   input.expectedBytes,
                 ],
               },
-              MAX_STORAGE_BYTES,
+              storageQuotaBytes,
             ],
           },
         },
@@ -359,7 +361,7 @@ async function verifyUploadObject(reservation: {
   expectedContentType: string;
 }) {
   const object = await getS3Client().send(
-    new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: reservation.key })
+    new HeadObjectCommand({ Bucket: getStorageBucketName(), Key: reservation.key })
   );
   const actualBytes = Number(object.ContentLength || 0);
   const actualContentType = String(object.ContentType || '').split(';', 1)[0];
@@ -372,7 +374,7 @@ async function verifyUploadObject(reservation: {
   }
 
   const prefix = await getS3Client().send(
-    new GetObjectCommand({ Bucket: BUCKET_NAME, Key: reservation.key, Range: 'bytes=0-7' })
+    new GetObjectCommand({ Bucket: getStorageBucketName(), Key: reservation.key, Range: 'bytes=0-7' })
   );
   const bytes = prefix.Body ? await prefix.Body.transformToByteArray() : new Uint8Array();
   if (!hasExpectedStorageMagic(reservation.kind, bytes)) {
@@ -481,7 +483,7 @@ async function getDeletionBytes(target: {
   let verifiedBytes = 0;
   try {
     const object = await getS3Client().send(
-      new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: target.key })
+      new HeadObjectCommand({ Bucket: getStorageBucketName(), Key: target.key })
     );
     verifiedBytes = Number(object.ContentLength);
     if (!Number.isSafeInteger(verifiedBytes) || verifiedBytes < 0) {
@@ -549,7 +551,9 @@ export async function processStorageDeletionOutbox(limit = 25) {
 
     try {
       const deletionBytes = await getDeletionBytes(target);
-      await getS3Client().send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: target.key }));
+      await getS3Client().send(
+        new DeleteObjectCommand({ Bucket: getStorageBucketName(), Key: target.key })
+      );
       await withStorageTransaction(async (session) => {
         const activeTarget = await StorageDeletionOutbox.findOne({
           _id: target._id,

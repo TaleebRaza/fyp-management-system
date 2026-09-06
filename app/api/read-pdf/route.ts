@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
+import { getBrowserS3Client, getStorageBucketName } from '../../../lib/s3-client';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import { canAccessStoredObject } from '../../../lib/security/storage';
 import { normalizeStorageKey } from '../../../lib/storageValidation';
@@ -22,14 +22,14 @@ export async function GET(req: NextRequest) {
     }
 
     const command = new GetObjectCommand({
-      Bucket: BUCKET_NAME,
+      Bucket: getStorageBucketName(),
       Key: key,
       ResponseContentDisposition: `inline; filename="${key.split('/').pop()}"`,
       // Removed ResponseContentType override so Cloudflare serves the native file type (audio/webm OR application/pdf)
     });
 
     // Redirect the browser directly to the secure R2 stream (valid for 5 minutes)
-    const signedUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 300 });
+    const signedUrl = await getSignedUrl(getBrowserS3Client(), command, { expiresIn: 300 });
     
     // Strict Anti-Caching Headers to prevent the UI from displaying old PDFs
     return NextResponse.redirect(signedUrl, {

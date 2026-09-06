@@ -6,7 +6,7 @@ Deliver this workflow:
 
 **Download release → extract → run `sudo ./install` → complete browser wizard → portal available over HTTPS.**
 
-This file is the implementation specification and single progress tracker. The current authorized work (2026-09-06) is M00 only. Application, installer, infrastructure, and release implementation have not started.
+This file is the implementation specification and single progress tracker. The current authorized work (2026-09-06) is M02 only. Installer, infrastructure, and release implementation have not started.
 
 V1 decisions:
 
@@ -46,8 +46,8 @@ Maintain this single tracker:
 | ID | Milestone | Status | Depends on |
 |---|---|---|---|
 | M00 | Baseline and deployment contract | Done | None |
-| M01 | Runtime configuration and SMTP | Not started | M00 |
-| M02 | Generic object storage | Not started | M01 |
+| M01 | Runtime configuration and SMTP | Done | M00 |
+| M02 | Generic object storage | Done | M01 |
 | M03 | University branding | Not started | M01 |
 | M04 | Application container and MongoDB | Not started | M02, M03 |
 | M05 | Local storage and HTTPS gateway | Not started | M04 |
@@ -60,7 +60,7 @@ Maintain this single tracker:
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 is complete. It records the current application baseline and the deployment contract that later milestones must follow. All subsequent milestones remain unstarted.
+M00 through M02 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow. M03 and later milestones remain unstarted.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -159,18 +159,29 @@ Later milestones must preserve these boundaries: Caddy is the sole public servic
 
 **Implement**
 
-- [ ] Centralize validated runtime configuration without requiring production secrets during image build.
-- [ ] Add generic SMTP with explicit TLS modes, optional authentication, sender identity, and connection/test-email operations.
-- [ ] Preserve Gmail configuration through a complete legacy fallback.
-- [ ] Make developer-specific monitoring configuration optional.
+- [x] Centralize validated runtime configuration without requiring production secrets during image build.
+- [x] Add generic SMTP with explicit TLS modes, optional authentication, sender identity, and connection/test-email operations.
+- [x] Preserve Gmail configuration through a complete legacy fallback.
+- [x] Make developer-specific monitoring configuration optional.
+
+`lib/runtimeConfig.ts` now validates configuration only when the relevant database, authentication, storage, cron, or mail subsystem runs. This keeps `next build` independent of production secrets. `.env.example` defines the required settings, generic `SMTP_*` configuration, the legacy `EMAIL_*` Gmail fallback, and optional Sentry settings.
+
+Generic SMTP requires host, port, explicit `none`, `starttls`, or `tls` mode, and a sender address. Authentication is optional, but a username and password must be supplied together. Generic and Gmail settings cannot be mixed. `verifyEmailConnection()` and `sendTestEmail()` are available from the mailer boundary for later installer/operations integration. Missing mail settings safely disable delivery; invalid partial settings fail without exposing values. Mongo connection failures, mail operations, and Sentry initialization do not log secrets. Sentry DSNs, project identifiers, and upload credentials are optional environment configuration rather than source values.
 
 **Done when:** Generic SMTP and legacy Gmail configurations work; malformed or incomplete settings fail clearly; secrets never appear in public responses or logs; tests cover email failure behavior.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-06):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --test tests/runtime-config.test.mjs`: exited 0; covers MongoDB/auth validation, generic SMTP validation, Gmail fallback, configuration conflicts, and no-configuration mail failure behavior.
+- `npx tsc --noEmit`: exited 0.
+- `npm run lint`: exited 0 with 5 existing warnings in ignored one-off maintenance scripts.
+- `npm run test:unit`: exited 1; 45 of 47 test-file entries passed. The only failures remain the M00 baseline mismatches in `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs`; `tests/runtime-config.test.mjs` passed.
+- `npm run build`: exited 0 outside the sandbox. The sandbox blocks Turbopack's local port binding.
+- A live SMTP connection and test delivery were not run because no external mail server or recipient was authorized for this milestone.
 
-**Completion date:** Not completed.
+**Blockers / remaining work:** No M01 blocker remains. The documented baseline unit-test mismatches are outside M01; M02 is the next milestone.
+
+**Completion date:** 2026-09-06.
 
 **Suggested commit:** `feat: add validated runtime configuration and SMTP support`
 
@@ -179,18 +190,28 @@ Later milestones must preserve these boundaries: Caddy is the sole public servic
 
 **Implement**
 
-- [ ] Replace R2-specific configuration with generic S3 configuration and explicit legacy fallback.
-- [ ] Separate internal service access from the endpoint used for browser-signed URLs.
-- [ ] Make storage quota configurable.
-- [ ] Preserve existing object keys, authorization, reservations, accounting, and deletion workflows.
+- [x] Replace R2-specific configuration with generic S3 configuration and explicit legacy fallback.
+- [x] Separate internal service access from the endpoint used for browser-signed URLs.
+- [x] Make storage quota configurable.
+- [x] Preserve existing object keys, authorization, reservations, accounting, and deletion workflows.
+
+`S3_ENDPOINT`, `S3_BROWSER_ENDPOINT`, `S3_REGION`, credentials, bucket, and path-style mode now configure generic S3-compatible storage. The internal client uses `S3_ENDPOINT` for upload verification and cleanup; every browser upload/download URL is signed with `S3_BROWSER_ENDPOINT`. Generic and legacy R2 settings are mutually exclusive, and the complete legacy R2 group remains a fallback for existing deployments. `STORAGE_QUOTA_BYTES` is validated at runtime and defaults to the previous 9.5 GiB limit.
+
+Existing object keys and the authorization, reservation, accounting, finalization, and deletion workflows remain unchanged. The storage integrity audit accepts the same generic settings. `.env.example` documents both configuration shapes and the browser-endpoint contract.
 
 **Done when:** Upload, finalization, download, and deletion work against R2-compatible and local test storage; existing keys remain usable; storage regression tests pass.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-06):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --test tests/runtime-config.test.mjs tests/s3-client.test.mjs`: exited 0, 8 tests passed. The local S3-compatible test server performed PUT, HEAD, GET, and DELETE through the internal client; signed browser URLs used the separate public endpoint.
+- `npx tsc --noEmit`: exited 0.
+- `npm run lint`: exited 0.
+- `npm run test:unit`: exited 1, with 155 of 157 tests passing. The only failures remain the M00 baseline mismatches in `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs`; all storage tests, including the new generic S3 test, passed.
+- `npm run build`: exited 0 outside the sandbox. The sandbox blocks the local port required by this build.
 
-**Completion date:** Not completed.
+**Blockers / remaining work:** No M02 blocker remains. The documented baseline unit-test mismatches are outside M02; M03 is the next milestone.
+
+**Completion date:** 2026-09-06.
 
 **Suggested commit:** `refactor: support generic S3 storage and browser endpoints`
 

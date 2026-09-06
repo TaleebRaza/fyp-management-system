@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
+import { getBrowserS3Client, getStorageBucketName } from '../../../lib/s3-client';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Project from '../../../models/Project';
@@ -153,13 +153,13 @@ export async function POST(req: NextRequest) {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
     const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
+      Bucket: getStorageBucketName(),
       Key: key,
       ContentType: contentType,
     });
     let uploadUrl: string;
     try {
-      uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 120 });
+      uploadUrl = await getSignedUrl(getBrowserS3Client(), command, { expiresIn: 120 });
     } catch (error) {
       await cancelUploadReservation(key, currentUser.id, 'signing-failed');
       throw error;

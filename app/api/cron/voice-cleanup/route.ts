@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import connectToDatabase from '../../../../lib/mongodb';
 import { processEmailOutbox } from '../../../../lib/emailOutbox';
+import { getCronSecret } from '../../../../lib/runtimeConfig';
 import { hasValidCronAuthorization } from '../../../../lib/security/cron';
 import { normalizeStorageKey } from '../../../../lib/storageValidation';
 import { collectStorageDeletionTargets } from '../../../../lib/storageDeletionTargets';
@@ -22,7 +23,7 @@ export const dynamic = 'force-dynamic';
 const CLEANUP_LIMIT = 100;
 
 export async function GET(req: Request) {
-  if (!hasValidCronAuthorization(req.headers.get('authorization'), process.env.CRON_SECRET)) {
+  if (!hasValidCronAuthorization(req.headers.get('authorization'), getCronSecret())) {
     console.warn('Unauthorized cron execution attempt blocked.');
     return NextResponse.json({ error: 'Unauthorized access.' }, { status: 401 });
   }

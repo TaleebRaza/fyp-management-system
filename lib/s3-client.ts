@@ -1,43 +1,66 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import {
+  getStorageConfiguration,
+  type StorageConfiguration,
+} from './runtimeConfig';
 
-const accountId = process.env.R2_ACCOUNT_ID;
-const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+type StorageClients = {
+  configuration: StorageConfiguration;
+  service: S3Client;
+  browser: S3Client;
+};
 
-export const BUCKET_NAME = process.env.R2_BUCKET_NAME || '';
+let storageClients: StorageClients | null = null;
 
-function assertStorageConfigured() {
-  if (!accountId || !accessKeyId || !secretAccessKey || !BUCKET_NAME) {
-    throw new Error('R2 storage is not configured.');
-  }
+function hasSameConfiguration(
+  left: StorageConfiguration,
+  right: StorageConfiguration
+) {
+  return left.endpoint === right.endpoint
+    && left.browserEndpoint === right.browserEndpoint
+    && left.region === right.region
+    && left.accessKeyId === right.accessKeyId
+    && left.secretAccessKey === right.secretAccessKey
+    && left.bucketName === right.bucketName
+    && left.forcePathStyle === right.forcePathStyle;
 }
 
-const storageClient = new S3Client({
-  region: 'auto',
-  endpoint: `https://${accountId || 'invalid'}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: accessKeyId || 'invalid',
-    secretAccessKey: secretAccessKey || 'invalid',
-  },
-  forcePathStyle: true,
-});
+function createS3Client(endpoint: string, configuration: StorageConfiguration) {
+  return new S3Client({
+    region: configuration.region,
+    endpoint,
+    credentials: {
+      accessKeyId: configuration.accessKeyId,
+      secretAccessKey: configuration.secretAccessKey,
+    },
+    forcePathStyle: configuration.forcePathStyle,
+  });
+}
 
-const s3Client = new Proxy(storageClient, {
-  get(target, property, receiver) {
-    if (property === 'send') {
-      return (...args: Parameters<S3Client['send']>) => {
-        assertStorageConfigured();
-        return target.send(...args);
-      };
-    }
-    return Reflect.get(target, property, receiver);
-  },
-}) as S3Client;
+function getStorageClients() {
+  const configuration = getStorageConfiguration();
+  if (storageClients && hasSameConfiguration(storageClients.configuration, configuration)) {
+    return storageClients;
+  }
+
+  storageClients?.service.destroy();
+  storageClients?.browser.destroy();
+  storageClients = {
+    configuration,
+    service: createS3Client(configuration.endpoint, configuration),
+    browser: createS3Client(configuration.browserEndpoint, configuration),
+  };
+  return storageClients;
+}
 
 export function getS3Client() {
-  assertStorageConfigured();
-  return s3Client;
+  return getStorageClients().service;
 }
 
-// 9.5 GB limit (Leaves a 500MB safety buffer before the 10GB free tier billing threshold)
-export const MAX_STORAGE_BYTES = 9.5 * 1024 * 1024 * 1024;
+export function getBrowserS3Client() {
+  return getStorageClients().browser;
+}
+
+export function getStorageBucketName() {
+  return getStorageConfiguration().bucketName;
+}

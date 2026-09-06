@@ -4,14 +4,22 @@ import mongoose from 'mongoose';
 
 const shouldRepair = process.argv.includes('--repair');
 const confirmation = 'I_STOPPED_APP_AND_CRONS';
-const requiredEnvironment = [
-  'MONGODB_URI',
+const genericStorageSettings = [
+  'S3_ENDPOINT',
+  'S3_BROWSER_ENDPOINT',
+  'S3_REGION',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+  'S3_BUCKET_NAME',
+  'S3_FORCE_PATH_STYLE',
+];
+const legacyR2StorageSettings = [
   'R2_ACCOUNT_ID',
   'R2_ACCESS_KEY_ID',
   'R2_SECRET_ACCESS_KEY',
   'R2_BUCKET_NAME',
 ];
-const missingEnvironment = requiredEnvironment.filter((name) => !process.env[name]);
+const missingEnvironment = ['MONGODB_URI'].filter((name) => !process.env[name]);
 
 if (missingEnvironment.length > 0) {
   console.error(`Missing ${missingEnvironment.join(', ')}. No changes were made.`);
@@ -21,6 +29,87 @@ if (shouldRepair && process.env.CONFIRM_STORAGE_LEDGER_REPAIR !== confirmation) 
   console.error(
     `Ledger repair requires CONFIRM_STORAGE_LEDGER_REPAIR=${confirmation}. Stop the app and crons first. No changes were made.`
   );
+  process.exit(1);
+}
+
+function optionalValue(name) {
+  const value = process.env[name]?.trim();
+  return value || undefined;
+}
+
+function requiredValue(name) {
+  const value = optionalValue(name);
+  if (!value) throw new Error(`${name} is required.`);
+  return value;
+}
+
+function hasAnyValue(names) {
+  return names.some((name) => optionalValue(name));
+}
+
+function storageEndpoint(name) {
+  const value = requiredValue(name);
+  try {
+    const endpoint = new URL(value);
+    if (
+      (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:')
+      || endpoint.username
+      || endpoint.password
+      || endpoint.search
+      || endpoint.hash
+    ) {
+      throw new Error('invalid endpoint');
+    }
+    return endpoint.toString().replace(/\/$/, '');
+  } catch {
+    throw new Error(`${name} must be an HTTP or HTTPS endpoint without credentials, a query, or a fragment.`);
+  }
+}
+
+function forcePathStyle() {
+  const value = optionalValue('S3_FORCE_PATH_STYLE');
+  if (!value || value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error('S3_FORCE_PATH_STYLE must be true or false.');
+}
+
+function getStorageConfiguration() {
+  const hasS3Settings = hasAnyValue(genericStorageSettings);
+  const hasR2Settings = hasAnyValue(legacyR2StorageSettings);
+
+  if (hasS3Settings && hasR2Settings) {
+    throw new Error('Configure either S3_* storage settings or legacy R2_* settings, not both.');
+  }
+  if (hasS3Settings) {
+    return {
+      endpoint: storageEndpoint('S3_ENDPOINT'),
+      browserEndpoint: storageEndpoint('S3_BROWSER_ENDPOINT'),
+      region: requiredValue('S3_REGION'),
+      accessKeyId: requiredValue('S3_ACCESS_KEY_ID'),
+      secretAccessKey: requiredValue('S3_SECRET_ACCESS_KEY'),
+      bucketName: requiredValue('S3_BUCKET_NAME'),
+      forcePathStyle: forcePathStyle(),
+    };
+  }
+  if (hasR2Settings) {
+    const accountId = requiredValue('R2_ACCOUNT_ID');
+    return {
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      region: 'auto',
+      accessKeyId: requiredValue('R2_ACCESS_KEY_ID'),
+      secretAccessKey: requiredValue('R2_SECRET_ACCESS_KEY'),
+      bucketName: requiredValue('R2_BUCKET_NAME'),
+      forcePathStyle: true,
+    };
+  }
+  throw new Error('Storage is not configured. Configure S3_* storage settings or legacy R2_* settings.');
+}
+
+let storageConfiguration;
+try {
+  storageConfiguration = getStorageConfiguration();
+} catch (error) {
+  console.error(`${error instanceof Error ? error.message : 'Invalid storage configuration.'} No changes were made.`);
   process.exit(1);
 }
 
@@ -74,13 +163,13 @@ function duplicateKeys(rows) {
 }
 
 const s3 = new S3Client({
-  region: 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  region: storageConfiguration.region,
+  endpoint: storageConfiguration.endpoint,
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    accessKeyId: storageConfiguration.accessKeyId,
+    secretAccessKey: storageConfiguration.secretAccessKey,
   },
-  forcePathStyle: true,
+  forcePathStyle: storageConfiguration.forcePathStyle,
 });
 
 async function listBucketObjects() {
@@ -89,7 +178,7 @@ async function listBucketObjects() {
 
   do {
     const page = await s3.send(new ListObjectsV2Command({
-      Bucket: process.env.R2_BUCKET_NAME,
+      Bucket: storageConfiguration.bucketName,
       ContinuationToken: continuationToken,
     }));
     for (const object of page.Contents || []) {
@@ -97,7 +186,7 @@ async function listBucketObjects() {
     }
     continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
     if (page.IsTruncated && !continuationToken) {
-      throw new Error('R2 returned a truncated object list without a continuation token.');
+      throw new Error('Object storage returned a truncated object list without a continuation token.');
     }
   } while (continuationToken);
 

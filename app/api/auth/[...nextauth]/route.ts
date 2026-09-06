@@ -11,6 +11,10 @@ import {
   recordPortalActivity,
 } from '../../../../lib/portalActivityLog';
 import { getPortalPause } from '../../../../lib/portalPause';
+import {
+  getNextAuthSecret,
+  getOptionalNextAuthSecret,
+} from '../../../../lib/runtimeConfig';
 
 const LOGIN_ATTEMPT_LIMIT = 5;
 
@@ -156,7 +160,7 @@ const handler = NextAuth({
       });
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: getOptionalNextAuthSecret(),
 });
 
 // --- ARCHITECT-AI: TRUE BROWSER SESSION OVERRIDE ---
@@ -186,6 +190,7 @@ export async function GET(
   req: Parameters<typeof handler>[0],
   context: Parameters<typeof handler>[1]
 ) {
+  getNextAuthSecret();
   const response = await handler(req, context);
   return enforceBrowserSession(response);
 }
@@ -194,6 +199,7 @@ export async function POST(
   req: Parameters<typeof handler>[0],
   context: Parameters<typeof handler>[1]
 ) {
+  getNextAuthSecret();
   const response = await handler(req, context);
   return enforceBrowserSession(response);
 }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -25,6 +25,21 @@ async function getTypeScript() {
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CACHE_ROOT = path.join(tmpdir(), `fyp-ts-tests-${process.pid}`);
 const compiledFiles = new Map();
+
+async function ensurePackageResolution() {
+  const cachedNodeModules = path.join(CACHE_ROOT, 'node_modules');
+  if (existsSync(cachedNodeModules)) return;
+
+  try {
+    await symlink(
+      path.join(PROJECT_ROOT, 'node_modules'),
+      cachedNodeModules,
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
+  }
+}
 
 function resolveProjectModule(fromFile, specifier) {
   const basePath = path.resolve(path.dirname(fromFile), specifier);
@@ -161,5 +176,6 @@ export async function importTypeScriptModule(repositoryRelativePath) {
   const outputPath = await compileTypeScriptModule(sourcePath);
   const sourceContent = await readFile(sourcePath);
   const cacheKey = createHash('sha256').update(sourceContent).digest('hex').slice(0, 12);
+  await ensurePackageResolution();
   return import(`${pathToFileURL(outputPath).href}?source=${cacheKey}`);
 }
