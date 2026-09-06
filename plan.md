@@ -6,7 +6,7 @@ Deliver this workflow:
 
 **Download release → extract → run `sudo ./install` → complete browser wizard → portal available over HTTPS.**
 
-This file is the implementation specification and single progress tracker. The current authorized work (2026-09-06) is limited to updating this document. Application, installer, infrastructure, and release implementation have not started.
+This file is the implementation specification and single progress tracker. The current authorized work (2026-09-06) is M00 only. Application, installer, infrastructure, and release implementation have not started.
 
 V1 decisions:
 
@@ -45,7 +45,7 @@ Maintain this single tracker:
 
 | ID | Milestone | Status | Depends on |
 |---|---|---|---|
-| M00 | Baseline and deployment contract | In progress | None |
+| M00 | Baseline and deployment contract | Done | None |
 | M01 | Runtime configuration and SMTP | Not started | M00 |
 | M02 | Generic object storage | Not started | M01 |
 | M03 | University branding | Not started | M01 |
@@ -60,7 +60,7 @@ Maintain this single tracker:
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 is partially complete because the plan has been replaced and two baseline checks were run before work was narrowed to documentation. It is not marked Done. All subsequent milestones remain unstarted.
+M00 is complete. It records the current application baseline and the deployment contract that later milestones must follow. All subsequent milestones remain unstarted.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -85,24 +85,75 @@ After every response involving file changes, include a suggested commit message.
 **Implement**
 
 - [x] Replace the existing plan and initialize the tracker.
-- [ ] Inventory runtime/build-time configuration, scheduled jobs, persistent state, and existing maintenance scripts.
-- [ ] Record the current lint, unit-test, and build results.
-- [ ] Define configuration ownership, installed directories, service boundaries, and supported platform.
+- [x] Inventory runtime/build-time configuration, scheduled jobs, persistent state, and existing maintenance scripts.
+- [x] Record the current lint, unit-test, and build results.
+- [x] Define configuration ownership, installed directories, service boundaries, and supported platform.
+
+**Baseline inventory and deployment contract (2026-09-06):**
+
+Current deployment is a Vercel-configured Next.js application. There are no Docker, Compose, Caddy, systemd, installer, release, or persistent-local-volume artifacts in the repository yet.
+
+**Runtime and build configuration**
+
+| Setting | Current owner and consumer | V1 ownership |
+|---|---|---|
+| `MONGODB_URI` | Runtime environment, `lib/mongodb.ts`; also maintenance scripts | Root-owned deployment secret, validated in M01. |
+| `NEXTAUTH_SECRET` | Runtime environment, NextAuth and auth middleware | Root-owned deployment secret, validated in M01. |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` | Runtime environment, `lib/s3-client.ts` and storage audit | Replaced by generic S3 configuration in M02, with this legacy R2 shape retained as a fallback. |
+| `EMAIL_USER`, `EMAIL_APP_PASSWORD`, `EMAIL_FROM_NAME`, `EMAIL_REPLY_TO` | Runtime environment, Gmail-only `lib/mailer.ts` | Migrated to generic SMTP plus the complete Gmail fallback in M01. |
+| `CRON_SECRET` | Runtime environment, both authenticated cron routes | Root-owned deployment secret. M07 moves scheduling to systemd timers. |
+| `CI`, `NODE_ENV`, `NEXT_RUNTIME` | Build/framework owned | Not installer inputs. |
+| Sentry DSN and Next/Sentry options | Source and build configuration | Monitoring remains optional and must not be required for a production image. |
+| Capacity, voice limits, late-registration policy, programs, project domains, ratings | Source under `config/` | Existing code-owned settings remain unchanged. Only the scoped university/retention settings become installer-managed in later milestones. |
+
+The only tracked scheduler configuration is `vercel.json`, which calls `GET /api/cron/voice-cleanup` daily at `00:00` (UTC). The current route deletes voice notes after 24 hours or 10 minutes after playback, supervisor audio broadcasts after 72 hours, expires upload reservations, processes storage-deletion work, and dispatches the email outbox. `GET /api/cron/storage-cleanup` exists but is not scheduled by `vercel.json`; it expires reservations and processes storage deletion work. Both require `Authorization: Bearer <CRON_SECRET>`.
+
+MongoDB is the persistent source of truth for users, projects, voice notes, registration policy, system configuration, activity logs, rate limits, roll-number claims, upload reservations, storage-deletion work, email outbox work, and voice-note quotas. PDFs and audio are persistent objects in the configured R2 bucket, referenced by object key in MongoDB. Browser draft data is local IndexedDB only and is not server-backed. Build output, Next caches, and in-memory MongoDB connection state are disposable.
+
+Tracked maintenance commands are exposed through `package.json`: supervisor-capacity reconciliation, project-drift audit, storage-key and integrity audits, storage-ledger repair, refactor-index audit/apply, and rate-limit TTL update. They require `MONGODB_URI` (and the storage audit also requires the R2 settings); mutations require an explicit flag and confirmation environment variable. Six one-off migration/cleanup scripts are present locally but ignored by `.gitignore`; they are not release inputs and must not be relied on by the installer.
+
+**V1 configuration, filesystem, and service contract**
+
+The installer is supported only on an internet-connected, single-node Ubuntu 24.04 LTS x86_64 server. It installs Docker Engine and Compose when missing. Offline installation, HA, and other operating systems remain out of scope.
+
+| Path | Owner and purpose |
+|---|---|
+| `/opt/fyp-portal/releases/<version>` | Root-owned, immutable extracted release and Compose definitions. |
+| `/opt/fyp-portal/current` | Root-owned symlink to the active release. |
+| `/etc/fyp-portal/portal.env` | Root-owned `0600` runtime secret/configuration file. It is the sole secret source for containers and `fypctl`; releases never contain secrets. |
+| `/var/lib/fyp-portal/mongodb` | Docker-managed local MongoDB data when local database mode is selected. |
+| `/var/lib/fyp-portal/seaweedfs` | Docker-managed local SeaweedFS data when local storage mode is selected. |
+| `/var/lib/fyp-portal/branding` | Persistent installer-owned branding asset data. |
+| `/var/lib/fyp-portal/backups` | Backup archives and manifests. |
+| `/var/lib/fyp-portal/state` | Root-owned operation lock, resumable-install state, and non-secret version metadata. |
+
+Later milestones must preserve these boundaries: Caddy is the sole public service (ports 80/443); the application is reachable only through Caddy on the Compose network; MongoDB and SeaweedFS have no published ports; `fypctl` and `install` run as root and access configuration/state without exposing secrets; external MongoDB and S3-compatible services are accessed only by the application and explicitly configured maintenance operations.
+
+| Wizard input | Destination and owning milestone |
+|---|---|
+| Domain | Caddy site address and application public URL, M05. |
+| Database choice | Local MongoDB volume or external transaction-capable `MONGODB_URI`, M04. |
+| Storage choice | Local SeaweedFS or generic S3 configuration, M02 and M05. |
+| Cleanup schedule and categories | Persisted retention policy and systemd timer configuration, M07. |
+| University name, optional theme colors, required PNG logo | Persisted institution settings and branding asset, M03. |
+| SMTP details | Validated mail configuration in the protected runtime configuration, M01. |
+| First administrator | One-time transactional bootstrap input, never retained in configuration, M06. |
+| Backup preferences | Persisted backup policy plus backup destination configuration, M08. |
 
 **Done when:** Every installer input maps to an application or deployment setting; existing failures are documented; no application behavior changes.
 
 **Validation record (2026-09-06):**
 
-- `npm run lint`: exited 0, with 0 errors and 5 existing warnings in maintenance scripts.
-- `npm run test:unit`: exited 1; 44 of 46 test-file entries passed. Failures were `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs`. Causes have not been diagnosed.
-- `npm run build`: not run; the user limited the task to `plan.md` before this check started.
-- The lint and unit checks ran before the document edit. They are baseline observations, not evidence that any implementation milestone is complete.
+- `npm run lint`: exited 0 with no diagnostics.
+- `npm run test:unit`: exited 1; 44 of 46 test-file entries passed. `tests/project-rating-ui.test.mjs` expects a `Download Excel` label, while the current export component says `Download PDF`. `tests/storage-workflow-structure.test.mjs` expects the academic reset code to clear legacy `student.domains`, while the current code creates a canonical project with `domains: []`. Neither mismatch was changed in M00.
+- `npm run build`: initially exited 1 in the sandbox because Turbopack could not bind a local port (`Operation not permitted`). The same command was rerun outside the sandbox and exited 0: compilation, TypeScript, page data collection, and static generation completed successfully.
+- These checks are baseline observations, not evidence that a later implementation milestone is complete.
 
-**Blockers / remaining work:** Configuration inventory, deployment contract, build baseline, and investigation of the two existing test failures remain outstanding. Go, Docker, GitHub CLI, and Nix were not found on the current shell PATH; verify tool availability before milestones that require them.
+**Blockers / remaining work:** The two unit-test expectation mismatches need an explicitly scoped decision before their affected feature areas change. Go, Docker, Docker Compose, GitHub CLI, and Nix were not found on the current shell PATH; verify tool availability before the milestones that require them. No M00 blocker remains.
 
-**Completion date:** Not completed.
+**Completion date:** 2026-09-06.
 
-**Suggested commit:** `docs: define installer milestones and record baseline progress`
+**Suggested commit:** `docs: complete installer baseline and deployment contract`
 
 ### M01: Runtime configuration and SMTP
 
