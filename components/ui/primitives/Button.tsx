@@ -16,9 +16,9 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
-    "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)]",
+    "bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary-hover)]",
   accent:
-    "bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent-hover)]",
+    "bg-[var(--color-accent)] text-[var(--color-on-accent)] hover:bg-[var(--color-accent-hover)]",
   secondary:
     "bg-[var(--color-surface-muted)] text-[var(--color-text)] hover:bg-[var(--color-bg-soft)]",
   outline:

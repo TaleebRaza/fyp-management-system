@@ -26,7 +26,7 @@ export const AvatarBadge = ({
 }: AvatarBadgeProps) => (
   <div
     className={cn(
-      "portal-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-sm font-bold text-white",
+      "portal-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-sm font-bold text-[var(--color-on-primary)]",
       className
     )}
     aria-hidden="true"

@@ -57,7 +57,7 @@ export function SetNewPasswordForm({
       <button
         disabled={isLoading}
         type="submit"
-        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
+        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-[var(--color-on-primary)] transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
       >
         {isLoading ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
         {isLoading ? 'Updating password...' : 'Update password'}

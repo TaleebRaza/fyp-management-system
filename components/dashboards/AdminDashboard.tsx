@@ -12,6 +12,7 @@ import {
   LockKeyhole,
   LogIn,
   MessagesSquare,
+  Palette,
   PauseCircle,
   ScrollText,
   Users,
@@ -19,6 +20,7 @@ import {
 
 import { Button, DashboardShell } from '../ui';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
+import BrandingControlPanel from '../admin/BrandingControlPanel';
 import FineManagementPanel from '../admin/FineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';
 import AdminHeadlineSection from '../admin/AdminHeadlineSection';
@@ -69,7 +71,8 @@ type AdminTab =
   | 'reviews'
   | 'logs'
   | 'registration'
-  | 'fines';
+  | 'fines'
+  | 'branding';
 
 const AdminDashboard = ({
   session,
@@ -224,6 +227,14 @@ const AdminDashboard = ({
       onClick: () => setActiveTab('fines'),
     },
     {
+      id: 'branding',
+      label: 'Branding',
+      section: 'Portal Operations',
+      icon: <Palette size={18} />,
+      active: activeTab === 'branding',
+      onClick: () => setActiveTab('branding'),
+    },
+    {
       id: 'reports',
       label: 'Reports',
       section: 'Insights & Audit',
@@ -358,6 +369,7 @@ const AdminDashboard = ({
             onPolicyChange={onRegistrationPolicyChange}
           />
         )}
+        {activeTab === 'branding' && <BrandingControlPanel />}
       </DashboardShell>
 
       <SupervisorSlotEditorDialog

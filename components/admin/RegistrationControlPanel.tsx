@@ -364,7 +364,7 @@ export default function RegistrationControlPanel({
             type="button"
             disabled={isSaving}
             onClick={savePolicy}
-            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-5 py-2 text-sm font-bold text-[var(--color-on-primary)] transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
           >
             {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
             {isSaving ? 'Saving policy...' : 'Save registration policy'}

@@ -198,7 +198,7 @@ export default function StudentProjectSubmissionSection({
             accept="application/pdf"
             disabled={!canSubmit}
             onChange={(event) => onFileChange(event.target.files?.[0] || null)}
-            className="block w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text)] file:mr-4 file:rounded-lg file:border-0 file:bg-[var(--color-primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="block w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text)] file:mr-4 file:rounded-lg file:border-0 file:bg-[var(--color-primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[var(--color-on-primary)] disabled:cursor-not-allowed disabled:opacity-60"
           />
           <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
             PDF only. Maximum size 4MB.{' '}

@@ -8,6 +8,8 @@ import Image from 'next/image';
 import { Card, StyledInput } from '../ui';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import PasswordResetFlow from './PasswordResetFlow';
+import { usePortalBranding } from '../branding/usePortalBranding';
+import { getPortalDisplayName } from '../../types/branding';
 
 export default function LoginView({
   onRegister,
@@ -20,6 +22,7 @@ export default function LoginView({
   portalPaused?: boolean;
   portalPauseReason?: string;
 }) {
+  const branding = usePortalBranding();
   const [isResetMode, setIsResetMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -74,7 +77,7 @@ export default function LoginView({
       <section className="hidden lg:block">
         <div className="flex max-w-xl flex-col items-start justify-center">
           <div className="mb-8 flex h-28 w-28 items-center justify-center overflow-hidden rounded-[1.75rem] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)]">
-            <Image src="/logo.png" alt="University Of Haripur logo" width={112} height={112} className="h-full w-full object-contain p-3" />
+            <Image src={branding.logoUrl} alt={`${branding.universityName} logo`} width={112} height={112} className="h-full w-full object-contain p-3" />
           </div>
 
           <h1 className="max-w-lg text-5xl font-black leading-tight tracking-tight text-[var(--color-text)] xl:text-6xl">
@@ -82,7 +85,7 @@ export default function LoginView({
           </h1>
 
           <p className="mt-5 text-2xl font-semibold tracking-tight text-[var(--color-accent)]">
-            University Of Haripur
+            {branding.universityName}
           </p>
         </div>
       </section>
@@ -97,13 +100,13 @@ export default function LoginView({
           <Card className="w-full p-0">
             <div className="border-b border-[var(--color-border)] px-5 py-5 sm:px-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-[var(--color-on-primary)]">
                   <LogIn size={22} />
                 </div>
 
                 <div>
                   <h2 className="text-xl font-bold tracking-tight text-[var(--color-text)]">
-                    Sign in to FYP Portal
+                    Sign in to {getPortalDisplayName(branding)}
                   </h2>
                   <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                     {portalPaused ? 'Administrator access only' : 'Secure portal access'}
@@ -161,7 +164,7 @@ export default function LoginView({
                 <button
                   disabled={isLoading}
                   type="submit"
-                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-[var(--color-on-primary)] transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {isLoading ? <Loader2 className="animate-spin" size={18} /> : null}
                   {isLoading ? 'Signing in...' : 'Sign in'}

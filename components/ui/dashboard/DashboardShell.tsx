@@ -5,6 +5,8 @@ import Image from "next/image";
 import { cn } from "../shared/cn";
 import { AvatarBadge } from "./AvatarBadge";
 import { DashboardQuote } from "./DashboardQuote";
+import { usePortalBranding } from "../../branding/usePortalBranding";
+import { getPortalDisplayName } from "../../../types/branding";
 
 export type DashboardNavItem = {
   id: string;
@@ -44,16 +46,15 @@ export const DashboardShell = ({
   children,
   actions,
   user,
-  portalName = (
-    <>
-      FYP <span className="text-[var(--color-accent)]">Portal</span>
-    </>
-  ),
-  logoSrc = "/logo.png",
+  portalName,
+  logoSrc,
   className = "",
 }: DashboardShellProps) => {
+  const branding = usePortalBranding();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const mobileMenuId = React.useId();
+  const resolvedPortalName = portalName ?? getPortalDisplayName(branding);
+  const resolvedLogoSrc = logoSrc ?? branding.logoUrl;
 
   React.useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -136,7 +137,7 @@ export const DashboardShell = ({
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--color-border)] bg-white">
           <Image
-            src={logoSrc}
+            src={resolvedLogoSrc}
             alt="University Logo"
             width={44}
             height={44}
@@ -145,7 +146,7 @@ export const DashboardShell = ({
         </div>
         <div className="min-w-0">
           <div className="truncate text-lg font-bold tracking-tight text-[var(--color-text)]">
-            {portalName}
+            {resolvedPortalName}
           </div>
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
             Management System

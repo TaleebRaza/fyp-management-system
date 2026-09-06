@@ -51,7 +51,7 @@ export const Timeline = ({
                 <div
                   className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold ${
                     isDone
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-primary)]'
                       : isActive
                         ? 'border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-accent)]'
                         : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)]'

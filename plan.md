@@ -48,7 +48,7 @@ Maintain this single tracker:
 | M00 | Baseline and deployment contract | Done | None |
 | M01 | Runtime configuration and SMTP | Done | M00 |
 | M02 | Generic object storage | Done | M01 |
-| M03 | University branding | Not started | M01 |
+| M03 | University branding | In progress | M01 |
 | M04 | Application container and MongoDB | Not started | M02, M03 |
 | M05 | Local storage and HTTPS gateway | Not started | M04 |
 | M06 | Operations CLI and secure bootstrap | Not started | M05 |
@@ -60,7 +60,7 @@ Maintain this single tracker:
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 through M02 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow. M03 and later milestones remain unstarted.
+M00 through M02 are complete. M03 implementation is complete and awaiting the plan-required visual verification. M00 records the current application baseline and the deployment contract that later milestones must follow. M04 and later milestones remain unstarted.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -123,7 +123,7 @@ The installer is supported only on an internet-connected, single-node Ubuntu 24.
 | `/etc/fyp-portal/portal.env` | Root-owned `0600` runtime secret/configuration file. It is the sole secret source for containers and `fypctl`; releases never contain secrets. |
 | `/var/lib/fyp-portal/mongodb` | Docker-managed local MongoDB data when local database mode is selected. |
 | `/var/lib/fyp-portal/seaweedfs` | Docker-managed local SeaweedFS data when local storage mode is selected. |
-| `/var/lib/fyp-portal/branding` | Persistent installer-owned branding asset data. |
+| `/var/lib/fyp-portal/branding` | Root-owned installer upload staging and branding-asset backup material. Live branding settings and logo bytes are persisted in MongoDB by M03. |
 | `/var/lib/fyp-portal/backups` | Backup archives and manifests. |
 | `/var/lib/fyp-portal/state` | Root-owned operation lock, resumable-install state, and non-secret version metadata. |
 
@@ -205,7 +205,7 @@ Existing object keys and the authorization, reservation, accounting, finalizatio
 
 - `node --test tests/runtime-config.test.mjs tests/s3-client.test.mjs`: exited 0, 8 tests passed. The local S3-compatible test server performed PUT, HEAD, GET, and DELETE through the internal client; signed browser URLs used the separate public endpoint.
 - `npx tsc --noEmit`: exited 0.
-- `npm run lint`: exited 0.
+- `npm run lint`: exited 0 with five existing warnings in ignored one-off maintenance scripts.
 - `npm run test:unit`: exited 1, with 155 of 157 tests passing. The only failures remain the M00 baseline mismatches in `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs`; all storage tests, including the new generic S3 test, passed.
 - `npm run build`: exited 0 outside the sandbox. The sandbox blocks the local port required by this build.
 
@@ -220,17 +220,31 @@ Existing object keys and the authorization, reservation, accounting, finalizatio
 
 **Implement**
 
-- [ ] Add persisted university name and primary/accent theme settings.
-- [ ] Apply branding to shared portal UI, metadata, and email identity.
-- [ ] Serve a persistent logo through a public read-only endpoint.
-- [ ] Validate theme inputs and preserve existing default colors, dark mode, and readable text.
-- [ ] Define the PNG validation contract for the installer.
+- [x] Add persisted university name and primary/accent theme settings.
+- [x] Apply branding to shared portal UI, metadata, and email identity.
+- [x] Serve a persistent logo through a public read-only endpoint.
+- [x] Validate theme inputs and preserve existing default colors, dark mode, and readable text.
+- [x] Define the PNG validation contract for the installer.
+
+Branding is stored in the existing `SystemConfig` collection under the dedicated `branding` key, so it survives application replacement with the database. Missing or malformed stored values resolve to the existing University of Haripur, navy, amber, and `/logo.png` appearance. Administrator-only controls in the existing dashboard save the university name, colors, and optional logo through `PUT /api/admin/branding`; no new settings framework or dependency was added.
+
+The public `GET /api/branding` response is cached for 60 seconds and exposes the resolved name, colors, contrast-safe foreground colors, and logo URL. `GET /api/branding/logo` is public and read-only, falls back to `/logo.png`, and streams only validated PNG bytes. Custom logo data is kept with the branding record so the app does not depend on a release-directory asset. The planned installer must create the same record and enforce the same contract: PNG content type and signature, at most 2 MiB, and width and height from 1 to 2048 pixels.
+
+Root CSS variables carry configured colors through the existing light and dark palettes. Primary and accent foreground colors are selected from luminance, so configured colors remain legible. The shared dashboard shell, login, intro, public navigation, metadata, and outbound email sender/template identity use the resolved branding. The administrator control updates the current browser session immediately; server-rendered metadata and new requests pick up the persisted values without a rebuild.
 
 **Done when:** Branding changes require no rebuild; settings survive application replacement; missing settings retain existing appearance; invalid values are rejected; representative student, supervisor, and administrator screens are visually verified.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-06):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --test tests/branding.test.mjs`: exited 0; covers default preservation, invalid values, contrast-safe serialization, malformed stored-value fallback, logo versioning, and PNG bounds.
+- `npx tsc --noEmit`: exited 0.
+- `npm run lint`: exited 0.
+- `npm run test:unit`: exited 1; 46 of 49 test-file entries passed. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline expectation mismatches. The sandboxed `tests/s3-client.test.mjs` cannot complete its loopback server test, but `node --test tests/s3-client.test.mjs` exited 0 with host networking.
+- `npm run build`: exited 0 with host networking, including the new branding routes. The sandbox blocks Turbopack local-port use during builds.
+- Local endpoint checks confirmed the public logo endpoint falls back with a `307` redirect to `/logo.png` when no custom logo exists, and unauthenticated access to the administrator endpoint is redirected to the authentication flow without changing data.
+- Visual verification could not run: the available browser-control runtime reported no connected browser. No representative student, supervisor, or administrator screenshots were taken.
+
+**Blockers / remaining work:** M03 remains in progress solely because its definition of done requires visual verification of representative student, supervisor, and administrator screens. Re-run that inspection when a browser connection is available. M04 must not start until M03 is marked Done.
 
 **Completion date:** Not completed.
 

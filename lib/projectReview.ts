@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 import Project from '../models/Project';
 import User from '../models/User';
+import { getBranding } from './branding';
 import { enqueueNotificationEmail } from './emailOutbox';
 import { findSharedStorageKeys } from './storageReferenceSafety';
 import { escapeHtml } from './security/input';
@@ -17,6 +18,7 @@ import {
   type ProjectReviewStatus,
   validateProjectReviewRatings,
 } from './projectReviewPolicy';
+import { getBrandingEmailName } from '../types/branding';
 
 type ReviewProjectRequest = {
   studentId: string;
@@ -99,6 +101,8 @@ export async function reviewProject({
     ratings,
   });
   if (!ratingValidation.success) return reviewFailure(ratingValidation.reason);
+  const branding = await getBranding();
+  const emailIdentity = escapeHtml(getBrandingEmailName(branding));
 
   const review = await withStorageTransaction(async (session) => {
         const triggerStudent = await User.findOne({
@@ -211,7 +215,7 @@ if (reviewState.newStage && project.pdfUrl) {
       const html = `
         <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
           <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">
-            <div style="background-color: #18181b; padding: 24px; text-align: center;"><h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1></div>
+            <div style="background-color: ${branding.primaryColor}; padding: 24px; text-align: center;"><h1 style="color: ${branding.primaryTextColor}; margin: 0; font-size: 20px;">${emailIdentity} Notification</h1></div>
             <div style="padding: 32px;">
               <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">Project Updated</h2>
               <p style="color: #71717a; margin-bottom: 24px;">Your supervisor, <strong>${escapeHtml(supervisor.name)}</strong>, has reviewed your submission.</p>

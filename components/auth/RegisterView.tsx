@@ -50,7 +50,7 @@ export default function RegisterView({
                 {registrationPolicy.closedMessage}
               </p>
               <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-                <button type="button" onClick={onBack} className="min-h-11 rounded-xl bg-[var(--color-primary)] px-5 py-2 text-sm font-semibold text-white hover:bg-[var(--color-primary-hover)]">
+                <button type="button" onClick={onBack} className="min-h-11 rounded-xl bg-[var(--color-primary)] px-5 py-2 text-sm font-semibold text-[var(--color-on-primary)] hover:bg-[var(--color-primary-hover)]">
                   Return to sign in
                 </button>
                 <button type="button" onClick={refreshRegistrationPolicy} className="min-h-11 rounded-xl border border-[var(--color-border)] px-5 py-2 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]">
@@ -206,7 +206,7 @@ export default function RegisterView({
                   <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Optional. Supervisors at full capacity are disabled.</p>
                 </div>
               </div>
-              <button disabled={isLoading} type="submit" className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55">{isLoading ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}{isLoading ? 'Creating account...' : 'Register now'}</button>
+              <button disabled={isLoading} type="submit" className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-[var(--color-on-primary)] transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-55">{isLoading ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}{isLoading ? 'Creating account...' : 'Register now'}</button>
             </form>
           </div>
           <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4 text-center sm:px-6"><p className="text-sm text-[var(--color-text-muted)]">Already have an account? <button type="button" onClick={onBack} className="font-semibold text-[var(--color-text-strong)] underline-offset-4 transition-colors hover:text-[var(--color-accent)] hover:underline">Sign in</button></p></div>

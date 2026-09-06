@@ -2,8 +2,10 @@ import type { ClientSession } from 'mongoose';
 import { randomUUID } from 'node:crypto';
 
 import EmailOutbox from '../models/EmailOutbox';
+import { getBranding } from './branding';
 import { isEmailConfigured, sendNotificationEmail } from './mailer';
 import { isValidEmailAddress, normalizeEmailAddress } from './security/input';
+import { getBrandingEmailName } from '../types/branding';
 
 const MAX_EMAIL_ATTEMPTS = 8;
 const MAX_BATCH_SIZE = 100;
@@ -60,6 +62,7 @@ export async function enqueueNotificationEmail(target: EmailTarget, session: Cli
 
 export async function processEmailOutbox(limit = 25) {
   const batchSize = Math.min(Math.max(Math.trunc(limit), 1), MAX_BATCH_SIZE);
+  let fromName: string | undefined;
   let claimed = 0;
   let sent = 0;
   let retried = 0;
@@ -93,8 +96,11 @@ export async function processEmailOutbox(limit = 25) {
 
     try {
       if (!isEmailConfigured()) throw new Error('email_not_configured');
+      if (!fromName) {
+        fromName = getBrandingEmailName(await getBranding());
+      }
 
-      const delivered = await sendNotificationEmail(target.to, target.subject, target.html, target.text);
+      const delivered = await sendNotificationEmail(target.to, target.subject, target.html, target.text, { fromName });
       if (!delivered) throw new Error('email_delivery_failed');
 
       await EmailOutbox.updateOne(

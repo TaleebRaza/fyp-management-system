@@ -294,7 +294,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
           >
             <div className="pointer-events-auto relative">
               {page > 1 && (
-                <span className="pointer-events-none absolute -right-1 -top-2 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-black text-black shadow-sm">
+                <span className="pointer-events-none absolute -right-1 -top-2 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-black text-[var(--color-on-accent)] shadow-sm">
                   {page - 1}
                 </span>
               )}
@@ -311,7 +311,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
             </div>
             <div className="pointer-events-auto relative">
               {page < pagination.totalPages && (
-                <span className="pointer-events-none absolute -right-1 -top-2 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-black text-black shadow-sm">
+                <span className="pointer-events-none absolute -right-1 -top-2 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-black text-[var(--color-on-accent)] shadow-sm">
                   {page + 1}
                 </span>
               )}

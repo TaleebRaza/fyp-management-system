@@ -21,7 +21,7 @@ export default function PasswordResetFlow({
     <Card className="w-full p-0">
       <div className="border-b border-[var(--color-border)] px-5 py-5 sm:px-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-[var(--color-on-primary)]">
             <Lock size={22} />
           </div>
           <div>

@@ -27,7 +27,7 @@ export default function AdminOverviewSection({
         <DashboardGrid columns="three">
           <DashboardPanel>
             <div className="flex h-full flex-col">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white"><Users size={20} /></div>
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-[var(--color-on-primary)]"><Users size={20} /></div>
               <h3 className="text-base font-bold text-[var(--color-text)]">Supervisor Management</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Create supervisor accounts, manage email, notification status, and access.</p>
               <Button className="mt-5 w-full" onClick={onOpenSupervisors}>Open Supervisors</Button>
@@ -36,7 +36,7 @@ export default function AdminOverviewSection({
 
           <DashboardPanel>
             <div className="flex h-full flex-col">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white"><GraduationCap size={20} /></div>
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-[var(--color-on-primary)]"><GraduationCap size={20} /></div>
               <h3 className="text-base font-bold text-[var(--color-text)]">Student Management</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Search students, update batch/program/email, and manage account status.</p>
               <Button className="mt-5 w-full" onClick={onOpenStudents}>Open Students</Button>
@@ -45,7 +45,7 @@ export default function AdminOverviewSection({
 
           <DashboardPanel>
             <div className="flex h-full flex-col">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white"><BarChart3 size={20} /></div>
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-primary)] text-[var(--color-on-primary)]"><BarChart3 size={20} /></div>
               <h3 className="text-base font-bold text-[var(--color-text)]">Reports</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Generate charts for supervisors, students, projects, and review queues without using storage.</p>
               <Button className="mt-5 w-full" onClick={onOpenReports}>Generate Reports</Button>

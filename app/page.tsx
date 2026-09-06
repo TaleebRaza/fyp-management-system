@@ -20,6 +20,8 @@ import {
   DEFAULT_REGISTRATION_POLICY,
   type RegistrationPolicyDto,
 } from '../types/registrationPolicy';
+import { getPortalDisplayName, getPortalMetadataTitle } from '../types/branding';
+import { usePortalBranding } from '../components/branding/usePortalBranding';
 
 // ✅ Lazy load dashboards
 const StudentDashboard = dynamic(() => import('../components/dashboards/StudentDashboard'), {
@@ -60,6 +62,7 @@ const PORTAL_THEME = {
 
 // --- MAIN APP ---
 export default function App() {
+  const branding = usePortalBranding();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [supervisorsList, setSupervisorsList] = useState<RegistrationSupervisor[]>([]);
@@ -274,7 +277,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: '/' })}
-          className="mt-6 min-h-10 rounded-xl bg-[var(--color-primary)] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-hover)]"
+          className="mt-6 min-h-10 rounded-xl bg-[var(--color-primary)] px-5 py-2 text-sm font-semibold text-[var(--color-on-primary)] transition-colors hover:bg-[var(--color-primary-hover)]"
         >
           Sign out
         </button>
@@ -316,7 +319,7 @@ export default function App() {
       <div
         className="min-h-screen bg-black"
         aria-busy="true"
-        aria-label="Preparing FYP Management System"
+        aria-label={`Preparing ${getPortalMetadataTitle(branding)}`}
       />
     );
   }
@@ -329,11 +332,11 @@ export default function App() {
         <div className="mx-auto flex w-full items-center justify-between px-4 py-3 md:w-[90vw] md:px-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-[var(--color-border)] bg-white">
-              <Image src="/logo.png" alt="University Logo" width={40} height={40} className="h-full w-full object-contain p-1" />
+              <Image src={branding.logoUrl} alt={`${branding.universityName} logo`} width={40} height={40} className="h-full w-full object-contain p-1" />
             </div>
 
             <h1 className="hidden text-lg font-bold tracking-tight text-[var(--color-text)] sm:block">
-              FYP <span className="text-[var(--color-accent)]">Portal</span>
+              {getPortalDisplayName(branding)}
             </h1>
           </div>
 

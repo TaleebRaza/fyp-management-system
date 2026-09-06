@@ -2,6 +2,7 @@ import { revalidateTag, unstable_cache } from 'next/cache';
 
 import connectToDatabase from './mongodb';
 import { readRegistrationPolicy, serializeRegistrationPolicy } from './registrationPolicy';
+import { getBranding } from './branding';
 import { getSupervisorExtraSlots, getSupervisorMaxSlots } from './supervisorSlots';
 import Headline from '../models/Headline';
 import User from '../models/User';
@@ -11,6 +12,7 @@ const CACHE_REVALIDATE_SECONDS = 60;
 export const PUBLIC_HEADLINE_TAG = 'public-headline';
 export const PUBLIC_REGISTRATION_POLICY_TAG = 'public-registration-policy';
 export const PUBLIC_SUPERVISORS_TAG = 'public-supervisors';
+export const PUBLIC_BRANDING_TAG = 'public-branding';
 
 const getCachedHeadline = unstable_cache(
   async () => {
@@ -67,9 +69,16 @@ const getCachedSupervisors = unstable_cache(
   { tags: [PUBLIC_SUPERVISORS_TAG], revalidate: CACHE_REVALIDATE_SECONDS }
 );
 
+const getCachedBranding = unstable_cache(
+  async () => await getBranding(),
+  ['public-branding'],
+  { tags: [PUBLIC_BRANDING_TAG], revalidate: CACHE_REVALIDATE_SECONDS }
+);
+
 export const getPublicHeadline = getCachedHeadline;
 export const getPublicRegistrationPolicy = getCachedRegistrationPolicy;
 export const getPublicSupervisors = getCachedSupervisors;
+export const getPublicBranding = getCachedBranding;
 
 export function invalidatePublicContent(tag: string) {
   revalidateTag(tag, 'max');

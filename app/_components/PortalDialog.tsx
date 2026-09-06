@@ -158,7 +158,7 @@ export default function PortalDialog({
                 className={`min-h-10 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
                   isDanger
                     ? 'bg-[var(--color-danger)] text-white hover:opacity-90'
-                    : 'bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)]'
+                    : 'bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary-hover)]'
                 }`}
               >
                 {dialog.type === 'confirm' ? 'Confirm' : dialog.type === 'prompt' ? 'Save Changes' : 'OK'}

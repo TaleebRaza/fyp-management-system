@@ -5,6 +5,7 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import { enqueueNotificationEmail } from '../../../../lib/emailOutbox';
+import { getBranding } from '../../../../lib/branding';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -53,6 +54,7 @@ import {
   StorageProtocolError,
 } from '../../../../lib/storageProtocol';
 import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
+import { getBrandingEmailName } from '../../../../types/branding';
 
 export const dynamic = 'force-dynamic';
 
@@ -642,6 +644,8 @@ await session.commitTransaction();
     if (!uploadedKey || !uploadedKey.startsWith(`proposals/${submissionStudentId}/`)) {
       return NextResponse.json({ error: 'Invalid uploaded PDF.' }, { status: 400 });
     }
+    const branding = await getBranding();
+    const emailIdentity = escapeHtml(getBrandingEmailName(branding));
 
     await finalizeUploadReservation({
       key: uploadedKey,
@@ -741,8 +745,8 @@ if (oldPdfKey && oldPdfKey !== uploadedKey) {
             html: `
               <div style="background-color: #f4f4f5; padding: 40px 20px; font-family: sans-serif;">
                 <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e4e4e7;">
-                  <div style="background-color: #18181b; padding: 24px; text-align: center;">
-                    <h1 style="color: #ffffff; margin: 0; font-size: 20px;">FYP Portal Notification</h1>
+                  <div style="background-color: ${branding.primaryColor}; padding: 24px; text-align: center;">
+                    <h1 style="color: ${branding.primaryTextColor}; margin: 0; font-size: 20px;">${emailIdentity} Notification</h1>
                   </div>
                   <div style="padding: 32px;">
                     <h2 style="margin-top: 0; color: #18181b; font-size: 24px;">New Project Submission</h2>

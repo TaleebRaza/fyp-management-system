@@ -1,6 +1,8 @@
 import nodemailer from 'nodemailer';
+import { getBranding } from './branding';
 import { isValidEmailAddress, normalizeEmailAddress } from './security/input';
 import { getMailConfiguration, type MailConfiguration } from './runtimeConfig';
+import { getBrandingEmailName } from '../types/branding';
 
 type SendMailOptions = {
   replyTo?: string;
@@ -112,12 +114,20 @@ export async function verifyEmailConnection() {
   }
 }
 
-export function sendTestEmail(to: string) {
+export async function sendTestEmail(to: string) {
+  if (!isEmailConfigured()) return false;
+  let portalName: string;
+  try {
+    portalName = getBrandingEmailName(await getBranding());
+  } catch {
+    console.error('branding_read_failed');
+    return false;
+  }
   return sendNotificationEmail(
     to,
-    'FYP Portal SMTP test',
-    '<p>This is a test email from the FYP Portal SMTP configuration.</p>',
-    'This is a test email from the FYP Portal SMTP configuration.',
-    { emailType: 'test' }
+    `${portalName} SMTP test`,
+    `<p>This is a test email from the ${portalName} SMTP configuration.</p>`,
+    `This is a test email from the ${portalName} SMTP configuration.`,
+    { emailType: 'test', fromName: portalName }
   );
 }

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 
-const TITLE = 'FYP Management System';
+import { usePortalBranding } from '../branding/usePortalBranding';
+import { getPortalMetadataTitle } from '../../types/branding';
+
 const CREDIT = 'Created By: Taleeb Raza';
 
 type ActiveLine = 'none' | 'title' | 'credit' | 'done';
@@ -13,6 +15,8 @@ type SessionIntroProps = {
 };
 
 export default function SessionIntro({ onComplete }: SessionIntroProps) {
+  const branding = usePortalBranding();
+  const title = getPortalMetadataTitle(branding);
   const shouldReduceMotion = useReducedMotion();
   const completionSentRef = useRef(false);
   const [logoRaised, setLogoRaised] = useState(false);
@@ -57,7 +61,7 @@ export default function SessionIntro({ onComplete }: SessionIntroProps) {
     const runSequence = async () => {
       if (shouldReduceMotion) {
         setLogoRaised(true);
-        setTitleText(TITLE);
+        setTitleText(title);
         setCreditText(CREDIT);
         setActiveLine('done');
 
@@ -78,7 +82,7 @@ export default function SessionIntro({ onComplete }: SessionIntroProps) {
       await delay(650);
       if (cancelled) return;
       setActiveLine('title');
-      await typeText(TITLE, setTitleText, 55);
+      await typeText(title, setTitleText, 55);
 
       if (cancelled) return;
       await delay(180);
@@ -103,7 +107,7 @@ export default function SessionIntro({ onComplete }: SessionIntroProps) {
       timerIds.forEach((timerId) => window.clearTimeout(timerId));
       timerIds.clear();
     };
-  }, [finish, shouldReduceMotion]);
+  }, [finish, shouldReduceMotion, title]);
 
   return (
     <motion.div
@@ -111,19 +115,19 @@ export default function SessionIntro({ onComplete }: SessionIntroProps) {
       animate={{ opacity: isExiting ? 0 : 1 }}
       transition={{ duration: shouldReduceMotion ? 0.25 : 0.6, ease: 'easeInOut' }}
       className="fixed inset-0 z-[9999] overflow-hidden bg-black"
-      aria-label="FYP Management System introduction"
+      aria-label={`${title} introduction`}
       aria-busy={!isExiting}
     >
       <div className="sr-only">
-        <h1>{TITLE}</h1>
+        <h1>{title}</h1>
         <p>{CREDIT}</p>
       </div>
 
       <div className="relative flex min-h-screen w-full items-center justify-center px-3">
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <motion.img
-            src="/logo.png"
-            alt="University Of Haripur logo"
+            src={branding.logoUrl}
+            alt={`${branding.universityName} logo`}
             initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.76, y: '0vh' }}
             animate={{
               opacity: 1,
@@ -143,9 +147,9 @@ export default function SessionIntro({ onComplete }: SessionIntroProps) {
           className="absolute inset-x-3 top-[54%] flex flex-col items-center text-center"
           aria-hidden="true"
         >
-          <h1 className="min-h-[1.35em] whitespace-nowrap text-[clamp(1.45rem,6.4vw,4.5rem)] font-black leading-none tracking-[-0.035em] text-[#fca311] drop-shadow-[0_4px_24px_rgba(252,163,17,0.2)]">
+          <h1 className="min-h-[1.35em] whitespace-nowrap text-[clamp(1.45rem,6.4vw,4.5rem)] font-black leading-none tracking-[-0.035em] text-[var(--color-accent)] drop-shadow-[0_4px_24px_rgba(252,163,17,0.2)]">
             {titleText}
-            {activeLine === 'title' ? <TypingCaret className="bg-[#fca311]" /> : null}
+            {activeLine === 'title' ? <TypingCaret className="bg-[var(--color-accent)]" /> : null}
           </h1>
 
           <p className="mt-5 min-h-[1.5em] whitespace-nowrap text-[clamp(0.85rem,2.3vw,1.2rem)] font-medium tracking-[0.08em] text-white/90 sm:mt-6">

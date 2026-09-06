@@ -85,7 +85,7 @@ export default function FinePaymentPanel({ restriction, onRefresh }: Props) {
           )}
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-4 rounded-2xl bg-[var(--color-primary)] p-5 text-white">
+        <div className="mt-5 flex items-center justify-between gap-4 rounded-2xl bg-[var(--color-primary)] p-5 text-[var(--color-on-primary)]">
           <div className="flex items-center gap-3">
             <CircleDollarSign size={24} />
             <div>
