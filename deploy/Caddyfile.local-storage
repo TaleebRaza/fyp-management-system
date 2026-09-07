@@ -1,0 +1,16 @@
+{
+  admin off
+}
+
+{$FYP_CADDY_SITE} {
+  @uploads path /fyp-uploads /fyp-uploads/*
+  handle @uploads {
+    reverse_proxy seaweedfs:8333
+  }
+
+  handle {
+    reverse_proxy app:3000 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+}

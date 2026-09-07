@@ -1,0 +1,9 @@
+{
+  admin off
+}
+
+{$FYP_CADDY_SITE} {
+  reverse_proxy app:3000 {
+    header_up X-Forwarded-Proto https
+  }
+}

@@ -50,7 +50,7 @@ Maintain this single tracker:
 | M02 | Generic object storage | Done | M01 |
 | M03 | University branding | Done | M01 |
 | M04 | Application container and MongoDB | In progress | M02, M03 |
-| M05 | Local storage and HTTPS gateway | Not started | M04 |
+| M05 | Local storage and HTTPS gateway | In progress | M04 |
 | M06 | Operations CLI and secure bootstrap | Not started | M05 |
 | M07 | Background processing and retention | Not started | M06 |
 | M08 | Maintenance, backup, and restore | Not started | M07 |
@@ -60,7 +60,7 @@ Maintain this single tracker:
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 through M03 are complete. M04 is in progress. M00 records the current application baseline and the deployment contract that later milestones must follow. M05 and later milestones remain unstarted.
+M00 through M03 are complete. M04 and M05 are in progress. M00 records the current application baseline and the deployment contract that later milestones must follow. M06 and later milestones remain unstarted.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -125,6 +125,7 @@ The installer is supported only on an internet-connected, single-node Ubuntu 24.
 | `/etc/fyp-portal/portal.env` | Root-owned `0600` runtime secret/configuration file. It is the sole secret source for containers and `fypctl`; releases never contain secrets. |
 | `/var/lib/fyp-portal/mongodb` | Docker-managed local MongoDB data when local database mode is selected. |
 | `/var/lib/fyp-portal/seaweedfs` | Docker-managed local SeaweedFS data when local storage mode is selected. |
+| `/var/lib/fyp-portal/caddy` | Docker-managed Caddy certificate and TLS state. |
 | `/var/lib/fyp-portal/branding` | Root-owned installer upload staging and branding-asset backup material. Live branding settings and logo bytes are persisted in MongoDB by M03. |
 | `/var/lib/fyp-portal/backups` | Backup archives and manifests. |
 | `/var/lib/fyp-portal/state` | Root-owned operation lock, resumable-install state, and non-secret version metadata. |
@@ -293,17 +294,49 @@ Root CSS variables carry configured colors through the existing light and dark p
 
 **Implement**
 
-- [ ] Add pinned SeaweedFS configuration, persistent metadata/object storage, credentials, and idempotent bucket initialization.
-- [ ] Add Caddy-managed HTTPS and an internal gateway mode for an existing institutional proxy.
-- [ ] Route the local bucket through `/fyp-uploads/*`, preserving signed host, path, and query.
-- [ ] Validate external storage browser access and CORS.
-- [ ] Keep storage management interfaces private.
+- [x] Add pinned SeaweedFS configuration, persistent metadata/object storage, credentials, and idempotent bucket initialization.
+- [x] Add Caddy-managed HTTPS and an internal gateway mode for an existing institutional proxy.
+- [x] Route the local bucket through `/fyp-uploads/*`, preserving signed host, path, and query.
+- [x] Add a false-data-only browser-access and CORS validator for generic external storage.
+- [x] Keep storage management interfaces private.
+
+`deploy/compose.gateway.yaml` adds Caddy 2.11.4 with its automatic HTTPS state
+under `/var/lib/fyp-portal/caddy`. The same gateway supports a pre-existing
+institutional TLS proxy by using an explicit HTTP site address and loopback
+port bindings. Caddy's management API is disabled.
+
+`deploy/compose.local-storage.yaml` adds SeaweedFS 4.42 with persistent local
+data under `/var/lib/fyp-portal/seaweedfs`, no published management or S3 ports,
+and an authenticated `fyp-uploads` bucket. It first configures SeaweedFS's S3
+identity, then idempotently creates the bucket and its CORS policy from the
+portal public origin. The application and local gateway wait for that work to
+finish. The local browser endpoint is the portal origin and path-style S3 puts
+the bucket in `/fyp-uploads/*`; Caddy proxies that route without rewriting the
+signed host, path, or query.
+
+`deploy/verify-browser-storage.mjs` checks internal bucket reachability and a
+signed PUT preflight against the browser endpoint. It requires
+`FYP_STORAGE_VALIDATION_CONFIRM=LOCAL_FALSE_DATA` before it makes even those
+read-only requests, so it is limited to false local test data.
 
 **Done when:** Real browser PDF/audio uploads and downloads succeed through HTTPS in both proxy modes; unsigned private-object access fails; restart preserves files; the selected image versions and digests are recorded.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-07):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --check deploy/storage-config.mjs`, `node --check deploy/initialize-local-storage.mjs`, `node --check deploy/verify-browser-storage.mjs`, and `sh -n deploy/seaweedfs-init.sh`: exited 0.
+- `node --test tests/storage-gateway.test.mjs tests/deployment-structure.test.mjs tests/runtime-config.test.mjs`: exited 0, all three test files passed. The new gateway test covers local-only endpoint enforcement, CORS-preflight validation, signed-route preservation, private management services, and runtime-image script packaging.
+- `npx tsc --noEmit`: exited 0.
+- `npm run lint`: exited 0 with five existing warnings in ignored one-off maintenance scripts.
+- `npm run test:unit`: exited 1, with 48 of 51 test-file entries passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline expectation mismatches. The sandbox blocked the loopback server in `tests/s3-client.test.mjs`; `node --test tests/s3-client.test.mjs` exited 0 with host networking.
+- `npm run build`: exited 0 with host networking.
+- Docker Compose rendered the combined M04/M05 stack successfully using only false credentials and `/tmp` data directories. Its merged configuration makes Caddy wait for application and storage initialization, selects `Caddyfile.local-storage`, and exposes no SeaweedFS host port.
+- Docker Engine is installed but this account cannot access the daemon, so no containers started and no production database or object storage was accessed.
+
+**Blockers / remaining work:** M04 still needs live Docker validation. This
+environment also lacks Docker-daemon access, so local SeaweedFS/Caddy startup,
+browser uploads, restart persistence, unsigned-access rejection, and the
+false-data browser-storage validator remain to be exercised on a Docker-capable
+host.
 
 **Completion date:** Not completed.
 

@@ -27,6 +27,9 @@ COPY --from=builder --chown=portal:portal /app/.next/standalone ./
 COPY --from=builder --chown=portal:portal /app/.next/static ./.next/static
 COPY --from=builder --chown=portal:portal /app/package.json ./package.json
 COPY --from=builder --chown=portal:portal /app/deploy/verify-mongodb-transactions.mjs ./deploy/verify-mongodb-transactions.mjs
+COPY --from=builder --chown=portal:portal /app/deploy/storage-config.mjs ./deploy/storage-config.mjs
+COPY --from=builder --chown=portal:portal /app/deploy/initialize-local-storage.mjs ./deploy/initialize-local-storage.mjs
+COPY --from=builder --chown=portal:portal /app/deploy/verify-browser-storage.mjs ./deploy/verify-browser-storage.mjs
 COPY --from=builder --chown=portal:portal /app/scripts ./scripts
 
 USER portal

@@ -1,0 +1,20 @@
+services:
+  caddy:
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      FYP_CADDY_SITE: ${FYP_CADDY_SITE:?FYP_CADDY_SITE is required for the gateway.}
+    ports:
+      - ${FYP_CADDY_HTTP_BIND:-80}:80
+      - ${FYP_CADDY_HTTPS_BIND:-443}:443
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: ${FYP_CADDY_DATA_DIR:-/var/lib/fyp-portal/caddy}
+        target: /data
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
