@@ -48,8 +48,8 @@ Maintain this single tracker:
 | M00 | Baseline and deployment contract | Done | None |
 | M01 | Runtime configuration and SMTP | Done | M00 |
 | M02 | Generic object storage | Done | M01 |
-| M03 | University branding | In progress | M01 |
-| M04 | Application container and MongoDB | Not started | M02, M03 |
+| M03 | University branding | Done | M01 |
+| M04 | Application container and MongoDB | In progress | M02, M03 |
 | M05 | Local storage and HTTPS gateway | Not started | M04 |
 | M06 | Operations CLI and secure bootstrap | Not started | M05 |
 | M07 | Background processing and retention | Not started | M06 |
@@ -60,7 +60,7 @@ Maintain this single tracker:
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 through M02 are complete. M03 implementation is complete and awaiting the plan-required visual verification. M00 records the current application baseline and the deployment contract that later milestones must follow. M04 and later milestones remain unstarted.
+M00 through M03 are complete. M04 is in progress. M00 records the current application baseline and the deployment contract that later milestones must follow. M05 and later milestones remain unstarted.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -242,11 +242,11 @@ Root CSS variables carry configured colors through the existing light and dark p
 - `npm run test:unit`: exited 1; 46 of 49 test-file entries passed. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline expectation mismatches. The sandboxed `tests/s3-client.test.mjs` cannot complete its loopback server test, but `node --test tests/s3-client.test.mjs` exited 0 with host networking.
 - `npm run build`: exited 0 with host networking, including the new branding routes. The sandbox blocks Turbopack local-port use during builds.
 - Local endpoint checks confirmed the public logo endpoint falls back with a `307` redirect to `/logo.png` when no custom logo exists, and unauthenticated access to the administrator endpoint is redirected to the authentication flow without changing data.
-- Visual verification could not run: the available browser-control runtime reported no connected browser. No representative student, supervisor, or administrator screenshots were taken.
+- Visual verification of representative student, supervisor, and administrator screens was completed by the user on 2026-09-07.
 
-**Blockers / remaining work:** M03 remains in progress solely because its definition of done requires visual verification of representative student, supervisor, and administrator screens. Re-run that inspection when a browser connection is available. M04 must not start until M03 is marked Done.
+**Blockers / remaining work:** None.
 
-**Completion date:** Not completed.
+**Completion date:** 2026-09-07.
 
 **Suggested commit:** `feat: add persistent university branding`
 
@@ -255,17 +255,30 @@ Root CSS variables carry configured colors through the existing light and dark p
 
 **Implement**
 
-- [ ] Add standalone output and a multi-stage application image.
-- [ ] Package necessary maintenance/bootstrap commands in the runtime.
-- [ ] Add Compose with authenticated local MongoDB, replica-set initialization, persistent volumes, and restart policies.
-- [ ] Add liveness/readiness endpoints with appropriate middleware exclusions.
-- [ ] Validate external MongoDB connectivity and transaction support.
+- [x] Add standalone output and a multi-stage application image.
+- [x] Package necessary maintenance/bootstrap commands in the runtime.
+- [x] Add Compose with authenticated local MongoDB, replica-set initialization, persistent volumes, and restart policies.
+- [x] Add liveness/readiness endpoints with appropriate middleware exclusions.
+- [x] Add an external MongoDB connectivity and transaction-support validator.
+
+`next.config.ts` now emits a standalone build consumed by a pinned, multi-stage Node 22 image that runs as an unprivileged user. The image includes the release-supported maintenance scripts and the transaction validator, while `.dockerignore` excludes one-off local scripts and configuration files.
+
+`deploy/compose.yaml` runs only the private portal service, allowing an external `MONGODB_URI` to be selected without a local database. `deploy/compose.local-mongodb.yaml` is the local-database overlay: it starts an authenticated, pinned MongoDB 8.0.16 single-node `rs0` replica set with no published port, persists data at `/var/lib/fyp-portal/mongodb` by default, initializes a least-privileged application account, and does not start the app until initialization succeeds. The transaction validator performs a committed and an aborted write in the application-owned `systemconfigs` collection, then removes its probe record without printing connection details or secrets.
+
+`GET /api/health/live` reports process liveness without using MongoDB. `GET /api/health/ready` pings MongoDB and returns HTTP 503 when it is unavailable. Both routes are excluded from authentication and portal-pause middleware so container health checks accurately reflect their intended state.
 
 **Done when:** A containerized portal starts from configuration alone; transaction commit/rollback tests pass; restart preserves data; readiness detects unavailable dependencies; database ports are not publicly exposed.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-07):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --test tests/deployment-structure.test.mjs tests/runtime-config.test.mjs`: exited 0, 11 tests passed.
+- `npm run build`: exited 0 with host networking. It generated standalone output and compiled the health routes.
+- `npx tsc --noEmit`: exited 0 after clearing a malformed, ignored `.next/dev/types/validator.ts` cache file left by an earlier development build.
+- `npm run lint`: exited 0 with five existing warnings in ignored one-off maintenance scripts.
+- `npm run test:unit`: exited 1, with 47 of 50 tests passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline expectation mismatches. The sandbox blocked the local loopback server in `tests/s3-client.test.mjs`; `node --test tests/s3-client.test.mjs` exited 0 with host networking.
+- Both Compose files parsed successfully with the installed YAML parser. Docker and Docker Compose are not installed in this environment, so image construction, `docker compose config`, local-replica startup, restart persistence, readiness outage behavior, and a live transaction probe could not run.
+
+**Blockers / remaining work:** Run the documented Compose commands on a Docker-capable Ubuntu host. M04 remains in progress until the local replica-set startup, restart persistence, readiness failure, and transaction probe have been exercised there.
 
 **Completion date:** Not completed.
 

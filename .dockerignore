@@ -1,0 +1,23 @@
+.git
+.next
+.env
+.env.*
+!.env.example
+node_modules
+coverage
+*.tsbuildinfo
+.idea
+.codex
+.agents
+.tools
+
+# Only release-supported maintenance commands belong in the runtime image.
+scripts/*
+!scripts/apply-refactor-indexes.mjs
+!scripts/audit-project-drift.mjs
+!scripts/audit-refactor-indexes.mjs
+!scripts/audit-storage-integrity.mjs
+!scripts/audit-storage-keys.mjs
+!scripts/reconcile-supervisor-capacity.mjs
+!scripts/refactor-indexes.mjs
+!scripts/update-rate-limit-ttl.mjs
