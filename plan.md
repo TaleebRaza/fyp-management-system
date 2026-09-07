@@ -78,6 +78,8 @@ Implement milestones in order, keeping each change cohesive and independently re
 
 After every response involving file changes, include a suggested commit message. Do not create commits automatically.
 
+**Development safety restriction:** No development, validation, or maintenance command may read from, write to, update, delete, migrate, or otherwise affect a production database or production object storage. When persistence testing is needed, use an on-device local database and storage populated only with false test data.
+
 ## 3. Milestones and definitions of done
 
 ### M00: Baseline and deployment contract
@@ -276,9 +278,11 @@ Root CSS variables carry configured colors through the existing light and dark p
 - `npx tsc --noEmit`: exited 0 after clearing a malformed, ignored `.next/dev/types/validator.ts` cache file left by an earlier development build.
 - `npm run lint`: exited 0 with five existing warnings in ignored one-off maintenance scripts.
 - `npm run test:unit`: exited 1, with 47 of 50 tests passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline expectation mismatches. The sandbox blocked the local loopback server in `tests/s3-client.test.mjs`; `node --test tests/s3-client.test.mjs` exited 0 with host networking.
-- Both Compose files parsed successfully with the installed YAML parser. Docker and Docker Compose are not installed in this environment, so image construction, `docker compose config`, local-replica startup, restart persistence, readiness outage behavior, and a live transaction probe could not run.
+- At initial M04 validation, Docker and Docker Compose were unavailable, so local-replica startup, restart persistence, readiness outage behavior, and a live transaction probe could not run.
+- Isolated follow-up validation (2026-09-07): `node --test tests/deployment-structure.test.mjs tests/runtime-config.test.mjs`, `npx tsc --noEmit`, `npm run lint`, and `npm run build` all exited 0. Lint retained the five existing warnings in ignored one-off maintenance scripts. `docker compose --env-file` rendered the combined Compose files successfully using only false credentials and a `/tmp` data directory.
+- Docker Engine and Compose are installed, but this account cannot access `/var/run/docker.sock`; `sudo -n` requires a password. No containers were started, and no production database or storage was accessed.
 
-**Blockers / remaining work:** Run the documented Compose commands on a Docker-capable Ubuntu host. M04 remains in progress until the local replica-set startup, restart persistence, readiness failure, and transaction probe have been exercised there.
+**Blockers / remaining work:** Grant this account Docker-daemon access or run the documented Compose commands on a Docker-capable Ubuntu host. M04 remains in progress until the local replica-set startup, restart persistence, readiness failure, and transaction probe have been exercised there using only false local data.
 
 **Completion date:** Not completed.
 
