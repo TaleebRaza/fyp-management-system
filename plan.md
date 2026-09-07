@@ -50,7 +50,7 @@ Maintain this single tracker:
 | M02 | Generic object storage | Done | M01 |
 | M03 | University branding | Done | M01 |
 | M04 | Application container and MongoDB | Done | M02, M03 |
-| M05 | Local storage and HTTPS gateway | In progress | M04 |
+| M05 | Local storage and HTTPS gateway | Done | M04 |
 | M06 | Operations CLI and secure bootstrap | Not started | M05 |
 | M07 | Background processing and retention | Not started | M06 |
 | M08 | Maintenance, backup, and restore | Not started | M07 |
@@ -60,7 +60,7 @@ Maintain this single tracker:
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 through M03 are complete. M04 and M05 are in progress. M00 records the current application baseline and the deployment contract that later milestones must follow. M06 and later milestones remain unstarted.
+M00 through M05 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow. M06 and later milestones remain unstarted.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -327,24 +327,20 @@ read-only requests, so it is limited to false local test data.
 
 **Validation record (2026-09-07):**
 
-- `node --check deploy/storage-config.mjs`, `node --check deploy/initialize-local-storage.mjs`, `node --check deploy/verify-browser-storage.mjs`, and `sh -n deploy/seaweedfs-init.sh`: exited 0.
-- `node --test tests/storage-gateway.test.mjs tests/deployment-structure.test.mjs tests/runtime-config.test.mjs`: exited 0, all three test files passed. The new gateway test covers local-only endpoint enforcement, CORS-preflight validation, signed-route preservation, private management services, and runtime-image script packaging.
-- `npx tsc --noEmit`: exited 0.
-- `npm run lint`: exited 0 with five existing warnings in ignored one-off maintenance scripts.
-- `npm run test:unit`: exited 1, with 48 of 51 test-file entries passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline expectation mismatches. The sandbox blocked the loopback server in `tests/s3-client.test.mjs`; `node --test tests/s3-client.test.mjs` exited 0 with host networking.
+- `node --test tests/s3-client.test.mjs tests/storage-gateway.test.mjs tests/deployment-structure.test.mjs tests/runtime-config.test.mjs`: exited 0, 15 tests passed. This covers private local endpoints, SeaweedFS S3 readiness, build-first image use, runtime validator packaging, checksum-free browser PUT URLs, and CORS preflight handling.
+- `npx tsc --noEmit`: exited 0. `npm run lint`: exited 0 with five existing warnings in ignored one-off maintenance scripts.
 - `npm run build`: exited 0 with host networking.
-- Docker Compose rendered the combined M04/M05 stack successfully using only false credentials and `/tmp` data directories. Its merged configuration makes Caddy wait for application and storage initialization, selects `Caddyfile.local-storage`, and exposes no SeaweedFS host port.
-- Docker Engine is installed but this account cannot access the daemon, so no containers started and no production database or object storage was accessed.
+- `npm run test:unit`: exited 1, with 166 of 168 tests passing. The only failures are the documented M00 baseline expectation mismatches in `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs`.
+- A freshly built image started a false-data-only local stack with MongoDB, SeaweedFS, both initialization jobs, the app, and Caddy. SeaweedFS had no host port, while Caddy alone used loopback HTTP/HTTPS ports.
+- Signed PDF and audio uploads/downloads worked through public HTTPS. A signed CORS preflight passed and direct unsigned private-object access returned HTTP 403. The packaged browser-storage validator passed with `FYP_STORAGE_VALIDATION_CONFIRM=LOCAL_FALSE_DATA`.
+- A SeaweedFS restart preserved the false PDF. The existing institutional-proxy mode was exercised with a temporary loopback TLS proxy that preserved the signed host, path, and query; its health checks, validator, and signed PDF upload passed.
+- No production database or object storage was accessed. The temporary containers, TLS proxy, and `/tmp` false-data directory were removed after validation.
 
-**Blockers / remaining work:** M04 still needs live Docker validation. This
-environment also lacks Docker-daemon access, so local SeaweedFS/Caddy startup,
-browser uploads, restart persistence, unsigned-access rejection, and the
-false-data browser-storage validator remain to be exercised on a Docker-capable
-host.
+**Blockers / remaining work:** None.
 
-**Completion date:** Not completed.
+**Completion date:** 2026-09-07.
 
-**Suggested commit:** `deploy: add local object storage and HTTPS gateway`
+**Suggested commit:** `fix(deploy): harden local storage gateway startup`
 
 
 ### M06: Operations CLI and secure bootstrap

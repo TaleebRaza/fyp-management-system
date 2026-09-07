@@ -16,6 +16,7 @@ until printf 'cluster.status\n' | weed shell -master=seaweedfs:9333 >/dev/null 2
   sleep 1
 done
 
-printf 's3.configure -access_key=%s -secret_key=%s -buckets=%s -user=fyp-portal -actions=Read,Write,List,Tagging,Admin -apply\n' \
-  "$S3_ACCESS_KEY_ID" "$S3_SECRET_ACCESS_KEY" "$S3_BUCKET_NAME" \
+# ponytail: SeaweedFS 4.42 requires global actions to create the bucket and set CORS; scope this identity when upstream supports those operations.
+printf 's3.configure -access_key=%s -secret_key=%s -user=fyp-portal -actions=Read,Write,List,Tagging,Admin -apply\n' \
+  "$S3_ACCESS_KEY_ID" "$S3_SECRET_ACCESS_KEY" \
   | weed shell -master=seaweedfs:9333 >/dev/null

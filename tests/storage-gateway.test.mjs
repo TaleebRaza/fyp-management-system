@@ -66,10 +66,11 @@ test('browser storage validation requires false-data confirmation and a usable C
 });
 
 test('the local gateway preserves signed upload URLs and keeps management services private', async () => {
-  const [gateway, localGateway, localStorage, dockerfile] = await Promise.all([
+  const [gateway, localGateway, localStorage, localStorageInit, dockerfile] = await Promise.all([
     source('deploy/compose.gateway.yaml'),
     source('deploy/Caddyfile.local-storage'),
     source('deploy/compose.local-storage.yaml'),
+    source('deploy/seaweedfs-init.sh'),
     source('Dockerfile'),
   ]);
 
@@ -80,8 +81,16 @@ test('the local gateway preserves signed upload URLs and keeps management servic
   assert.match(localGateway, /reverse_proxy seaweedfs:8333/);
   assert.doesNotMatch(localGateway, /handle_path|\buri\b/);
   assert.match(localStorage, /chrislusf\/seaweedfs:4\.42@sha256:f7cbc8bdbbf60/);
+  assert.doesNotMatch(localStorage, /-s3\.externalUrl/);
+  assert.match(localStorage, /curl --fail --silent http:\/\/127\.0\.0\.1:8333\/status/);
+  assert.match(localStorage, /seaweedfs:\n\s+condition: service_healthy/);
+  assert.match(localStorage, /storage-init:\n\s+build:/);
+  assert.match(localStorage, /storage-init:[\s\S]*?pull_policy: build/);
   assert.match(localStorage, /service_completed_successfully/);
   assert.doesNotMatch(localStorage, /^\s*ports:/m);
+  assert.match(localStorageInit, /s3\.configure/);
+  assert.doesNotMatch(localStorageInit, /-buckets=/);
   assert.match(dockerfile, /deploy\/initialize-local-storage\.mjs/);
   assert.match(dockerfile, /deploy\/verify-browser-storage\.mjs/);
+  assert.match(dockerfile, /@aws-sdk\/s3-request-presigner/);
 });

@@ -34,6 +34,7 @@ function createS3Client(endpoint: string, configuration: StorageConfiguration) {
       secretAccessKey: configuration.secretAccessKey,
     },
     forcePathStyle: configuration.forcePathStyle,
+    requestChecksumCalculation: 'WHEN_REQUIRED',
   });
 }
 

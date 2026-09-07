@@ -141,6 +141,7 @@ test('generic S3 uses local service storage while browser signed URLs use the pu
       assert.equal(uploadUrl.origin, 'http://browser.storage.test');
       assert.equal(uploadUrl.pathname, `/fyp-uploads/${bucket}/${key}`);
       assert.ok(uploadUrl.searchParams.get('X-Amz-Signature'));
+      assert.equal(uploadUrl.searchParams.has('x-amz-checksum-crc32'), false);
 
       await serviceClient.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
       assert.equal(objects.has(key), false);

@@ -6,6 +6,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     image: ${FYP_PORTAL_IMAGE:-fyp-portal:local}
+    pull_policy: build
     environment:
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI is required.}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required.}
