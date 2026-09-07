@@ -25,15 +25,31 @@ test('standalone image includes the application and supported maintenance comman
 });
 
 test('local MongoDB is authenticated, persistent, initialized as a replica set, and private', async () => {
-  const compose = await source('deploy/compose.local-mongodb.yaml');
+  const [appCompose, mongoCompose, mongoEntrypoint, mongoInit] = await Promise.all([
+    source('deploy/compose.yaml'),
+    source('deploy/compose.local-mongodb.yaml'),
+    source('deploy/mongo-entrypoint.sh'),
+    source('deploy/mongo-init.sh'),
+  ]);
 
-  assert.match(compose, /--auth/);
-  assert.match(compose, /--replSet", "rs0/);
-  assert.match(compose, /MONGO_INITDB_ROOT_USERNAME/);
-  assert.match(compose, /condition: service_completed_successfully/);
-  assert.match(compose, /type: bind/);
-  assert.match(compose, /\/var\/lib\/fyp-portal\/mongodb/);
-  assert.doesNotMatch(compose, /^\s*ports:/m);
+  assert.match(mongoCompose, /--auth/);
+  assert.match(mongoCompose, /--replSet", "rs0/);
+  assert.match(mongoCompose, /--keyFile/);
+  assert.match(mongoCompose, /MONGODB_REPLICA_SET_KEY/);
+  assert.match(mongoCompose, /user: "0:0"/);
+  assert.match(mongoCompose, /MONGO_INITDB_ROOT_USERNAME/);
+  assert.match(mongoCompose, /getCmdLineOpts/);
+  assert.match(mongoCompose, /condition: service_completed_successfully/);
+  assert.match(mongoCompose, /type: bind/);
+  assert.match(mongoCompose, /\/var\/lib\/fyp-portal\/mongodb/);
+  assert.doesNotMatch(mongoCompose, /^\s*ports:/m);
+  assert.match(mongoEntrypoint, /MONGODB_REPLICA_SET_KEY cannot change/);
+  assert.match(mongoEntrypoint, /chown mongodb:mongodb/);
+  assert.match(mongoEntrypoint, /docker-entrypoint\.sh/);
+  assert.match(mongoInit, /exec mongosh/);
+  assert.match(mongoInit, /\$MONGODB_ROOT_PASSWORD/);
+  assert.doesNotMatch(appCompose, /MONGODB_ROOT_PASSWORD/);
+  assert.doesNotMatch(appCompose, /MONGODB_REPLICA_SET_KEY/);
 });
 
 test('health routes bypass authentication middleware and readiness pings MongoDB', async () => {

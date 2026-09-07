@@ -49,7 +49,7 @@ Maintain this single tracker:
 | M01 | Runtime configuration and SMTP | Done | M00 |
 | M02 | Generic object storage | Done | M01 |
 | M03 | University branding | Done | M01 |
-| M04 | Application container and MongoDB | In progress | M02, M03 |
+| M04 | Application container and MongoDB | Done | M02, M03 |
 | M05 | Local storage and HTTPS gateway | In progress | M04 |
 | M06 | Operations CLI and secure bootstrap | Not started | M05 |
 | M07 | Background processing and retention | Not started | M06 |
@@ -281,13 +281,17 @@ Root CSS variables carry configured colors through the existing light and dark p
 - `npm run test:unit`: exited 1, with 47 of 50 tests passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline expectation mismatches. The sandbox blocked the local loopback server in `tests/s3-client.test.mjs`; `node --test tests/s3-client.test.mjs` exited 0 with host networking.
 - At initial M04 validation, Docker and Docker Compose were unavailable, so local-replica startup, restart persistence, readiness outage behavior, and a live transaction probe could not run.
 - Isolated follow-up validation (2026-09-07): `node --test tests/deployment-structure.test.mjs tests/runtime-config.test.mjs`, `npx tsc --noEmit`, `npm run lint`, and `npm run build` all exited 0. Lint retained the five existing warnings in ignored one-off maintenance scripts. `docker compose --env-file` rendered the combined Compose files successfully using only false credentials and a `/tmp` data directory.
-- Docker Engine and Compose are installed, but this account cannot access `/var/run/docker.sock`; `sudo -n` requires a password. No containers were started, and no production database or storage was accessed.
+- At that intermediate follow-up, Docker Engine and Compose were installed but this account could not access `/var/run/docker.sock`; `sudo -n` required a password. No containers were started, and no production database or storage was accessed.
+- Final isolated validation (2026-09-07): an authenticated local `rs0` stack built and started with only false credentials and a temporary data directory. The `mongod` process ran unprivileged, while the short bootstrap wrapper ran as root solely to create the MongoDB-required key file with safe ownership and permissions. The wrapper rejects replica-set key changes after startup, and the application container does not receive root MongoDB credentials or the replica-set key.
+- The live application health endpoints returned `ok` and `ready`; the transaction probe verified a committed write, an aborted write, and cleanup. A false-data marker survived both container recreation and an explicit MongoDB restart. Stopping MongoDB returned the expected readiness `503`/`unavailable` response, and both services recovered healthy after restart. MongoDB exposed no host port.
+- `bash -n deploy/mongo-entrypoint.sh deploy/mongo-init.sh`, `node --test tests/deployment-structure.test.mjs tests/runtime-config.test.mjs`, `npx eslint tests/deployment-structure.test.mjs`, `npx tsc --noEmit`, and the combined Compose render all exited 0. The Docker image build completed successfully, including its production Next.js build stage. A direct host `npm run build` also exited 0 outside the sandbox after clearing a stale generated `.next/lock` file left by an interrupted build.
+- `npm run test:unit`: exited 1 with 166 of 168 tests passing. The only failures remain the documented M00 baseline mismatches in `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs`; the local S3 test passed with host networking.
 
-**Blockers / remaining work:** Grant this account Docker-daemon access or run the documented Compose commands on a Docker-capable Ubuntu host. M04 remains in progress until the local replica-set startup, restart persistence, readiness failure, and transaction probe have been exercised there using only false local data.
+**Blockers / remaining work:** None.
 
-**Completion date:** Not completed.
+**Completion date:** 2026-09-07.
 
-**Suggested commit:** `deploy: containerize portal with authenticated MongoDB replica set`
+**Suggested commit:** `fix(deploy): harden local MongoDB replica-set bootstrap`
 
 
 ### M05: Local storage and HTTPS gateway

@@ -17,9 +17,10 @@ docker compose --env-file /etc/fyp-portal/portal.env \
 
 For local MongoDB, that file must contain `MONGODB_ROOT_USERNAME`,
 `MONGODB_ROOT_PASSWORD`, `MONGODB_APP_USERNAME`, `MONGODB_APP_PASSWORD`,
-`MONGODB_DATABASE`, and an application `MONGODB_URI` using the application
+`MONGODB_REPLICA_SET_KEY`, `MONGODB_DATABASE`, and an application `MONGODB_URI` using the application
 credentials, `authSource=<database>`, and `replicaSet=rs0`. Credentials used in
-the URI must be percent-encoded. `FYP_MONGODB_DATA_DIR` defaults to
+the URI must be percent-encoded. `MONGODB_REPLICA_SET_KEY` must be a persistent
+base64 value between 6 and 1024 characters. `FYP_MONGODB_DATA_DIR` defaults to
 `/var/lib/fyp-portal/mongodb`.
 
 Neither the app nor MongoDB publishes a host port. M05 adds the public Caddy

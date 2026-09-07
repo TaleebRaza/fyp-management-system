@@ -6,23 +6,28 @@ services:
 
   mongo:
     image: mongo:8.0.16@sha256:4b58ebcb1dc7a7b4e84cd8ce9098d48764ae4478876898ff9551acf2ac4a6a6d
-    command: ["mongod", "--auth", "--bind_ip_all", "--replSet", "rs0"]
-    env_file:
-      - ${FYP_PORTAL_ENV_FILE:-/etc/fyp-portal/portal.env}
+    user: "0:0"
+    entrypoint: ["/bin/bash", "/scripts/mongo-entrypoint.sh"]
+    command: ["mongod", "--auth", "--bind_ip_all", "--replSet", "rs0", "--keyFile", "/tmp/mongodb-replica-set.key"]
     environment:
       MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:?MONGODB_DATABASE is required for local MongoDB.}
       MONGO_INITDB_ROOT_USERNAME: ${MONGODB_ROOT_USERNAME:?MONGODB_ROOT_USERNAME is required for local MongoDB.}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD:?MONGODB_ROOT_PASSWORD is required for local MongoDB.}
+      MONGODB_REPLICA_SET_KEY: ${MONGODB_REPLICA_SET_KEY:?MONGODB_REPLICA_SET_KEY is required for local MongoDB.}
     restart: unless-stopped
     volumes:
       - type: bind
         source: ${FYP_MONGODB_DATA_DIR:-/var/lib/fyp-portal/mongodb}
         target: /data/db
+      - type: bind
+        source: ./mongo-entrypoint.sh
+        target: /scripts/mongo-entrypoint.sh
+        read_only: true
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          mongosh --quiet --username "$${MONGODB_ROOT_USERNAME}" --password "$${MONGODB_ROOT_PASSWORD}" --authenticationDatabase admin --eval "db.adminCommand('ping').ok" | grep -qx 1
+          mongosh --quiet --username "$${MONGO_INITDB_ROOT_USERNAME}" --password "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --eval "db.adminCommand({ getCmdLineOpts: 1 }).parsed.replication?.replSet === 'rs0' && db.adminCommand('ping').ok" | grep -qx 1
       interval: 5s
       timeout: 5s
       retries: 12
@@ -33,8 +38,6 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-    env_file:
-      - ${FYP_PORTAL_ENV_FILE:-/etc/fyp-portal/portal.env}
     environment:
       MONGODB_APP_PASSWORD: ${MONGODB_APP_PASSWORD:?MONGODB_APP_PASSWORD is required for local MongoDB.}
       MONGODB_APP_USERNAME: ${MONGODB_APP_USERNAME:?MONGODB_APP_USERNAME is required for local MongoDB.}
@@ -42,12 +45,14 @@ services:
       MONGODB_REPLICA_SET: rs0
       MONGODB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD:?MONGODB_ROOT_PASSWORD is required for local MongoDB.}
       MONGODB_ROOT_USERNAME: ${MONGODB_ROOT_USERNAME:?MONGODB_ROOT_USERNAME is required for local MongoDB.}
-    entrypoint: ["/bin/bash", "-ec"]
-    command: >-
-      exec mongosh --host mongo --username "$${MONGODB_ROOT_USERNAME}" --password "$${MONGODB_ROOT_PASSWORD}" --authenticationDatabase admin /scripts/mongo-init.js
+    entrypoint: ["/bin/bash", "/scripts/mongo-init.sh"]
     restart: "no"
     volumes:
       - type: bind
         source: ./mongo-init.js
         target: /scripts/mongo-init.js
+        read_only: true
+      - type: bind
+        source: ./mongo-init.sh
+        target: /scripts/mongo-init.sh
         read_only: true
