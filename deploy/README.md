@@ -88,3 +88,39 @@ docker compose --env-file /etc/fyp-portal/portal.env \
 The validator performs a bucket HEAD and a signed browser CORS preflight. It
 does not upload an object, and it refuses to run without the explicit
 false-data confirmation.
+
+## Operations CLI
+
+M06 adds root-only `fypctl` diagnostics. It uses the protected configuration
+and active release paths directly, so IT does not need to reconstruct Docker
+Compose commands:
+
+```sh
+sudo fypctl status
+sudo fypctl doctor
+sudo fypctl logs --tail 200 app
+sudo fypctl version
+```
+
+`fypctl logs` redacts the secret values held in `/etc/fyp-portal/portal.env`.
+The same Go implementation backs the future `install` command. Release
+packaging in M11 installs both binaries; M09 supplies the installation engine.
+
+After the application container is healthy, bootstrap the institution and its
+first administrator once. Pass the password through standard input, never a
+shell argument or environment variable:
+
+```sh
+printf '%s\n' 'choose-a-unique-password' | sudo fypctl bootstrap \
+  --password-stdin \
+  --university-name 'Example University' \
+  --admin-name 'Portal Administrator' \
+  --admin-email 'admin@example.edu' \
+  --admin-roll-no 'F23-0001'
+```
+
+Bootstrap holds the operation lock and runs a MongoDB transaction inside the
+private application container. A completed bootstrap is a no-op on repeats;
+it never changes the administrator password, branding, or creates another
+administrator. The CLI refuses non-root callers, non-`0600` configuration,
+and concurrently running operations.

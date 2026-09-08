@@ -51,7 +51,7 @@ Maintain this single tracker:
 | M03 | University branding | Done | M01 |
 | M04 | Application container and MongoDB | Done | M02, M03 |
 | M05 | Local storage and HTTPS gateway | Done | M04 |
-| M06 | Operations CLI and secure bootstrap | Not started | M05 |
+| M06 | Operations CLI and secure bootstrap | In progress | M05 |
 | M07 | Background processing and retention | Not started | M06 |
 | M08 | Maintenance, backup, and restore | Not started | M07 |
 | M09 | Resumable installation engine | Not started | M08 |
@@ -347,17 +347,39 @@ read-only requests, so it is limited to false local test data.
 
 **Implement**
 
-- [ ] Introduce the shared Go implementation for `install` and `fypctl`.
-- [ ] Add `status`, `doctor`, `logs`, and `version`.
-- [ ] Implement protected configuration files, operation locking, and atomic state writes.
-- [ ] Add a private bootstrap command that transactionally creates institution settings and the first administrator.
-- [ ] Make bootstrap safely repeatable without changing existing credentials or creating duplicates.
+- [x] Introduce the shared Go implementation for `install` and `fypctl`.
+- [x] Add `status`, `doctor`, `logs`, and `version`.
+- [x] Implement protected configuration files, operation locking, and atomic state writes.
+- [x] Add a private bootstrap command that transactionally creates institution settings and the first administrator.
+- [x] Make bootstrap safely repeatable without changing existing credentials or creating duplicates.
+
+`cmd/install` and `cmd/fypctl` now share a standard-library-only Go command
+implementation. Root-only operations use `/etc/fyp-portal/portal.env`,
+`/var/lib/fyp-portal/state`, and `/opt/fyp-portal/current` by default. The
+configuration and state writers use `0600` files, root-owned `0700`
+directories, fsync-and-rename atomic writes, and nonblocking `flock` operation
+locks. `status`, `doctor`, and `logs` invoke the active Compose project while
+redacting configured secret values; `version` reads non-secret release state.
+
+The private, root-only `bootstrap` command accepts the password only from
+standard input and calls the packaged app-container script over standard input.
+That script creates MongoDB uniqueness indexes, then transactionally inserts
+the branding record, the first bcrypt-hashed administrator, and a bootstrap
+completion record. Repeating bootstrap confirms that same record and changes
+nothing. The runtime image packages the script and `bcryptjs`; no application
+route exposes the operation.
 
 **Done when:** IT can inspect the installation without Docker commands; diagnostics redact secrets; concurrent operations are rejected; interrupted or repeated bootstrap cannot create duplicate administrators.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-08):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --test tests/operations-cli.test.mjs tests/runtime-config.test.mjs tests/branding.test.mjs tests/deployment-structure.test.mjs`: exited 0, 4 tests passed.
+- `npx tsc --noEmit`: exited 0. `npm run lint`: exited 0 with the five existing warnings in ignored one-off maintenance scripts.
+- `npm run test:unit`: exited 1, with 49 of 52 tests passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline mismatches; `tests/s3-client.test.mjs` could not use its loopback test server in the sandbox. `tests/operations-cli.test.mjs` passed. The host-network rerun, `node --test tests/s3-client.test.mjs`, exited 0.
+- A freshly built `fyp-portal:m06-validation` image started with an authenticated local false-data MongoDB replica set. Its packaged bootstrap script created the initial branding and one bcrypt-hashed administrator. A second invocation with different details returned `already_bootstrapped`; a direct false-data-only Mongo query confirmed exactly one administrator, preserved initial branding, and a bootstrap completion record.
+- Go source tests and a compiled `fypctl` invocation remain unrun. Go is absent from the host PATH, and temporary compiler downloads could not finish before this environment's command window ended. No production database or storage was accessed.
+
+**Blockers / remaining work:** Install or expose a Go 1.24 toolchain, then run `gofmt -w cmd internal`, `go test ./...`, build both binaries, and exercise `fypctl` against the disposable stack. Until then M06 is not complete.
 
 **Completion date:** Not completed.
 

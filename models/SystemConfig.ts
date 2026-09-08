@@ -12,6 +12,8 @@ const SystemConfigSchema = new Schema({
   accentColor: { type: String, trim: true, maxlength: 7, default: '' },
   brandingLogo: { type: Buffer, default: null },
   brandingLogoUpdatedAt: { type: Date, default: null },
+  bootstrapAdministratorId: { type: Schema.Types.ObjectId, default: null },
+  bootstrapCompletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 const SystemConfig = mongoose.models.SystemConfig || mongoose.model('SystemConfig', SystemConfigSchema);

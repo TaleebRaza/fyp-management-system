@@ -8,7 +8,8 @@ node_modules
 .codex
 .agents
 .tools
-scripts
+scripts/*
+!scripts/bootstrap-first-admin.mjs
 AGENTS.md
 
 # Sentry Config File

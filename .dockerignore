@@ -18,6 +18,7 @@ scripts/*
 !scripts/audit-refactor-indexes.mjs
 !scripts/audit-storage-integrity.mjs
 !scripts/audit-storage-keys.mjs
+!scripts/bootstrap-first-admin.mjs
 !scripts/reconcile-supervisor-capacity.mjs
 !scripts/refactor-indexes.mjs
 !scripts/update-rate-limit-ttl.mjs

@@ -31,6 +31,7 @@ COPY --from=builder --chown=portal:portal /app/deploy/storage-config.mjs ./deplo
 COPY --from=builder --chown=portal:portal /app/deploy/initialize-local-storage.mjs ./deploy/initialize-local-storage.mjs
 COPY --from=builder --chown=portal:portal /app/deploy/verify-browser-storage.mjs ./deploy/verify-browser-storage.mjs
 COPY --from=builder --chown=portal:portal /app/node_modules/@aws-sdk/s3-request-presigner ./node_modules/@aws-sdk/s3-request-presigner
+COPY --from=builder --chown=portal:portal /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder --chown=portal:portal /app/scripts ./scripts
 
 USER portal
