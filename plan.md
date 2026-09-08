@@ -6,7 +6,7 @@ Deliver this workflow:
 
 **Download release → extract → run `sudo ./install` → complete browser wizard → portal available over HTTPS.**
 
-This file is the implementation specification and single progress tracker. The current authorized work (2026-09-06) is M02 only. Installer, infrastructure, and release implementation have not started.
+This file is the implementation specification and single progress tracker. Completed scope runs through M06 (2026-09-08); M07 has not started.
 
 V1 decisions:
 
@@ -51,7 +51,7 @@ Maintain this single tracker:
 | M03 | University branding | Done | M01 |
 | M04 | Application container and MongoDB | Done | M02, M03 |
 | M05 | Local storage and HTTPS gateway | Done | M04 |
-| M06 | Operations CLI and secure bootstrap | In progress | M05 |
+| M06 | Operations CLI and secure bootstrap | Done | M05 |
 | M07 | Background processing and retention | Not started | M06 |
 | M08 | Maintenance, backup, and restore | Not started | M07 |
 | M09 | Resumable installation engine | Not started | M08 |
@@ -60,7 +60,7 @@ Maintain this single tracker:
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 through M05 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow. M06 and later milestones remain unstarted.
+M00 through M06 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow. M07 and later milestones remain unstarted.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -373,17 +373,20 @@ route exposes the operation.
 
 **Validation record (2026-09-08):**
 
-- `node --test tests/operations-cli.test.mjs tests/runtime-config.test.mjs tests/branding.test.mjs tests/deployment-structure.test.mjs`: exited 0, 4 tests passed.
+- `node --test tests/operations-cli.test.mjs tests/runtime-config.test.mjs tests/branding.test.mjs tests/deployment-structure.test.mjs`: exited 0, 17 tests passed.
 - `npx tsc --noEmit`: exited 0. `npm run lint`: exited 0 with the five existing warnings in ignored one-off maintenance scripts.
 - `npm run test:unit`: exited 1, with 49 of 52 tests passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 baseline mismatches; `tests/s3-client.test.mjs` could not use its loopback test server in the sandbox. `tests/operations-cli.test.mjs` passed. The host-network rerun, `node --test tests/s3-client.test.mjs`, exited 0.
 - A freshly built `fyp-portal:m06-validation` image started with an authenticated local false-data MongoDB replica set. Its packaged bootstrap script created the initial branding and one bcrypt-hashed administrator. A second invocation with different details returned `already_bootstrapped`; a direct false-data-only Mongo query confirmed exactly one administrator, preserved initial branding, and a bootstrap completion record.
-- Go source tests and a compiled `fypctl` invocation remain unrun. Go is absent from the host PATH, and temporary compiler downloads could not finish before this environment's command window ended. No production database or storage was accessed.
+- Follow-up validation used a temporary Go 1.24.0 toolchain only. `gofmt -d cmd/install/main.go cmd/fypctl/main.go internal/operations/operations.go internal/operations/operations_test.go` produced no diff; `go test ./...` and builds of both `fypctl` and `install` exited 0. The compiled binaries returned the expected version and help output.
+- The compiled `fypctl` ran as root inside an ephemeral cached container against a root-owned, `0600` false-data configuration under `/tmp` and a minimal fake Docker client. `status` reported `app: healthy`; `doctor` reported configuration, Compose, and services as `ok`; `logs` redacted the configured `NEXTAUTH_SECRET`; and `bootstrap` accepted its password from standard input. The prior local MongoDB validation above exercised the packaged bootstrap script against an actual false-data replica set. No production database or storage was accessed.
 
-**Blockers / remaining work:** Install or expose a Go 1.24 toolchain, then run `gofmt -w cmd internal`, `go test ./...`, build both binaries, and exercise `fypctl` against the disposable stack. Until then M06 is not complete.
+**Blockers / remaining work:** None.
 
-**Completion date:** Not completed.
+**Completion date:** 2026-09-08.
 
-**Suggested commit:** `feat(installer): add operations CLI and secure bootstrap`
+**Actual commit:** `ae718c1` (`feat(installer): add operations CLI and secure bootstrap`).
+
+**Suggested commit:** `docs: complete M06 operations CLI validation`
 
 
 ### M07: Background processing and retention
