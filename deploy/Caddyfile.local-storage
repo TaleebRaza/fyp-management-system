@@ -3,6 +3,22 @@
 }
 
 {$FYP_CADDY_SITE} {
+  @health path /api/health/live /api/health/ready
+  handle @health {
+    reverse_proxy app:3000 {
+      header_up X-Forwarded-Proto https
+    }
+  }
+
+  @maintenance file /var/lib/fyp-portal/state/maintenance.json
+  handle @maintenance {
+    root * /usr/share/caddy
+    rewrite * /maintenance.html
+    file_server {
+      status 503
+    }
+  }
+
   @uploads path /fyp-uploads /fyp-uploads/*
   handle @uploads {
     reverse_proxy seaweedfs:8333

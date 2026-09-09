@@ -61,8 +61,16 @@ export default withAuth(
           cache: 'no-store',
         });
         const portal = statusResponse.ok
-          ? await statusResponse.json() as { paused?: boolean; reason?: string }
+          ? await statusResponse.json() as { paused?: boolean; maintenance?: boolean; reason?: string }
           : { paused: true, reason: 'Portal availability could not be verified.' };
+
+        const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+        if (portal?.maintenance && (path.startsWith('/api/') || isMutation)) {
+          return NextResponse.json(
+            { code: 'PORTAL_MAINTENANCE', error: portal.reason },
+            { status: 503 }
+          );
+        }
 
         if (
           portal?.paused

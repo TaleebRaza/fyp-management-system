@@ -15,6 +15,14 @@ services:
         source: ${FYP_CADDY_DATA_DIR:-/var/lib/fyp-portal/caddy}
         target: /data
       - type: bind
+        source: ${FYP_STATE_DIR:-/var/lib/fyp-portal/state}
+        target: /var/lib/fyp-portal/state
+        read_only: true
+      - type: bind
         source: ./Caddyfile
         target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: bind
+        source: ./maintenance.html
+        target: /usr/share/caddy/maintenance.html
         read_only: true

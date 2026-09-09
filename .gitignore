@@ -10,6 +10,8 @@ node_modules
 .tools
 scripts/*
 !scripts/bootstrap-first-admin.mjs
+!scripts/backup-application-data.mjs
+!scripts/set-maintenance.mjs
 AGENTS.md
 
 # Sentry Config File

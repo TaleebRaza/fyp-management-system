@@ -1,0 +1,8 @@
+[Unit]
+Description=Create an encrypted FYP Portal backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fypctl backup create --scheduled

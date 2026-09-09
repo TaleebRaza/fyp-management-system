@@ -18,8 +18,10 @@ scripts/*
 !scripts/audit-refactor-indexes.mjs
 !scripts/audit-storage-integrity.mjs
 !scripts/audit-storage-keys.mjs
+!scripts/backup-application-data.mjs
 !scripts/bootstrap-first-admin.mjs
 !scripts/reconcile-supervisor-capacity.mjs
 !scripts/refactor-indexes.mjs
 !scripts/run-background-operation.mjs
+!scripts/set-maintenance.mjs
 !scripts/update-rate-limit-ttl.mjs

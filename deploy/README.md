@@ -153,3 +153,51 @@ are not retention targets.
 The legacy `/api/cron/voice-cleanup` route remains for existing Vercel-backed
 installations. Until a retention policy is explicitly saved, it preserves the
 previous cleanup behavior while the new self-hosted timers are not configured.
+
+## Maintenance, backup, and restore
+
+M08 adds a root-only, fail-closed maintenance mode. `fypctl maintenance start`
+stops the background timers, sets a persistent application write block, and
+creates the state marker that makes Caddy serve the maintenance page with HTTP
+503. It blocks administrator writes too. Health endpoints remain available for
+container monitoring. `fypctl maintenance stop` clears that state and starts
+only the timers that were active before maintenance began.
+
+Backups are encrypted with `FYP_BACKUP_RECOVERY_KEY`, a base64-encoded 32-byte
+key in the root-only portal configuration. Store a copy of that key outside the
+server. It is required to restore onto a clean environment. `fypctl backup`
+never prints the key, configuration values, or storage credentials.
+
+```sh
+sudo fypctl backup create --keep 7
+sudo fypctl backup schedule daily --at 02:00 --keep 7
+sudo fypctl backup schedule off
+```
+
+The completed archive and its checksum manifest are root-readable only under
+`/var/lib/fyp-portal/backups` by default. The archive contains a logical
+MongoDB export, every object in the configured portal bucket, the protected
+configuration snapshot, deployment state, and per-file checksums. Backup data
+is first copied into a non-secret container workspace, then the root-only CLI
+adds configuration and encrypts the final archive. A failed or unverified run
+does not receive a completed manifest and cannot trigger retention pruning.
+Pending upload reservations are recorded in the application manifest while
+maintenance prevents their finalization; ordinary reservation expiry resumes
+after the portal reopens.
+
+Restore only targets a separately configured, empty database and storage
+bucket. It verifies the archive checksum, encryption tag, release version, and
+all MongoDB/object checksums before it writes. It intentionally leaves
+maintenance mode active after an incomplete restore, so a partial clean target
+cannot be exposed by accident.
+
+```sh
+printf '%s\n' "$FYP_BACKUP_RECOVERY_KEY" | sudo fypctl backup restore \
+  --backup BACKUP_ID \
+  --recovery-key-stdin \
+  --confirm-restore=RESTORE_INTO_EMPTY_DESTINATION
+```
+
+Add `--restore-config` only when the source configuration is also appropriate
+for the target. The restore command otherwise retains the target configuration
+used to reach its empty database and bucket.

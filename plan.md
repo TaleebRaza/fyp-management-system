@@ -53,14 +53,14 @@ Maintain this single tracker:
 | M05 | Local storage and HTTPS gateway | Done | M04 |
 | M06 | Operations CLI and secure bootstrap | Done | M05 |
 | M07 | Background processing and retention | Done | M06 |
-| M08 | Maintenance, backup, and restore | Not started | M07 |
+| M08 | Maintenance, backup, and restore | Done | M07 |
 | M09 | Resumable installation engine | Not started | M08 |
 | M10 | Browser installation wizard | Not started | M09 |
 | M11 | Release packaging and publishing | Not started | M10 |
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 through M06 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow. M07 and later milestones remain unstarted.
+M00 through M08 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -447,20 +447,26 @@ does not require rewriting a systemd unit.
 
 **Implement**
 
-- [ ] Add operational maintenance that blocks all application writes, including administrator writes.
-- [ ] Keep the gateway serving a maintenance page and HTTP 503 responses.
-- [ ] Quiesce background jobs and account for outstanding uploads before taking a consistent backup.
-- [ ] Back up MongoDB, owned objects, branding, configuration, protected recovery secrets, version metadata, and checksums.
-- [ ] Add backup retention and optional scheduling.
-- [ ] Implement confirmed restore with compatibility and integrity checks.
+- [x] Add operational maintenance that blocks all application writes, including administrator writes.
+- [x] Keep the gateway serving a maintenance page and HTTP 503 responses.
+- [x] Quiesce background jobs and account for outstanding uploads before taking a consistent backup.
+- [x] Back up MongoDB, owned objects, branding, configuration, protected recovery secrets, version metadata, and checksums.
+- [x] Add backup retention and optional scheduling.
+- [x] Implement confirmed restore with compatibility and integrity checks.
 
 **Done when:** A backup restores successfully into a separate clean environment; restored records and files match; failed backups are never marked complete; backup failure cannot delete the last usable recovery point; write-blocking tests pass.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-09):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `docker run --rm -v "$PWD:/src" -w /src golang:1.24.0 go test ./...`: exited 0. `gofmt` produced no remaining diff.
+- `npm run lint`: exited 0 with five existing warnings in unrelated one-off maintenance scripts. `npx tsc --noEmit` exited 0.
+- `node --test tests/operations-cli.test.mjs tests/maintenance-backup.test.mjs tests/portal-pause.test.mjs tests/deployment-structure.test.mjs`: exited 0, 4 passed.
+- `node --test tests/s3-client.test.mjs`: exited 0, 1 passed.
+- A disposable false-data Docker environment exported one MongoDB record and one 16-byte object, then restored them into a separate empty MongoDB container and separate empty SeaweedFS instance. The recovered record value, object bytes, SHA-256 (`1deebfd949a683300654e44333dbb493955ad8eea18dfc5fc1588ef57b4c6c1d`), and content type matched. `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` reported a valid configuration.
 
-**Completion date:** Not completed.
+**Blockers / remaining work:** None for M08. The M00 baseline unit-test expectation mismatches remain outside this milestone.
+
+**Completion date:** 2026-09-09.
 
 **Suggested commit:** `feat: add consistent backup restore and operational maintenance`
 

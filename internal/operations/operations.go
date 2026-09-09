@@ -374,6 +374,8 @@ func printUsage(program string, output io.Writer) {
 	fmt.Fprintln(output, "  bootstrap              Create branding and the first administrator once.")
 	fmt.Fprintln(output, "  jobs <essential|retention>  Run an authenticated background operation.")
 	fmt.Fprintln(output, "  timers install         Install and start the background systemd timers.")
+	fmt.Fprintln(output, "  maintenance <start|stop|status>  Control protected maintenance mode.")
+	fmt.Fprintln(output, "  backup <create|restore|schedule>  Create, restore, or schedule encrypted backups.")
 }
 
 func parsePaths(program string, args []string, stderr io.Writer) (Paths, []string, bool) {
@@ -426,6 +428,10 @@ func Run(program string, args []string, stdin io.Reader, stdout, stderr io.Write
 		return runBackgroundJob(paths, args[1:], stdout, stderr)
 	case "timers":
 		return runTimers(paths, args[1:], stdout, stderr)
+	case "maintenance":
+		return runMaintenance(paths, args[1:], stdout, stderr)
+	case "backup":
+		return runBackup(paths, args[1:], stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
 		printUsage(program, stderr)

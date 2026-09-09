@@ -38,6 +38,8 @@ const SystemConfigSchema = new Schema({
   reservedBytes: { type: Number, default: 0, min: 0 },
   portalPaused: { type: Boolean, default: false },
   portalPauseReason: { type: String, trim: true, maxlength: 500, default: '' },
+  portalMaintenance: { type: Boolean, default: false },
+  portalMaintenanceReason: { type: String, trim: true, maxlength: 500, default: '' },
   universityName: { type: String, trim: true, maxlength: 120, default: '' },
   primaryColor: { type: String, trim: true, maxlength: 7, default: '' },
   accentColor: { type: String, trim: true, maxlength: 7, default: '' },

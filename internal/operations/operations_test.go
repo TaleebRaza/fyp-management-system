@@ -1,6 +1,7 @@
 package operations
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,5 +77,37 @@ func TestRedactorRemovesConfigurationSecrets(t *testing.T) {
 	redacted := redactor.Redact("connection mongodb://user:password@mongo/fyp failed with password and not-for-logs")
 	if strings.Contains(redacted, "password") || strings.Contains(redacted, "not-for-logs") {
 		t.Fatalf("secret leaked in %q", redacted)
+	}
+}
+
+func TestEncryptedBackupChunksRoundTrip(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	var encrypted bytes.Buffer
+	writer, err := newEncryptedChunkWriter(&encrypted, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := bytes.Repeat([]byte("false backup data"), 200_000)
+	if _, err := writer.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var restored bytes.Buffer
+	if err := decryptArchive(&encrypted, &restored, key); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restored.Bytes(), payload) {
+		t.Fatal("backup payload did not round-trip")
+	}
+}
+
+func TestBackupInputValidationRejectsUnsafeIdentifiersAndSchedules(t *testing.T) {
+	if _, err := backupID("../outside"); err == nil {
+		t.Fatal("expected unsafe backup identifier rejection")
+	}
+	if !isDailyTime("02:00") || isDailyTime("24:00") || isDailyTime("2:00") {
+		t.Fatal("unexpected backup schedule validation")
 	}
 }
