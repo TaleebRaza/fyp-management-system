@@ -54,7 +54,7 @@ Maintain this single tracker:
 | M06 | Operations CLI and secure bootstrap | Done | M05 |
 | M07 | Background processing and retention | Done | M06 |
 | M08 | Maintenance, backup, and restore | Done | M07 |
-| M09 | Resumable installation engine | Not started | M08 |
+| M09 | Resumable installation engine | In progress | M08 |
 | M10 | Browser installation wizard | Not started | M09 |
 | M11 | Release packaging and publishing | Not started | M10 |
 | M12 | Updates and failure recovery | Not started | M11 |
@@ -475,18 +475,26 @@ does not require rewriting a systemd unit.
 
 **Implement**
 
-- [ ] Check OS, architecture, privileges, resources, ports, DNS, connectivity, and existing installations.
-- [ ] Install missing Docker components from the official Ubuntu repository without automatically removing conflicting installations.
-- [ ] Generate secrets and deployment configuration.
-- [ ] Orchestrate the completed deployment/bootstrap operations.
-- [ ] Persist installation progress and resume after interruption.
-- [ ] Keep existing data and credentials outside replaceable release assets.
+- [x] Check OS, architecture, privileges, resources, ports, DNS, connectivity, and existing installations.
+- [x] Install missing Docker components from the official Ubuntu repository without automatically removing conflicting installations.
+- [x] Generate secrets and deployment configuration.
+- [x] Orchestrate the completed deployment/bootstrap operations.
+- [x] Persist installation progress and resume after interruption.
+- [x] Keep existing data and credentials outside replaceable release assets.
 
 **Done when:** A clean supported VM installs using the engine; injected failures resume safely; rerunning cannot erase data; errors identify the failed step and recovery action.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-09):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `docker run --rm -v "$PWD:/src" -w /src golang:1.24.0 go test ./...`: exited 0, including installer request, configuration, atomic release, and resume tests.
+- `npm run lint`: exited 0 with five existing warnings in unrelated one-off scripts. `npx tsc --noEmit` exited 0.
+- `npm run test:unit`: exited 1 with 52/55 passing. The three failures are the existing M00 project-rating UI expectation, storage-workflow expectation, and sandbox loopback S3 test.
+- `npm run build`: exited 0. The production build compiled, type-checked, collected page data, generated 24 static pages, and finalized successfully.
+- Installer binary smoke build and `--help` completed in a disposable Go container. No production services or data were touched.
+
+The current host reports Zorin 18, amd64. The installer correctly rejects it before any mutation because M09 targets Ubuntu 24.04 LTS. A clean supported-VM install and injected full-engine failure run therefore could not be performed here.
+
+**Blockers / remaining work:** The implementation is complete, but M09 cannot be marked Done until the same binary is exercised on a clean Ubuntu 24.04 amd64 VM, including a full Compose/bootstrap run and an injected interruption/resume run. The three M00 baseline unit failures remain outside this milestone.
 
 **Completion date:** Not completed.
 

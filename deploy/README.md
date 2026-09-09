@@ -103,8 +103,6 @@ sudo fypctl version
 ```
 
 `fypctl logs` redacts the secret values held in `/etc/fyp-portal/portal.env`.
-The same Go implementation backs the future `install` command. Release
-packaging in M11 installs both binaries; M09 supplies the installation engine.
 
 After the application container is healthy, bootstrap the institution and its
 first administrator once. Pass the password through standard input, never a
@@ -201,3 +199,54 @@ printf '%s\n' "$FYP_BACKUP_RECOVERY_KEY" | sudo fypctl backup restore \
 Add `--restore-config` only when the source configuration is also appropriate
 for the target. The restore command otherwise retains the target configuration
 used to reach its empty database and bucket.
+
+## Initial installation
+
+M09 provides the root-only, resumable engine used by the M10 browser wizard.
+Until that wizard is available, the engine accepts one root-owned (`0600`) JSON
+request outside the extracted release. It contains the first administrator
+password, so remove the request yourself after a successful installation.
+
+The release directory must contain the `install` and `fypctl` binaries, the
+application source, `Dockerfile`, and `deploy/` directory. The engine checks
+for Ubuntu 24.04 on amd64, memory, disk capacity, ports 80/443, DNS, Docker's
+Ubuntu repository, and an existing installation before it writes anything. It
+never removes conflicting Docker packages or overwrites an untracked install.
+
+```json
+{
+  "domain": "portal.example.edu",
+  "database": { "mode": "local" },
+  "storage": { "mode": "local" },
+  "mail": {},
+  "bootstrap": {
+    "universityName": "Example University",
+    "primaryColor": "#14213d",
+    "accentColor": "#fca311",
+    "administrator": {
+      "name": "Portal Administrator",
+      "email": "admin@example.edu",
+      "rollNo": "F23-0001",
+      "password": "choose-a-unique-password"
+    }
+  }
+}
+```
+
+For an external transaction-capable MongoDB deployment, use
+`"database": { "mode": "external", "uri": "mongodb://..." }`. For
+external S3-compatible storage, provide `mode`, `endpoint`, `browserEndpoint`,
+`region`, `accessKeyId`, `secretAccessKey`, `bucketName`, and
+`forcePathStyle` in `storage`. Optional `mail` accepts the equivalent generic
+SMTP fields from `.env.example`.
+
+```sh
+sudo install -m 600 -o root -g root /path/to/request.json /root/fyp-install-request.json
+cd /path/to/extracted-release
+sudo ./install --request /root/fyp-install-request.json
+```
+
+Each completed stage is recorded, without credentials, in
+`/var/lib/fyp-portal/state/installation-state.json`. Rerun the same command
+with the same request after an interruption. It resumes completed work without
+regenerating configuration or replacing release/data directories.

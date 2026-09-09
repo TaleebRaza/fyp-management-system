@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -249,7 +250,13 @@ func parseEnvFile(path string) (map[string]string, error) {
 			return nil, fmt.Errorf("invalid configuration line %d", lineNumber+1)
 		}
 		value = strings.TrimSpace(value)
-		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			unquoted, err := strconv.Unquote(value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid quoted configuration value on line %d", lineNumber+1)
+			}
+			value = unquoted
+		} else if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
 			value = value[1 : len(value)-1]
 		}
 		settings[key] = value
@@ -432,6 +439,12 @@ func Run(program string, args []string, stdin io.Reader, stdout, stderr io.Write
 		return runMaintenance(paths, args[1:], stdout, stderr)
 	case "backup":
 		return runBackup(paths, args[1:], stdin, stdout, stderr)
+	case "install":
+		if program != "install" {
+			fmt.Fprintln(stderr, "install is available only from the installer binary")
+			return 2
+		}
+		return runInstall(paths, args[1:], stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
 		printUsage(program, stderr)
