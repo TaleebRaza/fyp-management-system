@@ -21,4 +21,5 @@ scripts/*
 !scripts/bootstrap-first-admin.mjs
 !scripts/reconcile-supervisor-capacity.mjs
 !scripts/refactor-indexes.mjs
+!scripts/run-background-operation.mjs
 !scripts/update-rate-limit-ttl.mjs

@@ -372,6 +372,8 @@ func printUsage(program string, output io.Writer) {
 	fmt.Fprintln(output, "  logs [--tail N] [SERVICE...]  Show redacted container logs.")
 	fmt.Fprintln(output, "  version                Show CLI and installed release versions.")
 	fmt.Fprintln(output, "  bootstrap              Create branding and the first administrator once.")
+	fmt.Fprintln(output, "  jobs <essential|retention>  Run an authenticated background operation.")
+	fmt.Fprintln(output, "  timers install         Install and start the background systemd timers.")
 }
 
 func parsePaths(program string, args []string, stderr io.Writer) (Paths, []string, bool) {
@@ -420,6 +422,10 @@ func Run(program string, args []string, stdin io.Reader, stdout, stderr io.Write
 		return runLogs(paths, args[1:], stdout, stderr)
 	case "bootstrap":
 		return runBootstrap(paths, args[1:], stdin, stdout, stderr)
+	case "jobs":
+		return runBackgroundJob(paths, args[1:], stdout, stderr)
+	case "timers":
+		return runTimers(paths, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
 		printUsage(program, stderr)
@@ -633,5 +639,87 @@ func runBootstrap(paths Paths, args []string, stdin io.Reader, stdout, stderr io
 		return 1
 	}
 	fmt.Fprintln(stdout, output)
+	return 0
+}
+
+func runBackgroundJob(paths Paths, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || (args[0] != "essential" && args[0] != "retention") {
+		fmt.Fprintln(stderr, "jobs requires essential or retention")
+		return 2
+	}
+	redactor, err := loadRedactor(paths)
+	if err != nil {
+		fmt.Fprintf(stderr, "configuration: %v\n", err)
+		return 1
+	}
+	release, err := AcquireOperationLock(paths, 0)
+	if err != nil {
+		fmt.Fprintf(stderr, "jobs: %v\n", err)
+		return 1
+	}
+	defer release()
+
+	command, err := dockerComposeArgs(paths, 0, "exec", "-T", "app", "node", "scripts/run-background-operation.mjs", args[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "jobs: %v\n", err)
+		return 1
+	}
+	output, err := commandOutput(context.Background(), redactor, "docker", command, nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "jobs: %v\n", err)
+		return 1
+	}
+	if output != "" {
+		fmt.Fprintln(stdout, output)
+	}
+	return 0
+}
+
+func installSystemdUnit(paths Paths, name string) error {
+	contents, err := os.ReadFile(filepath.Join(paths.ReleaseDir, "deploy", "systemd", name))
+	if err != nil {
+		return fmt.Errorf("read %s: %w", name, err)
+	}
+	return writeAtomically(filepath.Join("/etc/systemd/system", name), contents, 0)
+}
+
+func runTimers(paths Paths, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || args[0] != "install" {
+		fmt.Fprintln(stderr, "timers requires install")
+		return 2
+	}
+	if _, err := loadRedactor(paths); err != nil {
+		fmt.Fprintf(stderr, "configuration: %v\n", err)
+		return 1
+	}
+	release, err := AcquireOperationLock(paths, 0)
+	if err != nil {
+		fmt.Fprintf(stderr, "timers: %v\n", err)
+		return 1
+	}
+	defer release()
+
+	for _, name := range []string{
+		"fyp-portal-essential.service",
+		"fyp-portal-essential.timer",
+		"fyp-portal-retention.service",
+		"fyp-portal-retention.timer",
+	} {
+		if err := installSystemdUnit(paths, name); err != nil {
+			fmt.Fprintf(stderr, "timers: %v\n", err)
+			return 1
+		}
+	}
+	if _, err := commandOutput(context.Background(), redactor{}, "systemctl", []string{"daemon-reload"}, nil); err != nil {
+		fmt.Fprintf(stderr, "timers: %v\n", err)
+		return 1
+	}
+	if _, err := commandOutput(context.Background(), redactor{}, "systemctl", []string{
+		"enable", "--now", "fyp-portal-essential.timer", "fyp-portal-retention.timer",
+	}, nil); err != nil {
+		fmt.Fprintf(stderr, "timers: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, "Background timers installed and started.")
 	return 0
 }

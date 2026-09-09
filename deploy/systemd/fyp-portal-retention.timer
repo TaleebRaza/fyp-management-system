@@ -1,0 +1,10 @@
+[Unit]
+Description=Evaluate FYP Portal retention policy every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:30
+Persistent=true
+Unit=fyp-portal-retention.service
+
+[Install]
+WantedBy=timers.target

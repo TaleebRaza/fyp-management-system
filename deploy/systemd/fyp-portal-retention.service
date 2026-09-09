@@ -1,0 +1,8 @@
+[Unit]
+Description=FYP Portal configured retention work
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fypctl jobs retention

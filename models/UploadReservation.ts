@@ -12,6 +12,7 @@ const UploadReservationSchema = new Schema({
   state: { type: String, enum: ['pending', 'finalized', 'cancelled'], default: 'pending' },
   idempotencyKey: { type: String, required: true, trim: true, maxlength: 128 },
   expiresAt: { type: Date, required: true },
+  retentionCleanupQueuedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 UploadReservationSchema.index({ ownerId: 1, idempotencyKey: 1 }, { unique: true });

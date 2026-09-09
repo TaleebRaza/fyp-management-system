@@ -68,6 +68,7 @@ const ACTION_DETAILS: Record<PortalActivityAction, {
   'admin-fines-updated': { label: 'Updated fine settings', icon: Settings2, variant: 'default' },
   'admin-headline-updated': { label: 'Updated the headline', icon: Settings2, variant: 'default' },
   'admin-project-submissions-updated': { label: 'Updated project submissions', icon: Settings2, variant: 'default' },
+  'admin-retention-updated': { label: 'Updated retention settings', icon: Settings2, variant: 'default' },
 };
 
 function formatRole(role: PortalActivityLogEntry['actorRole']) {

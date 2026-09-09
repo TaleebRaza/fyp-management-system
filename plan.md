@@ -52,7 +52,7 @@ Maintain this single tracker:
 | M04 | Application container and MongoDB | Done | M02, M03 |
 | M05 | Local storage and HTTPS gateway | Done | M04 |
 | M06 | Operations CLI and secure bootstrap | Done | M05 |
-| M07 | Background processing and retention | Not started | M06 |
+| M07 | Background processing and retention | Done | M06 |
 | M08 | Maintenance, backup, and restore | Not started | M07 |
 | M09 | Resumable installation engine | Not started | M08 |
 | M10 | Browser installation wizard | Not started | M09 |
@@ -393,20 +393,52 @@ route exposes the operation.
 
 **Implement**
 
-- [ ] Separate essential email/reservation/deletion processing from optional content retention.
-- [ ] Install systemd timers invoking authenticated internal application operations.
-- [ ] Add persisted retention policies, schedule selection, preview, and execution reporting.
-- [ ] Use bounded batches and existing transactional deletion/accounting mechanisms.
-- [ ] Preserve attached PDFs, shared references, branding, templates, and active reservations.
-- [ ] Keep student/admin acknowledgment distinct from project voice playback.
+- [x] Separate essential email/reservation/deletion processing from optional content retention.
+- [x] Install systemd timers invoking authenticated internal application operations.
+- [x] Add persisted retention policies, schedule selection, preview, and execution reporting.
+- [x] Use bounded batches and existing transactional deletion/accounting mechanisms.
+- [x] Preserve attached PDFs, shared references, branding, templates, and active reservations.
+- [x] Keep student/admin acknowledgment distinct from project voice playback.
+
+`/api/cron/essential` processes upload-reservation expiry, storage-deletion
+outbox work, and the email outbox every minute. `/api/cron/retention` runs
+separately and only applies a saved, daily IANA-timezone retention policy. The
+legacy Vercel cron route preserves its former retention behavior until an
+existing database has an explicit valid policy; malformed saved policies fail
+closed. Retention runs use a database lease, bounded 100-item category batches,
+the existing storage-deletion outbox, shared-reference protection, and the
+voice-note quota transaction. Student/admin message acknowledgement is not a
+retention criterion or mutation target.
+
+Retention settings and execution reports live in the existing `SystemConfig`
+collection. The administrator dashboard provides schedule/category controls,
+a bounded preview, and the latest execution report. Defaults are a daily 02:00
+UTC run, seven-day cleanup of played project voice notes and unused finalized
+PDF uploads, with unplayed voice notes and audio broadcasts disabled. An unused
+PDF must be unreferenced at transaction time; attached project PDFs and shared
+keys are retained. The pending-deletion marker prevents an orphan PDF from
+being requeued after its durable deletion work succeeds.
+
+`fypctl jobs essential` and `fypctl jobs retention` authenticate from inside
+the application container using `CRON_SECRET`; the secret never appears in a
+unit file. `fypctl timers install` installs the release-provided systemd units.
+The retention timer evaluates once per minute so a saved timezone/time change
+does not require rewriting a systemd unit.
 
 **Done when:** Required processing continues with retention disabled; boundary tests prove correct eligibility; concurrent runs cannot double-delete or corrupt accounting; failures appear in diagnostics.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-08):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --test tests/retention.test.mjs tests/operations-cli.test.mjs`: exited 0; validates defaults, schedule parsing, bounded durable deletion design, protected message boundaries, and timer CLI wiring.
+- The opt-in `tests/retention-integration.test.mjs` exited 0 in disposable Node and MongoDB containers with `FYP_RETENTION_TEST_CONFIRM=LOCAL_FALSE_DATA`. It verified that two concurrent retention calls produce one completed run, played voice is removed and releases its quota, unplayed voice and acknowledged student/admin message data remain, orphan PDF deletion is queued once, and an attached PDF remains unqueued. The false-data replica-set container was removed afterward. No production database or object storage was accessed.
+- `go test ./...` exited 0 in the pinned temporary `golang:1.24.0` container. `gofmt -d cmd/install/main.go cmd/fypctl/main.go internal/operations/operations.go internal/operations/operations_test.go` produced no diff.
+- `npm run lint`: exited 0 with five existing warnings in ignored one-off maintenance scripts.
+- `npm run build`: exited 0 with host networking. It compiled the new retention API routes and completed TypeScript, page-data collection, static generation, and optimization.
+- `npm run test:unit`: exited 1, with 51 of 54 test-file entries passing. `tests/project-rating-ui.test.mjs` and `tests/storage-workflow-structure.test.mjs` remain the documented M00 expectation mismatches; sandboxed `tests/s3-client.test.mjs` cannot bind its loopback server. The host-network rerun, `node --test tests/s3-client.test.mjs`, exited 0.
 
-**Completion date:** Not completed.
+**Blockers / remaining work:** No M07 blocker remains. The documented M00 unit-test expectation mismatches remain outside this milestone.
+
+**Completion date:** 2026-09-08.
 
 **Suggested commit:** `feat: add scheduled processing and configurable retention`
 

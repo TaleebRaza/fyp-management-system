@@ -90,15 +90,16 @@ test('academic reset and team changes use transaction callbacks with durable cle
   assert.doesNotMatch(leave, /withTransactionRetry/);
 });
 
-test('the deployed cron expires reservations and supervisor deletion queues audio cleanup', async () => {
-  const [cron, supervisorDeletion, deployment] = await Promise.all([
+test('essential background work expires reservations while legacy cleanup remains compatible', async () => {
+  const [essential, legacyCron, supervisorDeletion, deployment] = await Promise.all([
+    read('app/api/cron/essential/route.ts'),
     read('app/api/cron/voice-cleanup/route.ts'),
     read('app/api/delete-supervisor/route.ts'),
     read('vercel.json'),
   ]);
 
-  assert.match(cron, /expireUploadReservations/);
-  assert.match(cron, /processStorageDeletionOutbox/);
+  assert.match(essential, /processEssentialBackgroundWork/);
+  assert.match(legacyCron, /processLegacyContentRetention/);
   assert.match(deployment, /\/api\/cron\/voice-cleanup/);
   assert.match(deployment, /"schedule": "0 0 \* \* \*"/);
   assert.match(supervisorDeletion, /enqueueStorageDeletion/);

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run FYP Portal essential background work every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+Unit=fyp-portal-essential.service
+
+[Install]
+WantedBy=timers.target

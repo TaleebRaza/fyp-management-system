@@ -32,6 +32,7 @@ export const PORTAL_ACTIVITY_ACTIONS = [
   'admin-fines-updated',
   'admin-headline-updated',
   'admin-project-submissions-updated',
+  'admin-retention-updated',
 ] as const;
 
 export type PortalActivityAction = (typeof PORTAL_ACTIVITY_ACTIONS)[number];

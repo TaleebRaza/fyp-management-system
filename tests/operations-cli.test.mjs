@@ -18,6 +18,9 @@ test('operations CLI shares install and fypctl commands without putting bootstra
   assert.match(operations, /AcquireOperationLock/);
   assert.match(operations, /writeAtomically/);
   assert.match(operations, /--password-stdin/);
+  assert.match(operations, /jobs <essential\|retention>/);
+  assert.match(operations, /timers install/);
+  assert.match(operations, /scripts\/run-background-operation\.mjs/);
   assert.doesNotMatch(operations, /--admin-password/);
 });
 

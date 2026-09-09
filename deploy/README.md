@@ -124,3 +124,32 @@ private application container. A completed bootstrap is a no-op on repeats;
 it never changes the administrator password, branding, or creates another
 administrator. The CLI refuses non-root callers, non-`0600` configuration,
 and concurrently running operations.
+
+## Background processing and retention
+
+M07 splits mandatory background work from optional content retention. The
+essential worker processes expired upload reservations, storage-deletion work,
+and email outbox work every minute. Retention is evaluated every minute, but
+only performs a run once its persisted daily time and IANA timezone are due.
+This lets administrators change the schedule without rewriting systemd units.
+
+Install the release-provided timer units after the application is healthy:
+
+```sh
+sudo fypctl timers install
+systemctl list-timers 'fyp-portal-*'
+```
+
+The timers call `fypctl jobs essential` and `fypctl jobs retention`. Each
+command enters the container and authenticates to its internal cron endpoint
+with `CRON_SECRET`; neither the secret nor a public job URL is placed in a unit
+file. The retention policy is managed in the administrator dashboard. New
+settings default to a daily 02:00 UTC run, seven-day cleanup of played project
+voice notes and unused finalized PDF uploads, and disabled age-based cleanup
+for unplayed notes and audio broadcasts. Attached PDFs, shared object keys,
+student/admin messages, branding, templates, and active upload reservations
+are not retention targets.
+
+The legacy `/api/cron/voice-cleanup` route remains for existing Vercel-backed
+installations. Until a retention policy is explicitly saved, it preserves the
+previous cleanup behavior while the new self-hosted timers are not configured.

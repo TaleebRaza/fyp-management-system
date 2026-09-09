@@ -14,6 +14,7 @@ import {
   MessagesSquare,
   Palette,
   PauseCircle,
+  Clock3,
   ScrollText,
   Users,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import {
 import { Button, DashboardShell } from '../ui';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
 import BrandingControlPanel from '../admin/BrandingControlPanel';
+import RetentionControlPanel from '../admin/RetentionControlPanel';
 import FineManagementPanel from '../admin/FineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';
 import AdminHeadlineSection from '../admin/AdminHeadlineSection';
@@ -72,7 +74,8 @@ type AdminTab =
   | 'logs'
   | 'registration'
   | 'fines'
-  | 'branding';
+  | 'branding'
+  | 'retention';
 
 const AdminDashboard = ({
   session,
@@ -235,6 +238,14 @@ const AdminDashboard = ({
       onClick: () => setActiveTab('branding'),
     },
     {
+      id: 'retention',
+      label: 'Retention',
+      section: 'Portal Operations',
+      icon: <Clock3 size={18} />,
+      active: activeTab === 'retention',
+      onClick: () => setActiveTab('retention'),
+    },
+    {
       id: 'reports',
       label: 'Reports',
       section: 'Insights & Audit',
@@ -370,6 +381,7 @@ const AdminDashboard = ({
           />
         )}
         {activeTab === 'branding' && <BrandingControlPanel />}
+        {activeTab === 'retention' && <RetentionControlPanel />}
       </DashboardShell>
 
       <SupervisorSlotEditorDialog
