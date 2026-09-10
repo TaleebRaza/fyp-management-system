@@ -84,8 +84,8 @@ test('the local gateway preserves signed upload URLs and keeps management servic
   assert.doesNotMatch(localStorage, /-s3\.externalUrl/);
   assert.match(localStorage, /curl --fail --silent http:\/\/127\.0\.0\.1:8333\/status/);
   assert.match(localStorage, /seaweedfs:\n\s+condition: service_healthy/);
-  assert.match(localStorage, /storage-init:\n\s+build:/);
-  assert.match(localStorage, /storage-init:[\s\S]*?pull_policy: build/);
+  assert.match(localStorage, /storage-init:\n\s+image: \$\{FYP_PORTAL_IMAGE:\?FYP_PORTAL_IMAGE is required/);
+  assert.match(localStorage, /storage-init:[\s\S]*?pull_policy: always/);
   assert.match(localStorage, /service_completed_successfully/);
   assert.doesNotMatch(localStorage, /^\s*ports:/m);
   assert.match(localStorageInit, /s3\.configure/);
