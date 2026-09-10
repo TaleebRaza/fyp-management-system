@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FYP Portal setup</title>
+    <link rel="stylesheet" href="/wizard.css">
+    <script src="/wizard.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">FYP Portal</p>
+        <h1 id="title">Installation setup</h1>
+        <p id="intro">Complete each section, save the configuration, review it, then start the installation.</p>
+      </header>
+
+      <p id="notice" class="notice" role="status">Loading setup form…</p>
+
+      <form id="setup-form">
+        <fieldset data-install>
+          <legend>Public address</legend>
+          <label>Portal domain <input id="domain" autocomplete="url" placeholder="portal.example.edu" required></label>
+          <p class="hint">DNS must already point to this server. The installer checks it before making changes.</p>
+        </fieldset>
+
+        <fieldset data-install>
+          <legend>Database</legend>
+          <label>Location
+            <select id="database-mode">
+              <option value="local">Local MongoDB</option>
+              <option value="external">External transaction-capable MongoDB</option>
+            </select>
+          </label>
+          <label class="external-database">MongoDB URI <input id="database-uri" type="password" autocomplete="off" placeholder="mongodb://…"></label>
+          <button class="secondary external-database" type="button" data-probe="database">Test database reachability</button>
+        </fieldset>
+
+        <fieldset data-install>
+          <legend>Object storage</legend>
+          <label>Location
+            <select id="storage-mode">
+              <option value="local">Local SeaweedFS</option>
+              <option value="external">External S3-compatible storage</option>
+            </select>
+          </label>
+          <div class="external-storage grid">
+            <label>Internal endpoint <input id="storage-endpoint" type="url" placeholder="https://s3.example.edu"></label>
+            <label>Browser endpoint <input id="storage-browser-endpoint" type="url" placeholder="https://files.example.edu"></label>
+            <label>Region <input id="storage-region" value="us-east-1"></label>
+            <label>Bucket <input id="storage-bucket" placeholder="fyp-uploads"></label>
+            <label>Access key ID <input id="storage-access-key" autocomplete="off"></label>
+            <label>Secret access key <input id="storage-secret-key" type="password" autocomplete="off"></label>
+            <label class="checkbox"><input id="storage-path-style" type="checkbox"> Force path-style addressing</label>
+          </div>
+          <button class="secondary external-storage" type="button" data-probe="storage">Test storage reachability</button>
+        </fieldset>
+
+        <fieldset>
+          <legend>Institution branding</legend>
+          <div class="grid">
+            <label>University name <input id="university-name" maxlength="120" required></label>
+            <label>Primary color <input id="primary-color" type="color" value="#14213d" required></label>
+            <label>Accent color <input id="accent-color" type="color" value="#fca311" required></label>
+          </div>
+          <label>PNG logo <input id="logo" type="file" accept="image/png" data-install-required></label>
+          <p class="hint">PNG only, 1–2048 pixels per side and at most 2 MiB. The installer decodes and re-encodes it before saving.</p>
+        </fieldset>
+
+        <fieldset data-install>
+          <legend>First administrator</legend>
+          <div class="grid">
+            <label>Name <input id="admin-name" autocomplete="name" maxlength="100" required></label>
+            <label>Email <input id="admin-email" type="email" autocomplete="email" required></label>
+            <label>Roll number <input id="admin-roll-no" placeholder="F23-0001" required></label>
+            <label>Password <input id="admin-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>SMTP email (optional)</legend>
+          <label class="checkbox"><input id="mail-enabled" type="checkbox"> Configure outbound email now</label>
+          <div id="mail-fields" class="grid" hidden>
+            <label>SMTP host <input id="mail-host" autocomplete="off"></label>
+            <label>Port <input id="mail-port" type="number" min="1" max="65535" value="587"></label>
+            <label>TLS mode
+              <select id="mail-tls-mode"><option value="starttls">STARTTLS</option><option value="tls">TLS</option><option value="none">None</option></select>
+            </label>
+            <label>From address <input id="mail-from" type="email"></label>
+            <label>From name <input id="mail-from-name"></label>
+            <label>Reply-to address <input id="mail-reply-to" type="email"></label>
+            <label>Username (optional) <input id="mail-username" autocomplete="off"></label>
+            <label>Password (when username is set) <input id="mail-password" type="password" autocomplete="off"></label>
+          </div>
+          <button id="mail-test" class="secondary" type="button" data-probe="mail">Test SMTP reachability</button>
+        </fieldset>
+
+        <fieldset>
+          <legend>Cleanup and retention</legend>
+          <label class="checkbox"><input id="retention-enabled" type="checkbox" checked> Run optional retention daily</label>
+          <div class="grid">
+            <label>Timezone <input id="retention-timezone" value="UTC" placeholder="Asia/Karachi" required></label>
+            <label>Time <input id="retention-time" type="time" value="02:00" required></label>
+          </div>
+          <div class="retention-grid">
+            <label class="checkbox"><input id="retention-played-enabled" type="checkbox" checked> Played voice notes</label><label>Days <input id="retention-played-days" type="number" min="1" max="3650" value="7"></label>
+            <label class="checkbox"><input id="retention-unplayed-enabled" type="checkbox"> Unplayed voice notes</label><label>Days <input id="retention-unplayed-days" type="number" min="1" max="3650" value="7"></label>
+            <label class="checkbox"><input id="retention-broadcast-enabled" type="checkbox"> Audio broadcasts</label><label>Days <input id="retention-broadcast-days" type="number" min="1" max="3650" value="7"></label>
+            <label class="checkbox"><input id="retention-pdf-enabled" type="checkbox" checked> Unused PDF uploads</label><label>Days <input id="retention-pdf-days" type="number" min="1" max="3650" value="7"></label>
+          </div>
+          <p class="hint">Attached PDFs are never retention targets. Disabled categories preserve content.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Backups</legend>
+          <label class="checkbox"><input id="backup-enabled" type="checkbox"> Schedule encrypted daily backups</label>
+          <div id="backup-fields" class="grid" hidden>
+            <label>Daily time <input id="backup-time" type="time" value="02:00"></label>
+            <label>Completed backups to retain <input id="backup-keep" type="number" min="1" max="365" value="7"></label>
+          </div>
+          <p class="hint">Manual backups remain available. A verified backup is required before updates.</p>
+        </fieldset>
+
+        <div class="actions">
+          <button id="save" type="submit">Save and review</button>
+          <button id="apply" type="button" disabled>Start installation</button>
+        </div>
+      </form>
+
+      <section id="review" hidden aria-live="polite">
+        <h2>Review</h2>
+        <dl id="review-details"></dl>
+        <p>Secrets and passwords are intentionally omitted from this review.</p>
+      </section>
+    </main>
+  </body>
+</html>

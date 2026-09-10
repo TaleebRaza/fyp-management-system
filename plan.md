@@ -55,7 +55,7 @@ Maintain this single tracker:
 | M07 | Background processing and retention | Done | M06 |
 | M08 | Maintenance, backup, and restore | Done | M07 |
 | M09 | Resumable installation engine | In progress | M08 |
-| M10 | Browser installation wizard | Not started | M09 |
+| M10 | Browser installation wizard | In progress | M09 |
 | M11 | Release packaging and publishing | Not started | M10 |
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
@@ -494,7 +494,7 @@ does not require rewriting a systemd unit.
 
 The current host reports Zorin 18, amd64. The installer correctly rejects it before any mutation because M09 targets Ubuntu 24.04 LTS. A clean supported-VM install and injected full-engine failure run therefore could not be performed here.
 
-**Blockers / remaining work:** The implementation is complete, but M09 cannot be marked Done until the same binary is exercised on a clean Ubuntu 24.04 amd64 VM, including a full Compose/bootstrap run and an injected interruption/resume run. The three M00 baseline unit failures remain outside this milestone.
+**Blockers / remaining work:** The implementation is complete. The clean Ubuntu 24.04 amd64 acceptance run, including a full Compose/bootstrap run and an injected interruption/resume run, is deferred to the final end-to-end validation gate at the user's direction. It remains required before M13 completion. The three M00 baseline unit failures remain outside this milestone.
 
 **Completion date:** Not completed.
 
@@ -505,18 +505,24 @@ The current host reports Zorin 18, amd64. The installer correctly rejects it bef
 
 **Implement**
 
-- [ ] Embed the wizard in the Go binary.
-- [ ] Bind to loopback and print an SSH forwarding command and setup URL.
-- [ ] Add short-lived setup authentication, session protection, and origin checks.
-- [ ] Implement all requested forms, connection tests, PNG decoding/re-encoding, review, progress, and completion screens.
-- [ ] Add `fypctl configure` to reopen protected configuration for supported settings.
-- [ ] Reject database/storage destination changes that would require data migration.
+- [x] Embed the wizard in the Go binary.
+- [x] Bind to loopback and print an SSH forwarding command and setup URL.
+- [x] Add short-lived setup authentication, session protection, and origin checks.
+- [x] Implement all requested forms, connection tests, PNG decoding/re-encoding, review, progress, and completion screens.
+- [x] Add `fypctl configure` to reopen protected configuration for supported settings.
+- [x] Reject database/storage destination changes that would require data migration.
 
 **Done when:** IT completes installation without editing files; keyboard navigation and validation work; malformed PNGs fail; setup shuts down after completion; revisiting bootstrap cannot recreate an administrator.
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-10):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `docker run --rm -v "$PWD:/src" -w /src golang:1.24.0 sh -c 'gofmt -w internal/operations/install.go internal/operations/operations.go internal/operations/backup.go internal/operations/wizard.go internal/operations/operations_test.go && go test ./...'`: exited 0. Focused Go tests cover request normalization, required/re-encoded PNG handling, configuration-mode destination rejection, and same-origin setup-session checks.
+- `node --check internal/operations/wizard.js` and `node --check scripts/configure-portal.mjs`: exited 0.
+- A disposable Go-container smoke build started the embedded wizard, confirmed its loopback and SSH-tunnel instructions, then stopped it before any installation action. The build used `-buildvcs=false` because the container cannot read repository metadata.
+- `git diff --check`: exited 0.
+- Browser and clean-server end-to-end acceptance remains deferred to the final validation gate.
+
+**Blockers / remaining work:** M09's clean-VM acceptance is deferred, but its implementation is complete. M10 still requires browser and clean-server acceptance before it can be marked Done.
 
 **Completion date:** Not completed.
 
@@ -605,3 +611,24 @@ The implementation adds these supported interfaces:
 Validation follows the repository's established npm scripts, with targeted tests first and `npm run verify:refactor` at application milestone boundaries. Go changes receive Go tests; infrastructure changes receive real container/VM checks. Tests must use disposable databases and storage.
 
 V1 is releasable only after M00–M13 are complete. Availability claims remain limited to the tested design: downloads happen while the portal is live, while backup, migration, and service replacement can require maintenance.
+
+## 5. Deferred end-to-end validation gate
+
+Run this once the implementation milestones are complete, before marking M13
+Done. It consolidates the intentionally deferred long-running clean-server and
+browser work; it does not replace focused tests recorded in individual
+milestones.
+
+- On a disposable clean Ubuntu 24.04 amd64 VM, exercise `sudo ./install` with
+  local and external database/storage combinations, complete the SSH-tunnel
+  wizard, and verify HTTPS, private service ports, bootstrap idempotency,
+  branding/logo persistence, timers, and backup preferences.
+- Inject interruptions at the M09 Docker, release, configuration, deployment,
+  bootstrap, preferences, and timer stages. Resume with the same request and
+  confirm completed steps, credentials, and persistent data are not replaced.
+- Verify wizard keyboard navigation, expired/single-use setup links,
+  same-origin rejection, malformed and oversized PNG rejection, progress and
+  completion shutdown, and `fypctl configure` rejection of database/storage
+  destination changes.
+- Run the broader application validation, real Compose checks, backup/restore,
+  update/recovery, reboot, and release-download acceptance defined by M11-M13.

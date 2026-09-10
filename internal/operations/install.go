@@ -38,6 +38,7 @@ type installationRequest struct {
 	Storage   installationStorage   `json:"storage"`
 	Mail      installationMail      `json:"mail"`
 	Bootstrap installationBootstrap `json:"bootstrap"`
+	Setup     installationSetup     `json:"setup,omitempty"`
 }
 
 type installationDatabase struct {
@@ -77,6 +78,36 @@ type installationBootstrap struct {
 		RollNo   string `json:"rollNo"`
 		Password string `json:"password"`
 	} `json:"administrator"`
+}
+
+type installationRetentionCategory struct {
+	Enabled bool `json:"enabled"`
+	AgeDays int  `json:"ageDays"`
+}
+
+type installationRetention struct {
+	Schedule struct {
+		Enabled  bool   `json:"enabled"`
+		Timezone string `json:"timezone"`
+		Time     string `json:"time"`
+	} `json:"schedule"`
+	PlayedVoiceNotes   installationRetentionCategory `json:"playedVoiceNotes"`
+	UnplayedVoiceNotes installationRetentionCategory `json:"unplayedVoiceNotes"`
+	AudioBroadcasts    installationRetentionCategory `json:"audioBroadcasts"`
+	UnusedPDFUploads   installationRetentionCategory `json:"unusedPdfUploads"`
+}
+
+type installationBackup struct {
+	Enabled bool   `json:"enabled"`
+	DailyAt string `json:"dailyAt"`
+	Keep    int    `json:"keep"`
+}
+
+type installationSetup struct {
+	Configured bool                  `json:"configured"`
+	LogoBase64 string                `json:"logoBase64,omitempty"`
+	Retention  installationRetention `json:"retention"`
+	Backup     installationBackup    `json:"backup"`
 }
 
 type installationJournal struct {
@@ -184,16 +215,8 @@ func normaliseInstallRequest(request *installationRequest) error {
 		return errors.New("local storage does not accept external storage settings")
 	}
 
-	request.Mail.Host = strings.TrimSpace(request.Mail.Host)
-	request.Mail.Username = strings.TrimSpace(request.Mail.Username)
-	request.Mail.From = strings.TrimSpace(request.Mail.From)
-	request.Mail.FromName = strings.TrimSpace(request.Mail.FromName)
-	request.Mail.ReplyTo = strings.TrimSpace(request.Mail.ReplyTo)
-	request.Mail.TLSMode = strings.ToLower(strings.TrimSpace(request.Mail.TLSMode))
-	if request.Mail.Host != "" || request.Mail.Port != 0 || request.Mail.TLSMode != "" || request.Mail.Username != "" || request.Mail.Password != "" || request.Mail.From != "" || request.Mail.FromName != "" || request.Mail.ReplyTo != "" {
-		if request.Mail.Host == "" || request.Mail.Port < 1 || request.Mail.Port > 65535 || (request.Mail.TLSMode != "none" && request.Mail.TLSMode != "starttls" && request.Mail.TLSMode != "tls") || !emailPattern.MatchString(request.Mail.From) || request.Mail.FromName == "" || (request.Mail.Username == "") != (request.Mail.Password == "") || (request.Mail.ReplyTo != "" && !emailPattern.MatchString(request.Mail.ReplyTo)) {
-			return errors.New("mail configuration is invalid")
-		}
+	if err := normaliseInstallationMail(&request.Mail); err != nil {
+		return err
 	}
 
 	request.Bootstrap.UniversityName = strings.TrimSpace(request.Bootstrap.UniversityName)
@@ -204,6 +227,74 @@ func normaliseInstallRequest(request *installationRequest) error {
 	request.Bootstrap.Administrator.RollNo = strings.ToUpper(strings.TrimSpace(request.Bootstrap.Administrator.RollNo))
 	if request.Bootstrap.UniversityName == "" || len(request.Bootstrap.UniversityName) > 120 || request.Bootstrap.Administrator.Name == "" || len(request.Bootstrap.Administrator.Name) > 100 || !emailPattern.MatchString(request.Bootstrap.Administrator.Email) || !rollNumberPattern.MatchString(request.Bootstrap.Administrator.RollNo) || len(request.Bootstrap.Administrator.Password) < 10 || len(request.Bootstrap.Administrator.Password) > 128 || !colorPattern.MatchString(request.Bootstrap.PrimaryColor) || !colorPattern.MatchString(request.Bootstrap.AccentColor) {
 		return errors.New("bootstrap configuration is invalid")
+	}
+	if err := normaliseInstallationSetup(&request.Setup); err != nil {
+		return err
+	}
+	return nil
+}
+
+func normaliseInstallationMail(mail *installationMail) error {
+	mail.Host = strings.TrimSpace(mail.Host)
+	mail.Username = strings.TrimSpace(mail.Username)
+	mail.From = strings.TrimSpace(mail.From)
+	mail.FromName = strings.TrimSpace(mail.FromName)
+	mail.ReplyTo = strings.TrimSpace(mail.ReplyTo)
+	mail.TLSMode = strings.ToLower(strings.TrimSpace(mail.TLSMode))
+	if mail.Host == "" && mail.Port == 0 && mail.TLSMode == "" && mail.Username == "" && mail.Password == "" && mail.From == "" && mail.FromName == "" && mail.ReplyTo == "" {
+		return nil
+	}
+	if mail.Host == "" || mail.Port < 1 || mail.Port > 65535 || (mail.TLSMode != "none" && mail.TLSMode != "starttls" && mail.TLSMode != "tls") || !emailPattern.MatchString(mail.From) || mail.FromName == "" || (mail.Username == "") != (mail.Password == "") || (mail.ReplyTo != "" && !emailPattern.MatchString(mail.ReplyTo)) {
+		return errors.New("mail configuration is invalid")
+	}
+	return nil
+}
+
+func normaliseInstallationSetup(setup *installationSetup) error {
+	if !setup.Configured {
+		if setup.LogoBase64 != "" || setup.Backup.Enabled || setup.Backup.DailyAt != "" || setup.Backup.Keep != 0 || setup.Retention.Schedule.Enabled || setup.Retention.Schedule.Timezone != "" || setup.Retention.Schedule.Time != "" {
+			return errors.New("installation setup is invalid")
+		}
+		return nil
+	}
+	if setup.LogoBase64 == "" {
+		return errors.New("installation logo is required")
+	}
+	if _, err := reencodeWizardLogo(setup.LogoBase64); err != nil {
+		return err
+	}
+	return normaliseInstallationPreferences(&setup.Retention, &setup.Backup)
+}
+
+func normaliseInstallationPreferences(retention *installationRetention, backup *installationBackup) error {
+	retention.Schedule.Timezone = strings.TrimSpace(retention.Schedule.Timezone)
+	retention.Schedule.Time = strings.TrimSpace(retention.Schedule.Time)
+	if retention.Schedule.Timezone == "" {
+		return errors.New("retention timezone is required")
+	}
+	if _, err := time.LoadLocation(retention.Schedule.Timezone); err != nil {
+		return errors.New("retention timezone is invalid")
+	}
+	if !isDailyTime(retention.Schedule.Time) {
+		return errors.New("retention time is invalid")
+	}
+	for _, category := range []installationRetentionCategory{
+		retention.PlayedVoiceNotes,
+		retention.UnplayedVoiceNotes,
+		retention.AudioBroadcasts,
+		retention.UnusedPDFUploads,
+	} {
+		if category.AgeDays < 1 || category.AgeDays > 3650 {
+			return errors.New("retention age is invalid")
+		}
+	}
+	backup.DailyAt = strings.TrimSpace(backup.DailyAt)
+	if backup.Enabled {
+		if !isDailyTime(backup.DailyAt) || backup.Keep < 1 || backup.Keep > 365 {
+			return errors.New("backup preferences are invalid")
+		}
+	} else if backup.DailyAt != "" || backup.Keep != 0 {
+		return errors.New("backup preferences are invalid")
 	}
 	return nil
 }
@@ -244,6 +335,7 @@ func installationFingerprint(request installationRequest) string {
 	if parsed, err := url.Parse(request.Database.URI); err == nil {
 		mongoDestination = parsed.Scheme + "://" + parsed.Host + parsed.Path
 	}
+	setup, _ := json.Marshal(request.Setup)
 	value := strings.Join([]string{
 		request.Domain,
 		request.Database.Mode,
@@ -265,6 +357,7 @@ func installationFingerprint(request installationRequest) string {
 		request.Bootstrap.Administrator.Name,
 		request.Bootstrap.Administrator.Email,
 		request.Bootstrap.Administrator.RollNo,
+		string(setup),
 	}, "\x00")
 	checksum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(checksum[:])
@@ -828,6 +921,22 @@ func runInstall(paths Paths, args []string, stdin io.Reader, stdout, stderr io.W
 	}); err != nil {
 		fmt.Fprintf(stderr, "install: bootstrap failed: %v\n", err)
 		return 1
+	}
+	if request.Setup.Configured {
+		if err := runInstallationStep(paths, 0, journal, "preferences", func() error {
+			branding := wizardBranding{
+				UniversityName: request.Bootstrap.UniversityName,
+				PrimaryColor:   request.Bootstrap.PrimaryColor,
+				AccentColor:    request.Bootstrap.AccentColor,
+			}
+			if err := applyPortalConfiguration(paths, redactor, branding, request.Setup.Retention, request.Setup.LogoBase64); err != nil {
+				return err
+			}
+			return applyBackupSchedule(paths, redactor, request.Setup.Backup.Enabled, request.Setup.Backup.DailyAt, request.Setup.Backup.Keep)
+		}); err != nil {
+			fmt.Fprintf(stderr, "install: preferences failed: %v\n", err)
+			return 1
+		}
 	}
 	if err := runInstallationStep(paths, 0, journal, "timers", func() error {
 		returnCode := runTimers(paths, []string{"install"}, io.Discard, stderr)

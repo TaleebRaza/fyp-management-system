@@ -20,6 +20,7 @@ scripts/*
 !scripts/audit-storage-keys.mjs
 !scripts/backup-application-data.mjs
 !scripts/bootstrap-first-admin.mjs
+!scripts/configure-portal.mjs
 !scripts/reconcile-supervisor-capacity.mjs
 !scripts/refactor-indexes.mjs
 !scripts/run-background-operation.mjs

@@ -94,7 +94,7 @@ export default function App() {
     } catch (error) {
       console.error('Unable to load portal status:', error);
     }
-  }, []);
+  }, []); 
 
   useEffect(() => {
     const timer = window.setTimeout(loadPortalStatus, 0);

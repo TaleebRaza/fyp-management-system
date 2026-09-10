@@ -1218,55 +1218,67 @@ func runBackupRestore(paths Paths, args []string, stdin io.Reader, stdout, stder
 	return 0
 }
 
-func runBackupSchedule(paths Paths, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && args[0] == "off" {
-		redactor, err := loadRedactor(paths)
-		if err != nil {
-			fmt.Fprintf(stderr, "configuration: %v\n", err)
-			return 1
-		}
-		release, err := AcquireOperationLock(paths, 0)
-		if err != nil {
-			fmt.Fprintf(stderr, "backup: %v\n", err)
-			return 1
-		}
-		defer release()
+func applyBackupSchedule(paths Paths, redactor redactor, enabled bool, dailyAt string, keep int) error {
+	if !enabled {
 		policy, err := readBackupPolicy(paths)
 		if err != nil {
-			fmt.Fprintf(stderr, "backup: %v\n", err)
-			return 1
+			return err
 		}
 		policy.DailyAt = ""
 		if err := writeBackupPolicy(paths, policy); err != nil {
-			fmt.Fprintf(stderr, "backup: %v\n", err)
-			return 1
+			return err
 		}
 		timer := "/etc/systemd/system/fyp-portal-backup.timer"
 		if _, err := os.Lstat(timer); err == nil {
 			if _, err := commandOutput(context.Background(), redactor, "systemctl", []string{"disable", "--now", "fyp-portal-backup.timer"}, nil); err != nil {
-				fmt.Fprintf(stderr, "backup: %v\n", err)
-				return 1
+				return err
 			}
 			if err := os.Remove(timer); err != nil {
-				fmt.Fprintf(stderr, "backup: %v\n", err)
-				return 1
+				return err
 			}
 			if _, err := commandOutput(context.Background(), redactor, "systemctl", []string{"daemon-reload"}, nil); err != nil {
-				fmt.Fprintf(stderr, "backup: %v\n", err)
-				return 1
+				return err
 			}
 		}
-		fmt.Fprintln(stdout, "backup: schedule disabled")
-		return 0
+		return nil
 	}
+	if !isDailyTime(dailyAt) || keep < 1 || keep > 365 {
+		return errors.New("backup schedule requires daily --at HH:MM [--keep 1..365], or off")
+	}
+	if err := writeBackupPolicy(paths, backupPolicy{RetentionCount: keep, DailyAt: dailyAt}); err != nil {
+		return err
+	}
+	if err := installSystemdUnit(paths, "fyp-portal-backup.service"); err != nil {
+		return err
+	}
+	timer := fmt.Sprintf("[Unit]\nDescription=Run FYP Portal backup daily\n\n[Timer]\nOnCalendar=*-*-* %s:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n", dailyAt)
+	if err := writeAtomically("/etc/systemd/system/fyp-portal-backup.timer", []byte(timer), 0); err != nil {
+		return err
+	}
+	if _, err := commandOutput(context.Background(), redactor, "systemctl", []string{"daemon-reload"}, nil); err != nil {
+		return err
+	}
+	_, err := commandOutput(context.Background(), redactor, "systemctl", []string{"enable", "--now", "fyp-portal-backup.timer"}, nil)
+	return err
+}
 
-	flags := flag.NewFlagSet("backup schedule", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	at := flags.String("at", "", "daily backup time in HH:MM")
-	keep := flags.Int("keep", 7, "number of completed backups to retain")
-	if len(args) == 0 || args[0] != "daily" || flags.Parse(args[1:]) != nil || len(flags.Args()) != 0 || !isDailyTime(*at) || *keep < 1 || *keep > 365 {
-		fmt.Fprintln(stderr, "backup schedule requires daily --at HH:MM [--keep 1..365], or off")
-		return 2
+func runBackupSchedule(paths Paths, args []string, stdout, stderr io.Writer) int {
+	enabled := false
+	dailyAt := ""
+	keep := 7
+	if len(args) == 1 && args[0] == "off" {
+		enabled = false
+	} else {
+		flags := flag.NewFlagSet("backup schedule", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		at := flags.String("at", "", "daily backup time in HH:MM")
+		flags.IntVar(&keep, "keep", keep, "number of completed backups to retain")
+		if len(args) == 0 || args[0] != "daily" || flags.Parse(args[1:]) != nil || len(flags.Args()) != 0 || !isDailyTime(*at) || keep < 1 || keep > 365 {
+			fmt.Fprintln(stderr, "backup schedule requires daily --at HH:MM [--keep 1..365], or off")
+			return 2
+		}
+		enabled = true
+		dailyAt = *at
 	}
 	redactor, err := loadRedactor(paths)
 	if err != nil {
@@ -1279,28 +1291,15 @@ func runBackupSchedule(paths Paths, args []string, stdout, stderr io.Writer) int
 		return 1
 	}
 	defer release()
-	if err := writeBackupPolicy(paths, backupPolicy{RetentionCount: *keep, DailyAt: *at}); err != nil {
+	if err := applyBackupSchedule(paths, redactor, enabled, dailyAt, keep); err != nil {
 		fmt.Fprintf(stderr, "backup: %v\n", err)
 		return 1
 	}
-	if err := installSystemdUnit(paths, "fyp-portal-backup.service"); err != nil {
-		fmt.Fprintf(stderr, "backup: %v\n", err)
-		return 1
+	if enabled {
+		fmt.Fprintf(stdout, "backup: scheduled daily at %s\n", dailyAt)
+	} else {
+		fmt.Fprintln(stdout, "backup: schedule disabled")
 	}
-	timer := fmt.Sprintf("[Unit]\nDescription=Run FYP Portal backup daily\n\n[Timer]\nOnCalendar=*-*-* %s:00\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n", *at)
-	if err := writeAtomically("/etc/systemd/system/fyp-portal-backup.timer", []byte(timer), 0); err != nil {
-		fmt.Fprintf(stderr, "backup: %v\n", err)
-		return 1
-	}
-	if _, err := commandOutput(context.Background(), redactor, "systemctl", []string{"daemon-reload"}, nil); err != nil {
-		fmt.Fprintf(stderr, "backup: %v\n", err)
-		return 1
-	}
-	if _, err := commandOutput(context.Background(), redactor, "systemctl", []string{"enable", "--now", "fyp-portal-backup.timer"}, nil); err != nil {
-		fmt.Fprintf(stderr, "backup: %v\n", err)
-		return 1
-	}
-	fmt.Fprintf(stdout, "backup: scheduled daily at %s\n", *at)
 	return 0
 }
 

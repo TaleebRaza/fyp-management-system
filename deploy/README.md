@@ -202,10 +202,49 @@ used to reach its empty database and bucket.
 
 ## Initial installation
 
-M09 provides the root-only, resumable engine used by the M10 browser wizard.
-Until that wizard is available, the engine accepts one root-owned (`0600`) JSON
-request outside the extracted release. It contains the first administrator
-password, so remove the request yourself after a successful installation.
+Run the root-only installer from an extracted release. It opens a temporary
+setup server on `127.0.0.1` and prints an SSH forwarding command plus a
+single-use setup URL. The URL expires after 15 minutes, uses an HttpOnly
+same-site session cookie, and rejects requests without the loopback origin.
+
+```sh
+cd /path/to/extracted-release
+sudo ./install
+```
+
+On the workstation, use the command printed by the installer, for example:
+
+```sh
+ssh -L 34712:127.0.0.1:34712 administrator@portal-server
+```
+
+Open the printed URL after the tunnel is connected. The wizard collects the
+domain, local or external database and storage choices, required PNG logo,
+branding, SMTP settings, first administrator, retention policy, and optional
+backup schedule. External endpoint tests establish reachability; service
+startup still verifies the complete configuration. After successful setup the
+loopback server stops itself.
+
+The installer decodes and re-encodes the uploaded logo, accepting only PNG
+images no larger than 2 MiB and 2048 by 2048 pixels. It shows a non-secret
+review before it starts the resumable deployment engine. Browser keyboard
+navigation follows the native form order.
+
+To reopen supported settings after installation, use the same protected
+loopback workflow:
+
+```sh
+sudo fypctl configure
+```
+
+It supports SMTP, branding and logo replacement, retention, and backup
+preferences. Database and object-storage destinations are intentionally not
+configurable here because changing either requires a data migration.
+
+The direct request interface remains available for recovery and automation.
+It accepts one root-owned (`0600`) JSON request outside the extracted release.
+The request contains the first administrator password, so remove it after a
+successful installation.
 
 The release directory must contain the `install` and `fypctl` binaries, the
 application source, `Dockerfile`, and `deploy/` directory. The engine checks

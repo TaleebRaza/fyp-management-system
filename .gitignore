@@ -9,6 +9,7 @@ node_modules
 .agents
 .tools
 scripts/*
+!scripts/configure-portal.mjs
 !scripts/bootstrap-first-admin.mjs
 !scripts/backup-application-data.mjs
 !scripts/set-maintenance.mjs

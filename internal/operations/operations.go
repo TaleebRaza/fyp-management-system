@@ -383,6 +383,7 @@ func printUsage(program string, output io.Writer) {
 	fmt.Fprintln(output, "  timers install         Install and start the background systemd timers.")
 	fmt.Fprintln(output, "  maintenance <start|stop|status>  Control protected maintenance mode.")
 	fmt.Fprintln(output, "  backup <create|restore|schedule>  Create, restore, or schedule encrypted backups.")
+	fmt.Fprintln(output, "  configure              Reopen protected portal configuration.")
 }
 
 func parsePaths(program string, args []string, stderr io.Writer) (Paths, []string, bool) {
@@ -406,6 +407,15 @@ func Run(program string, args []string, stdin io.Reader, stdout, stderr io.Write
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		printUsage(program, stdout)
 		return 0
+	}
+	if program == "install" && (len(args) == 0 || args[0] == "--request") {
+		if !requireRoot(stderr) {
+			return 1
+		}
+		if len(args) == 0 {
+			return startWizard(DefaultPaths(), installWizard, stdout, stderr)
+		}
+		return runInstall(DefaultPaths(), args, stdin, stdout, stderr)
 	}
 	paths, args, ok := parsePaths(program, args, stderr)
 	if !ok {
@@ -439,6 +449,12 @@ func Run(program string, args []string, stdin io.Reader, stdout, stderr io.Write
 		return runMaintenance(paths, args[1:], stdout, stderr)
 	case "backup":
 		return runBackup(paths, args[1:], stdin, stdout, stderr)
+	case "configure":
+		if program != "fypctl" || len(args) != 1 {
+			fmt.Fprintln(stderr, "configure is available only as fypctl configure")
+			return 2
+		}
+		return startWizard(paths, configureWizard, stdout, stderr)
 	case "install":
 		if program != "install" {
 			fmt.Fprintln(stderr, "install is available only from the installer binary")

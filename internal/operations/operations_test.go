@@ -2,11 +2,18 @@ package operations
 
 import (
 	"bytes"
+	"encoding/base64"
+	"image"
+	"image/color"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testOwner() uint32 {
@@ -126,6 +133,86 @@ func validInstallationRequest() installationRequest {
 	request.Bootstrap.Administrator.RollNo = "F23-0001"
 	request.Bootstrap.Administrator.Password = "correct-horse-battery-staple"
 	return request
+}
+
+func validWizardConfiguration() wizardConfiguration {
+	configuration := wizardConfiguration{
+		Domain:   "portal.example.edu",
+		Database: installationDatabase{Mode: "local"},
+		Storage:  installationStorage{Mode: "local"},
+		Branding: wizardBranding{
+			UniversityName: "Example University",
+			PrimaryColor:   "#14213d",
+			AccentColor:    "#fca311",
+		},
+		Administrator: wizardAdministrator{
+			Name: "Portal Admin", Email: "admin@example.edu", RollNo: "F23-0001", Password: "correct-horse-battery-staple",
+		},
+		Backup: installationBackup{},
+	}
+	configuration.Retention.Schedule.Enabled = true
+	configuration.Retention.Schedule.Timezone = "UTC"
+	configuration.Retention.Schedule.Time = "02:00"
+	configuration.Retention.PlayedVoiceNotes = installationRetentionCategory{Enabled: true, AgeDays: 7}
+	configuration.Retention.UnplayedVoiceNotes = installationRetentionCategory{AgeDays: 7}
+	configuration.Retention.AudioBroadcasts = installationRetentionCategory{AgeDays: 7}
+	configuration.Retention.UnusedPDFUploads = installationRetentionCategory{Enabled: true, AgeDays: 7}
+	return configuration
+}
+
+func testWizardLogo(t *testing.T) string {
+	t.Helper()
+	picture := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	picture.Set(0, 0, color.RGBA{R: 20, G: 33, B: 61, A: 255})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, picture); err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(encoded.Bytes())
+}
+
+func TestWizardValidatesAndNormalizesSetupWithoutRevealingSecrets(t *testing.T) {
+	configuration := validWizardConfiguration()
+	logo := testWizardLogo(t)
+	if err := normaliseWizardConfiguration(&configuration, installWizard, logo); err != nil {
+		t.Fatal(err)
+	}
+	if configuration.Domain != "portal.example.edu" || configuration.Administrator.Password != "correct-horse-battery-staple" {
+		t.Fatalf("unexpected normalized wizard configuration: %#v", configuration)
+	}
+	configure := validWizardConfiguration()
+	configure.Domain = ""
+	configure.Database = installationDatabase{Mode: "local"}
+	if err := normaliseWizardConfiguration(&configure, configureWizard, ""); err == nil || !strings.Contains(err.Error(), "database and storage") {
+		t.Fatalf("expected destination change rejection, got %v", err)
+	}
+	configure = validWizardConfiguration()
+	configure.Domain = ""
+	configure.Database = installationDatabase{}
+	configure.Storage = installationStorage{}
+	configure.Administrator = wizardAdministrator{}
+	if err := normaliseWizardConfiguration(&configure, configureWizard, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWizardSessionRequiresTheLoopbackOrigin(t *testing.T) {
+	setup := wizardServer{
+		address:       "127.0.0.1:34123",
+		session:       "test-session",
+		sessionExpiry: time.Now().Add(time.Minute),
+	}
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:34123/api/config", nil)
+	request.Host = setup.address
+	request.Header.Set("Origin", setup.expectedOrigin())
+	request.AddCookie(&http.Cookie{Name: "fyp_setup_session", Value: setup.session})
+	if !setup.authorized(request, true) {
+		t.Fatal("expected loopback session with matching origin to be authorized")
+	}
+	request.Header.Set("Origin", "https://attacker.example")
+	if setup.authorized(request, true) {
+		t.Fatal("expected foreign origin to be rejected")
+	}
 }
 
 func TestInstallationRequestAndGeneratedConfiguration(t *testing.T) {
