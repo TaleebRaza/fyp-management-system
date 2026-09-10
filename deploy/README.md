@@ -1,4 +1,4 @@
-# Container deployment (M04-M05)
+# Container deployment (M04-M11)
 
 The base Compose file starts only the portal container. Use it when `MONGODB_URI`
 points to an external MongoDB replica set that has already passed the transaction
@@ -12,7 +12,7 @@ installer creates it with mode `0600`; use it for Compose interpolation too:
 docker compose --env-file /etc/fyp-portal/portal.env \
   -f deploy/compose.yaml \
   -f deploy/compose.local-mongodb.yaml \
-  up --build --detach
+  up --detach
 ```
 
 For local MongoDB, that file must contain `MONGODB_ROOT_USERNAME`,
@@ -45,7 +45,7 @@ public mode, `FYP_CADDY_SITE` is the portal domain and Caddy manages HTTPS:
 docker compose --env-file /etc/fyp-portal/portal.env \
   -f deploy/compose.yaml \
   -f deploy/compose.gateway.yaml \
-  up --build --detach
+  up --detach
 ```
 
 For an existing institutional TLS proxy, set `FYP_CADDY_SITE` to
@@ -64,7 +64,7 @@ docker compose --env-file /etc/fyp-portal/portal.env \
   -f deploy/compose.local-mongodb.yaml \
   -f deploy/compose.gateway.yaml \
   -f deploy/compose.local-storage.yaml \
-  up --build --detach
+  up --detach
 ```
 
 Local storage requires `PORTAL_PUBLIC_URL`, `S3_ENDPOINT=http://seaweedfs:8333`,
@@ -200,6 +200,36 @@ Add `--restore-config` only when the source configuration is also appropriate
 for the target. The restore command otherwise retains the target configuration
 used to reach its empty database and bucket.
 
+## Release archives
+
+M11 distributes an installer archive through GitHub Releases and the matching
+application image through public GHCR. The installer archive does not contain
+the application source or a Docker build context. Its signed GitHub provenance
+attestation covers the archive, including its manifest and `SHA256SUMS`; the
+installer rechecks every listed archive file before it writes deployment state.
+
+For a release tag such as `v1.2.3`, download the archive, its checksum sidecar,
+and the manifest from the draft release after it has been reviewed and
+published. Verify the checksum and provenance before extracting it:
+
+```sh
+sha256sum --check fyp-portal-v1.2.3-linux-amd64.tar.gz.sha256
+gh attestation verify fyp-portal-v1.2.3-linux-amd64.tar.gz \
+  --repo TaleebRaza/fyp-management-system
+tar -xzf fyp-portal-v1.2.3-linux-amd64.tar.gz
+```
+
+The release manifest pins `FYP_PORTAL_IMAGE` to a GHCR digest. The installer
+writes that value to the protected runtime configuration, and Compose always
+pulls that immutable image rather than building source on the server.
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`: it tests the source,
+publishes and attests the image, builds the Linux amd64 installer binaries,
+creates a deterministic archive with third-party notices, and uploads all
+assets to a draft release. Publication remains a manual review step. Before
+the first public release, select and add the portal's own distribution license,
+make the GHCR package public, and confirm the release repository is public.
+
 ## Initial installation
 
 Run the root-only installer from an extracted release. It opens a temporary
@@ -246,10 +276,11 @@ It accepts one root-owned (`0600`) JSON request outside the extracted release.
 The request contains the first administrator password, so remove it after a
 successful installation.
 
-The release directory must contain the `install` and `fypctl` binaries, the
-application source, `Dockerfile`, and `deploy/` directory. The engine checks
-for Ubuntu 24.04 on amd64, memory, disk capacity, ports 80/443, DNS, Docker's
-Ubuntu repository, and an existing installation before it writes anything. It
+The release directory must contain the `install` and `fypctl` binaries,
+`release-manifest.json`, `SHA256SUMS`, `INSTALL.md`,
+`THIRD_PARTY_NOTICES.md`, and `deploy/`. The engine verifies that exact
+payload before it checks Ubuntu 24.04 on amd64, memory, disk capacity, ports
+80/443, DNS, Docker's Ubuntu repository, and an existing installation. It
 never removes conflicting Docker packages or overwrites an untracked install.
 
 ```json

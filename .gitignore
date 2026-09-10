@@ -13,6 +13,8 @@ scripts/*
 !scripts/bootstrap-first-admin.mjs
 !scripts/backup-application-data.mjs
 !scripts/set-maintenance.mjs
+!scripts/generate-third-party-notices.mjs
+!scripts/package-release.mjs
 AGENTS.md
 
 # Sentry Config File

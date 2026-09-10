@@ -3,6 +3,8 @@ package operations
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -11,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +138,57 @@ func validInstallationRequest() installationRequest {
 	return request
 }
 
+func validReleaseManifest() ReleaseManifest {
+	return ReleaseManifest{
+		FormatVersion:        1,
+		ReleaseVersion:       "v0.1.0",
+		Image:                "ghcr.io/taleebraza/fyp-portal@sha256:" + strings.Repeat("a", 64),
+		Platform:             "linux/amd64",
+		ConfigurationVersion: 1,
+		Migration:            "none",
+		RollbackCompatible:   true,
+		SourceCommit:         strings.Repeat("b", 40),
+	}
+}
+
+func writeTestRelease(t *testing.T, source string) {
+	t.Helper()
+	if err := os.Mkdir(filepath.Join(source, "deploy"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := json.Marshal(validReleaseManifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"deploy/compose.yaml":    "services: {}\n",
+		"fypctl":                 "false fypctl binary\n",
+		"install":                "false install binary\n",
+		"INSTALL.md":             "installation instructions\n",
+		"THIRD_PARTY_NOTICES.md": "third-party notices\n",
+		releaseManifestName:       string(manifest),
+	}
+	paths := make([]string, 0, len(files))
+	for path, contents := range files {
+		if err := os.WriteFile(filepath.Join(source, path), []byte(contents), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	var checksums strings.Builder
+	for _, path := range paths {
+		digest, err := fileChecksum(filepath.Join(source, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&checksums, "%s  %s\n", digest, path)
+	}
+	if err := os.WriteFile(filepath.Join(source, releaseChecksumsName), []byte(checksums.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func validWizardConfiguration() wizardConfiguration {
 	configuration := wizardConfiguration{
 		Domain:   "portal.example.edu",
@@ -220,11 +274,12 @@ func TestInstallationRequestAndGeneratedConfiguration(t *testing.T) {
 	if err := normaliseInstallRequest(&request); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := buildRuntimeSettings(request, Paths{StateDir: "/var/lib/fyp-portal/state"})
+	manifest := validReleaseManifest()
+	settings, err := buildRuntimeSettings(request, Paths{StateDir: "/var/lib/fyp-portal/state"}, manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings["MONGODB_URI"] == "" || settings["S3_ENDPOINT"] != "http://seaweedfs:8333" || settings["FYP_BACKUP_RECOVERY_KEY"] == "" {
+	if settings["MONGODB_URI"] == "" || settings["S3_ENDPOINT"] != "http://seaweedfs:8333" || settings["FYP_BACKUP_RECOVERY_KEY"] == "" || settings["FYP_PORTAL_IMAGE"] != manifest.Image {
 		t.Fatalf("local installation settings were incomplete: %#v", settings)
 	}
 	mongoURI, err := url.Parse(settings["MONGODB_URI"])
@@ -289,18 +344,7 @@ func TestInstallationJournalResumesWithoutRepeatingCompletedSteps(t *testing.T) 
 
 func TestCopyReleaseExcludesLocalSecretsAndActivatesAtomically(t *testing.T) {
 	source := t.TempDir()
-	if err := os.Mkdir(filepath.Join(source, "deploy"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for path, contents := range map[string]string{
-		"deploy/compose.yaml": "services: {}\n",
-		"fypctl":              "false binary\n",
-		".env.local":          "SECRET=not-released\n",
-	} {
-		if err := os.WriteFile(filepath.Join(source, path), []byte(contents), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeTestRelease(t, source)
 	destination := filepath.Join(t.TempDir(), "current")
 	if err := copyRelease(source, destination); err != nil {
 		t.Fatal(err)
@@ -310,5 +354,23 @@ func TestCopyReleaseExcludesLocalSecretsAndActivatesAtomically(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(destination, ".env.local")); !os.IsNotExist(err) {
 		t.Fatalf("local secret was copied: %v", err)
+	}
+}
+
+func TestReleasePayloadPinsTheImageAndRejectsUnexpectedFiles(t *testing.T) {
+	source := t.TempDir()
+	writeTestRelease(t, source)
+	manifest, err := verifyReleasePayload(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Image != validReleaseManifest().Image {
+		t.Fatalf("unexpected release manifest: %#v", manifest)
+	}
+	if err := os.WriteFile(filepath.Join(source, ".env.local"), []byte("SECRET=not-released\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyReleasePayload(source); err == nil || !strings.Contains(err.Error(), "unexpected file") {
+		t.Fatalf("expected unlisted file rejection, got %v", err)
 	}
 }

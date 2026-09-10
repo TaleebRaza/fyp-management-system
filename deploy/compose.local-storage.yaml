@@ -36,11 +36,8 @@ services:
         read_only: true
 
   storage-init:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    image: ${FYP_PORTAL_IMAGE:-fyp-portal:local}
-    pull_policy: build
+    image: ${FYP_PORTAL_IMAGE:?FYP_PORTAL_IMAGE is required.}
+    pull_policy: always
     depends_on:
       seaweedfs-init:
         condition: service_completed_successfully

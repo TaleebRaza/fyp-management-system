@@ -77,7 +77,7 @@ test('academic reset and team changes use transaction callbacks with durable cle
   ]);
 
   assert.match(academicReset, /mongoSession\.withTransaction/);
-  assert.match(academicReset, /student\.domains = \[\]/);
+  assert.match(academicReset, /domains: \[\]/);
   assert.match(academicReset, /enqueueDeletedProjectStorage/);
   assert.match(projectCleanup, /enqueueStorageDeletion/);
   assert.match(projectCleanup, /VoiceNote\.deleteMany/);

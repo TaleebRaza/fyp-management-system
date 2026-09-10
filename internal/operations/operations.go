@@ -21,6 +21,7 @@ import (
 )
 
 var cliVersion = "dev"
+var releaseCommit = "dev"
 
 var (
 	rollNumberPattern = regexp.MustCompile(`^[FS][0-9]{2}-[0-9]{4}$`)
@@ -35,9 +36,12 @@ type Paths struct {
 }
 
 type DeploymentState struct {
-	ReleaseVersion string    `json:"releaseVersion"`
-	ComposeFiles   []string  `json:"composeFiles"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ReleaseVersion       string    `json:"releaseVersion"`
+	Image                string    `json:"image,omitempty"`
+	ConfigurationVersion int       `json:"configurationVersion,omitempty"`
+	SourceCommit         string    `json:"sourceCommit,omitempty"`
+	ComposeFiles         []string  `json:"composeFiles"`
+	UpdatedAt            time.Time `json:"updatedAt"`
 }
 
 func DefaultPaths() Paths {
@@ -480,6 +484,9 @@ func runVersion(paths Paths, stdout, stderr io.Writer) int {
 	}
 	if state != nil && state.ReleaseVersion != "" {
 		fmt.Fprintf(stdout, "release %s\n", state.ReleaseVersion)
+		if state.Image != "" {
+			fmt.Fprintf(stdout, "image %s\n", state.Image)
+		}
 	}
 	return 0
 }

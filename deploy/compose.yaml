@@ -2,11 +2,8 @@ name: fyp-portal
 
 services:
   app:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    image: ${FYP_PORTAL_IMAGE:-fyp-portal:local}
-    pull_policy: build
+    image: ${FYP_PORTAL_IMAGE:?FYP_PORTAL_IMAGE is required.}
+    pull_policy: always
     environment:
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI is required.}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required.}

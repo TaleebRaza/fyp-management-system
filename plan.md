@@ -56,7 +56,7 @@ Maintain this single tracker:
 | M08 | Maintenance, backup, and restore | Done | M07 |
 | M09 | Resumable installation engine | Done | M08 |
 | M10 | Browser installation wizard | Done | M09 |
-| M11 | Release packaging and publishing | Not started | M10 |
+| M11 | Release packaging and publishing | In progress | M10 |
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
@@ -535,20 +535,25 @@ The current host reports Zorin 18, amd64. The installer correctly rejects it bef
 
 **Implement**
 
-- [ ] Produce a versioned installer archive, signed release manifest, checksums, documentation, and third-party notices.
-- [ ] Record exact image digests, platform, configuration version, permitted upgrade paths, migrations, and rollback compatibility.
-- [ ] Build application image and installer from the same source commit.
-- [ ] Add GitHub Actions to test, build, and prepare release artifacts.
+- [x] Produce a versioned installer archive, GitHub provenance attestation, checksums, documentation, and third-party notices.
+- [x] Record exact image digests, platform, configuration version, permitted upgrade paths, migrations, and rollback compatibility.
+- [x] Build application image and installer from the same source commit.
+- [x] Add GitHub Actions to test, build, and prepare release artifacts.
 - [ ] Publish installer assets to a public distribution repository and images to public GHCR, using narrowly scoped publisher credentials.
-- [ ] Upload assets to a draft release before immutable publication.
+- [x] Upload assets to a draft release before immutable publication.
 
 **Done when:** A release candidate is reproducibly packaged; manifest verification and anonymous downloads work; no secrets or unintended source files are included; the downloaded archive installs successfully.
 
 GitHub Releases supplies the downloadable installer assets; GHCR supplies the container images. GitHub's automatically generated source archive is not the installer. See [GitHub Releases documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases), [GHCR documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), and [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
 
-**Validation record:** Not run; implementation has not started.
+**Validation record (2026-09-10):**
 
-**Blockers / remaining work:** Prerequisite milestones are incomplete; reassess environment requirements when starting.
+- `node --check scripts/generate-third-party-notices.mjs`, `node --check scripts/package-release.mjs`, and `node --test tests/release-packaging.test.mjs`: exited 0.
+- `node --test tests/release-packaging.test.mjs tests/project-rating-ui.test.mjs tests/storage-workflow-structure.test.mjs`: exited 0, 3 tests passed. The two documented M00 assertion mismatches were corrected to the existing PDF export and canonical-project reset behavior, allowing the release workflow to use the complete unit suite as a gate.
+- `docker run --rm -v "$PWD:/src" -w /src golang:1.24.0 go test ./...`: exited 0 after a release-checksum validator correction. The disposable container accessed no application database or object storage.
+- The image build/push, generated archive inspection, attestation verification, and anonymous release download are deferred until the long M11 validation session. They require a release tag and public GitHub/GHCR configuration, and remain mandatory before M11 can be marked Done.
+
+**Blockers / remaining work:** Select and add the portal's own distribution license, make the release repository and GHCR package public, then create a release tag. The draft-release workflow uses the repository-scoped `GITHUB_TOKEN` with only `contents`, `packages`, attestation, and OIDC permissions. The deferred long validation must complete before M11 is Done.
 
 **Completion date:** Not completed.
 

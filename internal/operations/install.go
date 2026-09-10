@@ -422,7 +422,7 @@ func envContents(settings map[string]string) ([]byte, error) {
 	return []byte(contents.String()), nil
 }
 
-func buildRuntimeSettings(request installationRequest, paths Paths) (map[string]string, error) {
+func buildRuntimeSettings(request installationRequest, paths Paths, manifest ReleaseManifest) (map[string]string, error) {
 	nextAuthSecret, err := randomBase64(32)
 	if err != nil {
 		return nil, err
@@ -436,6 +436,7 @@ func buildRuntimeSettings(request installationRequest, paths Paths) (map[string]
 		return nil, fmt.Errorf("generate recovery key: %w", err)
 	}
 	settings := map[string]string{
+		"FYP_PORTAL_IMAGE":       manifest.Image,
 		"PORTAL_PUBLIC_URL":       "https://" + request.Domain,
 		"FYP_CADDY_SITE":          request.Domain,
 		"FYP_CADDY_DATA_DIR":      "/var/lib/fyp-portal/caddy",
@@ -682,11 +683,8 @@ func copyRelease(source, destination string) error {
 	if source == "" || destination == "" {
 		return errors.New("release source and destination are required")
 	}
-	if _, err := os.Stat(filepath.Join(source, "deploy", "compose.yaml")); err != nil {
-		return errors.New("release source is missing deployment files")
-	}
-	if _, err := os.Stat(filepath.Join(source, "fypctl")); err != nil {
-		return errors.New("release source is missing the fypctl binary")
+	if _, err := verifyReleasePayload(source); err != nil {
+		return fmt.Errorf("verify release source: %w", err)
 	}
 	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
 		if err == nil {
@@ -794,7 +792,7 @@ func hasUntrackedInstallation(paths Paths, owner uint32) (bool, error) {
 }
 
 func composeUp(paths Paths, redactor redactor) error {
-	command, err := dockerComposeArgs(paths, 0, "up", "--build", "--detach", "--wait")
+	command, err := dockerComposeArgs(paths, 0, "up", "--detach", "--wait")
 	if err != nil {
 		return err
 	}
@@ -854,6 +852,11 @@ func runInstall(paths Paths, args []string, stdin io.Reader, stdout, stderr io.W
 		fmt.Fprintf(stderr, "install: %v\n", err)
 		return 1
 	}
+	manifest, err := verifyReleasePayload(source)
+	if err != nil {
+		fmt.Fprintf(stderr, "install: release verification failed: %v\n", err)
+		return 1
+	}
 	if err := runInstallationStep(paths, 0, journal, "release", func() error {
 		if _, err := os.Lstat(paths.ReleaseDir); errors.Is(err, os.ErrNotExist) {
 			if err := copyRelease(source, paths.ReleaseDir); err != nil {
@@ -874,11 +877,11 @@ func runInstall(paths Paths, args []string, stdin io.Reader, stdout, stderr io.W
 			if err := validateProtectedFile(paths.ConfigPath, 0); err != nil {
 				return err
 			}
-			return WriteDeploymentState(paths, DeploymentState{ReleaseVersion: cliVersion, ComposeFiles: composeFilesForRequest(request)}, 0)
+			return WriteDeploymentState(paths, DeploymentState{ReleaseVersion: manifest.ReleaseVersion, Image: manifest.Image, ConfigurationVersion: manifest.ConfigurationVersion, SourceCommit: manifest.SourceCommit, ComposeFiles: composeFilesForRequest(request)}, 0)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		settings, err := buildRuntimeSettings(request, paths)
+		settings, err := buildRuntimeSettings(request, paths, manifest)
 		if err != nil {
 			return err
 		}
@@ -889,7 +892,7 @@ func runInstall(paths Paths, args []string, stdin io.Reader, stdout, stderr io.W
 		if err := WriteProtectedConfig(paths.ConfigPath, contents, 0); err != nil {
 			return err
 		}
-		return WriteDeploymentState(paths, DeploymentState{ReleaseVersion: cliVersion, ComposeFiles: composeFilesForRequest(request)}, 0)
+		return WriteDeploymentState(paths, DeploymentState{ReleaseVersion: manifest.ReleaseVersion, Image: manifest.Image, ConfigurationVersion: manifest.ConfigurationVersion, SourceCommit: manifest.SourceCommit, ComposeFiles: composeFilesForRequest(request)}, 0)
 	}); err != nil {
 		fmt.Fprintf(stderr, "install: configuration failed: %v\n", err)
 		return 1
