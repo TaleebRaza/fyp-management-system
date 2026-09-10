@@ -554,7 +554,7 @@ GitHub Releases supplies the downloadable installer assets; GHCR supplies the co
 - Local packaging smoke validation with false binaries and a false GHCR digest created `dist/fyp-portal-v0.1.0-linux-amd64.tar.gz`; `sha256sum --check` exited 0 from the archive directory and the tar listing contained only the curated release payload.
 - The image build/push, attestation verification, and anonymous release download are deferred until the long M11 validation session. They require a release tag and public GitHub/GHCR configuration, and remain mandatory before M11 can be marked Done.
 
-**Blockers / remaining work:** Select and add the portal's own distribution license, make the release repository and GHCR package public, then create a release tag. The draft-release workflow uses the repository-scoped `GITHUB_TOKEN` with only `contents`, `packages`, attestation, and OIDC permissions. The deferred long validation must complete before M11 is Done.
+**Blockers / remaining work:** The proprietary `LICENSE` now requires permission for use, copying, modification, or redistribution. Decide whether the repository and GHCR package should be public for discovery or private for access control, then create a release tag. The draft-release workflow uses the repository-scoped `GITHUB_TOKEN` with only `contents`, `packages`, attestation, and OIDC permissions. The deferred long validation must complete before M11 is Done.
 
 **Completion date:** Not completed.
 

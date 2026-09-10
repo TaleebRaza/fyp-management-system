@@ -226,9 +226,11 @@ pulls that immutable image rather than building source on the server.
 Pushing a `v*` tag runs `.github/workflows/release.yml`: it tests the source,
 publishes and attests the image, builds the Linux amd64 installer binaries,
 creates a deterministic archive with third-party notices, and uploads all
-assets to a draft release. Publication remains a manual review step. Before
-the first public release, select and add the portal's own distribution license,
-make the GHCR package public, and confirm the release repository is public.
+assets to a draft release. Publication remains a manual review step. This
+repository uses the proprietary notice in `LICENSE`: public visibility does
+not grant permission to use, copy, modify, or redistribute the software. Grant
+access separately to approved users, and keep the GHCR package private unless
+you intentionally want anonymous image downloads.
 
 ## Initial installation
 
