@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { cp, lstat, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -75,11 +75,12 @@ async function main() {
   await rm(stagingRoot, { recursive: true, force: true });
   await mkdir(staging, { recursive: true, mode: 0o755 });
   await Promise.all([
-    cp(install, join(staging, 'install'), { mode: 0o755 }),
-    cp(fypctl, join(staging, 'fypctl'), { mode: 0o755 }),
+    cp(install, join(staging, 'install')),
+    cp(fypctl, join(staging, 'fypctl')),
     cp(deploy, join(staging, 'deploy'), { recursive: true, verbatimSymlinks: true }),
-    cp(deployReadme, join(staging, 'INSTALL.md'), { mode: 0o644 }),
+    cp(deployReadme, join(staging, 'INSTALL.md')),
   ]);
+  await Promise.all([chmod(join(staging, 'install'), 0o755), chmod(join(staging, 'fypctl'), 0o755)]);
   await generateThirdPartyNotices(join(staging, 'THIRD_PARTY_NOTICES.md'), root);
 
   const manifest = {

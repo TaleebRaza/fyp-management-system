@@ -551,7 +551,8 @@ GitHub Releases supplies the downloadable installer assets; GHCR supplies the co
 - `node --check scripts/generate-third-party-notices.mjs`, `node --check scripts/package-release.mjs`, and `node --test tests/release-packaging.test.mjs`: exited 0.
 - `node --test tests/release-packaging.test.mjs tests/project-rating-ui.test.mjs tests/storage-workflow-structure.test.mjs`: exited 0, 3 tests passed. The two documented M00 assertion mismatches were corrected to the existing PDF export and canonical-project reset behavior, allowing the release workflow to use the complete unit suite as a gate.
 - `docker run --rm -v "$PWD:/src" -w /src golang:1.24.0 go test ./...`: exited 0 after a release-checksum validator correction. The disposable container accessed no application database or object storage.
-- The image build/push, generated archive inspection, attestation verification, and anonymous release download are deferred until the long M11 validation session. They require a release tag and public GitHub/GHCR configuration, and remain mandatory before M11 can be marked Done.
+- Local packaging smoke validation with false binaries and a false GHCR digest created `dist/fyp-portal-v0.1.0-linux-amd64.tar.gz`; `sha256sum --check` exited 0 from the archive directory and the tar listing contained only the curated release payload.
+- The image build/push, attestation verification, and anonymous release download are deferred until the long M11 validation session. They require a release tag and public GitHub/GHCR configuration, and remain mandatory before M11 can be marked Done.
 
 **Blockers / remaining work:** Select and add the portal's own distribution license, make the release repository and GHCR package public, then create a release tag. The draft-release workflow uses the repository-scoped `GITHUB_TOKEN` with only `contents`, `packages`, attestation, and OIDC permissions. The deferred long validation must complete before M11 is Done.
 
