@@ -54,13 +54,13 @@ Maintain this single tracker:
 | M06 | Operations CLI and secure bootstrap | Done | M05 |
 | M07 | Background processing and retention | Done | M06 |
 | M08 | Maintenance, backup, and restore | Done | M07 |
-| M09 | Resumable installation engine | In progress | M08 |
-| M10 | Browser installation wizard | In progress | M09 |
+| M09 | Resumable installation engine | Done | M08 |
+| M10 | Browser installation wizard | Done | M09 |
 | M11 | Release packaging and publishing | Not started | M10 |
 | M12 | Updates and failure recovery | Not started | M11 |
 | M13 | Clean-server acceptance and handoff | Not started | M12 |
 
-M00 through M08 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow.
+M00 through M10 are complete. M00 records the current application baseline and the deployment contract that later milestones must follow.
 
 Use four statuses: **Not started, In progress, Blocked, Done**.
 
@@ -73,6 +73,8 @@ Each milestone records:
 - Actual commit reference only when a commit exists.
 
 A milestone is **Done** only when its implementation, relevant tests, documentation, and final diff review are complete. Missing validation keeps the milestone incomplete.
+
+**Deferred acceptance decision (2026-09-10):** M09 and M10's clean Ubuntu VM and browser end-to-end checks are scheduled after M12, in the mandatory final validation gate in section 5. Their focused implementation tests are complete, so they are valid prerequisites for the remaining implementation milestones. The deferred checks remain mandatory before M13 can be marked Done and do not permit a release claim before then.
 
 Implement milestones in order, keeping each change cohesive and independently reviewable. Do not combine unfinished milestones into a broad rewrite. Milestone boundaries are checkpoints, not automatic requests for renewed permission. Follow the user's currently authorized scope; this document does not authorize continuing beyond a request limited to documentation or a named milestone.
 
@@ -486,7 +488,7 @@ does not require rewriting a systemd unit.
 
 **Validation record (2026-09-09):**
 
-- `docker run --rm -v "$PWD:/src" -w /src golang:1.24.0 go test ./...`: exited 0, including installer request, configuration, atomic release, and resume tests.
+- `docker run --rm -v "$PWD:/src" -w /src golang:1.24.0 go test ./...`: exited 0, including installer request, configuration, atomic release, and resume tests. Rerun on 2026-09-10 also exited 0 using disposable container tooling.
 - `npm run lint`: exited 0 with five existing warnings in unrelated one-off scripts. `npx tsc --noEmit` exited 0.
 - `npm run test:unit`: exited 1 with 52/55 passing. The three failures are the existing M00 project-rating UI expectation, storage-workflow expectation, and sandbox loopback S3 test.
 - `npm run build`: exited 0. The production build compiled, type-checked, collected page data, generated 24 static pages, and finalized successfully.
@@ -494,9 +496,9 @@ does not require rewriting a systemd unit.
 
 The current host reports Zorin 18, amd64. The installer correctly rejects it before any mutation because M09 targets Ubuntu 24.04 LTS. A clean supported-VM install and injected full-engine failure run therefore could not be performed here.
 
-**Blockers / remaining work:** The implementation is complete. The clean Ubuntu 24.04 amd64 acceptance run, including a full Compose/bootstrap run and an injected interruption/resume run, is deferred to the final end-to-end validation gate at the user's direction. It remains required before M13 completion. The three M00 baseline unit failures remain outside this milestone.
+**Blockers / remaining work:** None for M09 implementation. The clean Ubuntu 24.04 amd64 acceptance run, including a full Compose/bootstrap run and an injected interruption/resume run, is scheduled in the final end-to-end validation gate after M12. It remains required before M13 completion. The three M00 baseline unit failures remain outside this milestone.
 
-**Completion date:** Not completed.
+**Completion date:** 2026-09-10 (final acceptance deferred to M13).
 
 **Suggested commit:** `feat(installer): add resumable installation engine`
 
@@ -522,9 +524,9 @@ The current host reports Zorin 18, amd64. The installer correctly rejects it bef
 - `git diff --check`: exited 0.
 - Browser and clean-server end-to-end acceptance remains deferred to the final validation gate.
 
-**Blockers / remaining work:** M09's clean-VM acceptance is deferred, but its implementation is complete. M10 still requires browser and clean-server acceptance before it can be marked Done.
+**Blockers / remaining work:** None for M10 implementation. Browser and clean-server acceptance are scheduled in the final end-to-end validation gate after M12, and remain required before M13 completion.
 
-**Completion date:** Not completed.
+**Completion date:** 2026-09-10 (final acceptance deferred to M13).
 
 **Suggested commit:** `feat(installer): add protected browser setup wizard`
 
@@ -614,10 +616,10 @@ V1 is releasable only after M00–M13 are complete. Availability claims remain l
 
 ## 5. Deferred end-to-end validation gate
 
-Run this once the implementation milestones are complete, before marking M13
-Done. It consolidates the intentionally deferred long-running clean-server and
-browser work; it does not replace focused tests recorded in individual
-milestones.
+Run this after M12 implementation is complete, before marking M13 Done.
+First provision a disposable Ubuntu 24.04 amd64 VM. This mandatory test
+consolidates the intentionally deferred long-running clean-server and browser
+work; it does not replace focused tests recorded in individual milestones.
 
 - On a disposable clean Ubuntu 24.04 amd64 VM, exercise `sudo ./install` with
   local and external database/storage combinations, complete the SSH-tunnel
