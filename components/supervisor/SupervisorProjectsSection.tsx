@@ -24,6 +24,7 @@ export default function SupervisorProjectsSection({
   headerActions,
   compactCards = false,
   readOnly = false,
+  highlightedProjectId,
 }: {
   title: string;
   description: string;
@@ -44,6 +45,7 @@ export default function SupervisorProjectsSection({
   headerActions?: ReactNode;
   compactCards?: boolean;
   readOnly?: boolean;
+  highlightedProjectId?: string | null;
 }) {
   return (
     <DashboardPanel className="flex flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
@@ -77,7 +79,16 @@ export default function SupervisorProjectsSection({
       ) : (
         <div className="portal-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <DashboardGrid columns={compactCards ? "four" : "three"} className="pb-1">
-            {projects.map((project) => <SupervisorProjectCard key={project._id} project={project} onOpen={onOpenProject} compact={compactCards} readOnly={readOnly} />)}
+            {projects.map((project) => (
+              <SupervisorProjectCard
+                key={project._id}
+                project={project}
+                onOpen={onOpenProject}
+                compact={compactCards}
+                readOnly={readOnly}
+                highlighted={project._id === highlightedProjectId}
+              />
+            ))}
           </DashboardGrid>
         </div>
       )}

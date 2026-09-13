@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
   ChevronDown,
@@ -9,11 +9,13 @@ import {
   LayoutDashboard,
   Loader2,  
   LogIn,
+  MessagesSquare,
 } from 'lucide-react';
 import BroadcastWidget from './BroadcastWidget';
 import SupervisorOverviewSection from '../supervisor/SupervisorOverviewSection';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
+import StudentMessagesPanel from '../messages/StudentMessagesPanel';
 import { getProgramName } from '../supervisor/SupervisorProjectCard';
 import {
   useSupervisorExport,
@@ -33,6 +35,7 @@ const SupervisorDashboard = ({
   showDialog,
 }: SupervisorDashboardProps) => {
   const [activeTab, setActiveTab] = useState<SupervisorTab>('overview');
+  const [messageProjectId, setMessageProjectId] = useState<string | null>(null);
   const supervisorName = session?.user?.name || 'Supervisor';
   const supervisorId = String((session.user as { id?: string }).id || '');
 
@@ -62,6 +65,28 @@ const SupervisorDashboard = ({
     requestRemarks,
     refreshProjects,
   });
+
+  const openMessageProject = (projectId: string) => {
+    if (!projects.some((project) => project._id === projectId)) return;
+    setMessageProjectId(projectId);
+    filters.showAllProjects();
+  };
+
+  useEffect(() => {
+    if (
+      activeTab !== 'projects'
+      || !messageProjectId
+      || !filters.filteredProjects.some((project) => project._id === messageProjectId)
+    ) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const projectCard = document.getElementById(`project-${messageProjectId}`);
+      projectCard?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      projectCard?.focus({ preventScroll: true });
+      setMessageProjectId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, filters.filteredProjects, messageProjectId]);
 
   if (isLoading) {
     return (
@@ -96,6 +121,13 @@ const SupervisorDashboard = ({
       active: activeTab === 'projects',
       badge: projects.length,
       onClick: filters.openProjectsFromSidebar,
+    },
+    {
+      id: 'messages',
+      label: 'Student Messages',
+      icon: <MessagesSquare size={18} />,
+      active: activeTab === 'messages',
+      onClick: () => setActiveTab('messages'),
     },
     ...(filters.isProjectMenuExpanded
       ? [
@@ -199,8 +231,16 @@ const SupervisorDashboard = ({
               emptyState={filters.emptyProjectState}
               onOpenProject={actions.openProject}
               readOnly={filters.projectQueueFilter === 'approved'}
+              highlightedProjectId={messageProjectId}
             />
           </div>
+        )}
+        {activeTab === 'messages' && (
+          <StudentMessagesPanel
+            isDarkMode={isDarkMode}
+            description="Messages sent directly to you by students on your assigned projects."
+            onOpenProject={openMessageProject}
+          />
         )}
       </DashboardShell>
       <SupervisorProjectDialog

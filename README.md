@@ -441,7 +441,8 @@ timeline
     Future Vision
         Mobile application
         AI recommendations
-        Online thesis editor
+        Online thesis editoromplete. Stop here."; exit 1; }
+        
         Similarity detection
 ```
 

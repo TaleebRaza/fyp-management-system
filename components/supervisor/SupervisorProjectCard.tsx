@@ -70,11 +70,13 @@ export default function SupervisorProjectCard({
   onOpen,
   compact = false,
   readOnly = false,
+  highlighted = false,
 }: {
   project: SupervisorProject;
   onOpen: (project: SupervisorProject) => void;
   compact?: boolean;
   readOnly?: boolean;
+  highlighted?: boolean;
 }) {
   const memberNames = getMemberNames(project);
   const memberRollNumbers = getMemberRollNumbers(project);
@@ -138,13 +140,14 @@ export default function SupervisorProjectCard({
 
   return (
     <button
+      id={`project-${project._id}`}
       type="button"
       onClick={() => onOpen(project)}
-      className={`group flex min-h-full flex-col rounded-xl border p-4 text-left transition-colors ${
+      className={`group flex min-h-full flex-col rounded-xl border p-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
         isReviewable
           ? 'border-pink-500/70 bg-pink-50/80 shadow-sm ring-1 ring-pink-500/20 hover:bg-pink-50 dark:bg-pink-500/10 dark:hover:bg-pink-500/15'
           : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'
-      }`}
+      } ${highlighted ? 'ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg)]' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">

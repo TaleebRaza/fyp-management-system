@@ -23,7 +23,7 @@ import FineManagementPanel from '../admin/FineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';
 import AdminHeadlineSection from '../admin/AdminHeadlineSection';
 import AdminStudentsSection from '../admin/AdminStudentsSection';
-import StudentMessagesPanel from '../admin/StudentMessagesPanel';
+import StudentMessagesPanel from '../messages/StudentMessagesPanel';
 import AdminSupervisorsSection, {
   SupervisorSlotEditorDialog,
 } from '../admin/AdminSupervisorsSection';
