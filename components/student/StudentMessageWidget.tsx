@@ -17,7 +17,8 @@ type StudentMessage = {
   size: number;
   createdAt: string;
   acknowledgedAt: string | null;
-  isAdminReply: boolean;
+  recipient: 'admin' | 'supervisor';
+  isStaffReply: boolean;
 };
 
 type MessageResponse = {
@@ -27,12 +28,28 @@ type MessageResponse = {
 
 const secureAudioUrl = (key: string) => `/api/read-pdf?url=${encodeURIComponent(key)}`;
 
-export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boolean }) {
+function recipientLabel(
+  recipient: 'admin' | 'supervisor',
+  supervisorName?: string
+) {
+  return recipient === 'supervisor' ? supervisorName || 'your supervisor' : 'the admin';
+}
+
+export default function StudentMessageWidget({
+  isDarkMode,
+  hasAssignedSupervisor,
+  supervisorName,
+}: {
+  isDarkMode: boolean;
+  hasAssignedSupervisor: boolean;
+  supervisorName?: string;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [message, setMessage] = useState<StudentMessage | null>(null);
   const [mode, setMode] = useState<BroadcastMode>('text');
+  const [recipient, setRecipient] = useState<'admin' | 'supervisor'>('admin');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const audioUploadId = useRef<string | null>(null);
@@ -54,7 +71,9 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
       const response = await fetch('/api/dashboard/student/message', { cache: 'no-store' });
       const data: MessageResponse = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Unable to load your message.');
-      setMessage(data.message || null);
+      const nextMessage = data.message || null;
+      setMessage(nextMessage);
+      if (nextMessage) setRecipient(nextMessage.recipient);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load your message.');
     } finally {
@@ -123,10 +142,13 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
         body = { type: 'audio', key: reservation.key };
       }
 
+      const activeRecipient = recipient === 'supervisor' && !hasAssignedSupervisor
+        ? 'admin'
+        : recipient;
       const response = await fetch('/api/dashboard/student/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, recipient: activeRecipient }),
       });
       const data: MessageResponse = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Unable to send the message.');
@@ -167,14 +189,20 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
     }
   };
 
-  const canCompose = !message || message.isAdminReply || Boolean(message.acknowledgedAt);
+  const canCompose = !message || message.isStaffReply || Boolean(message.acknowledgedAt);
+  const activeRecipient = recipient === 'supervisor' && !hasAssignedSupervisor
+    ? 'admin'
+    : recipient;
+  const activeRecipientLabel = recipientLabel(activeRecipient, supervisorName);
+  const displayedRecipient = message?.recipient || activeRecipient;
+  const displayedRecipientLabel = recipientLabel(displayedRecipient, supervisorName);
 
   return (
     <>
       <button
         type="button"
-        aria-label="Message admin"
-        title="Message admin"
+        aria-label="Messages"
+        title="Messages"
         onClick={() => setIsOpen(true)}
         className="fixed z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-on-primary)] shadow-lg transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2"
         style={{
@@ -187,7 +215,7 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
 
       <section
         aria-hidden={!isOpen}
-        aria-label="Message admin"
+        aria-label="Student messages"
         className={`fixed z-50 flex w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl transition-all duration-200 ease-out ${
           isOpen
             ? 'visible translate-y-0 scale-100 opacity-100'
@@ -201,12 +229,14 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
         <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3">
           <div>
             <h2 className="font-bold text-[var(--color-text)]">
-              {message?.isAdminReply ? 'Admin reply' : 'Message admin'}
+              {message?.isStaffReply
+                ? `${recipientLabel(message.recipient, supervisorName)} reply`
+                : `Message ${displayedRecipientLabel}`}
             </h2>
             <p className="mt-0.5 text-xs leading-5 text-[var(--color-text-muted)]">
-              {message?.isAdminReply
+              {message?.isStaffReply
                 ? 'Send a new text or voice message to reply.'
-                : 'Send one text or voice message. You can replace it after the admin sees or hears it.'}
+                : `Send one text or voice message. You can replace it after ${displayedRecipientLabel} sees or hears it.`}
             </p>
           </div>
           <Button
@@ -231,14 +261,14 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
               {message && (
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <Badge variant={message.isAdminReply ? 'success' : message.acknowledgedAt ? 'success' : 'warning'}>
-                      {message.isAdminReply
-                        ? 'Admin reply'
+                    <Badge variant={message.isStaffReply ? 'success' : message.acknowledgedAt ? 'success' : 'warning'}>
+                      {message.isStaffReply
+                        ? `${message.recipient === 'supervisor' ? 'Supervisor' : 'Admin'} reply`
                         : message.acknowledgedAt
                         ? message.type === 'audio' ? 'Heard' : 'Seen'
                         : 'Pending'}
                     </Badge>
-                    {!message.isAdminReply && (
+                    {!message.isStaffReply && (
                       <Button
                         variant="ghost"
                         className="min-h-9 px-3 text-[var(--color-danger)]"
@@ -261,9 +291,9 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
                       className="mt-3 w-full"
                     />
                   )}
-                  {!message.isAdminReply && !message.acknowledgedAt && (
+                  {!message.isStaffReply && !message.acknowledgedAt && (
                     <p className="mt-3 text-xs font-semibold text-[var(--color-text-muted)]">
-                      You can delete this message, but cannot send another until the admin acknowledges it.
+                      You can delete this message, but cannot send another until {recipientLabel(message.recipient, supervisorName)} acknowledges it.
                     </p>
                   )}
                 </div>
@@ -271,6 +301,27 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
 
               {canCompose && (
                 <div>
+                  {hasAssignedSupervisor && (
+                    <div className="mb-4" role="group" aria-label="Message recipient">
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Send to</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant={activeRecipient === 'admin' ? 'accent' : 'outline'}
+                          disabled={isMutating}
+                          onClick={() => setRecipient('admin')}
+                        >
+                          Admin
+                        </Button>
+                        <Button
+                          variant={activeRecipient === 'supervisor' ? 'accent' : 'outline'}
+                          disabled={isMutating}
+                          onClick={() => setRecipient('supervisor')}
+                        >
+                          Supervisor
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <BroadcastModeSelector
                     disabled={isMutating}
                     isDarkMode={isDarkMode}
@@ -283,7 +334,7 @@ export default function StudentMessageWidget({ isDarkMode }: { isDarkMode: boole
                         value={text}
                         disabled={isMutating}
                         maxLength={APP_SETTINGS.STUDENT_MESSAGE.MAX_TEXT_LENGTH}
-                        placeholder="Write a short message to the admin..."
+                        placeholder={`Write a short message to ${activeRecipientLabel}...`}
                         onChange={(event) => setText(event.target.value)}
                       />
                       <p className="mt-1 text-right text-xs text-[var(--color-text-muted)]">

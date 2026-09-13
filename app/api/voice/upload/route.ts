@@ -51,8 +51,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A valid upload idempotency key is required.' }, { status: 400 });
     }
 
-    if (isStudentMessage && currentUser.role !== 'student' && currentUser.role !== 'admin') {
-      return NextResponse.json({ error: 'Student or admin access required.' }, { status: 401 });
+    if (
+      isStudentMessage
+      && currentUser.role !== 'student'
+      && currentUser.role !== 'admin'
+      && currentUser.role !== 'supervisor'
+    ) {
+      return NextResponse.json({ error: 'Student or staff access required.' }, { status: 401 });
     }
     if (isStudentMessage && projectId) {
       return NextResponse.json({ error: 'Student messages cannot target a project.' }, { status: 400 });

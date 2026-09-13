@@ -15,6 +15,8 @@ type StudentMessage = {
   name: string;
   rollNo: string;
   program?: string;
+  projectId?: string;
+  projectTitle?: string;
   studentMessageId: string;
   studentMessageType: 'text' | 'audio';
   studentMessageContent: string;
@@ -34,7 +36,15 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
-export default function StudentMessagesPanel({ isDarkMode = false }: { isDarkMode?: boolean }) {
+export default function StudentMessagesPanel({
+  isDarkMode = false,
+  description = 'Current messages sent directly to the admin.',
+  onOpenProject,
+}: {
+  isDarkMode?: boolean;
+  description?: string;
+  onOpenProject?: (projectId: string) => void;
+}) {
   const [messages, setMessages] = useState<StudentMessage[]>([]);
   const [selected, setSelected] = useState<StudentMessage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,7 +68,7 @@ export default function StudentMessagesPanel({ isDarkMode = false }: { isDarkMod
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/admin/student-messages', { cache: 'no-store' });
+      const response = await fetch('/api/dashboard/messages', { cache: 'no-store' });
       const data: MessagesResponse = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Unable to load student messages.');
       setMessages(Array.isArray(data.messages) ? data.messages : []);
@@ -79,7 +89,7 @@ export default function StudentMessagesPanel({ isDarkMode = false }: { isDarkMod
 
     setIsAcknowledging(true);
     try {
-      const response = await fetch('/api/admin/student-messages', {
+      const response = await fetch('/api/dashboard/messages', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -155,7 +165,7 @@ export default function StudentMessagesPanel({ isDarkMode = false }: { isDarkMod
         reply = { type: 'audio', key: reservation.key };
       }
 
-      const response = await fetch('/api/admin/student-messages', {
+      const response = await fetch('/api/dashboard/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -195,7 +205,7 @@ export default function StudentMessagesPanel({ isDarkMode = false }: { isDarkMod
         <div className="flex flex-wrap items-start justify-between gap-4">
           <SectionHeader
             title="Student messages"
-            description="Current messages sent directly to the admin."
+            description={description}
           />
           <Button variant="outline" disabled={isLoading} onClick={() => void loadMessages()}>
             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
@@ -220,38 +230,52 @@ export default function StudentMessagesPanel({ isDarkMode = false }: { isDarkMod
         ) : (
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {messages.map((message) => (
-              <button
-                type="button"
+              <article
                 key={`${message._id}:${message.studentMessageId}`}
-                onClick={() => {
-                  stopRecording();
-                  clearAudio();
-                  audioUploadId.current = null;
-                  setReplyText('');
-                  setReplyMode('text');
-                  setSelected(message);
-                }}
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-left transition-colors hover:bg-[var(--color-surface-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:bg-[var(--color-surface-muted)]"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-[var(--color-text)]">{message.name}</p>
-                    <p className="mt-1 truncate text-xs font-semibold text-[var(--color-text-muted)]">
-                      {message.rollNo} · {PROGRAM_MAP[message.program || ''] || message.program || 'Program not set'}
-                    </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopRecording();
+                    clearAudio();
+                    audioUploadId.current = null;
+                    setReplyText('');
+                    setReplyMode('text');
+                    setSelected(message);
+                  }}
+                  className="block w-full p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-[var(--color-text)]">{message.name}</p>
+                      <p className="mt-1 truncate text-xs font-semibold text-[var(--color-text-muted)]">
+                        {message.rollNo} · {PROGRAM_MAP[message.program || ''] || message.program || 'Program not set'}
+                      </p>
+                    </div>
+                    <Badge variant={message.studentMessageAcknowledgedAt ? 'muted' : 'warning'}>
+                      {message.studentMessageAcknowledgedAt ? 'Seen' : 'New'}
+                    </Badge>
                   </div>
-                  <Badge variant={message.studentMessageAcknowledgedAt ? 'muted' : 'warning'}>
-                    {message.studentMessageAcknowledgedAt ? 'Seen' : 'New'}
-                  </Badge>
-                </div>
-                <div className="mt-4 flex items-center justify-between gap-3 text-xs font-semibold text-[var(--color-text-muted)]">
-                  <span className="inline-flex items-center gap-1.5">
-                    {message.studentMessageType === 'audio' && <Volume2 size={14} />}
-                    {message.studentMessageType === 'audio' ? 'Voice' : 'Text'}
-                  </span>
-                  <time dateTime={message.studentMessageCreatedAt}>{formatTime(message.studentMessageCreatedAt)}</time>
-                </div>
-              </button>
+                  <div className="mt-4 flex items-center justify-between gap-3 text-xs font-semibold text-[var(--color-text-muted)]">
+                    <span className="inline-flex items-center gap-1.5">
+                      {message.studentMessageType === 'audio' && <Volume2 size={14} />}
+                      {message.studentMessageType === 'audio' ? 'Voice' : 'Text'}
+                    </span>
+                    <time dateTime={message.studentMessageCreatedAt}>{formatTime(message.studentMessageCreatedAt)}</time>
+                  </div>
+                </button>
+                {message.projectId && message.projectTitle && onOpenProject && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject(message.projectId || '')}
+                    className="block w-full truncate border-t border-[var(--color-border)] px-4 py-3 text-left text-xs font-bold text-[var(--color-accent)] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                    title={message.projectTitle}
+                  >
+                    {message.projectTitle}
+                  </button>
+                )}
+              </article>
             ))}
           </div>
         )}

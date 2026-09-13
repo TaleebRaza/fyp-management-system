@@ -26,7 +26,7 @@ import type {
   SupervisorProject,
 } from '../supervisorDashboardTypes';
 
-export type SupervisorTab = 'overview' | 'projects';
+export type SupervisorTab = 'overview' | 'projects' | 'messages';
 
 const selectorAccessors = {
   getMemberNames,
@@ -132,6 +132,15 @@ export function useSupervisorProjectFilters({
     setProjectQueueFilter('all');
   }, [setActiveTab]);
 
+  const showAllProjects = useCallback(() => {
+    setActiveTab('projects');
+    setBatchFilter('All');
+    setProgramFilter('');
+    setProjectSearch('');
+    setProjectQueueFilter('all');
+    setProjectMenuExpanded(true);
+  }, [setActiveTab]);
+
   const showProgram = useCallback(
     (program: string) => {
       setActiveTab('projects');
@@ -204,6 +213,7 @@ export function useSupervisorProjectFilters({
     openProjectsView,
     openProjectsFromSidebar,
     showAllPrograms,
+    showAllProjects,
     showProgram,
   };
 }

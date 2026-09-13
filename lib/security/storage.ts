@@ -2,6 +2,7 @@ import Project from '../../models/Project';
 import User from '../../models/User';
 import VoiceNote from '../../models/VoiceNote';
 import { CurrentUser, hasProjectAccess } from './auth';
+import { isMessageForStaff } from '../studentMessageDirection';
 import { getStorageObjectKind } from '../storageValidation';
 
 function keyMatcher(key: string) {
@@ -44,11 +45,19 @@ async function canAccessStudentMessage(currentUser: CurrentUser, studentMessageC
     role: 'student',
     studentMessageType: 'audio',
     studentMessageContent,
-  }).select('_id').lean();
+  }).select('_id studentMessageId').lean();
 
-  return Boolean(student && (
-    currentUser.role === 'admin' || currentUser.id === student._id.toString()
-  ));
+  if (!student) return false;
+  if (currentUser.role === 'admin' || currentUser.id === student._id.toString()) return true;
+  if (
+    currentUser.role !== 'supervisor'
+    || !isMessageForStaff(student.studentMessageId, 'supervisor', currentUser.id)
+  ) return false;
+
+  return Boolean(await Project.exists({
+    supervisorId: currentUser.id,
+    members: student._id,
+  }));
 }
 
 async function canAccessLegacyStoredObject(currentUser: CurrentUser, key: string) {

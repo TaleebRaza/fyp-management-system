@@ -362,7 +362,11 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         )}
       </DashboardShell>
 
-      <StudentMessageWidget isDarkMode={Boolean(isDarkMode)} />
+      <StudentMessageWidget
+        isDarkMode={Boolean(isDarkMode)}
+        hasAssignedSupervisor={hasAssignedSupervisor}
+        supervisorName={supervisor?.name}
+      />
 
       <SupervisorChangeDialog
         open={isSupervisorWarningOpen}

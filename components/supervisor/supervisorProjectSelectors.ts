@@ -97,7 +97,7 @@ export function filterSupervisorProjects(
 export function getSupervisorDashboardStats(
   projects: SupervisorProject[],
   filteredProjects: SupervisorProject[],
-  activeTab: 'overview' | 'projects',
+  activeTab: 'overview' | 'projects' | 'messages',
   accessors: Pick<
     SupervisorProjectSelectorAccessors,
     'hasProjectSubmission' | 'isProjectReviewable'
