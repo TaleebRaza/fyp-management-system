@@ -328,7 +328,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             maxTeamSize={maxTeamSize}
             canShareInviteCode={canShareInviteCode}
             inviteCode={project?.inviteCode}
-            projectId={project?._id}
             isUnassigned={isUnassigned}
             supervisorOptions={supervisorOptions}
             selectedSupervisorId={selectedSupervisorId}
@@ -344,8 +343,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             onOpenSupervisorChange={openSupervisorChangeDialog}
             isSupervisorChangeLocked={isSupervisorChangeLocked}
             supervisorChangeOptions={supervisorChangeOptions}
-            currentUserId={currentUserId}
-            isDarkMode={Boolean(isDarkMode)}
           />
         )}
         {activeTab === 'resources' && (

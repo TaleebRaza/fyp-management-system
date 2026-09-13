@@ -11,7 +11,6 @@ import { ApprovalRatingForm, type PendingProjectRatings } from '../project-ratin
 import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
 import { AvatarBadge, Badge, Button, DashboardPanel, Dialog, EmptyState, SectionHeader, StyledInput } from '../ui';
 import { Timeline, getProjectStageLabel } from '../ui/Timeline';
-import { VoiceChat } from '../ui/VoiceChat';
 import {
   getMemberNames,
   getMemberRollNumbers,
@@ -22,13 +21,7 @@ import {
   getStatusLabel,
   getStatusVariant,
 } from './SupervisorProjectCard';
-import type { SupervisorProject, SupervisorTheme } from './supervisorDashboardTypes';
-
-type VoiceNotes = {
-  currentUserId: string;
-  theme: SupervisorTheme;
-  isDarkMode: boolean;
-};
+import type { SupervisorProject } from './supervisorDashboardTypes';
 
 type ProjectManagement = {
   migrationStudentId: string;
@@ -45,7 +38,6 @@ export default function SupervisorProjectDialog({
   onClose,
   isProcessingAction,
   onAction,
-  voiceNotes,
   management,
 }: {
   project: SupervisorProject | null;
@@ -56,7 +48,6 @@ export default function SupervisorProjectDialog({
     status: string,
     approval?: { ratings: ProjectRatingValues; remarks: string }
   ) => void;
-  voiceNotes?: VoiceNotes;
   management?: ProjectManagement;
 }) {
   const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
@@ -214,11 +205,6 @@ export default function SupervisorProjectDialog({
               ))}
             </div>
           </DashboardPanel>
-
-          {voiceNotes && <DashboardPanel>
-            <SectionHeader title="Voice Notes" description="Communicate with the team through short project voice notes." />
-            <VoiceChat projectId={project._id} currentUserId={voiceNotes.currentUserId} theme={voiceNotes.theme} isDarkMode={voiceNotes.isDarkMode} />
-          </DashboardPanel>}
 
           {management && <DashboardPanel>
             <SectionHeader title="Supervisor Management" description="Select a student from the team and migrate them individually." />

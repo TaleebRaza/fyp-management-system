@@ -49,16 +49,13 @@ test('submission and review enqueue email work without awaiting SMTP', async () 
   assert.doesNotMatch(review, /sendNotificationEmail/);
 });
 
-test('voice, broadcast, PDF submission, and review use reservation finalization instead of direct object deletion', async () => {
-  const [voice, broadcast, student, review] = await Promise.all([
-    read('app/api/voice/route.ts'),
+test('broadcast, PDF submission, and review use reservation finalization instead of direct object deletion', async () => {
+  const [broadcast, student, review] = await Promise.all([
     read('app/api/dashboard/supervisor/broadcast/route.ts'),
     read('app/api/dashboard/student/route.ts'),
     read('lib/projectReview.ts'),
   ]);
 
-  assert.match(voice, /finalizeUploadReservation/);
-  assert.doesNotMatch(voice, /DeleteObjectCommand/);
   assert.match(broadcast, /finalizeUploadReservation/);
   assert.doesNotMatch(broadcast, /DeleteObjectCommand/);
   assert.match(student, /finalizeUploadReservation/);

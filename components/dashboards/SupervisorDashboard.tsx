@@ -248,7 +248,6 @@ const SupervisorDashboard = ({
         onClose={actions.closeProject}
         isProcessingAction={actions.isProcessingAction}
         onAction={actions.handleAction}
-        voiceNotes={{ currentUserId: supervisorId, theme, isDarkMode }}
         management={{
           migrationStudentId: actions.migrationStudentId,
           onMigrationStudentChange: actions.setMigrationStudentId,

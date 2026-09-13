@@ -1,12 +1,11 @@
-export type StorageUploadKind = 'pdf' | 'voice' | 'broadcast' | 'student-message';
+export type StorageUploadKind = 'pdf' | 'broadcast' | 'student-message';
 
 const MAX_STORAGE_KEY_LENGTH = 500;
 
-type StorageObjectKind = 'proposal' | 'voice' | 'broadcast' | 'student-message';
+type StorageObjectKind = 'proposal' | 'broadcast' | 'student-message';
 
 const STORAGE_PREFIXES: Record<StorageObjectKind, string> = {
   proposal: 'proposals/',
-  voice: 'voicenotes/',
   broadcast: 'broadcasts/',
   'student-message': 'student-messages/',
 };
@@ -51,10 +50,6 @@ export function getStorageObjectKind(key: string): StorageObjectKind | null {
     .find(([, prefix]) => key.startsWith(prefix))?.[0] || null;
 }
 
-export function isOwnedVoiceKey(key: unknown, userId: string, projectId: string) {
-  return typeof key === 'string' && key.startsWith(`voicenotes/${userId}/${projectId}/`);
-}
-
 export function isOwnedStudentMessageKey(key: unknown, userId: string) {
   return typeof key === 'string'
     && key.startsWith(`student-messages/${userId}/`)
@@ -64,14 +59,12 @@ export function isOwnedStudentMessageKey(key: unknown, userId: string) {
 export function buildStorageKey(
   kind: StorageUploadKind,
   ownerId: string,
-  objectId: string,
-  projectId?: string
+  objectId: string
 ) {
   if (kind === 'pdf') return `proposals/${ownerId}/${objectId}.pdf`;
   if (kind === 'broadcast') return `broadcasts/${ownerId}/${objectId}.webm`;
   if (kind === 'student-message') return `student-messages/${ownerId}/${objectId}.webm`;
-  if (!projectId) throw new Error('Voice-note uploads require a project.');
-  return `voicenotes/${ownerId}/${projectId}/${objectId}.webm`;
+  throw new Error('Unsupported storage upload kind.');
 }
 
 export function hasExpectedStorageMagic(kind: StorageUploadKind, bytes: Uint8Array) {

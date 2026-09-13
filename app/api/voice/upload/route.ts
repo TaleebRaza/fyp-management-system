@@ -4,7 +4,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BUCKET_NAME, getS3Client } from '../../../../lib/s3-client';
 import connectToDatabase from '../../../../lib/mongodb';
-import { hasProjectAccess, requireCurrentUser } from '../../../../lib/security/auth';
+import { requireCurrentUser } from '../../../../lib/security/auth';
 import { consumeRateLimitDimensions } from '../../../../lib/rateLimit';
 import {
   cancelUploadReservation,
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const isStudentMessage = purpose === 'student-message';
 
     if (contentType !== APP_SETTINGS.STUDENT_MESSAGE.AUDIO_CONTENT_TYPE) {
-      return NextResponse.json({ error: 'Voice notes must use the audio/webm format.' }, { status: 400 });
+      return NextResponse.json({ error: 'Audio uploads must use the audio/webm format.' }, { status: 400 });
     }
 
     if (
@@ -45,41 +45,30 @@ export async function POST(req: NextRequest) {
       || Number(fileSize) <= 0
       || Number(fileSize) > APP_SETTINGS.STUDENT_MESSAGE.MAX_AUDIO_BYTES
     ) {
-      return NextResponse.json({ error: 'Voice note exceeds 1MB limit.' }, { status: 400 });
+      return NextResponse.json({ error: 'Audio upload exceeds the 1 MiB limit.' }, { status: 400 });
     }
     if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) {
       return NextResponse.json({ error: 'A valid upload idempotency key is required.' }, { status: 400 });
     }
 
-    if (
-      isStudentMessage
-      && currentUser.role !== 'student'
-      && currentUser.role !== 'admin'
-      && currentUser.role !== 'supervisor'
-    ) {
+    if (projectId) {
+      return NextResponse.json({ error: 'Project-scoped audio uploads are no longer supported.' }, { status: 410 });
+    }
+
+    if (isStudentMessage && currentUser.role !== 'student' && currentUser.role !== 'admin' && currentUser.role !== 'supervisor') {
       return NextResponse.json({ error: 'Student or staff access required.' }, { status: 401 });
     }
-    if (isStudentMessage && projectId) {
-      return NextResponse.json({ error: 'Student messages cannot target a project.' }, { status: 400 });
+    if (!isStudentMessage && currentUser.role !== 'supervisor') {
+      return NextResponse.json({ error: 'Supervisor access required for broadcast audio.' }, { status: 401 });
     }
 
-    const isVoiceNote = !isStudentMessage && Boolean(projectId);
-    if (isVoiceNote && !await hasProjectAccess(currentUser, String(projectId))) {
-      return NextResponse.json({ error: 'Project not found or access denied.' }, { status: 403 });
-    }
-
-    if (!isStudentMessage && !isVoiceNote && currentUser.role !== 'supervisor') {
-      return NextResponse.json({ error: 'Project ID required for voice notes.' }, { status: 400 });
-    }
-
-    const kind = isStudentMessage ? 'student-message' : isVoiceNote ? 'voice' : 'broadcast';
+    const kind = isStudentMessage ? 'student-message' : 'broadcast';
     const reservation = await reserveUpload({
       key: isStudentMessage
         ? (messageId) => buildStorageKey('student-message', currentUser.id, messageId)
-        : buildStorageKey(kind, currentUser.id, idempotencyKey, isVoiceNote ? String(projectId) : undefined),
+        : buildStorageKey(kind, currentUser.id, idempotencyKey),
       ownerId: currentUser.id,
       kind,
-      projectId: isVoiceNote ? String(projectId) : undefined,
       expectedBytes: Number(fileSize),
       expectedContentType: contentType,
       idempotencyKey,

@@ -2,9 +2,6 @@ export const APP_SETTINGS = {
   // The maximum number of slots a supervisor can hold
   MAX_SLOTS_PER_SUPERVISOR: 30,
 
-  // Voice notes retained per sender in each project.
-  MAX_VOICE_NOTES_PER_SENDER: 3,
-
   STUDENT_MESSAGE: {
     MAX_TEXT_LENGTH: 500,
     MAX_AUDIO_SECONDS: 60,

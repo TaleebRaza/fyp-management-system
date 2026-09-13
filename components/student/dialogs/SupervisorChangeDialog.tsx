@@ -17,7 +17,7 @@ export type SupervisorChangeDialogProps = {
 };
 
 const RESET_WARNINGS = [
-  'Your uploaded project details, files, and voice notes will be deleted.',
+  'Your uploaded project details and files will be deleted.',
   'If you are in a team, you will leave it. Your teammate will keep the existing project.',
   'You will start with a new workspace under the selected supervisor.',
   'This change cannot be undone from your dashboard.',

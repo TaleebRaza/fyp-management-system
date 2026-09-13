@@ -1,6 +1,5 @@
 import Project from '../../models/Project';
 import User from '../../models/User';
-import VoiceNote from '../../models/VoiceNote';
 import { CurrentUser, hasProjectAccess } from './auth';
 import { isMessageForStaff } from '../studentMessageDirection';
 import { getStorageObjectKind } from '../storageValidation';
@@ -17,11 +16,6 @@ function projectAccessFilter(currentUser: CurrentUser) {
 
 async function canAccessProject(currentUser: CurrentUser, pdfUrl: string | RegExp) {
   return Boolean(await Project.exists({ pdfUrl, ...projectAccessFilter(currentUser) }));
-}
-
-async function canAccessVoice(currentUser: CurrentUser, blobUrl: string | RegExp) {
-  const voiceNote = await VoiceNote.findOne({ blobUrl }).select('projectId').lean();
-  return Boolean(voiceNote && await hasProjectAccess(currentUser, voiceNote.projectId.toString()));
 }
 
 async function canAccessBroadcast(currentUser: CurrentUser, broadcastContent: string | RegExp) {
@@ -62,9 +56,8 @@ async function canAccessStudentMessage(currentUser: CurrentUser, studentMessageC
 
 async function canAccessLegacyStoredObject(currentUser: CurrentUser, key: string) {
   const matcher = keyMatcher(key);
-  const [project, voiceNote, broadcastOwner] = await Promise.all([
+  const [project, broadcastOwner] = await Promise.all([
     Project.findOne({ $or: [{ pdfUrl: key }, { pdfUrl: matcher }] }).select('_id').lean(),
-    VoiceNote.findOne({ $or: [{ blobUrl: key }, { blobUrl: matcher }] }).select('projectId').lean(),
     User.findOne({
       role: 'supervisor',
       broadcastType: 'audio',
@@ -73,7 +66,6 @@ async function canAccessLegacyStoredObject(currentUser: CurrentUser, key: string
   ]);
 
   if (project) return hasProjectAccess(currentUser, project._id.toString());
-  if (voiceNote) return hasProjectAccess(currentUser, voiceNote.projectId.toString());
   if (!broadcastOwner) return false;
   if (currentUser.role === 'admin' || currentUser.id === broadcastOwner._id.toString()) return true;
 
@@ -87,8 +79,6 @@ export async function canAccessStoredObject(currentUser: CurrentUser, key: strin
   switch (getStorageObjectKind(key)) {
     case 'proposal':
       return canAccessProject(currentUser, key);
-    case 'voice':
-      return canAccessVoice(currentUser, key);
     case 'broadcast':
       return canAccessBroadcast(currentUser, key);
     case 'student-message':

@@ -11,7 +11,6 @@ import {
   enqueueStorageDeletion,
   expireUploadReservations,
   processStorageDeletionOutbox,
-  releaseVoiceNoteSlot,
   withStorageTransaction,
 } from '../../../../lib/storageProtocol';
 import User from '../../../../models/User';
@@ -71,9 +70,6 @@ export async function GET(req: Request) {
         await VoiceNote.deleteMany({
           _id: { $in: validExpiredNotes.map((note) => note._id) },
         }).session(session);
-        for (const note of validExpiredNotes) {
-          await releaseVoiceNoteSlot(String(note.senderId), String(note.projectId), session);
-        }
       }
       purgedVoiceNotesCount = validExpiredNotes.length;
 

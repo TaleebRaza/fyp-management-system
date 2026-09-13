@@ -7,24 +7,14 @@ import {
   SectionHeader,
   StyledInput,
 } from '../ui';
-import { VoiceChat } from '../ui/VoiceChat';
 import { EXPANDED_TEAM_SIZE } from '../../config/appSettings';
 import type { ProjectMember, SupervisorOption } from './studentDashboardTypes';
-
-const DASHBOARD_THEME = {
-  name: 'Professional',
-  bg: 'bg-[#14213d]',
-  text: 'text-[#fca311]',
-  lightBg: 'bg-[#fca311]/10',
-  ring: 'focus:ring-[#fca311]',
-};
 
 export default function StudentTeamSection({
   projectMembers,
   maxTeamSize,
   canShareInviteCode,
   inviteCode,
-  projectId,
   isUnassigned,
   supervisorOptions,
   selectedSupervisorId,
@@ -40,14 +30,11 @@ export default function StudentTeamSection({
   onOpenSupervisorChange,
   isSupervisorChangeLocked,
   supervisorChangeOptions,
-  currentUserId,
-  isDarkMode,
 }: {
   projectMembers: ProjectMember[];
   maxTeamSize: number;
   canShareInviteCode: boolean;
   inviteCode?: string;
-  projectId?: string;
   isUnassigned: boolean;
   supervisorOptions: SupervisorOption[];
   selectedSupervisorId: string;
@@ -63,8 +50,6 @@ export default function StudentTeamSection({
   onOpenSupervisorChange: () => void;
   isSupervisorChangeLocked: boolean;
   supervisorChangeOptions: SupervisorOption[];
-  currentUserId: string;
-  isDarkMode: boolean;
 }) {
   return (
     <div className="grid gap-7 sm:gap-6 xl:grid-cols-2">
@@ -238,20 +223,6 @@ export default function StudentTeamSection({
           </div>
         )}
       </DashboardPanel>
-
-      {projectId && (
-        <div className="xl:col-span-2">
-          <DashboardPanel>
-            <SectionHeader title="Voice Workspace" description="Quick voice notes linked to this project." />
-            <VoiceChat
-              projectId={projectId}
-              currentUserId={currentUserId}
-              theme={DASHBOARD_THEME}
-              isDarkMode={isDarkMode}
-            />
-          </DashboardPanel>
-        </div>
-      )}
     </div>
   );
 }
