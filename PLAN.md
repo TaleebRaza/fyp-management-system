@@ -4,7 +4,7 @@
 
 Build Viva in small, testable milestones using the least code and infrastructure that reliably satisfy the requirements.
 
-**Document status:** Prepared for `plan.md`. The file has not been written because Plan Mode remains active.
+**Document status:** Active implementation tracker.
 
 ## Working rules
 
@@ -460,7 +460,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Not started.
+**Overall status:** Milestone 1 complete.
 
 ### Update template
 
@@ -473,3 +473,13 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** Known failures, uncertainties, or unrun checks.
 - **Next step:**
 - **Suggested commit message:**
+
+### 2026-09-14, Milestone 1 complete
+
+- **Research findings:** Existing project-rating logic validates at a pure TypeScript boundary and uses Node's built-in test runner. Viva has no persistence or HTTP requirement at this stage.
+- **Implemented:** `lib/viva.ts` provides configuration validation, lifecycle derivation using supplied UTC times, separately tracked publication, permitted score changes, deadline-zero finalization, and final-only equal-weight averages. `tests/viva.test.mjs` covers invalid configuration, deadline boundaries, score locking, missing marks, zeros, equal weighting, and rounding.
+- **Complexity avoided:** No schema, index, migration, API route, UI, dependency, generic workflow engine, or database abstraction was added.
+- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. `tests/viva.test.mjs` passed. `npm run test:unit` ran 48 files: 46 passed, including Viva; two unrelated existing structure assertions failed.
+- **Remaining hurdles:** `project-rating-ui.test.mjs` expects "Download Excel" although the UI renders "Download PDF". `storage-workflow-structure.test.mjs` expects a removed `student.domains = []` assignment. Neither file or behavior was touched here.
+- **Next step:** Milestone 2, persistence and assessment history.
+- **Suggested commit message:** `feat(viva): add pure lifecycle and scoring rules`
