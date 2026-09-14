@@ -80,4 +80,5 @@ test('records actor identity with the requested authentication and project revie
   assert.match(authHelper, /select\('_id role name rollNo'\)/);
   assert.match(logPanel, /entry\.actorName/);
   assert.match(logPanel, /entry\.actorRollNo/);
+  assert.match(logPanel, /'student-project-reset': \{ label: 'Reset their project'/);
 });

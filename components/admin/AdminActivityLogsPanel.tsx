@@ -53,6 +53,7 @@ const ACTION_DETAILS: Record<PortalActivityAction, {
   'student-name-updated': { label: 'Updated their name', icon: UserRoundCog, variant: 'default' },
   'student-academic-details-updated': { label: 'Updated academic details', icon: UserRoundCog, variant: 'default' },
   'student-supervisor-updated': { label: 'Changed supervisor', icon: UserRoundCog, variant: 'default' },
+  'student-project-reset': { label: 'Reset their project', icon: RefreshCw, variant: 'warning' },
   'student-team-joined': { label: 'Joined a project team', icon: UserRoundCog, variant: 'default' },
   'student-team-left': { label: 'Left a project team', icon: UserRoundCog, variant: 'default' },
   'supervisor-student-migrated': { label: 'Migrated a student', icon: UserRoundCog, variant: 'default' },
