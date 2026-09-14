@@ -493,3 +493,13 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** `project-rating-ui.test.mjs` expects "Download Excel" although the UI renders "Download PDF". `storage-workflow-structure.test.mjs` expects a removed `student.domains = []` assignment. Neither file or behavior was touched here.
 - **Next step:** Milestone 3, Viva workflows and API boundaries, subject to backend-change approval.
 - **Suggested commit message:** `feat(viva): persist assessment history and audit trail`
+
+### 2026-09-14, Milestone 3 complete
+
+- **Research findings:** Admin navigation is tab-based, dashboard panels and native form controls already provide the required interaction patterns, and `requireCurrentUser` establishes the existing admin boundary. Viva rounds and immutable audit events from Milestone 2 provide the only persistence needed for configuration.
+- **Implemented:** Added the admin-only `/api/admin/viva` route and Viva dashboard area. Admin can create and reopen unstarted rounds, select active project teams and active supervisors, configure panel sizes and both durations, and add, rename, reorder, or remove marking factors. Server validation rejects invalid settings, stale selections, and all changes after a round is frozen. Successful creates and updates are recorded in the durable Viva audit history.
+- **Complexity avoided:** No schema change, dependency, generic form/state framework, new design system, client-side-only lock, or storage change. One transaction-backed configuration path performs the shared validation and audit write.
+- **Validation:** `npx tsc --noEmit` and `npm run lint` passed. `npm run test:viva:admin` passed against a temporary local single-node MongoDB replica set, seeded six fake users and two fake teams, then dropped `fyp_viva_m3_test`; it verified invalid input, active selections, factor ordering, audit events, and frozen-round rejection. `npm run test:unit` ran 50 files: 48 passed, including Viva; two unrelated existing structure assertions failed. `npm run build` passes with a temporary local `MONGODB_URI`; the normal build is blocked by the workspace's missing `MONGODB_URI` setting. An unsigned local request was redirected to the existing sign-in guard before the Viva route.
+- **Remaining hurdles:** `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs` retain their pre-existing failures. The workspace's `.env.local` needs `MONGODB_URI` for an unqualified production build.
+- **Next step:** Milestone 4, manual panel management, subject to database-change approval.
+- **Suggested commit message:** `feat(viva): add admin round configuration`

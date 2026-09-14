@@ -7,6 +7,7 @@ import {
   BarChart3,
   CircleDollarSign,
   ClipboardCheck,
+  ClipboardList,
   GraduationCap,
   LayoutDashboard,
   LockKeyhole,
@@ -50,6 +51,14 @@ const AdminProjectReviewsPanel = dynamic(loadAdminProjectReviewsPanel, {
   ),
 });
 
+const AdminVivaSection = dynamic(() => import('../admin/AdminVivaSection'), {
+  loading: () => (
+    <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">
+      Loading Viva configuration...
+    </div>
+  ),
+});
+
 const AdminActivityLogsPanel = dynamic(
   () => import('../admin/AdminActivityLogsPanel'),
   {
@@ -67,6 +76,7 @@ type AdminTab =
   | 'students'
   | 'messages'
   | 'reviews'
+  | 'viva'
   | 'logs'
   | 'registration'
   | 'fines';
@@ -185,6 +195,14 @@ const AdminDashboard = ({
       icon: <ClipboardCheck size={18} />,
       active: activeTab === 'reviews',
       onClick: () => setActiveTab('reviews'),
+    },
+    {
+      id: 'viva',
+      label: 'Viva',
+      section: 'Portal Operations',
+      icon: <ClipboardList size={18} />,
+      active: activeTab === 'viva',
+      onClick: () => setActiveTab('viva'),
     },
     {
       id: 'messages',
@@ -345,6 +363,8 @@ const AdminDashboard = ({
         {activeTab === 'reviews' && (
           <AdminProjectReviewsPanel showDialog={showDialog} />
         )}
+
+        {activeTab === 'viva' && <AdminVivaSection />}
 
         {activeTab === 'messages' && <StudentMessagesPanel isDarkMode={isDarkMode} />}
 
