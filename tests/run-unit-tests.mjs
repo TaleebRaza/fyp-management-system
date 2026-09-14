@@ -14,11 +14,15 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-const result = spawnSync(process.execPath, ['--test', ...testFiles], {
-  cwd: path.resolve(testsDirectory, '..'),
-  stdio: 'inherit',
-  env: process.env,
-});
+const result = spawnSync(
+  process.execPath,
+  ['--experimental-strip-types', '--test', ...testFiles],
+  {
+    cwd: path.resolve(testsDirectory, '..'),
+    stdio: 'inherit',
+    env: process.env,
+  }
+);
 
 if (result.error) {
   console.error(`Unable to start the Node.js test runner: ${result.error.message}`);
