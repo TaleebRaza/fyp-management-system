@@ -1,7 +1,11 @@
 'use client';
 
 import { useCallback, useState, type FormEvent } from 'react';
-import { joinStudentTeam, leaveStudentTeam } from '../api/studentWorkflowApi';
+import {
+  joinStudentTeam,
+  leaveStudentTeam,
+  resetStudentProject,
+} from '../api/studentWorkflowApi';
 import type { StudentDashboardProps } from '../studentDashboardTypes';
 
 type UseStudentTeamActionsOptions = {
@@ -110,6 +114,39 @@ export function useStudentTeamActions({
     });
   }, [canLeaveTeam, performLeaveTeam, showDialog]);
 
+  const performProjectReset = useCallback(async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await resetStudentProject();
+      await resetProjectDraft();
+      setInviteCodeInput('');
+      resetTemplates();
+      await refreshDashboard();
+      await refreshSupervisors();
+      showDialog({
+        title: 'Project reset',
+        message: response.message || 'Your project has been reset. You can begin again by choosing a supervisor or joining a team.',
+      });
+    } catch (error) {
+      showDialog({
+        title: 'Project reset failed',
+        message: getErrorMessage(error, 'Unable to reset your project right now.'),
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [refreshDashboard, refreshSupervisors, resetProjectDraft, resetTemplates, showDialog]);
+
+  const handleResetProject = useCallback(() => {
+    showDialog({
+      type: 'confirm',
+      title: 'Reset your project?',
+      message:
+        'This permanently removes your supervisor, project submission, messages, and voice notes. You will leave your current team, while any remaining teammates keep their project. This cannot be undone.',
+      onConfirm: performProjectReset,
+    });
+  }, [performProjectReset, showDialog]);
+
   const handleCopyInviteCode = useCallback(async () => {
     if (!inviteCode) return;
     await navigator.clipboard.writeText(inviteCode);
@@ -125,6 +162,7 @@ export function useStudentTeamActions({
     isSubmitting,
     handleJoinTeam,
     handleLeaveTeam,
+    handleResetProject,
     handleCopyInviteCode,
   };
 }

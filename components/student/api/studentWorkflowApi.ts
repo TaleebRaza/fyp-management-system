@@ -71,6 +71,19 @@ export async function leaveStudentTeam(): Promise<StudentWorkflowResponse> {
   return data;
 }
 
+export async function resetStudentProject(): Promise<StudentWorkflowResponse> {
+  const response = await fetch('/api/dashboard/student', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'resetProject' }),
+  });
+  const data = await readJson<StudentWorkflowResponse>(response);
+  if (!response.ok) {
+    throw new Error(readError(data, 'Failed to reset project.'));
+  }
+  return data;
+}
+
 export async function updateStudentAcademicInfo(
   input: StudentAcademicUpdateRequest
 ): Promise<StudentWorkflowResponse> {

@@ -89,6 +89,19 @@ test('leave team preserves the bodyless POST contract', async () => {
   });
 });
 
+test('project reset uses the authenticated student action', async () => {
+  await withMockFetch(async (url, init) => {
+    assert.equal(url, '/api/dashboard/student');
+    assert.equal(init.method, 'POST');
+    assert.deepEqual(init.headers, { 'Content-Type': 'application/json' });
+    assert.deepEqual(JSON.parse(init.body), { action: 'resetProject' });
+    return jsonResponse({ message: 'Reset' });
+  }, async () => {
+    const result = await api.resetStudentProject();
+    assert.equal(result.message, 'Reset');
+  });
+});
+
 test('academic update preserves action and field names', async () => {
   await withMockFetch(async (url, init) => {
     assert.equal(url, '/api/dashboard/student');

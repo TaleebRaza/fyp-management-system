@@ -1,5 +1,5 @@
 import type { FormEventHandler } from 'react';
-import { ArrowRight, Copy, Loader2, Lock, LogOut, UserCheck, Users } from 'lucide-react';
+import { ArrowRight, Copy, Loader2, Lock, LogOut, RotateCcw, UserCheck, Users } from 'lucide-react';
 import {
   AvatarBadge,
   Button,
@@ -26,6 +26,7 @@ export default function StudentTeamSection({
   onJoinTeam,
   canLeaveTeam,
   onLeaveTeam,
+  onResetProject,
   onCopyInviteCode,
   onOpenSupervisorChange,
   isSupervisorChangeLocked,
@@ -46,6 +47,7 @@ export default function StudentTeamSection({
   onJoinTeam: FormEventHandler<HTMLFormElement>;
   canLeaveTeam: boolean;
   onLeaveTeam: () => void;
+  onResetProject: () => void;
   onCopyInviteCode: () => void;
   onOpenSupervisorChange: () => void;
   isSupervisorChangeLocked: boolean;
@@ -194,6 +196,21 @@ export default function StudentTeamSection({
             {canLeaveTeam
               ? 'Leaving removes your supervisor, project details, status, and PDF link. You will receive a new project and invite code.'
               : 'You cannot leave while you are the only member of this team.'}
+          </p>
+        </div>
+        <div className="mt-6 border-t border-[var(--color-border)] pt-6">
+          <Button
+            type="button"
+            variant="danger"
+            className="w-full"
+            onClick={onResetProject}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <RotateCcw size={16} />}
+            Reset Project
+          </Button>
+          <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
+            Start again from proposal and remove your supervisor, messages, and personal project files.
           </p>
         </div>
         {!isUnassigned && (
