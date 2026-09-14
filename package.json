@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:unit": "node tests/run-unit-tests.mjs",
+    "test:viva:persistence": "node --test tests/viva-persistence.integration.test.mjs",
     "capacity:reconcile": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs",
     "capacity:repair": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs --repair",
     "project:drift-audit": "node --env-file-if-exists=.env.local scripts/audit-project-drift.mjs",

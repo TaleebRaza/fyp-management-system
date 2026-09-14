@@ -1,6 +1,7 @@
 import type { ClientSession } from 'mongoose';
 import Project from '../models/Project';
 import User from '../models/User';
+import VivaSession from '../models/VivaSession';
 import VoiceNote from '../models/VoiceNote';
 import { normalizeStorageKey } from './storageValidation';
 
@@ -47,12 +48,16 @@ export async function findSharedStorageKeys({
     studentMessageType: 'audio',
     studentMessageContent: { $exists: true, $nin: ['', null] },
   }).select('studentMessageContent').session(session).lean();
+  const vivaSessions = await VivaSession.find({
+    'projectSnapshot.pdfUrl': { $exists: true, $nin: ['', null] },
+  }).select('projectSnapshot.pdfUrl').session(session).lean();
 
   const referencedKeys = [
     ...projects.map((project) => normalizeStorageKey(project.pdfUrl)),
     ...voiceNotes.map((voiceNote) => normalizeStorageKey(voiceNote.blobUrl)),
     ...supervisors.map((supervisor) => normalizeStorageKey(supervisor.broadcastContent)),
     ...students.map((student) => normalizeStorageKey(student.studentMessageContent)),
+    ...vivaSessions.map((vivaSession) => normalizeStorageKey(vivaSession.projectSnapshot?.pdfUrl)),
   ];
 
   return new Set(

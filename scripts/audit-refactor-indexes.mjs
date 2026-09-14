@@ -16,6 +16,10 @@ const expectedIndexes = {
   emailoutboxes: refactorIndexes.emailoutboxes,
   uploadreservations: refactorIndexes.uploadreservations,
   systemconfigs: refactorIndexes.systemconfigs,
+  vivarounds: refactorIndexes.vivarounds,
+  vivapanels: refactorIndexes.vivapanels,
+  vivasessions: refactorIndexes.vivasessions,
+  vivaauditevents: refactorIndexes.vivaauditevents,
 };
 
 function indexKey(index) {

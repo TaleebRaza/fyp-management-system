@@ -9,6 +9,7 @@ if (!uri) {
 
 const keyAudits = [
   { collection: 'projects', field: 'pdfUrl', prefix: 'proposals/', filter: {} },
+  { collection: 'vivasessions', field: 'projectSnapshot.pdfUrl', prefix: 'proposals/', filter: {} },
   { collection: 'voicenotes', field: 'blobUrl', prefix: 'voicenotes/', filter: {} },
   {
     collection: 'users',

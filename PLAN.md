@@ -460,7 +460,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Milestone 1 complete.
+**Overall status:** Milestones 1–2 complete.
 
 ### Update template
 
@@ -483,3 +483,13 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** `project-rating-ui.test.mjs` expects "Download Excel" although the UI renders "Download PDF". `storage-workflow-structure.test.mjs` expects a removed `student.domains = []` assignment. Neither file or behavior was touched here.
 - **Next step:** Milestone 2, persistence and assessment history.
 - **Suggested commit message:** `feat(viva): add pure lifecycle and scoring rules`
+
+### 2026-09-14, Milestone 2 complete
+
+- **Research findings:** Existing user and project workflows can change or delete source records, while `PortalActivityLog` is capped and best-effort, so neither preserves assessment history. MongoDB transactions require a replica set; the implementation follows the MongoDB and Mongoose transaction and index guidance reviewed for this milestone.
+- **Implemented:** Added persistent Viva rounds, panels, sessions, snapshots, examiner score sheets, and immutable audit events. Session writes and their audit records use a transaction. Added required MongoDB indexes, index-audit coverage, and storage-reference checks so a PDF retained in a Viva snapshot cannot be deleted as an orphan.
+- **Complexity avoided:** No Viva API/UI, dependency, generic repository layer, event-sourcing system, or changes to the existing User and Project models were added.
+- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. `node --test tests/viva.test.mjs` passed. A local replica-set MongoDB test seeded seven fake users, three fake projects, one round, one panel, and one session; it passed validation, duplicate-panel, snapshot, storage-reference, replacement-attempt, rollback, and concurrent-write checks, then dropped the test database. `npm run test:unit` ran 49 files: 47 passed; the two unrelated existing assertion failures remain below.
+- **Remaining hurdles:** `project-rating-ui.test.mjs` expects "Download Excel" although the UI renders "Download PDF". `storage-workflow-structure.test.mjs` expects a removed `student.domains = []` assignment. Neither file or behavior was touched here.
+- **Next step:** Milestone 3, Viva workflows and API boundaries, subject to backend-change approval.
+- **Suggested commit message:** `feat(viva): persist assessment history and audit trail`

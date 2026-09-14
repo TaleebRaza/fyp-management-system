@@ -24,6 +24,12 @@ async function getTypeScript() {
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CACHE_ROOT = path.join(tmpdir(), `fyp-ts-tests-${process.pid}`);
+const DEPENDENCY_CACHE_ROOT = path.join(
+  PROJECT_ROOT,
+  'node_modules',
+  '.cache',
+  `fyp-ts-tests-${process.pid}`
+);
 const compiledFiles = new Map();
 
 function resolveProjectModule(fromFile, specifier) {
@@ -51,13 +57,13 @@ function resolveProjectModule(fromFile, specifier) {
   return resolved;
 }
 
-function outputPathFor(sourcePath) {
+function outputPathFor(sourcePath, cacheRoot) {
   const relativePath = path.relative(PROJECT_ROOT, sourcePath);
   if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
     throw new Error(`Refusing to compile a TypeScript file outside the repository: ${sourcePath}`);
   }
 
-  return path.join(CACHE_ROOT, relativePath.replace(/\.(?:tsx?|mts)$/, '.mjs'));
+  return path.join(cacheRoot, relativePath.replace(/\.(?:tsx?|mts)$/, '.mjs'));
 }
 
 function collectRuntimeImports(ts, sourceText, sourcePath) {
@@ -98,13 +104,19 @@ function replaceModuleSpecifier(code, originalSpecifier, replacementSpecifier) {
   return code.replace(expression, (_match, quote) => `${quote}${replacementSpecifier}${quote}`);
 }
 
-async function compileTypeScriptModule(sourcePath) {
+async function compileTypeScriptModule(sourcePath, cacheRoot) {
   const absoluteSourcePath = path.resolve(sourcePath);
-  const cached = compiledFiles.get(absoluteSourcePath);
+  const cacheKey = `${cacheRoot}\0${absoluteSourcePath}`;
+  const cached = compiledFiles.get(cacheKey);
   if (cached) return cached;
 
-  const outputPath = outputPathFor(absoluteSourcePath);
-  compiledFiles.set(absoluteSourcePath, outputPath);
+  const compilation = compileTypeScriptModuleAtPath(absoluteSourcePath, cacheRoot);
+  compiledFiles.set(cacheKey, compilation);
+  return compilation;
+}
+
+async function compileTypeScriptModuleAtPath(absoluteSourcePath, cacheRoot) {
+  const outputPath = outputPathFor(absoluteSourcePath, cacheRoot);
 
   const [ts, sourceText] = await Promise.all([
     getTypeScript(),
@@ -115,7 +127,7 @@ async function compileTypeScriptModule(sourcePath) {
 
   for (const specifier of runtimeImports) {
     const dependencySource = resolveProjectModule(absoluteSourcePath, specifier);
-    const dependencyOutput = await compileTypeScriptModule(dependencySource);
+    const dependencyOutput = await compileTypeScriptModule(dependencySource, cacheRoot);
     let outputSpecifier = path.relative(path.dirname(outputPath), dependencyOutput).replace(/\\/g, '/');
     if (!outputSpecifier.startsWith('.')) outputSpecifier = `./${outputSpecifier}`;
     resolvedImports.push({ specifier, outputSpecifier });
@@ -156,10 +168,18 @@ async function compileTypeScriptModule(sourcePath) {
   return outputPath;
 }
 
-export async function importTypeScriptModule(repositoryRelativePath) {
+async function importTypeScriptModuleFromCache(repositoryRelativePath, cacheRoot) {
   const sourcePath = path.resolve(PROJECT_ROOT, repositoryRelativePath);
-  const outputPath = await compileTypeScriptModule(sourcePath);
+  const outputPath = await compileTypeScriptModule(sourcePath, cacheRoot);
   const sourceContent = await readFile(sourcePath);
   const cacheKey = createHash('sha256').update(sourceContent).digest('hex').slice(0, 12);
   return import(`${pathToFileURL(outputPath).href}?source=${cacheKey}`);
+}
+
+export async function importTypeScriptModule(repositoryRelativePath) {
+  return importTypeScriptModuleFromCache(repositoryRelativePath, CACHE_ROOT);
+}
+
+export async function importTypeScriptModuleWithDependencies(repositoryRelativePath) {
+  return importTypeScriptModuleFromCache(repositoryRelativePath, DEPENDENCY_CACHE_ROOT);
 }

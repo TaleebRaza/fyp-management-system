@@ -111,6 +111,7 @@ try {
   const [
     bucketObjects,
     projects,
+    vivaSessions,
     voiceNotes,
     supervisors,
     studentMessages,
@@ -122,6 +123,10 @@ try {
     database.collection('projects').find(
       { pdfUrl: { $exists: true, $nin: ['', null] } },
       { projection: { pdfUrl: 1 } }
+    ).toArray(),
+    database.collection('vivasessions').find(
+      { 'projectSnapshot.pdfUrl': { $exists: true, $nin: ['', null] } },
+      { projection: { 'projectSnapshot.pdfUrl': 1 } }
     ).toArray(),
     database.collection('voicenotes').find(
       {},
@@ -161,6 +166,9 @@ try {
   };
 
   for (const project of projects) addReference('project', project._id, project.pdfUrl);
+  for (const vivaSession of vivaSessions) {
+    addReference('viva-project-snapshot', vivaSession._id, vivaSession.projectSnapshot?.pdfUrl);
+  }
   for (const voiceNote of voiceNotes) addReference('voice-note', voiceNote._id, voiceNote.blobUrl);
   for (const supervisor of supervisors) {
     addReference('broadcast', supervisor._id, supervisor.broadcastContent);

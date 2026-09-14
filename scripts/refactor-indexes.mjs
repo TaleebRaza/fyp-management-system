@@ -67,4 +67,24 @@ export const refactorIndexes = {
   systemconfigs: [
     { key: { configKey: 1 }, options: { unique: true } },
   ],
+  vivarounds: [
+    { key: { createdAt: -1 } },
+  ],
+  vivapanels: [
+    { key: { roundId: 1, examinerIds: 1 }, options: { unique: true } },
+  ],
+  vivasessions: [
+    {
+      key: { roundId: 1, projectId: 1 },
+      options: {
+        unique: true,
+        partialFilterExpression: { cancelledAt: null },
+      },
+    },
+    { key: { roundId: 1, scheduledAt: 1 } },
+  ],
+  vivaauditevents: [
+    { key: { roundId: 1, occurredAt: -1 } },
+    { key: { sessionId: 1, occurredAt: -1 } },
+  ],
 };
