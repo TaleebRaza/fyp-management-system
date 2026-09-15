@@ -9,7 +9,9 @@ import type {
   VivaRoundDto,
   VivaTeamOption,
 } from '../../lib/vivaRoundAdmin';
+import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import { Badge, Button, DashboardPanel, SectionHeader, StyledInput } from '../ui';
+import VivaPanelManagement from './VivaPanelManagement';
 
 type VivaRoundDraft = {
   name: string;
@@ -24,6 +26,7 @@ type VivaConfigurationResponse = {
   rounds: VivaRoundDto[];
   teams: VivaTeamOption[];
   examiners: VivaExaminerOption[];
+  panels: VivaPanelDto[];
 };
 
 const EMPTY_DRAFT: VivaRoundDraft = {
@@ -49,6 +52,10 @@ function readNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function readPanelRevision(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 function readRound(value: unknown): VivaRoundDto | null {
   if (!isRecord(value)) return null;
 
@@ -57,10 +64,12 @@ function readRound(value: unknown): VivaRoundDto | null {
   const targetPanelSize = readNumber(value.targetPanelSize);
   const minimumPanelSize = readNumber(value.minimumPanelSize);
   const vivaDurationMinutes = readNumber(value.vivaDurationMinutes);
+  const panelRevision = readPanelRevision(value.panelRevision);
 
   if (
     typeof value.id !== 'string'
     || typeof value.name !== 'string'
+    || panelRevision === null
     || !projectIds
     || !examinerIds
     || targetPanelSize === null
@@ -81,6 +90,7 @@ function readRound(value: unknown): VivaRoundDto | null {
     vivaDurationMinutes,
     projectIds,
     examinerIds,
+    panelRevision,
     frozenAt: value.frozenAt,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
@@ -118,6 +128,26 @@ function readExaminer(value: unknown): VivaExaminerOption | null {
     : null;
 }
 
+function readPanel(value: unknown): VivaPanelDto | null {
+  if (!isRecord(value) || !Array.isArray(value.examinerIds)) return null;
+
+  if (
+    typeof value.id !== 'string'
+    || typeof value.roundId !== 'string'
+    || typeof value.panelAdminId !== 'string'
+    || !value.examinerIds.every((examinerId) => typeof examinerId === 'string')
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    roundId: value.roundId,
+    examinerIds: value.examinerIds,
+    panelAdminId: value.panelAdminId,
+  };
+}
+
 function readList<T>(value: unknown, readItem: (item: unknown) => T | null): T[] | null {
   if (!Array.isArray(value)) return null;
 
@@ -138,7 +168,8 @@ function readConfiguration(value: unknown): VivaConfigurationResponse | null {
   const rounds = readList(value.rounds, readRound);
   const teams = readList(value.teams, readTeam);
   const examiners = readList(value.examiners, readExaminer);
-  return rounds && teams && examiners ? { rounds, teams, examiners } : null;
+  const panels = readList(value.panels, readPanel);
+  return rounds && teams && examiners && panels ? { rounds, teams, examiners, panels } : null;
 }
 
 function readError(value: unknown, fallback: string) {
@@ -166,6 +197,7 @@ export default function AdminVivaSection() {
   const [rounds, setRounds] = useState<VivaRoundDto[]>([]);
   const [teams, setTeams] = useState<VivaTeamOption[]>([]);
   const [examiners, setExaminers] = useState<VivaExaminerOption[]>([]);
+  const [panels, setPanels] = useState<VivaPanelDto[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null);
   const [draft, setDraft] = useState<VivaRoundDraft>(EMPTY_DRAFT);
   const [isLoading, setIsLoading] = useState(true);
@@ -194,6 +226,7 @@ export default function AdminVivaSection() {
       setRounds(data.rounds);
       setTeams(data.teams);
       setExaminers(data.examiners);
+      setPanels(data.panels);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load Viva configuration.');
     } finally {
@@ -306,6 +339,7 @@ export default function AdminVivaSection() {
         )}
       </DashboardPanel>
 
+      <div className="space-y-6">
       <form onSubmit={saveRound} className="space-y-6" aria-busy={isSaving}>
         <DashboardPanel>
           <SectionHeader
@@ -388,6 +422,27 @@ export default function AdminVivaSection() {
           {!isFrozen && <Button type="submit" disabled={isSaving}>{isSaving ? <Loader2 className="animate-spin" size={16} /> : null}{isSaving ? 'Saving...' : selectedRound ? 'Save Changes' : 'Create Viva Round'}</Button>}
         </div>
       </form>
+
+      {selectedRound && (
+        <VivaPanelManagement
+          key={`${selectedRound.id}:${selectedRound.panelRevision}`}
+          round={selectedRound}
+          examiners={examiners}
+          panels={panels.filter((panel) => panel.roundId === selectedRound.id)}
+          isRoundSaving={isSaving}
+          onSaved={(savedPanels, panelRevision) => {
+            setPanels((current) => [
+              ...current.filter((panel) => panel.roundId !== selectedRound.id),
+              ...savedPanels,
+            ]);
+            setRounds((current) => current.map((round) => (
+              round.id === selectedRound.id ? { ...round, panelRevision } : round
+            )));
+          }}
+          onReload={loadConfiguration}
+        />
+      )}
+      </div>
     </div>
   );
 }

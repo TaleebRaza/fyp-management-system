@@ -21,6 +21,7 @@ const VivaRoundSchema = new Schema(
     extraGradingDurationMinutes: { type: Number, default: null, min: 0 },
     projectIds: [{ type: Schema.Types.ObjectId, ref: 'Project' }],
     examinerIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    panelRevision: { type: Number, required: true, default: 0, min: 0 },
     frozenAt: { type: Date, default: null },
   },
   { timestamps: true }

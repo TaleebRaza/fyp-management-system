@@ -7,6 +7,7 @@ import {
   parseVivaRoundInput,
   updateVivaRound,
 } from '../../../../lib/vivaRoundAdmin';
+import { parseVivaPanelSaveInput, saveVivaPanels } from '../../../../lib/vivaPanelAdmin';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isRecord } from '../../../../lib/security/input';
 
@@ -93,5 +94,36 @@ export async function PUT(req: NextRequest) {
   } catch (error) {
     console.error('Admin Viva round update error:', error);
     return NextResponse.json({ error: 'Failed to update the Viva round.' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid Viva panel request.' }, { status: 400 });
+  }
+
+  const parsed = parseVivaPanelSaveInput(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  try {
+    const result = await saveVivaPanels(parsed.input, adminActor(currentUser));
+    if (!result.success) {
+      const status = result.reason === 'not-found' ? 404 : result.reason === 'invalid' ? 400 : 409;
+      return NextResponse.json({ error: result.error }, { status });
+    }
+    return NextResponse.json({ panels: result.panels, panelRevision: result.panelRevision });
+  } catch (error) {
+    console.error('Admin Viva panel save error:', error);
+    return NextResponse.json({ error: 'Failed to save Viva panels.' }, { status: 500 });
   }
 }

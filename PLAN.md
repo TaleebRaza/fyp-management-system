@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation is complete. Revised Milestone 4, manual panel management and panel-admin assignment, is next.
+**Overall status:** Reconciliation and Revised Milestone 4 are complete. Revised Milestone 5, random allocation and accessible adjustments, is next.
 
 ## Update template
 
@@ -638,6 +638,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** The first local MongoDB 8 attempt was blocked by the host-kernel incompatibility. The temporary MongoDB 4.4.29 container is test-only and must not become a deployment dependency.
 - **Next step:** Implement revised Milestone 4, manual panel management and panel-admin assignment.
 - **Suggested commit message:** `feat(viva): reconcile panel-admin grade workflow`
+
+### 2026-09-15, Revised Milestone 4 complete
+
+- **Milestone and status:** Manual panel management and panel-admin assignment are complete. Revised Milestone 5 is next.
+- **Research findings:** Existing Viva panels already store examiner and panel-admin identities, and existing round, audit, transaction, and admin-dashboard infrastructure could be extended directly. A teacher's own-team conflict requires a concrete team-to-panel schedule, so that authoritative check remains centralized in the scheduling milestone rather than incorrectly excluding teachers from every panel in a round.
+- **Implemented:** Added searchable unassigned-teacher cards and editable panel cards in the admin Viva area. Admin can add/discard panels, assign, move, and remove teachers, choose a panel admin, and see panels below the configured minimum marked as not ready. Saving validates active selected supervisors, one assignment per round, panel capacity, panel-admin membership, and frozen rounds. A transaction replaces the complete pre-start panel draft atomically, records an audit event, and uses a per-round revision to reject stale concurrent saves. Round updates now reject changes that would invalidate saved panels.
+- **Complexity avoided:** No new role, drag-and-drop framework, account-state mutation, collection reset, migration job, extra result collection, or database writes for UI movement before Save.
+- **Validation:** `npm run lint` and `npx tsc --noEmit` passed. Local fake-data replica-set tests passed for Milestone 4 panel management and existing Milestones 2 and 3 persistence/configuration checks. The temporary MongoDB container and the disposable `fyp_viva_m2_test`, `fyp_viva_m3_test`, and `fyp_viva_m4_test` databases were removed. `npm run test:unit` passed 49 of 51 test files; the unrelated existing failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
+- **Remaining hurdles:** The normal build runner reached successful compilation and TypeScript checks but did not return a final exit status before the command environment stopped it; a completed production build was not claimed. Team-specific own-supervisor conflicts will be enforced when scheduling assigns a team to a panel in Milestone 6.
+- **Next step:** Implement Revised Milestone 5, random allocation, random panel-admin selection, and accessible adjustments.
+- **Suggested commit message:** `feat(viva): add manual panel management`
 
 ## Historical implementation record
 

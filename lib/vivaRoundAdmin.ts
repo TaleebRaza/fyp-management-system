@@ -3,6 +3,7 @@ import mongoose, { type ClientSession } from 'mongoose';
 import VivaRound from '../models/VivaRound';
 import Project from '../models/Project';
 import User from '../models/User';
+import { getVivaPanels, type VivaPanelDto, validateVivaPanelsForRound } from './vivaPanelAdmin';
 import {
   type VivaConfiguration,
   validateVivaConfiguration,
@@ -17,6 +18,7 @@ export type VivaRoundInput = VivaConfiguration & {
 
 export type VivaRoundDto = VivaRoundInput & {
   id: string;
+  panelRevision: number;
   frozenAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -38,6 +40,7 @@ export type VivaRoundAdminData = {
   rounds: VivaRoundDto[];
   teams: VivaTeamOption[];
   examiners: VivaExaminerOption[];
+  panels: VivaPanelDto[];
 };
 
 export type VivaRoundActor = {
@@ -54,6 +57,7 @@ type VivaRoundRecord = {
   vivaDurationMinutes?: unknown;
   projectIds?: unknown;
   examinerIds?: unknown;
+  panelRevision?: unknown;
   frozenAt?: Date | null;
   createdAt?: Date | null;
   updatedAt?: Date | null;
@@ -124,6 +128,10 @@ function asStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : [];
 }
 
+function asPanelRevision(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
 function serializeVivaRound(round: VivaRoundRecord): VivaRoundDto {
   return {
     id: String(round._id),
@@ -133,6 +141,7 @@ function serializeVivaRound(round: VivaRoundRecord): VivaRoundDto {
     vivaDurationMinutes: Number(round.vivaDurationMinutes),
     projectIds: asStringList(round.projectIds),
     examinerIds: asStringList(round.examinerIds),
+    panelRevision: asPanelRevision(round.panelRevision),
     frozenAt: asDateString(round.frozenAt),
     createdAt: asDateString(round.createdAt),
     updatedAt: asDateString(round.updatedAt),
@@ -242,7 +251,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
     new Set(projects.flatMap((project) => (project.members || []).map(String)))
   );
 
-  const [students, examiners, rounds] = await Promise.all([
+  const [students, examiners, rounds, panels] = await Promise.all([
     studentIds.length > 0
       ? User.find({ _id: { $in: studentIds }, role: 'student', isActive: true })
           .select('_id name rollNo')
@@ -254,10 +263,11 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       .lean<UserRecord[]>(),
     VivaRound.find()
       .select(
-        'name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds examinerIds frozenAt createdAt updatedAt'
+        'name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds examinerIds panelRevision frozenAt createdAt updatedAt'
       )
       .sort({ createdAt: -1 })
       .lean<VivaRoundRecord[]>(),
+    getVivaPanels(),
   ]);
 
   const studentsById = new Map(
@@ -293,6 +303,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       name: typeof examiner.name === 'string' ? examiner.name : 'Unnamed supervisor',
       rollNo: typeof examiner.rollNo === 'string' ? examiner.rollNo : '',
     })),
+    panels,
   };
 }
 
@@ -344,6 +355,11 @@ export async function updateVivaRound(
     const selectionError = await validateSelectedPeopleAndTeams(input, session);
     if (selectionError) {
       return { success: false, reason: 'selection-unavailable', error: selectionError };
+    }
+
+    const panelError = await validateVivaPanelsForRound(input, roundId, session);
+    if (panelError) {
+      return { success: false, reason: 'selection-unavailable', error: panelError };
     }
 
     const updated = await VivaRound.findOneAndUpdate(
