@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestones 4–6 are complete. Revised Milestone 7, the single panel-admin session dashboard and start flow, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–8 are complete. Revised Milestone 9, grade selection, save, and session completion, is next.
 
 ## Update template
 
@@ -682,6 +682,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** Temporary login/access restrictions for non-admin panel members and existing sessions are intentionally deferred to Milestone 8.
 - **Next step:** Implement Revised Milestone 8, derived temporary login and API restrictions for non-admin panel members while a Viva session is active.
 - **Suggested commit message:** `feat(viva): add panel-admin session start`
+
+### 2026-09-15, Revised Milestone 8 complete
+
+- **Milestone and status:** Temporary access restriction for non-admin members of an active Viva panel is complete. Revised Milestone 9 is next.
+- **Research findings:** Every authenticated application API route uses `requireCurrentUser`, while the NextAuth credentials provider has its own fresh-login authorization path. Middleware cannot safely perform the Mongoose lookup in its Edge runtime, so the shared server-side guard is the authority for direct API access and fresh credentials. The active session's panel snapshot is the historical, immutable membership source once the Viva starts.
+- **Implemented:** Added one indexed active-session lookup that restricts a snapshot panel member unless they are the snapshot panel admin. The shared check now runs during credential sign-in and in `requireCurrentUser`, so existing authenticated sessions lose all protected API access without any permanent account mutation. A supervisor-only status route signs an already-open browser session out at dashboard load, tab focus, or within 30 seconds. Completion or cancellation removes the condition directly from authoritative session state, so access releases automatically.
+- **Complexity avoided:** No account flag, cleanup job, WebSocket, middleware database call, extra session store, or client-only authorization rule.
+- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` with a disposable local MongoDB URI passed. A local MongoDB 8.0.16 `rs0` replica set passed the Milestone 7 baseline and the new Milestone 8 fake-data integration test. The new test seeded six users and one team, then verified panel-admin and unrelated access, snapshot membership, active-member restriction, and automatic completed/cancelled release. `npm run test:unit` passed 54 of 56 files; the two existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
+- **Remaining hurdles:** The browser checker signs a pre-existing session out at load, focus, or within 30 seconds. Server-side API authorization is immediate; this is not a full-device lockout. Credential-provider wiring is covered by the shared policy and code path, not a browser-level NextAuth test.
+- **Next step:** Implement Revised Milestone 9, canonical grade selection, safe save, and session completion.
+- **Suggested commit message:** `feat(viva): restrict active Viva panel members`
 
 ## Historical implementation record
 

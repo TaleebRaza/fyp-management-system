@@ -5,6 +5,7 @@ import connectToDatabase from '../mongodb';
 import Project from '../../models/Project';
 import User from '../../models/User';
 import { isSameOriginMutation } from './origin';
+import { isVivaPanelMemberAccessRestricted } from '../vivaAccessRestriction';
 
 export type UserRole = 'admin' | 'supervisor' | 'student';
 
@@ -17,10 +18,7 @@ export type CurrentUser = {
 
 const USER_ROLES: UserRole[] = ['admin', 'supervisor', 'student'];
 
-export async function requireCurrentUser(
-  req: NextRequest,
-  allowedRoles?: UserRole[]
-): Promise<CurrentUser | null> {
+export async function getCurrentUser(req: NextRequest): Promise<CurrentUser | null> {
   if (!isSameOriginMutation(req)) return null;
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -41,6 +39,23 @@ export async function requireCurrentUser(
     name: String(user.name || '').trim(),
     rollNo: String(user.rollNo || '').trim(),
   };
+  return currentUser;
+}
+
+export async function requireCurrentUser(
+  req: NextRequest,
+  allowedRoles?: UserRole[]
+): Promise<CurrentUser | null> {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) return null;
+
+  if (
+    currentUser.role === 'supervisor'
+    && await isVivaPanelMemberAccessRestricted(currentUser.id)
+  ) {
+    return null;
+  }
+
   return !allowedRoles || allowedRoles.includes(currentUser.role) ? currentUser : null;
 }
 

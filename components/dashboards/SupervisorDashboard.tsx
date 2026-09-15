@@ -41,6 +41,43 @@ const SupervisorDashboard = ({
   const supervisorName = session?.user?.name || 'Supervisor';
   const supervisorId = String((session.user as { id?: string }).id || '');
 
+  useEffect(() => {
+    let isCurrent = true;
+    let isRestricted = false;
+
+    const enforceVivaAccessRestriction = async () => {
+      if (isRestricted) return;
+
+      try {
+        const response = await fetch('/api/dashboard/supervisor/viva-access', { cache: 'no-store' });
+        const body: unknown = await response.json().catch(() => null);
+        if (!isCurrent || !response.ok || !body || typeof body !== 'object' || !('restricted' in body) || body.restricted !== true) {
+          return;
+        }
+
+        isRestricted = true;
+        await signOut({ redirect: false });
+        if (isCurrent) {
+          showDialog?.({
+            title: 'Viva session in progress',
+            message: 'You have been signed out while another panel member administers your active Viva session.',
+          });
+        }
+      } catch {
+        // Server-side authorization remains authoritative if this optional browser check cannot run.
+      }
+    };
+
+    void enforceVivaAccessRestriction();
+    const interval = window.setInterval(() => void enforceVivaAccessRestriction(), 30_000);
+    window.addEventListener('focus', enforceVivaAccessRestriction);
+    return () => {
+      isCurrent = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', enforceVivaAccessRestriction);
+    };
+  }, [showDialog]);
+
   const { notify, requestConfirmation, requestRemarks } =
     useSupervisorFeedback(showDialog);
   const {

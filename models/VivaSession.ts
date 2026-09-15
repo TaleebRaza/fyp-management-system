@@ -127,6 +127,12 @@ VivaSessionSchema.index(
 );
 VivaSessionSchema.index({ roundId: 1, scheduledAt: 1 });
 VivaSessionSchema.index({ cancelledAt: 1, completedAt: 1, scheduledAt: 1, vivaEndsAt: 1 });
+VivaSessionSchema.index({
+  'panelSnapshot.examiners.userId': 1,
+  completedAt: 1,
+  cancelledAt: 1,
+  startedAt: 1,
+});
 
 const VivaSession = mongoose.models.VivaSession || mongoose.model('VivaSession', VivaSessionSchema);
 

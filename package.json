@@ -13,6 +13,7 @@
     "test:viva:panels": "node --test tests/viva-panel-admin.integration.test.mjs",
     "test:viva:scheduling": "node --test tests/viva-scheduling.integration.test.mjs",
     "test:viva:session": "node --test tests/viva-session-dashboard.integration.test.mjs",
+    "test:viva:access": "node --test tests/viva-access-restriction.integration.test.mjs",
     "capacity:reconcile": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs",
     "capacity:repair": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs --repair",
     "project:drift-audit": "node --env-file-if-exists=.env.local scripts/audit-project-drift.mjs",
