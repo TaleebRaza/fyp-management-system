@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
   ChevronDown,
+  ClipboardList,
   Download,
   FileText,
   LayoutDashboard,
@@ -16,6 +17,7 @@ import SupervisorOverviewSection from '../supervisor/SupervisorOverviewSection';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import StudentMessagesPanel from '../messages/StudentMessagesPanel';
+import VivaSessionWorkspace from '../supervisor/VivaSessionWorkspace';
 import { getProgramName } from '../supervisor/SupervisorProjectCard';
 import {
   useSupervisorExport,
@@ -128,6 +130,13 @@ const SupervisorDashboard = ({
       icon: <MessagesSquare size={18} />,
       active: activeTab === 'messages',
       onClick: () => setActiveTab('messages'),
+    },
+    {
+      id: 'viva',
+      label: 'Viva Sessions',
+      icon: <ClipboardList size={18} />,
+      active: activeTab === 'viva',
+      onClick: () => setActiveTab('viva'),
     },
     ...(filters.isProjectMenuExpanded
       ? [
@@ -242,6 +251,7 @@ const SupervisorDashboard = ({
             onOpenProject={openMessageProject}
           />
         )}
+        {activeTab === 'viva' && <VivaSessionWorkspace />}
       </DashboardShell>
       <SupervisorProjectDialog
         project={actions.selectedProject}

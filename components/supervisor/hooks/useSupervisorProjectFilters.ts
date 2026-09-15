@@ -26,7 +26,7 @@ import type {
   SupervisorProject,
 } from '../supervisorDashboardTypes';
 
-export type SupervisorTab = 'overview' | 'projects' | 'messages';
+export type SupervisorTab = 'overview' | 'projects' | 'messages' | 'viva';
 
 const selectorAccessors = {
   getMemberNames,

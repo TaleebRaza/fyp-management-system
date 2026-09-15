@@ -672,6 +672,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Next step:** Implement Revised Milestone 7, the panel-admin-only dashboard and concurrency-safe session start.
 - **Suggested commit message:** `feat(viva): add manual team scheduling`
 
+### 2026-09-15, Revised Milestone 7 complete
+
+- **Milestone and status:** The single panel-admin session dashboard and concurrency-safe start flow are complete. Revised Milestone 8 is next.
+- **Research findings:** Scheduled sessions already provide the authoritative round, panel, project, UTC timing, audit, and transaction boundaries. The existing PDF access policy intentionally limits documents to project participants, so this milestone presents the required team and panel context without broadening document access.
+- **Implemented:** Added an authenticated supervisor Viva endpoint and a panel-admin workspace in the existing supervisor dashboard. The current assigned panel admin can inspect scheduled team/panel context and start exactly once. Start revalidates current membership, role, panel admin, active teachers, team ownership, and active-session participant conflicts; atomically snapshots the current assessment context, records actual start/end timing, freezes the round, and writes one audit event. Repeated starts return the established workspace without changing its timer.
+- **Complexity avoided:** No WebSocket/presence service, readiness workflow, extra role, second session/result collection, document-access expansion, duplicate dashboard, or client-trusted timing.
+- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. A disposable local MongoDB 8.0.16 `rs0` replica set passed all existing Viva persistence, round-admin, panel, and scheduling suites plus the new session suite. The new suite seeded 12 fake users and five fake teams, then verified panel-admin-only access, changed-membership snapshots, frozen rounds, repeat and concurrent starts, stale/replaced panel admins, and active-participant conflicts. `npm run test:unit` passed 53 of 55 files; the two pre-existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
+- **Remaining hurdles:** Temporary login/access restrictions for non-admin panel members and existing sessions are intentionally deferred to Milestone 8.
+- **Next step:** Implement Revised Milestone 8, derived temporary login and API restrictions for non-admin panel members while a Viva session is active.
+- **Suggested commit message:** `feat(viva): add panel-admin session start`
+
 ## Historical implementation record
 
 The following entries are retained as factual history. Their factor/per-examiner requirements are superseded by the current plan and must not be treated as the active specification.
