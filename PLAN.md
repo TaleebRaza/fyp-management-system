@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestones 4–8 are complete. Revised Milestone 9, grade selection, save, and session completion, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–9 are complete. Revised Milestone 10, cancellation and fresh attempts, is next.
 
 ## Update template
 
@@ -693,6 +693,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** The browser checker signs a pre-existing session out at load, focus, or within 30 seconds. Server-side API authorization is immediate; this is not a full-device lockout. Credential-provider wiring is covered by the shared policy and code path, not a browser-level NextAuth test.
 - **Next step:** Implement Revised Milestone 9, canonical grade selection, safe save, and session completion.
 - **Suggested commit message:** `feat(viva): restrict active Viva panel members`
+
+### 2026-09-15, Revised Milestone 9 complete
+
+- **Milestone and status:** Grade selection, save, and session completion are complete.
+- **Research findings:** The existing single panel-admin workspace already exposes server-authorized sessions, snapshots the active panel at start, and has a transactional write path with optimistic versions and durable audit events. `VivaSession.result`, the canonical grade scale, and the active-session restriction all already existed as reusable boundaries.
+- **Implemented:** The panel-admin workspace now receives the server-serialized canonical grade scale, persisted selection, and session version. It allows a panel admin to select and save one canonical grade, then complete the Viva. The shared endpoint derives the percentage from the grade server-side, rejects stale/invalid/unauthorized writes, records grade and completion audit events transactionally, finalizes the session, and consequently releases the temporary panel-member restriction. A fake-data replica-set integration suite targets only the disposable `fyp_viva_m9_test` database.
+- **Complexity avoided:** No numeric mark input, client percentage, separate grading endpoint, autosave, second result collection, migration, dependency, or real-time state mechanism.
+- **Validation:** `npm run test:viva:grading` passed against local MongoDB 8.0.16 `rs0`, seeding five fake users and one fake team in disposable `fyp_viva_m9_test`; it verified all grades, canonical percentages, tampering rejection, panel-admin authorization, refresh, stale versions, concurrent saves, save/complete races, immutable completion, and access release. Existing Milestone 2, 3, 4, 6, 7, and 8 replica-set suites passed against their isolated databases. `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed with a temporary local MongoDB URI. `npm run test:unit` passed 55 of 57 files; the two unrelated existing failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`. The disposable container and test databases were removed after verification.
+- **Remaining hurdles:** The two pre-existing unrelated unit failures remain outside Viva and were not changed.
+- **Next step:** Implement Revised Milestone 10, cancellation and fresh attempts.
+- **Suggested commit message:** `feat(viva): add grade selection and completion`
 
 ## Historical implementation record
 

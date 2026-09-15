@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import {
+  completeVivaSession,
   getPanelAdminVivaSessions,
+  saveVivaGrade,
   startVivaSession,
 } from '../../../../../lib/vivaSessionDashboard';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { isRecord } from '../../../../../lib/security/input';
 
 export const dynamic = 'force-dynamic';
+
+function responseStatus(reason: 'not-found' | 'forbidden' | 'not-startable' | 'invalid' | 'concurrent-change') {
+  if (reason === 'not-found') return 404;
+  if (reason === 'forbidden') return 403;
+  if (reason === 'concurrent-change') return 409;
+  return 400;
+}
+
+function isVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
 
 export async function GET(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['supervisor']);
@@ -40,14 +53,40 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await startVivaSession(body.sessionId, currentUser);
-    if (!result.success) {
-      const status = result.reason === 'not-found' ? 404 : result.reason === 'forbidden' ? 403 : result.reason === 'concurrent-change' ? 409 : 400;
-      return NextResponse.json({ error: result.error }, { status });
+    const action = typeof body.action === 'string' ? body.action : 'start';
+    if (action === 'start') {
+      const result = await startVivaSession(body.sessionId, currentUser);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: responseStatus(result.reason) });
+      }
+      return NextResponse.json({ session: result.workspace, started: result.started });
     }
-    return NextResponse.json({ session: result.workspace, started: result.started });
+
+    if (action === 'save-grade') {
+      if (typeof body.grade !== 'string' || !isVersion(body.version)) {
+        return NextResponse.json({ error: 'Invalid Viva grade request.' }, { status: 400 });
+      }
+      const result = await saveVivaGrade(body.sessionId, body.version, body.grade, currentUser);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: responseStatus(result.reason) });
+      }
+      return NextResponse.json({ session: result.workspace });
+    }
+
+    if (action === 'complete') {
+      if (!isVersion(body.version)) {
+        return NextResponse.json({ error: 'Invalid Viva completion request.' }, { status: 400 });
+      }
+      const result = await completeVivaSession(body.sessionId, body.version, currentUser);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: responseStatus(result.reason) });
+      }
+      return NextResponse.json({ completed: true, result: result.result, completedAt: result.completedAt });
+    }
+
+    return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });
   } catch (error) {
-    console.error('Supervisor Viva session start error:', error);
-    return NextResponse.json({ error: 'Failed to start the Viva session.' }, { status: 500 });
+    console.error('Supervisor Viva session request error:', error);
+    return NextResponse.json({ error: 'Failed to process the Viva session request.' }, { status: 500 });
   }
 }

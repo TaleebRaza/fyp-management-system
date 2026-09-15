@@ -5,7 +5,15 @@ import User from '../models/User';
 import VivaPanel from '../models/VivaPanel';
 import VivaRound from '../models/VivaRound';
 import VivaSession from '../models/VivaSession';
-import { calculateVivaPhase, isVivaPanelAdmin, validateVivaConfiguration } from './viva';
+import {
+  calculateVivaPhase,
+  getVivaGradeChangePermission,
+  getVivaGradeResult,
+  isVivaPanelAdmin,
+  validateVivaConfiguration,
+  VIVA_GRADE_SCALE,
+  type VivaGradeResult,
+} from './viva';
 import { recordVivaAuditEvent, withVivaTransaction } from './vivaPersistence';
 
 export type VivaPersonDto = {
@@ -14,9 +22,17 @@ export type VivaPersonDto = {
   rollNo: string;
 };
 
+export type VivaGradeDto = {
+  grade: string;
+  percentage: number;
+};
+
 export type VivaSessionWorkspaceDto = {
   id: string;
   phase: 'scheduled' | 'running';
+  version: number;
+  gradeScale: VivaGradeDto[];
+  result: VivaGradeDto | null;
   scheduledAt: string;
   startedAt: string | null;
   vivaEndsAt: string;
@@ -54,6 +70,20 @@ export type VivaSessionStartResult =
       reason: 'not-found' | 'forbidden' | 'not-startable' | 'invalid' | 'concurrent-change';
       error: string;
     };
+
+type VivaSessionMutationFailure = {
+  success: false;
+  reason: 'not-found' | 'forbidden' | 'not-startable' | 'invalid' | 'concurrent-change';
+  error: string;
+};
+
+export type VivaGradeSaveResult =
+  | { success: true; workspace: VivaSessionWorkspaceDto }
+  | VivaSessionMutationFailure;
+
+export type VivaSessionCompletionResult =
+  | { success: true; result: VivaGradeResult; completedAt: string }
+  | VivaSessionMutationFailure;
 
 type VivaSessionStartFailure = Extract<VivaSessionStartResult, { success: false }>;
 
@@ -110,6 +140,12 @@ type VivaSessionRecord = {
   completedAt?: Date | null;
   cancelledAt?: Date | null;
   locationLabel?: unknown;
+  result?: {
+    grade?: unknown;
+    percentage?: unknown;
+    selectedAt?: Date | null;
+  };
+  version?: unknown;
   roundSnapshot?: {
     name?: unknown;
     vivaDurationMinutes?: unknown;
@@ -178,6 +214,10 @@ function asNonNegativeNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+function asVersion(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 function asText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value.trim() : fallback;
 }
@@ -206,6 +246,17 @@ function snapshotPerson(person: VivaPersonDto) {
   return { userId: person.id, name: person.name, rollNo: person.rollNo };
 }
 
+function canonicalSessionResult(value: unknown): VivaGradeResult | null {
+  if (!isRecord(value) || !(value.selectedAt instanceof Date)) return null;
+
+  const result = getVivaGradeResult(value.grade);
+  return result && value.percentage === result.percentage ? result : null;
+}
+
+function workspaceGradeScale(): VivaGradeDto[] {
+  return VIVA_GRADE_SCALE.map(({ grade, percentage }) => ({ grade, percentage }));
+}
+
 function workspaceFromSnapshot(session: VivaSessionRecord): VivaSessionWorkspaceDto | null {
   const scheduledAt = asIsoDate(session.scheduledAt);
   const startedAt = asIsoDate(session.startedAt);
@@ -228,6 +279,7 @@ function workspaceFromSnapshot(session: VivaSessionRecord): VivaSessionWorkspace
     : [];
   const panelAdmin = toSnapshotPerson(panelSnapshot.panelAdmin);
   const supervisor = toSnapshotPerson(projectSnapshot.supervisor);
+  const version = asVersion(session.version);
   if (
     !projectId
     || !panelId
@@ -238,6 +290,7 @@ function workspaceFromSnapshot(session: VivaSessionRecord): VivaSessionWorkspace
     || members.length === 0
     || panelMembers.length === 0
     || !panelAdmin
+    || version === null
   ) {
     return null;
   }
@@ -248,6 +301,9 @@ function workspaceFromSnapshot(session: VivaSessionRecord): VivaSessionWorkspace
   return {
     id: String(session._id),
     phase: 'running',
+    version,
+    gradeScale: workspaceGradeScale(),
+    result: canonicalSessionResult(session.result),
     scheduledAt,
     startedAt,
     vivaEndsAt,
@@ -277,11 +333,15 @@ function workspaceFromCurrentContext(
   const scheduledAt = asIsoDate(vivaSession.scheduledAt);
   const vivaEndsAt = asIsoDate(vivaSession.vivaEndsAt);
   const vivaDurationMinutes = asNonNegativeNumber(context.round.vivaDurationMinutes);
-  if (!scheduledAt || !vivaEndsAt || vivaDurationMinutes === null) return null;
+  const version = asVersion(vivaSession.version);
+  if (!scheduledAt || !vivaEndsAt || vivaDurationMinutes === null || version === null) return null;
 
   return {
     id: String(vivaSession._id),
     phase: 'scheduled',
+    version,
+    gradeScale: workspaceGradeScale(),
+    result: null,
     scheduledAt,
     startedAt: null,
     vivaEndsAt,
@@ -521,9 +581,192 @@ async function readSession(
   if (!mongoose.Types.ObjectId.isValid(sessionId)) return null;
 
   const query = VivaSession.findById(sessionId)
-    .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel roundSnapshot projectSnapshot panelSnapshot');
+    .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel result version roundSnapshot projectSnapshot panelSnapshot');
   if (databaseSession) query.session(databaseSession);
   return query.lean<VivaSessionRecord | null>();
+}
+
+function snapshotPanelAdminId(vivaSession: VivaSessionRecord): string | null {
+  const panelSnapshot = vivaSession.panelSnapshot;
+  if (!panelSnapshot || !isRecord(panelSnapshot.panelAdmin)) return null;
+
+  return asId(panelSnapshot.panelAdmin.userId);
+}
+
+function gradeWritePermission(
+  vivaSession: VivaSessionRecord,
+  actor: VivaSessionActor
+): VivaSessionMutationFailure | null {
+  if (snapshotPanelAdminId(vivaSession) !== actor.id) {
+    return {
+      success: false,
+      reason: 'forbidden',
+      error: 'Only the assigned panel admin can grade this Viva session.',
+    };
+  }
+
+  const phase = sessionPhase(vivaSession);
+  if (phase === 'completed') {
+    return {
+      success: false,
+      reason: 'not-startable',
+      error: 'This Viva result has already been finalized.',
+    };
+  }
+  if (phase !== 'running') {
+    return {
+      success: false,
+      reason: 'not-startable',
+      error: 'This Viva session is not available for grading.',
+    };
+  }
+
+  return null;
+}
+
+export async function saveVivaGrade(
+  sessionId: string,
+  version: number,
+  grade: unknown,
+  actor: VivaSessionActor,
+  selectedAt = new Date()
+): Promise<VivaGradeSaveResult> {
+  if (!mongoose.Types.ObjectId.isValid(sessionId) || !mongoose.Types.ObjectId.isValid(actor.id)) {
+    return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+  }
+  if (asVersion(version) === null || !(selectedAt instanceof Date) || !Number.isFinite(selectedAt.getTime())) {
+    return { success: false, reason: 'invalid', error: 'The Viva grade request is invalid.' };
+  }
+
+  return withVivaTransaction(async (databaseSession) => {
+    const vivaSession = await readSession(sessionId, databaseSession);
+    if (!vivaSession) {
+      return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+    }
+
+    const authorization = gradeWritePermission(vivaSession, actor);
+    if (authorization) return authorization;
+
+    const permission = getVivaGradeChangePermission(sessionPhase(vivaSession), grade);
+    if (!permission.permitted) {
+      return { success: false, reason: 'invalid', error: 'Select a valid Viva grade.' };
+    }
+
+    const updatedSession = await VivaSession.findOneAndUpdate(
+      {
+        _id: sessionId,
+        version,
+        startedAt: { $type: 'date' },
+        completedAt: null,
+        cancelledAt: null,
+      },
+      {
+        $set: {
+          result: { ...permission.result, selectedAt },
+        },
+        $inc: { version: 1 },
+      },
+      { returnDocument: 'after', runValidators: true, session: databaseSession }
+    ).lean<VivaSessionRecord | null>();
+    if (!updatedSession) {
+      return {
+        success: false,
+        reason: 'concurrent-change',
+        error: 'Another tab changed this Viva result. Reload before saving.',
+      };
+    }
+
+    await recordVivaAuditEvent(
+      {
+        roundId: String(updatedSession.roundId),
+        sessionId,
+        event: 'grade-recorded',
+        actorId: actor.id,
+        actorRole: 'supervisor',
+        actorName: actor.name,
+        actorRollNo: actor.rollNo,
+        occurredAt: selectedAt,
+      },
+      databaseSession
+    );
+
+    const workspace = workspaceFromSnapshot(updatedSession);
+    if (!workspace) throw new Error('Saved Viva grade could not be serialized.');
+    return { success: true, workspace };
+  });
+}
+
+export async function completeVivaSession(
+  sessionId: string,
+  version: number,
+  actor: VivaSessionActor,
+  completedAt = new Date()
+): Promise<VivaSessionCompletionResult> {
+  if (!mongoose.Types.ObjectId.isValid(sessionId) || !mongoose.Types.ObjectId.isValid(actor.id)) {
+    return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+  }
+  if (asVersion(version) === null || !(completedAt instanceof Date) || !Number.isFinite(completedAt.getTime())) {
+    return { success: false, reason: 'invalid', error: 'The Viva completion request is invalid.' };
+  }
+
+  return withVivaTransaction(async (databaseSession) => {
+    const vivaSession = await readSession(sessionId, databaseSession);
+    if (!vivaSession) {
+      return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+    }
+
+    const authorization = gradeWritePermission(vivaSession, actor);
+    if (authorization) return authorization;
+
+    const result = canonicalSessionResult(vivaSession.result);
+    if (!result) {
+      return {
+        success: false,
+        reason: 'invalid',
+        error: 'Save a valid Viva grade before completing this session.',
+      };
+    }
+
+    const completedSession = await VivaSession.findOneAndUpdate(
+      {
+        _id: sessionId,
+        version,
+        startedAt: { $type: 'date' },
+        completedAt: null,
+        cancelledAt: null,
+        'result.grade': result.grade,
+        'result.percentage': result.percentage,
+      },
+      {
+        $set: { completedAt },
+        $inc: { version: 1 },
+      },
+      { returnDocument: 'after', runValidators: true, session: databaseSession }
+    ).lean<VivaSessionRecord | null>();
+    if (!completedSession) {
+      return {
+        success: false,
+        reason: 'concurrent-change',
+        error: 'Another tab changed this Viva session. Reload before completing it.',
+      };
+    }
+
+    await recordVivaAuditEvent(
+      {
+        roundId: String(completedSession.roundId),
+        sessionId,
+        event: 'session-finalized',
+        actorId: actor.id,
+        actorRole: 'supervisor',
+        actorName: actor.name,
+        actorRollNo: actor.rollNo,
+        occurredAt: completedAt,
+      },
+      databaseSession
+    );
+
+    return { success: true, result, completedAt: completedAt.toISOString() };
+  });
 }
 
 export async function getPanelAdminVivaSessions(actorId: string): Promise<VivaSessionWorkspaceDto[]> {
@@ -537,7 +780,7 @@ export async function getPanelAdminVivaSessions(actorId: string): Promise<VivaSe
     completedAt: null,
     cancelledAt: null,
   })
-    .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel roundSnapshot projectSnapshot panelSnapshot')
+    .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel result version roundSnapshot projectSnapshot panelSnapshot')
     .sort({ scheduledAt: 1, _id: 1 })
     .lean<VivaSessionRecord[]>();
 

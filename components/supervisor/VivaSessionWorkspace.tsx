@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Play, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Loader2, Play, RefreshCw, Save } from 'lucide-react';
 
 import type { VivaPersonDto, VivaSessionWorkspaceDto } from '../../lib/vivaSessionDashboard';
-import { Badge, Button, DashboardPanel, SectionHeader } from '../ui';
+import { Badge, Button, DashboardPanel, SectionHeader, Select } from '../ui';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -31,6 +31,27 @@ function readPeople(value: unknown): VivaPersonDto[] | null {
   return people;
 }
 
+function readGrade(value: unknown): { grade: string; percentage: number } | null {
+  return isRecord(value)
+    && typeof value.grade === 'string'
+    && typeof value.percentage === 'number'
+    && Number.isFinite(value.percentage)
+    ? { grade: value.grade, percentage: value.percentage }
+    : null;
+}
+
+function readGradeScale(value: unknown): { grade: string; percentage: number }[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const grades: { grade: string; percentage: number }[] = [];
+  for (const item of value) {
+    const grade = readGrade(item);
+    if (!grade) return null;
+    grades.push(grade);
+  }
+  return grades;
+}
+
 function readSession(value: unknown): VivaSessionWorkspaceDto | null {
   if (!isRecord(value) || !isRecord(value.round) || !isRecord(value.project) || !isRecord(value.panel)) {
     return null;
@@ -38,6 +59,8 @@ function readSession(value: unknown): VivaSessionWorkspaceDto | null {
   const projectMembers = readPeople(value.project.members);
   const panelMembers = readPeople(value.panel.members);
   const panelAdmin = readPerson(value.panel.admin);
+  const gradeScale = readGradeScale(value.gradeScale);
+  const result = value.result === null ? null : readGrade(value.result);
   const supervisor = value.project.supervisor === null ? null : readPerson(value.project.supervisor);
   const domains = Array.isArray(value.project.domains)
     ? value.project.domains.filter((domain): domain is string => typeof domain === 'string')
@@ -45,6 +68,11 @@ function readSession(value: unknown): VivaSessionWorkspaceDto | null {
   if (
     typeof value.id !== 'string'
     || (value.phase !== 'scheduled' && value.phase !== 'running')
+    || typeof value.version !== 'number'
+    || !Number.isSafeInteger(value.version)
+    || value.version < 0
+    || !gradeScale
+    || result === null && value.result !== null
     || typeof value.scheduledAt !== 'string'
     || (value.startedAt !== null && typeof value.startedAt !== 'string')
     || typeof value.vivaEndsAt !== 'string'
@@ -68,6 +96,9 @@ function readSession(value: unknown): VivaSessionWorkspaceDto | null {
   return {
     id: value.id,
     phase: value.phase,
+    version: value.version,
+    gradeScale,
+    result,
     scheduledAt: value.scheduledAt,
     startedAt: value.startedAt,
     vivaEndsAt: value.vivaEndsAt,
@@ -122,7 +153,8 @@ function formatDateTime(value: string) {
 export default function VivaSessionWorkspace() {
   const [sessions, setSessions] = useState<VivaSessionWorkspaceDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [startingSessionId, setStartingSessionId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ sessionId: string; type: 'start' | 'save' | 'complete' } | null>(null);
+  const [gradeDrafts, setGradeDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
 
   const loadSessions = useCallback(async () => {
@@ -136,6 +168,7 @@ export default function VivaSessionWorkspace() {
       const nextSessions = readSessions(body);
       if (!nextSessions) throw new Error('Viva session response was invalid.');
       setSessions(nextSessions);
+      setGradeDrafts(Object.fromEntries(nextSessions.map((session) => [session.id, session.result?.grade || ''])));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load Viva sessions.');
     } finally {
@@ -151,15 +184,15 @@ export default function VivaSessionWorkspace() {
   }, [loadSessions]);
 
   const startSession = async (sessionId: string) => {
-    if (startingSessionId) return;
+    if (pendingAction) return;
 
-    setStartingSessionId(sessionId);
+    setPendingAction({ sessionId, type: 'start' });
     setError('');
     try {
       const response = await fetch('/api/dashboard/supervisor/viva', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ action: 'start', sessionId }),
       });
       const body: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(body, 'Unable to start the Viva session.'));
@@ -168,11 +201,74 @@ export default function VivaSessionWorkspace() {
       const startedSession = readSession(body.session);
       if (!startedSession) throw new Error('Viva session response was invalid.');
       setSessions((current) => current.map((session) => session.id === startedSession.id ? startedSession : session));
+      setGradeDrafts((current) => ({ ...current, [startedSession.id]: startedSession.result?.grade || '' }));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to start the Viva session.');
       await loadSessions();
     } finally {
-      setStartingSessionId(null);
+      setPendingAction(null);
+    }
+  };
+
+  const saveGrade = async (session: VivaSessionWorkspaceDto) => {
+    if (pendingAction) return;
+
+    const grade = gradeDrafts[session.id] || '';
+    if (!grade) {
+      setError('Select a grade before saving.');
+      return;
+    }
+
+    setPendingAction({ sessionId: session.id, type: 'save' });
+    setError('');
+    try {
+      const response = await fetch('/api/dashboard/supervisor/viva', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save-grade', sessionId: session.id, version: session.version, grade }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to save the Viva grade.'));
+      if (!isRecord(body)) throw new Error('Viva session response was invalid.');
+
+      const savedSession = readSession(body.session);
+      if (!savedSession) throw new Error('Viva session response was invalid.');
+      setSessions((current) => current.map((currentSession) => currentSession.id === savedSession.id ? savedSession : currentSession));
+      setGradeDrafts((current) => ({ ...current, [savedSession.id]: savedSession.result?.grade || '' }));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to save the Viva grade.');
+      await loadSessions();
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const completeSession = async (session: VivaSessionWorkspaceDto) => {
+    if (pendingAction || !session.result) return;
+
+    setPendingAction({ sessionId: session.id, type: 'complete' });
+    setError('');
+    try {
+      const response = await fetch('/api/dashboard/supervisor/viva', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', sessionId: session.id, version: session.version }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to complete the Viva session.'));
+      if (!isRecord(body) || body.completed !== true) throw new Error('Viva completion response was invalid.');
+
+      setSessions((current) => current.filter((currentSession) => currentSession.id !== session.id));
+      setGradeDrafts((current) => {
+        const remaining = { ...current };
+        delete remaining[session.id];
+        return remaining;
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to complete the Viva session.');
+      await loadSessions();
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -190,7 +286,7 @@ export default function VivaSessionWorkspace() {
         <SectionHeader
           title="Viva Sessions"
           description="Only your assigned panel-admin sessions appear here. Confirm the team and panel before starting."
-          action={<Button variant="outline" onClick={() => void loadSessions()} disabled={Boolean(startingSessionId)}><RefreshCw size={16} />Reload</Button>}
+          action={<Button variant="outline" onClick={() => void loadSessions()} disabled={Boolean(pendingAction)}><RefreshCw size={16} />Reload</Button>}
         />
         {error && <p role="alert" className="rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
         {!error && sessions.length === 0 && (
@@ -199,7 +295,11 @@ export default function VivaSessionWorkspace() {
       </DashboardPanel>
 
       {sessions.map((session) => {
-        const isStarting = startingSessionId === session.id;
+        const isStarting = pendingAction?.sessionId === session.id && pendingAction.type === 'start';
+        const isSaving = pendingAction?.sessionId === session.id && pendingAction.type === 'save';
+        const isCompleting = pendingAction?.sessionId === session.id && pendingAction.type === 'complete';
+        const selectedGrade = gradeDrafts[session.id] ?? session.result?.grade ?? '';
+        const hasUnsavedGrade = selectedGrade !== (session.result?.grade || '');
         return (
           <DashboardPanel key={session.id}>
             <SectionHeader
@@ -227,9 +327,34 @@ export default function VivaSessionWorkspace() {
             </dl>
             {session.phase === 'scheduled' && (
               <div className="mt-6 flex justify-end">
-                <Button onClick={() => void startSession(session.id)} disabled={Boolean(startingSessionId)}>
+                <Button onClick={() => void startSession(session.id)} disabled={Boolean(pendingAction)}>
                   {isStarting ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
                   {isStarting ? 'Starting...' : 'Start Viva'}
+                </Button>
+              </div>
+            )}
+            {session.phase === 'running' && (
+              <div className="mt-6 grid gap-4 border-t border-[var(--color-border)] pt-6 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+                <label className="grid gap-2 text-sm font-bold text-[var(--color-text)]">
+                  Final grade
+                  <Select
+                    value={selectedGrade}
+                    onChange={(event) => setGradeDrafts((current) => ({ ...current, [session.id]: event.target.value }))}
+                    disabled={Boolean(pendingAction)}
+                  >
+                    <option value="">Select a grade</option>
+                    {session.gradeScale.map((grade) => (
+                      <option key={grade.grade} value={grade.grade}>{grade.grade} ({grade.percentage}%)</option>
+                    ))}
+                  </Select>
+                </label>
+                <Button onClick={() => void saveGrade(session)} disabled={Boolean(pendingAction) || !selectedGrade || !hasUnsavedGrade}>
+                  {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                  {isSaving ? 'Saving...' : 'Save grade'}
+                </Button>
+                <Button variant="success" onClick={() => void completeSession(session)} disabled={Boolean(pendingAction) || !session.result || hasUnsavedGrade}>
+                  {isCompleting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+                  {isCompleting ? 'Completing...' : 'Complete Viva'}
                 </Button>
               </div>
             )}
