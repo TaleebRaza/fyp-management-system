@@ -5,7 +5,7 @@ import User from '../models/User';
 import VivaPanel from '../models/VivaPanel';
 import VivaRound from '../models/VivaRound';
 import VivaSession from '../models/VivaSession';
-import { isVivaPanelAdmin } from './viva';
+import { calculateVivaPhase, isVivaPanelAdmin, type VivaPhase } from './viva';
 import { recordVivaAuditEvent, withVivaTransaction } from './vivaPersistence';
 
 export type VivaScheduleDto = {
@@ -17,6 +17,8 @@ export type VivaScheduleDto = {
   vivaEndsAt: string;
   locationLabel: string;
   version: number;
+  phase: VivaPhase;
+  cancellationReason: string;
 };
 
 export type VivaScheduleInput = {
@@ -33,11 +35,25 @@ export type VivaScheduleActor = {
   rollNo: string;
 };
 
+export type VivaSessionCancellationInput = {
+  sessionId: string;
+  version: number;
+  cancellationReason: string;
+};
+
 export type VivaScheduleSaveResult =
   | { success: true; schedule: VivaScheduleDto }
   | {
       success: false;
       reason: 'invalid' | 'not-found' | 'not-reschedulable' | 'concurrent-change';
+      error: string;
+    };
+
+export type VivaSessionCancellationResult =
+  | { success: true; schedule: VivaScheduleDto }
+  | {
+      success: false;
+      reason: 'invalid' | 'not-found' | 'not-cancellable' | 'concurrent-change';
       error: string;
     };
 
@@ -75,6 +91,8 @@ type VivaSessionRecord = {
   startedAt?: Date | null;
   completedAt?: Date | null;
   cancelledAt?: Date | null;
+  cancellationReason?: unknown;
+  publishedAt?: Date | null;
   locationLabel?: unknown;
   version?: unknown;
 };
@@ -106,6 +124,13 @@ function asLocationLabel(value: unknown): string | null {
 
   const label = value.trim();
   return label.length <= 160 ? label : null;
+}
+
+function asCancellationReason(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+
+  const reason = value.trim();
+  return reason.length > 0 && reason.length <= 1_000 ? reason : null;
 }
 
 function asScheduledAt(value: unknown): Date | null {
@@ -148,6 +173,12 @@ function toScheduleDto(session: VivaSessionRecord): VivaScheduleDto | null {
     vivaEndsAt,
     locationLabel: typeof session.locationLabel === 'string' ? session.locationLabel : '',
     version,
+    phase: calculateVivaPhase({
+      startedAt: session.startedAt instanceof Date ? session.startedAt : null,
+      completedAt: session.completedAt instanceof Date ? session.completedAt : null,
+      cancelledAt: session.cancelledAt instanceof Date ? session.cancelledAt : null,
+    }),
+    cancellationReason: typeof session.cancellationReason === 'string' ? session.cancellationReason : '',
   };
 }
 
@@ -190,6 +221,21 @@ export function parseVivaScheduleUpdateInput(value: unknown):
   }
 
   return { success: true, sessionId, version, input: parsed.input };
+}
+
+export function parseVivaSessionCancellationInput(value: unknown):
+  | { success: true; input: VivaSessionCancellationInput }
+  | { success: false; error: string } {
+  if (!isRecord(value)) return { success: false, error: 'Invalid Viva cancellation request.' };
+
+  const sessionId = asObjectId(value.sessionId);
+  const version = asVersion(value.version);
+  const cancellationReason = asCancellationReason(value.cancellationReason);
+  if (!sessionId || version === null || !cancellationReason) {
+    return { success: false, error: 'Provide a cancellation reason before cancelling this Viva session.' };
+  }
+
+  return { success: true, input: { sessionId, version, cancellationReason } };
 }
 
 async function readScheduleContext(
@@ -393,13 +439,104 @@ async function writeScheduleAudit(
 
 export async function getVivaSchedules(): Promise<VivaScheduleDto[]> {
   const sessions = await VivaSession.find({ scheduledAt: { $type: 'date' } })
-    .select('_id roundId panelId projectId scheduledAt vivaEndsAt locationLabel version')
+    .select('_id roundId panelId projectId scheduledAt vivaEndsAt startedAt completedAt cancelledAt cancellationReason locationLabel version')
     .sort({ scheduledAt: 1, _id: 1 })
     .lean<VivaSessionRecord[]>();
 
   return sessions.flatMap((session) => {
     const schedule = toScheduleDto(session);
     return schedule ? [schedule] : [];
+  });
+}
+
+export async function cancelVivaSession(
+  input: VivaSessionCancellationInput,
+  actor: VivaScheduleActor,
+  cancelledAt = new Date()
+): Promise<VivaSessionCancellationResult> {
+  if (
+    !mongoose.Types.ObjectId.isValid(input.sessionId)
+    || !mongoose.Types.ObjectId.isValid(actor.id)
+  ) {
+    return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+  }
+  if (
+    asVersion(input.version) === null
+    || !asCancellationReason(input.cancellationReason)
+    || !(cancelledAt instanceof Date)
+    || !Number.isFinite(cancelledAt.getTime())
+  ) {
+    return { success: false, reason: 'invalid', error: 'Provide a valid cancellation reason.' };
+  }
+
+  return withVivaTransaction(async (session) => {
+    const existing = await VivaSession.findById(input.sessionId)
+      .select('_id roundId scheduledAt startedAt completedAt cancelledAt publishedAt version')
+      .session(session)
+      .lean<VivaSessionRecord | null>();
+    if (!existing) {
+      return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+    }
+    if (existing.publishedAt instanceof Date) {
+      return { success: false, reason: 'not-cancellable', error: 'A published Viva result cannot be cancelled.' };
+    }
+    if (existing.completedAt instanceof Date) {
+      return { success: false, reason: 'not-cancellable', error: 'A completed Viva session cannot be cancelled.' };
+    }
+    if (existing.cancelledAt instanceof Date) {
+      return { success: false, reason: 'not-cancellable', error: 'This Viva session is already cancelled.' };
+    }
+    if (!(existing.scheduledAt instanceof Date)) {
+      return { success: false, reason: 'not-cancellable', error: 'Only scheduled or active Viva sessions can be cancelled.' };
+    }
+    if (asVersion(existing.version) !== input.version) {
+      return {
+        success: false,
+        reason: 'concurrent-change',
+        error: 'Another administrator changed this Viva session. Reload before cancelling it.',
+      };
+    }
+
+    const cancelledSession = await VivaSession.findOneAndUpdate(
+      {
+        _id: input.sessionId,
+        version: input.version,
+        scheduledAt: { $type: 'date' },
+        completedAt: null,
+        cancelledAt: null,
+        publishedAt: null,
+      },
+      {
+        $set: { cancelledAt, cancellationReason: input.cancellationReason.trim() },
+        $inc: { version: 1 },
+      },
+      { returnDocument: 'after', runValidators: true, session }
+    ).lean<VivaSessionRecord | null>();
+    if (!cancelledSession) {
+      return {
+        success: false,
+        reason: 'concurrent-change',
+        error: 'Another administrator changed this Viva session. Reload before cancelling it.',
+      };
+    }
+
+    await recordVivaAuditEvent(
+      {
+        roundId: String(cancelledSession.roundId),
+        sessionId: input.sessionId,
+        event: 'session-cancelled',
+        actorId: actor.id,
+        actorRole: 'admin',
+        actorName: actor.name,
+        actorRollNo: actor.rollNo,
+        occurredAt: cancelledAt,
+      },
+      session
+    );
+
+    const schedule = toScheduleDto(cancelledSession);
+    if (!schedule) throw new Error('Cancelled Viva session could not be serialized.');
+    return { success: true, schedule };
   });
 }
 

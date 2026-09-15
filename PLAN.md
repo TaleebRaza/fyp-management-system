@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestones 4–9 are complete. Revised Milestone 10, cancellation and fresh attempts, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–10 are implemented and verified. Revised Milestone 11, review and publication, is next.
 
 ## Update template
 
@@ -704,6 +704,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** The two pre-existing unrelated unit failures remain outside Viva and were not changed.
 - **Next step:** Implement Revised Milestone 10, cancellation and fresh attempts.
 - **Suggested commit message:** `feat(viva): add grade selection and completion`
+
+### 2026-09-15, Revised Milestone 10 complete
+
+- **Milestone and status:** Cancellation and fresh attempts are implemented and verified.
+- **Research findings:** `VivaSession` already preserves `cancelledAt`, `cancellationReason`, result snapshots, audit records, and a partial unique index permitting one non-cancelled attempt per team/round. The current access restriction is derived from active-session state, so setting `cancelledAt` releases it without an account mutation. Scheduling already rejects only non-cancelled duplicate attempts and conflicts.
+- **Implemented:** Added one transaction-backed system-admin cancellation path requiring a reason, optimistic version check, terminal/published-result protection, immutable audit event, and cancelled schedule serialization. The admin schedule view exposes session state, a required cancellation-reason form, cancellation history, and fresh scheduling for a cancelled team. A replacement is a clean new session, so it does not inherit the cancelled attempt's grade. Added a fake-data integration test scaffold limited to disposable local `fyp_viva_m10_test` on a replica set.
+- **Complexity avoided:** No new collection, role, account flag, cleanup job, second session/result workflow, migration, background task, or dependency.
+- **Validation:** The new cancellation suite passed against local MongoDB 8.0.16 `rs0`, seeding seven fake users and three fake teams in disposable `fyp_viva_m10_test`. It verified required reasons, scheduled and active cancellation, audit history, restriction release, clean replacement attempts, no inherited grade, cancelled-write rejection, published-result protection, and cancellation/grade races. Existing isolated persistence, admin, panel, scheduling, session, access, and grading Viva suites also passed. `npx tsc --noEmit`, `npm run lint`, and the escalated `npm run build` passed. `npm run test:unit` passed 56 of 58 files; the two unrelated existing failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`. The disposable MongoDB container and test database were removed after verification.
+- **Remaining hurdles:** Existing completed results remain non-cancellable; publication UI/API remains Milestone 11 work. The two unrelated unit failures remain outside Viva.
+- **Next step:** Implement Revised Milestone 11, review and publication.
+- **Suggested commit message:** `feat(viva): add cancellation and fresh attempts`
 
 ## Historical implementation record
 

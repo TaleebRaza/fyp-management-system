@@ -14,6 +14,8 @@ import {
   saveVivaPanels,
 } from '../../../../lib/vivaPanelAdmin';
 import {
+  cancelVivaSession,
+  parseVivaSessionCancellationInput,
   parseVivaScheduleInput,
   parseVivaScheduleUpdateInput,
   rescheduleVivaSession,
@@ -178,6 +180,25 @@ export async function PATCH(req: NextRequest) {
     } catch (error) {
       console.error('Admin Viva session rescheduling error:', error);
       return NextResponse.json({ error: 'Failed to reschedule the Viva session.' }, { status: 500 });
+    }
+  }
+
+  if (isRecord(body) && body.action === 'cancel-session') {
+    const parsed = parseVivaSessionCancellationInput(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    try {
+      const result = await cancelVivaSession(parsed.input, adminActor(currentUser));
+      if (!result.success) {
+        const status = result.reason === 'not-found' ? 404 : result.reason === 'concurrent-change' ? 409 : 400;
+        return NextResponse.json({ error: result.error }, { status });
+      }
+      return NextResponse.json({ schedule: result.schedule });
+    } catch (error) {
+      console.error('Admin Viva session cancellation error:', error);
+      return NextResponse.json({ error: 'Failed to cancel the Viva session.' }, { status: 500 });
     }
   }
 

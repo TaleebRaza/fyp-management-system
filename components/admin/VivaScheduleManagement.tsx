@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { CalendarDays, Loader2, Pencil } from 'lucide-react';
+import { CalendarDays, Loader2, Pencil, XCircle } from 'lucide-react';
 
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import type { VivaRoundDto, VivaTeamOption } from '../../lib/vivaRoundAdmin';
 import type { VivaScheduleDto } from '../../lib/vivaScheduling';
-import { Badge, Button, DashboardPanel, SectionHeader, StyledInput } from '../ui';
+import { Badge, Button, DashboardPanel, SectionHeader, StyledInput, TextArea } from '../ui';
 
 type VivaScheduleDraft = {
   projectId: string;
@@ -44,6 +44,8 @@ function readSchedule(value: unknown): VivaScheduleDto | null {
     || typeof value.scheduledAt !== 'string'
     || typeof value.vivaEndsAt !== 'string'
     || typeof value.locationLabel !== 'string'
+    || (value.phase !== 'scheduled' && value.phase !== 'running' && value.phase !== 'completed' && value.phase !== 'cancelled')
+    || typeof value.cancellationReason !== 'string'
     || version === null
   ) {
     return null;
@@ -58,6 +60,8 @@ function readSchedule(value: unknown): VivaScheduleDto | null {
     vivaEndsAt: value.vivaEndsAt,
     locationLabel: value.locationLabel,
     version,
+    phase: value.phase,
+    cancellationReason: value.cancellationReason,
   };
 }
 
@@ -122,7 +126,10 @@ export default function VivaScheduleManagement({
 }) {
   const [draft, setDraft] = useState<VivaScheduleDraft>(emptyDraft);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [cancellingScheduleId, setCancellingScheduleId] = useState<string | null>(null);
+  const [cancellationReason, setCancellationReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
 
@@ -135,11 +142,15 @@ export default function VivaScheduleManagement({
     [round.id, schedules]
   );
   const editingSchedule = roundSchedules.find((schedule) => schedule.id === editingScheduleId) || null;
-  const scheduledTeamIds = new Set(roundSchedules.map((schedule) => schedule.projectId));
+  const scheduledTeamIds = new Set(
+    roundSchedules
+      .filter((schedule) => schedule.phase !== 'cancelled')
+      .map((schedule) => schedule.projectId)
+  );
   const examinerNames = new Map(examiners.map((examiner) => [examiner.id, examiner.name]));
   const panelsById = new Map(panels.map((panel) => [panel.id, panel]));
   const teamsById = new Map(roundTeams.map((team) => [team.id, team]));
-  const controlsDisabled = isRoundSaving || isSaving;
+  const controlsDisabled = isRoundSaving || isSaving || isCancelling;
 
   const resetDraft = () => {
     setEditingScheduleId(null);
@@ -158,6 +169,47 @@ export default function VivaScheduleManagement({
     });
     setError('');
     setSavedMessage('');
+  };
+
+  const beginCancellation = (scheduleId: string) => {
+    setCancellingScheduleId(scheduleId);
+    setCancellationReason('');
+    setError('');
+    setSavedMessage('');
+  };
+
+  const cancelSchedule = async (event: FormEvent<HTMLFormElement>, schedule: VivaScheduleDto) => {
+    event.preventDefault();
+    if (controlsDisabled) return;
+
+    setIsCancelling(true);
+    setError('');
+    setSavedMessage('');
+    try {
+      const response = await fetch('/api/admin/viva', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'cancel-session',
+          sessionId: schedule.id,
+          version: schedule.version,
+          cancellationReason,
+        }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to cancel the Viva session.'));
+      const cancelledSchedule = isRecord(body) ? readSchedule(body.schedule) : null;
+      if (!cancelledSchedule) throw new Error('Viva cancellation response was invalid.');
+
+      onSaved(cancelledSchedule);
+      setCancellingScheduleId(null);
+      setCancellationReason('');
+      setSavedMessage('Viva session cancelled. You can now schedule a fresh attempt.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to cancel the Viva session.');
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const saveSchedule = async (event: FormEvent<HTMLFormElement>) => {
@@ -252,17 +304,33 @@ export default function VivaScheduleManagement({
           const team = teamsById.get(schedule.projectId);
           const panel = panelsById.get(schedule.panelId);
           const panelAdmin = panel ? examinerNames.get(panel.panelAdminId) || 'Unknown panel admin' : 'Unavailable panel';
+          const isCancellable = schedule.phase === 'scheduled' || schedule.phase === 'running';
           return (
-            <div key={schedule.id} className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-bold text-[var(--color-text)]">{team?.title || 'Unavailable team'}</p>
-                <p className="mt-1 text-sm text-[var(--color-text-muted)]">{formatPakistanTime(schedule.scheduledAt)} to {formatPakistanTime(schedule.vivaEndsAt)}{schedule.locationLabel ? `, ${schedule.locationLabel}` : ''}</p>
-                <p className="mt-1 text-xs text-[var(--color-text-muted)]">Panel admin: {panelAdmin}</p>
+            <div key={schedule.id} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-bold text-[var(--color-text)]">{team?.title || 'Unavailable team'}</p>
+                  <p className="mt-1 text-sm text-[var(--color-text-muted)]">{formatPakistanTime(schedule.scheduledAt)} to {formatPakistanTime(schedule.vivaEndsAt)}{schedule.locationLabel ? `, ${schedule.locationLabel}` : ''}</p>
+                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">Panel admin: {panelAdmin}</p>
+                  {schedule.phase === 'cancelled' && <p className="mt-1 text-xs text-[var(--color-danger)]">Cancellation reason: {schedule.cancellationReason || 'Not recorded'}</p>}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={schedule.phase === 'cancelled' ? 'danger' : schedule.phase === 'running' ? 'warning' : schedule.phase === 'completed' ? 'success' : 'muted'}>{schedule.phase}</Badge>
+                  <Badge variant="muted">Version {schedule.version}</Badge>
+                  {schedule.phase === 'scheduled' && <Button variant="outline" onClick={() => editSchedule(schedule)} disabled={controlsDisabled}><Pencil size={16} />Edit</Button>}
+                  {isCancellable && <Button variant="danger" onClick={() => beginCancellation(schedule.id)} disabled={controlsDisabled}><XCircle size={16} />Cancel</Button>}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="muted">Version {schedule.version}</Badge>
-                <Button variant="outline" onClick={() => editSchedule(schedule)} disabled={controlsDisabled}><Pencil size={16} />Edit</Button>
-              </div>
+              {cancellingScheduleId === schedule.id && (
+                <form onSubmit={(event) => void cancelSchedule(event, schedule)} className="mt-4 border-t border-[var(--color-border)] pt-4">
+                  <label htmlFor={`viva-cancellation-reason-${schedule.id}`} className="mb-2 block text-sm font-bold text-[var(--color-text)]">Cancellation reason</label>
+                  <TextArea id={`viva-cancellation-reason-${schedule.id}`} value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} required maxLength={1_000} disabled={controlsDisabled} placeholder="Describe the interruption requiring a fresh attempt." />
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button variant="ghost" onClick={() => { setCancellingScheduleId(null); setCancellationReason(''); }} disabled={controlsDisabled}>Keep session</Button>
+                    <Button type="submit" variant="danger" disabled={controlsDisabled || !cancellationReason.trim()}>{isCancelling ? <Loader2 className="animate-spin" size={16} /> : <XCircle size={16} />}{isCancelling ? 'Cancelling...' : 'Cancel session'}</Button>
+                  </div>
+                </form>
+              )}
             </div>
           );
         })}

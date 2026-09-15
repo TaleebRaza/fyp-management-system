@@ -166,6 +166,8 @@ function readSchedule(value: unknown): VivaScheduleDto | null {
     || typeof value.scheduledAt !== 'string'
     || typeof value.vivaEndsAt !== 'string'
     || typeof value.locationLabel !== 'string'
+    || (value.phase !== 'scheduled' && value.phase !== 'running' && value.phase !== 'completed' && value.phase !== 'cancelled')
+    || typeof value.cancellationReason !== 'string'
     || version === null
   ) {
     return null;
@@ -180,6 +182,8 @@ function readSchedule(value: unknown): VivaScheduleDto | null {
     vivaEndsAt: value.vivaEndsAt,
     locationLabel: value.locationLabel,
     version,
+    phase: value.phase,
+    cancellationReason: value.cancellationReason,
   };
 }
 
