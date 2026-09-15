@@ -17,6 +17,7 @@
     "test:viva:grading": "node --test tests/viva-grade-completion.integration.test.mjs",
     "test:viva:cancellation": "node --test tests/viva-cancellation.integration.test.mjs",
     "test:viva:publication": "node --test tests/viva-publication.integration.test.mjs",
+    "test:viva:workflow": "node --test tests/viva-workflow.integration.test.mjs",
     "capacity:reconcile": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs",
     "capacity:repair": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs --repair",
     "project:drift-audit": "node --env-file-if-exists=.env.local scripts/audit-project-drift.mjs",

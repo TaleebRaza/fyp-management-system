@@ -118,6 +118,16 @@ flowchart LR
 * Perform controlled academic resets
 * Monitor storage usage
 
+### 🎓 Viva Assessment Workflow
+
+* Create a named round with selected teams, active teachers, panel sizes, and a Viva duration
+* Assemble panels manually or generate a random draft, with exactly one eligible panel admin per panel
+* Schedule a team in a viable panel, with server-side checks for teacher, student, and own-supervisor conflicts
+* Run the Viva from the assigned panel admin's single workspace, while other panel members are temporarily restricted
+* Select one canonical final grade, publish completed results, and show the same saved grade and percentage to every snapshotted team member
+
+The current grade scale is A+ (100%), A (90%), B (80%), C (70%), D (60%), and F (0%). Completed and published assessments are immutable; cancellations retain their history and require a fresh attempt.
+
 ---
 
 ## 🔄 Project Lifecycle
@@ -278,6 +288,16 @@ Key protections include:
 * Environment-based configuration
 
 The platform separates permissions between students, supervisors, and administrators to ensure that users only access the features and records relevant to their role.
+
+### Local Viva verification
+
+Viva integration tests use a local, disposable MongoDB replica-set database because the workflow relies on transactions. They seed fake data only and remove the target database when complete.
+
+```bash
+VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m12_test?replicaSet=rs0' npm run test:viva:workflow
+```
+
+The workflow check exercises round creation, random panel allocation and explicit panel-admin replacement, scheduling, panel-admin-only start, temporary member restriction and release, grade completion, publication, and equal results for every team member. It also reports the observed local preview and transactional panel-save durations for 500 fake supervisors. These timings are diagnostic measurements, not performance guarantees.
 
 ---
 

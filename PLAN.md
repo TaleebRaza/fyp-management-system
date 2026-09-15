@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestones 4–11 are implemented and verified. Revised Milestone 12, integration, performance, and documentation, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–12 are implemented and verified. Revised Milestone 13, automatic team scheduling, is next.
 
 ## Update template
 
@@ -726,6 +726,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** The two pre-existing unrelated unit failures remain outside Viva and were not changed. Milestone 12 still needs the complete role-separated workflow review, representative performance checks, and documentation pass.
 - **Next step:** Implement Revised Milestone 12, integration, performance, and documentation.
 - **Suggested commit message:** `feat(viva): add result review and publication`
+
+### 2026-09-15, Revised Milestone 12 complete
+
+- **Milestone and status:** Integration, representative local measurement, and documentation are complete and verified.
+- **Research findings:** The existing nine isolated Viva integration suites already cover persistence, configuration, panels, scheduling, dashboard start, access restriction, grading, cancellation, and publication. The missing proof was one composed role-separated workflow across those established transactional paths. The existing panel suite already demonstrated 500-supervisor allocation, so the composed check uses the same representative scale and measures a real preview plus transactional panel save rather than an array-only benchmark.
+- **Implemented:** Added `test:viva:workflow`, a fake-data replica-set integration suite restricted to disposable local `fyp_viva_m12_test`. It creates a round, allocates 500 supervisors into panels, explicitly replaces one panel admin before saving, schedules and starts a session, verifies the temporary restriction and release, records A+ (100%), publishes the result, and confirms both snapshotted students receive the same result. The check logs observed preview/save durations without a timing threshold. Documented the Viva workflow, grade scale, and local verification command in `README.md`.
+- **Complexity avoided:** No browser framework, duplicate end-to-end fixture layer, production load test, timing gate, database reset outside the disposable test database, dependency, queue, cache, or real-time mechanism.
+- **Validation:** `VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m12_test?replicaSet=rs0' npm run test:viva:workflow` passed with 504 seeded fake users, 17.82 ms allocation preview, and 401.11 ms transactional panel save. The existing isolated `npm run test:viva:persistence`, `test:viva:admin`, `test:viva:panels`, `test:viva:scheduling`, `test:viva:session`, `test:viva:access`, `test:viva:grading`, `test:viva:cancellation`, and `test:viva:publication` suites all passed against local MongoDB 8.0.16 `rs0`. `npx tsc --noEmit`, `npm run lint`, and `MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_build_check?replicaSet=rs0' npm run build` passed. `npm run test:unit` recorded 160 passing, 2 failing, and 10 skipped; the failures are the established unrelated `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs` assertions, while Viva integration tests are skipped when no URI is supplied. All test databases were dropped by their runners and the disposable container was removed after verification.
+- **Remaining hurdles:** The two unrelated unit failures remain outside Viva and were not changed. Milestone 13 still needs automatic team scheduling.
+- **Next step:** Implement Revised Milestone 13, automatic team scheduling.
+- **Suggested commit message:** `test(viva): add full workflow integration coverage`
 
 ## Historical implementation record
 
