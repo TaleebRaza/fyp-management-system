@@ -99,8 +99,8 @@ function readPublication(value: unknown): VivaPublicationResult | null {
     : null;
   const failures = readFailures(value.failures);
   if (
-    !published?.every(Boolean)
-    || !alreadyPublished?.every(Boolean)
+    !published?.every((assessment): assessment is VivaAssessmentDto => Boolean(assessment))
+    || !alreadyPublished?.every((assessment): assessment is VivaAssessmentDto => Boolean(assessment))
     || !failures
   ) {
     return null;
