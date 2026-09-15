@@ -2,7 +2,7 @@ import mongoose, { Schema } from 'mongoose';
 
 import { validateVivaConfiguration } from '../lib/viva';
 
-const VivaFactorSchema = new Schema(
+const LegacyVivaFactorSchema = new Schema(
   {
     id: { type: String, required: true, trim: true, maxlength: 80 },
     label: { type: String, required: true, trim: true, maxlength: 120 },
@@ -13,11 +13,12 @@ const VivaFactorSchema = new Schema(
 const VivaRoundSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
-    factors: { type: [VivaFactorSchema], required: true },
+    // Retained so factor-based rounds created before the grade workflow remain readable.
+    factors: { type: [LegacyVivaFactorSchema], default: undefined },
     targetPanelSize: { type: Number, required: true, min: 2 },
     minimumPanelSize: { type: Number, required: true, min: 2 },
     vivaDurationMinutes: { type: Number, required: true, min: 0 },
-    extraGradingDurationMinutes: { type: Number, required: true, min: 0 },
+    extraGradingDurationMinutes: { type: Number, default: null, min: 0 },
     projectIds: [{ type: Schema.Types.ObjectId, ref: 'Project' }],
     examinerIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     frozenAt: { type: Date, default: null },
@@ -27,19 +28,15 @@ const VivaRoundSchema = new Schema(
 
 VivaRoundSchema.pre('validate', function () {
   const validation = validateVivaConfiguration({
-    factors: this.get('factors'),
     targetPanelSize: this.get('targetPanelSize'),
     minimumPanelSize: this.get('minimumPanelSize'),
     vivaDurationMinutes: this.get('vivaDurationMinutes'),
-    extraGradingDurationMinutes: this.get('extraGradingDurationMinutes'),
   });
 
   if (!validation.success) {
     for (const error of validation.errors) this.invalidate(error, 'Invalid Viva round configuration.');
     return;
   }
-
-  this.set('factors', validation.configuration.factors);
 });
 
 VivaRoundSchema.index({ createdAt: -1 });

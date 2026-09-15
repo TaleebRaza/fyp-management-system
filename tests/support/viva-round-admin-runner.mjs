@@ -32,14 +32,9 @@ const actor = {
 function roundRequest(projectIds, examinerIds, overrides = {}) {
   return {
     name: 'Fall 2026 Viva',
-    factors: [
-      { id: 'presentation', label: 'Presentation' },
-      { id: 'technical', label: 'Technical knowledge' },
-    ],
     targetPanelSize: 3,
     minimumPanelSize: 2,
     vivaDurationMinutes: 30,
-    extraGradingDurationMinutes: 10,
     projectIds,
     examinerIds,
     ...overrides,
@@ -144,10 +139,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     const createdRound = created.round;
 
     const persisted = await VivaRound.findById(createdRound.id).lean();
-    assert.deepEqual(
-      persisted.factors.map((factor) => factor.id),
-      ['presentation', 'technical']
-    );
+    assert.equal(persisted.factors, undefined);
     assert.deepEqual(persisted.projectIds.map(String), [String(activeTeam._id)]);
     assert.deepEqual(
       persisted.examinerIds.map(String),
@@ -169,17 +161,12 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
         [String(supervisorOne._id), String(supervisorTwo._id)],
         {
           name: 'Fall 2026 Final Viva',
-          factors: [
-            { id: 'technical', label: 'Technical knowledge' },
-            { id: 'presentation', label: 'Presentation' },
-          ],
         }
       )),
       actor
     );
     assert.equal(updated.success, true, updated.success ? '' : updated.error);
     assert.equal(updated.round.name, 'Fall 2026 Final Viva');
-    assert.deepEqual(updated.round.factors.map((factor) => factor.id), ['technical', 'presentation']);
     assert.equal(await VivaAuditEvent.countDocuments({ roundId: createdRound.id, event: 'round-updated' }), 1);
 
     const inactiveTeacherResult = await createVivaRound(
@@ -214,7 +201,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 6,
       seededTeams: 2,
-      verified: ['input-validation', 'create-audit', 'active-selection', 'factor-ordering', 'update-audit', 'frozen-round-rejection'],
+      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'frozen-round-rejection'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

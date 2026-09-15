@@ -7,7 +7,9 @@ export const VIVA_AUDIT_EVENT_TYPES = [
   'panel-updated',
   'session-scheduled',
   'session-started',
+  // Retained because historic factor-score audit records remain immutable.
   'score-recorded',
+  'grade-recorded',
   'session-finalized',
   'session-cancelled',
   'result-published',

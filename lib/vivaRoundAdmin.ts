@@ -5,7 +5,6 @@ import Project from '../models/Project';
 import User from '../models/User';
 import {
   type VivaConfiguration,
-  type VivaFactor,
   validateVivaConfiguration,
 } from './viva';
 import { recordVivaAuditEvent, withVivaTransaction } from './vivaPersistence';
@@ -50,11 +49,9 @@ export type VivaRoundActor = {
 type VivaRoundRecord = {
   _id: unknown;
   name?: unknown;
-  factors?: unknown;
   targetPanelSize?: unknown;
   minimumPanelSize?: unknown;
   vivaDurationMinutes?: unknown;
-  extraGradingDurationMinutes?: unknown;
   projectIds?: unknown;
   examinerIds?: unknown;
   frozenAt?: Date | null;
@@ -117,10 +114,6 @@ function parseObjectIdList(value: unknown, label: string):
   return { success: true, ids };
 }
 
-function normalizeFactors(factors: VivaFactor[]): VivaFactor[] {
-  return factors.map((factor) => ({ id: factor.id.trim(), label: factor.label.trim() }));
-}
-
 function asDateString(value: unknown): string | null {
   return value instanceof Date && Number.isFinite(value.getTime())
     ? value.toISOString()
@@ -131,31 +124,13 @@ function asStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : [];
 }
 
-function asFactors(value: unknown): VivaFactor[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((factor) => {
-    if (
-      !isRecord(factor)
-      || typeof factor.id !== 'string'
-      || typeof factor.label !== 'string'
-    ) {
-      return [];
-    }
-
-    return [{ id: factor.id.trim(), label: factor.label.trim() }];
-  });
-}
-
 function serializeVivaRound(round: VivaRoundRecord): VivaRoundDto {
   return {
     id: String(round._id),
     name: typeof round.name === 'string' ? round.name : '',
-    factors: asFactors(round.factors),
     targetPanelSize: Number(round.targetPanelSize),
     minimumPanelSize: Number(round.minimumPanelSize),
     vivaDurationMinutes: Number(round.vivaDurationMinutes),
-    extraGradingDurationMinutes: Number(round.extraGradingDurationMinutes),
     projectIds: asStringList(round.projectIds),
     examinerIds: asStringList(round.examinerIds),
     frozenAt: asDateString(round.frozenAt),
@@ -176,21 +151,12 @@ export function parseVivaRoundInput(value: unknown): ParsedVivaRoundInput {
   }
 
   const configuration = validateVivaConfiguration({
-    factors: input.factors,
     targetPanelSize: input.targetPanelSize,
     minimumPanelSize: input.minimumPanelSize,
     vivaDurationMinutes: input.vivaDurationMinutes,
-    extraGradingDurationMinutes: input.extraGradingDurationMinutes,
   });
   if (!configuration.success) {
-    return { success: false, error: 'Check the panel sizes, durations, and marking factors.' };
-  }
-  if (
-    configuration.configuration.factors.some(
-      (factor) => factor.id.length > 80 || factor.label.length > 120
-    )
-  ) {
-    return { success: false, error: 'Each marking factor is too long.' };
+    return { success: false, error: 'Check the panel sizes and Viva duration.' };
   }
 
   const projects = parseObjectIdList(input.projectIds, 'team');
@@ -204,7 +170,6 @@ export function parseVivaRoundInput(value: unknown): ParsedVivaRoundInput {
     input: {
       name,
       ...configuration.configuration,
-      factors: normalizeFactors(configuration.configuration.factors),
       projectIds: projects.ids,
       examinerIds: examiners.ids,
     },
@@ -260,11 +225,9 @@ async function validateSelectedPeopleAndTeams(
 function toRoundFields(input: VivaRoundInput) {
   return {
     name: input.name,
-    factors: input.factors,
     targetPanelSize: input.targetPanelSize,
     minimumPanelSize: input.minimumPanelSize,
     vivaDurationMinutes: input.vivaDurationMinutes,
-    extraGradingDurationMinutes: input.extraGradingDurationMinutes,
     projectIds: input.projectIds,
     examinerIds: input.examinerIds,
   };
@@ -291,7 +254,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       .lean<UserRecord[]>(),
     VivaRound.find()
       .select(
-        'name factors targetPanelSize minimumPanelSize vivaDurationMinutes extraGradingDurationMinutes projectIds examinerIds frozenAt createdAt updatedAt'
+        'name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds examinerIds frozenAt createdAt updatedAt'
       )
       .sort({ createdAt: -1 })
       .lean<VivaRoundRecord[]>(),

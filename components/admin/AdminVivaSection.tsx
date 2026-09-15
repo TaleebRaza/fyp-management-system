@@ -2,23 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Loader2, Plus, RotateCcw } from 'lucide-react';
 
 import type {
   VivaExaminerOption,
   VivaRoundDto,
   VivaTeamOption,
 } from '../../lib/vivaRoundAdmin';
-import type { VivaFactor } from '../../lib/viva';
 import { Badge, Button, DashboardPanel, SectionHeader, StyledInput } from '../ui';
 
 type VivaRoundDraft = {
   name: string;
-  factors: VivaFactor[];
   targetPanelSize: number;
   minimumPanelSize: number;
   vivaDurationMinutes: number;
-  extraGradingDurationMinutes: number;
   projectIds: string[];
   examinerIds: string[];
 };
@@ -31,11 +28,9 @@ type VivaConfigurationResponse = {
 
 const EMPTY_DRAFT: VivaRoundDraft = {
   name: '',
-  factors: [{ id: 'presentation', label: 'Presentation' }],
   targetPanelSize: 3,
   minimumPanelSize: 2,
   vivaDurationMinutes: 30,
-  extraGradingDurationMinutes: 10,
   projectIds: [],
   examinerIds: [],
 };
@@ -54,34 +49,23 @@ function readNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function readFactor(value: unknown): VivaFactor | null {
-  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.label !== 'string') {
-    return null;
-  }
-  return { id: value.id, label: value.label };
-}
-
 function readRound(value: unknown): VivaRoundDto | null {
   if (!isRecord(value)) return null;
 
-  const factors = readList(value.factors, readFactor);
   const projectIds = stringList(value.projectIds);
   const examinerIds = stringList(value.examinerIds);
   const targetPanelSize = readNumber(value.targetPanelSize);
   const minimumPanelSize = readNumber(value.minimumPanelSize);
   const vivaDurationMinutes = readNumber(value.vivaDurationMinutes);
-  const extraGradingDurationMinutes = readNumber(value.extraGradingDurationMinutes);
 
   if (
     typeof value.id !== 'string'
     || typeof value.name !== 'string'
-    || !factors
     || !projectIds
     || !examinerIds
     || targetPanelSize === null
     || minimumPanelSize === null
     || vivaDurationMinutes === null
-    || extraGradingDurationMinutes === null
     || (value.frozenAt !== null && typeof value.frozenAt !== 'string')
     || (value.createdAt !== null && typeof value.createdAt !== 'string')
     || (value.updatedAt !== null && typeof value.updatedAt !== 'string')
@@ -92,11 +76,9 @@ function readRound(value: unknown): VivaRoundDto | null {
   return {
     id: value.id,
     name: value.name,
-    factors,
     targetPanelSize,
     minimumPanelSize,
     vivaDurationMinutes,
-    extraGradingDurationMinutes,
     projectIds,
     examinerIds,
     frozenAt: value.frozenAt,
@@ -168,18 +150,12 @@ function readError(value: unknown, fallback: string) {
 function toDraft(round: VivaRoundDto): VivaRoundDraft {
   return {
     name: round.name,
-    factors: round.factors,
     targetPanelSize: round.targetPanelSize,
     minimumPanelSize: round.minimumPanelSize,
     vivaDurationMinutes: round.vivaDurationMinutes,
-    extraGradingDurationMinutes: round.extraGradingDurationMinutes,
     projectIds: round.projectIds,
     examinerIds: round.examinerIds,
   };
-}
-
-function createFactor(): VivaFactor {
-  return { id: crypto.randomUUID(), label: '' };
 }
 
 function toggleSelection(ids: string[], id: string) {
@@ -244,26 +220,6 @@ export default function AdminVivaSection() {
     setDraft(toDraft(round));
     setError('');
     setSavedMessage('');
-  };
-
-  const updateFactor = (index: number, label: string) => {
-    setDraft((current) => ({
-      ...current,
-      factors: current.factors.map((factor, factorIndex) =>
-        factorIndex === index ? { ...factor, label } : factor
-      ),
-    }));
-  };
-
-  const moveFactor = (index: number, direction: -1 | 1) => {
-    setDraft((current) => {
-      const destination = index + direction;
-      if (destination < 0 || destination >= current.factors.length) return current;
-
-      const factors = [...current.factors];
-      [factors[index], factors[destination]] = [factors[destination], factors[index]];
-      return { ...current, factors };
-    });
   };
 
   const saveRound = async (event: FormEvent<HTMLFormElement>) => {
@@ -377,12 +333,11 @@ export default function AdminVivaSection() {
               <StyledInput id="viva-round-name" value={draft.name} maxLength={120} required placeholder="For example, Fall 2026 Viva" onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-3">
               {([
                 ['targetPanelSize', 'Target panel size', 2],
                 ['minimumPanelSize', 'Minimum panel size', 2],
                 ['vivaDurationMinutes', 'Viva minutes', 1],
-                ['extraGradingDurationMinutes', 'Extra grading minutes', 1],
               ] as const).map(([field, label, minimum]) => (
                 <div key={field}>
                   <label htmlFor={`viva-${field}`} className="mb-2 block text-sm font-bold text-[var(--color-text)]">{label}</label>
@@ -391,31 +346,6 @@ export default function AdminVivaSection() {
               ))}
             </div>
           </fieldset>
-        </DashboardPanel>
-
-        <DashboardPanel>
-          <SectionHeader
-            title="Marking Factors"
-            description="Every examiner gives the same factors equal weight. Their order is kept when the round is saved."
-            action={
-              <Button disabled={isFrozen || isSaving} onClick={() => setDraft((current) => ({ ...current, factors: [...current.factors, createFactor()] }))}>
-                <Plus size={16} />Add Factor
-              </Button>
-            }
-          />
-          <div className="space-y-3">
-            {draft.factors.map((factor, index) => (
-              <div key={factor.id} className="flex gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
-                <span className="flex h-11 w-8 shrink-0 items-center justify-center text-sm font-black text-[var(--color-text-muted)]">{index + 1}</span>
-                <StyledInput disabled={isFrozen || isSaving} value={factor.label} maxLength={120} required placeholder="Factor name" onChange={(event) => updateFactor(index, event.target.value)} />
-                <div className="flex shrink-0 gap-1">
-                  <Button variant="outline" disabled={isFrozen || isSaving || index === 0} onClick={() => moveFactor(index, -1)} aria-label={`Move ${factor.label || 'factor'} up`}>↑</Button>
-                  <Button variant="outline" disabled={isFrozen || isSaving || index === draft.factors.length - 1} onClick={() => moveFactor(index, 1)} aria-label={`Move ${factor.label || 'factor'} down`}>↓</Button>
-                  <Button variant="danger" disabled={isFrozen || isSaving || draft.factors.length === 1} onClick={() => setDraft((current) => ({ ...current, factors: current.factors.filter((_, factorIndex) => factorIndex !== index) }))} aria-label={`Remove ${factor.label || 'factor'}`}><Trash2 size={16} /></Button>
-                </div>
-              </div>
-            ))}
-          </div>
         </DashboardPanel>
 
         <div className="grid gap-6 xl:grid-cols-2">

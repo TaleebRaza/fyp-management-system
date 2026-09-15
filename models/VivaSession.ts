@@ -1,6 +1,8 @@
 import mongoose, { Schema } from 'mongoose';
 
-const VivaFactorSnapshotSchema = new Schema(
+import { getVivaGradeResult, VIVA_GRADE_SCALE } from '../lib/viva';
+
+const LegacyVivaFactorSnapshotSchema = new Schema(
   {
     id: { type: String, required: true, trim: true, maxlength: 80 },
     label: { type: String, required: true, trim: true, maxlength: 120 },
@@ -20,11 +22,12 @@ const VivaPersonSnapshotSchema = new Schema(
 const VivaRoundSnapshotSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
-    factors: { type: [VivaFactorSnapshotSchema], required: true },
+    // Retained for session history created by the factor-based workflow.
+    factors: { type: [LegacyVivaFactorSnapshotSchema], default: undefined },
     targetPanelSize: { type: Number, required: true, min: 2 },
     minimumPanelSize: { type: Number, required: true, min: 2 },
     vivaDurationMinutes: { type: Number, required: true, min: 0 },
-    extraGradingDurationMinutes: { type: Number, required: true, min: 0 },
+    extraGradingDurationMinutes: { type: Number, default: null, min: 0 },
   },
   { _id: false }
 );
@@ -47,13 +50,24 @@ const VivaProjectSnapshotSchema = new Schema(
 const VivaPanelSnapshotSchema = new Schema(
   {
     panelId: { type: String, required: true, trim: true, maxlength: 64 },
-    chair: { type: VivaPersonSnapshotSchema, required: true },
+    panelAdmin: { type: VivaPersonSnapshotSchema, default: undefined },
+    // Retained for session history created before panel-admin assignment existed.
+    chair: { type: VivaPersonSnapshotSchema, default: undefined },
     examiners: { type: [VivaPersonSnapshotSchema], required: true },
   },
   { _id: false }
 );
 
-const VivaScoreSchema = new Schema(
+const VivaGradeResultSchema = new Schema(
+  {
+    grade: { type: String, enum: VIVA_GRADE_SCALE.map(({ grade }) => grade), required: true },
+    percentage: { type: Number, required: true, min: 0, max: 100 },
+    selectedAt: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
+const LegacyVivaScoreSchema = new Schema(
   {
     factorId: { type: String, required: true, trim: true, maxlength: 80 },
     value: { type: Number, required: true, min: 0, max: 10 },
@@ -63,17 +77,10 @@ const VivaScoreSchema = new Schema(
   { _id: false }
 );
 
-VivaScoreSchema.path('value').validate(function (this: { get(path: string): unknown }, value: unknown) {
-  if (!Number.isInteger(value)) return false;
-  return this.get('source') === 'deadline'
-    ? value === 0
-    : typeof value === 'number' && value >= 1 && value <= 10;
-}, 'Examiner scores must be whole numbers from 1 through 10, and deadline scores must be zero.');
-
-const VivaExaminerSheetSchema = new Schema(
+const LegacyVivaExaminerSheetSchema = new Schema(
   {
     examiner: { type: VivaPersonSnapshotSchema, required: true },
-    scores: { type: [VivaScoreSchema], default: [] },
+    scores: { type: [LegacyVivaScoreSchema], default: [] },
   },
   { _id: false }
 );
@@ -87,18 +94,31 @@ const VivaSessionSchema = new Schema(
     locationLabel: { type: String, trim: true, maxlength: 160, default: '' },
     startedAt: { type: Date, default: null },
     vivaEndsAt: { type: Date, default: null },
+    // Retained for sessions created before the factor workflow was removed.
     extraGradingEndsAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
     cancelledAt: { type: Date, default: null },
     cancellationReason: { type: String, trim: true, maxlength: 1_000, default: '' },
     publishedAt: { type: Date, default: null },
     roundSnapshot: { type: VivaRoundSnapshotSchema, default: undefined },
     projectSnapshot: { type: VivaProjectSnapshotSchema, default: undefined },
     panelSnapshot: { type: VivaPanelSnapshotSchema, default: undefined },
-    examinerSheets: { type: [VivaExaminerSheetSchema], default: [] },
+    result: { type: VivaGradeResultSchema, default: undefined },
+    examinerSheets: { type: [LegacyVivaExaminerSheetSchema], default: undefined },
     version: { type: Number, required: true, default: 0, min: 0 },
   },
   { timestamps: true }
 );
+
+VivaSessionSchema.pre('validate', function () {
+  const result = this.get('result');
+  if (!result) return;
+
+  const canonicalResult = getVivaGradeResult(this.get('result.grade'));
+  if (!canonicalResult || this.get('result.percentage') !== canonicalResult.percentage) {
+    this.invalidate('result', 'A Viva result must use its canonical grade percentage.');
+  }
+});
 
 // Cancelled attempts leave this index, allowing one replacement attempt for the same team.
 VivaSessionSchema.index(

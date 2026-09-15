@@ -1,9 +1,13 @@
 import mongoose, { Schema } from 'mongoose';
 
+import { isVivaPanelAdmin } from '../lib/viva';
+
 const VivaPanelSchema = new Schema(
   {
     roundId: { type: Schema.Types.ObjectId, ref: 'VivaRound', required: true },
     examinerIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    panelAdminId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // Retained for panels created before panel-admin assignment replaced the chair role.
     chairId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
@@ -19,9 +23,8 @@ VivaPanelSchema.pre('validate', function () {
     this.invalidate('examinerIds', 'An examiner can appear only once in a panel.');
   }
 
-  const chairId = this.get('chairId');
-  if (chairId && !normalizedExaminerIds.includes(String(chairId))) {
-    this.invalidate('chairId', 'The panel chair must be an examiner in the panel.');
+  if (!isVivaPanelAdmin(normalizedExaminerIds, String(this.get('panelAdminId') || ''))) {
+    this.invalidate('panelAdminId', 'The panel admin must be a unique member of the panel.');
   }
 });
 

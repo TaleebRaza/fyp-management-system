@@ -5,133 +5,113 @@ import { importTypeScriptModule } from './support/importTypeScript.mjs';
 
 const viva = await importTypeScriptModule('lib/viva.ts');
 
-const factors = [
-  { id: 'presentation', label: 'Presentation' },
-  { id: 'technical', label: 'Technical knowledge' },
-];
-
-test('validates and normalizes viable Viva round configuration', () => {
-  const configuration = viva.validateVivaConfiguration({
-    factors: [
-      { id: ' presentation ', label: ' Presentation ' },
-      { id: 'technical', label: 'Technical knowledge' },
-    ],
-    targetPanelSize: 3,
-    minimumPanelSize: 2,
-    vivaDurationMinutes: 30,
-    extraGradingDurationMinutes: 10,
-  });
-
-  assert.deepEqual(configuration, {
-    success: true,
-    configuration: {
-      factors,
+test('validates viable Viva round configuration without factor scoring', () => {
+  assert.deepEqual(
+    viva.validateVivaConfiguration({
       targetPanelSize: 3,
       minimumPanelSize: 2,
       vivaDurationMinutes: 30,
-      extraGradingDurationMinutes: 10,
-    },
-  });
+    }),
+    {
+      success: true,
+      configuration: {
+        targetPanelSize: 3,
+        minimumPanelSize: 2,
+        vivaDurationMinutes: 30,
+      },
+    }
+  );
 });
 
-test('rejects invalid panels, durations, and factors', () => {
-  const configuration = viva.validateVivaConfiguration({
-    factors: [{ id: 'presentation', label: '' }, { id: 'presentation', label: 'Duplicate' }],
-    targetPanelSize: 2,
-    minimumPanelSize: 3,
-    vivaDurationMinutes: 0,
-    extraGradingDurationMinutes: -1,
-  });
-
-  assert.deepEqual(configuration, {
-    success: false,
-    errors: [
-      'invalid-panel-sizes',
-      'invalid-viva-duration',
-      'invalid-extra-grading-duration',
-      'invalid-factor',
-    ],
-  });
+test('rejects invalid panel sizes and Viva durations', () => {
+  assert.deepEqual(
+    viva.validateVivaConfiguration({
+      targetPanelSize: 2,
+      minimumPanelSize: 3,
+      vivaDurationMinutes: 0,
+    }),
+    {
+      success: false,
+      errors: ['invalid-panel-sizes', 'invalid-viva-duration'],
+    }
+  );
   assert.deepEqual(viva.validateVivaConfiguration({}), {
     success: false,
     errors: [
       'invalid-target-panel-size',
       'invalid-minimum-panel-size',
       'invalid-viva-duration',
-      'invalid-extra-grading-duration',
-      'factors-required',
     ],
   });
 });
 
-test('derives the lifecycle at exact deadline boundaries and keeps publication separate', () => {
-  const timeline = {
-    startedAt: new Date('2026-09-14T09:00:00.000Z'),
-    vivaEndsAt: new Date('2026-09-14T09:30:00.000Z'),
-    extraGradingEndsAt: new Date('2026-09-14T09:40:00.000Z'),
-    cancelledAt: null,
-  };
-
-  assert.deepEqual(viva.VIVA_PHASES, ['scheduled', 'running', 'extra_grading', 'ended', 'cancelled']);
-  assert.equal(viva.calculateVivaPhase({ ...timeline, startedAt: null }, timeline.vivaEndsAt), 'scheduled');
-  assert.equal(viva.calculateVivaPhase(timeline, new Date('2026-09-14T09:29:59.999Z')), 'running');
-  assert.equal(viva.calculateVivaPhase(timeline, timeline.vivaEndsAt), 'extra_grading');
-  assert.equal(viva.calculateVivaPhase(timeline, timeline.extraGradingEndsAt), 'ended');
+test('derives session phases and gives terminal states precedence', () => {
+  assert.deepEqual(viva.VIVA_PHASES, ['scheduled', 'running', 'completed', 'cancelled']);
   assert.equal(
-    viva.calculateVivaPhase({ ...timeline, cancelledAt: new Date('2026-09-14T09:31:00.000Z') }, timeline.vivaEndsAt),
+    viva.calculateVivaPhase({ startedAt: null, completedAt: null, cancelledAt: null }),
+    'scheduled'
+  );
+  assert.equal(
+    viva.calculateVivaPhase({ startedAt: new Date('2026-09-15T09:00:00.000Z'), completedAt: null, cancelledAt: null }),
+    'running'
+  );
+  assert.equal(
+    viva.calculateVivaPhase({ startedAt: null, completedAt: new Date('2026-09-15T09:30:00.000Z'), cancelledAt: null }),
+    'completed'
+  );
+  assert.equal(
+    viva.calculateVivaPhase({ startedAt: null, completedAt: new Date(), cancelledAt: new Date() }),
     'cancelled'
   );
+  assert.equal(viva.isVivaTerminalPhase('completed'), true);
+  assert.equal(viva.isVivaTerminalPhase('cancelled'), true);
+  assert.equal(viva.isVivaTerminalPhase('running'), false);
   assert.equal(viva.isVivaPublished({ publishedAt: null }), false);
-  assert.equal(viva.isVivaPublished({ publishedAt: new Date('2026-09-14T10:00:00.000Z') }), true);
+  assert.equal(viva.isVivaPublished({ publishedAt: new Date() }), true);
 });
 
-test('allows revisions during Viva time and only missing scores during extra grading', () => {
-  const existingScore = { value: 8, source: 'examiner' };
+test('uses one canonical grade scale and rejects tampered labels', () => {
+  assert.deepEqual(viva.VIVA_GRADE_SCALE, [
+    { grade: 'A+', percentage: 100 },
+    { grade: 'A', percentage: 90 },
+    { grade: 'B', percentage: 80 },
+    { grade: 'C', percentage: 70 },
+    { grade: 'D', percentage: 60 },
+    { grade: 'F', percentage: 0 },
+  ]);
 
+  for (const result of viva.VIVA_GRADE_SCALE) {
+    assert.equal(viva.isVivaGrade(result.grade), true);
+    assert.deepEqual(viva.getVivaGradeResult(result.grade), result);
+  }
+
+  assert.equal(viva.isVivaGrade('A-'), false);
+  assert.equal(viva.getVivaGradeResult('A-'), null);
+  assert.equal(viva.getVivaGradeResult(100), null);
+});
+
+test('allows grade selection only while running and freezes completed results', () => {
   assert.deepEqual(
-    viva.getVivaScoreChangePermission('running', existingScore, 9),
-    { permitted: true }
+    viva.getVivaGradeChangePermission('running', 'B'),
+    { permitted: true, result: { grade: 'B', percentage: 80 } }
   );
   assert.deepEqual(
-    viva.getVivaScoreChangePermission('extra_grading', undefined, 7),
-    { permitted: true }
+    viva.getVivaGradeChangePermission('running', 'A-'),
+    { permitted: false, reason: 'invalid-grade' }
   );
   assert.deepEqual(
-    viva.getVivaScoreChangePermission('extra_grading', existingScore, 9),
-    { permitted: false, reason: 'score-locked' }
-  );
-  assert.deepEqual(
-    viva.getVivaScoreChangePermission('ended', undefined, 7),
+    viva.getVivaGradeChangePermission('scheduled', 'A'),
     { permitted: false, reason: 'outside-grading-period' }
   );
   assert.deepEqual(
-    viva.getVivaScoreChangePermission('running', undefined, 0),
-    { permitted: false, reason: 'invalid-score' }
+    viva.getVivaGradeChangePermission('completed', 'A'),
+    { permitted: false, reason: 'result-finalized' }
   );
 });
 
-test('keeps missing marks distinct until finalization, then averages all examiners and factors equally', () => {
-  const firstSheet = {
-    presentation: { value: 7, source: 'examiner' },
-    technical: { value: 9, source: 'examiner' },
-  };
-  const secondSheet = {
-    presentation: { value: 10, source: 'examiner' },
-  };
-
-  assert.equal(viva.calculateVivaAverages(factors, [firstSheet, secondSheet]), null);
-
-  const finalizedSecondSheet = viva.fillMissingVivaScores(factors, secondSheet);
-  assert.deepEqual(finalizedSecondSheet, {
-    presentation: { value: 10, source: 'examiner' },
-    technical: { value: 0, source: 'deadline' },
-  });
-  assert.deepEqual(secondSheet, {
-    presentation: { value: 10, source: 'examiner' },
-  });
-  assert.deepEqual(viva.calculateVivaAverages(factors, [firstSheet, finalizedSecondSheet]), {
-    overall: 6.5,
-    factors: { presentation: 8.5, technical: 4.5 },
-  });
-  assert.equal(viva.roundVivaAverage(5 / 3), 1.67);
+test('requires one panel admin who is a unique panel member', () => {
+  assert.equal(viva.isVivaPanelAdmin(['teacher-1', 'teacher-2'], 'teacher-1'), true);
+  assert.equal(viva.isVivaPanelAdmin(['teacher-1', 'teacher-1'], 'teacher-1'), false);
+  assert.equal(viva.isVivaPanelAdmin(['teacher-1', 'teacher-2'], 'teacher-3'), false);
+  assert.equal(viva.isVivaPanelAdmin([], 'teacher-1'), false);
 });

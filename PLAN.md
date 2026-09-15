@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Previous Milestones 1–3 were completed under the superseded factor/per-examiner design. Reconciliation is required before continuing with revised Milestone 4.
+**Overall status:** Reconciliation is complete. Revised Milestone 4, manual panel management and panel-admin assignment, is next.
 
 ## Update template
 
@@ -627,6 +627,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** Known failures, uncertainties, or unrun checks.
 - **Next step:**
 - **Suggested commit message:**
+
+### 2026-09-15, reconciliation complete
+
+- **Milestone and status:** Reconciled the superseded factor/per-examiner implementation. Revised Milestone 4 is next.
+- **Research findings:** Factor scoring was isolated to `lib/viva.ts`, Viva persistence models, the admin round flow, and their tests. Existing rounds, sessions, snapshots, audit events, transactions, indexes, and storage-reference protection remain reusable. MongoDB 8 cannot start on the local Linux 6.19 kernel, so the isolated test-only replica set used MongoDB 4.4.29 instead.
+- **Implemented:** Defined the canonical six-grade scale: A+ 100%, A 90%, B 80%, C 70%, D 60%, F 0%. Removed active factor scoring and extra-grading configuration. Added a required panel-admin reference for new panels, grade/percentage result snapshots, completion state, and a grade audit-event type. Legacy factor, chair, and examiner-sheet fields remain readable for historical records. Simplified the admin Viva form to round details, panel sizes, Viva duration, teams, and teachers.
+- **Complexity avoided:** No collection reset, data deletion, migration job, new dependency, separate result collection, grading engine, or duplicate grade table.
+- **Validation:** `npx tsc --noEmit`, `npm run lint`, `node --test tests/viva.test.mjs`, both Viva replica-set integration suites, and `npm run build` passed. The local integration suites seeded only fake data and dropped `fyp_viva_m2_test` and `fyp_viva_m3_test`. `npm run test:unit` still has the two unrelated existing failures in `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`; 48 of 50 files passed.
+- **Remaining hurdles:** The first local MongoDB 8 attempt was blocked by the host-kernel incompatibility. The temporary MongoDB 4.4.29 container is test-only and must not become a deployment dependency.
+- **Next step:** Implement revised Milestone 4, manual panel management and panel-admin assignment.
+- **Suggested commit message:** `feat(viva): reconcile panel-admin grade workflow`
 
 ## Historical implementation record
 
