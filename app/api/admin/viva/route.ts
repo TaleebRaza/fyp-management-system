@@ -13,6 +13,7 @@ import {
   previewRandomVivaPanels,
   saveVivaPanels,
 } from '../../../../lib/vivaPanelAdmin';
+import { parseVivaPublicationInput, publishVivaResults } from '../../../../lib/vivaPublication';
 import {
   cancelVivaSession,
   parseVivaSessionCancellationInput,
@@ -199,6 +200,21 @@ export async function PATCH(req: NextRequest) {
     } catch (error) {
       console.error('Admin Viva session cancellation error:', error);
       return NextResponse.json({ error: 'Failed to cancel the Viva session.' }, { status: 500 });
+    }
+  }
+
+  if (isRecord(body) && body.action === 'publish-results') {
+    const parsed = parseVivaPublicationInput(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    try {
+      const publication = await publishVivaResults(parsed.input, adminActor(currentUser));
+      return NextResponse.json({ publication });
+    } catch (error) {
+      console.error('Admin Viva result publication error:', error);
+      return NextResponse.json({ error: 'Failed to publish Viva results.' }, { status: 500 });
     }
   }
 

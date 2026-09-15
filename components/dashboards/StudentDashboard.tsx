@@ -287,6 +287,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             projectStatus={project?.status}
             projectRatings={project?.ratings}
             projectMembers={projectMembers}
+            vivaResults={data?.vivaResults || []}
             getSecureMediaUrl={getSecureMediaUrl}
             onOpenProject={() => setActiveTab('project')}
             onOpenTeam={() => setActiveTab('team')}

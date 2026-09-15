@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestones 4–10 are implemented and verified. Revised Milestone 11, review and publication, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–10 are implemented and verified. Revised Milestone 11 is implemented; its requested local validation is pending.
 
 ## Update template
 
@@ -715,6 +715,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** Existing completed results remain non-cancellable; publication UI/API remains Milestone 11 work. The two unrelated unit failures remain outside Viva.
 - **Next step:** Implement Revised Milestone 11, review and publication.
 - **Suggested commit message:** `feat(viva): add cancellation and fresh attempts`
+
+### 2026-09-15, Revised Milestone 11 implementation ready for validation
+
+- **Milestone and status:** Review and publication are implemented. Testing is intentionally paused before execution at the user's request.
+- **Research findings:** Completed sessions already preserve immutable round, team, panel, panel-admin, and canonical grade snapshots. `publishedAt` and the immutable `result-published` audit type already existed. The current Mongoose transaction documentation confirms the established `withTransaction()` pattern and requires sequential work inside a transaction, so bulk publication processes selected results sequentially in one transaction.
+- **Implemented:** Added one admin-only publication path for individual or selected bulk results. It publishes only completed, non-cancelled sessions with complete historical snapshots, increments the session version, writes an immutable audit event, returns already-published records idempotently, and reports per-record bulk failures. The admin Viva dashboard now reviews the snapshotted team, panel, panel admin, canonical grade, percentage, completion time, and publication state. Student dashboard responses now look up only published results by the frozen team snapshot, so every historic team member receives the same grade and percentage even if source project membership later changes. Added a supporting snapshot-member publication index and a disposable fake-data replica-set test limited to `fyp_viva_m11_test`.
+- **Complexity avoided:** No second result collection, project/student grade copies, migration, queue, notification system, bulk-job framework, dependency, or post-publication editor.
+- **Validation:** Not run. Per instruction, no local MongoDB replica set, fake-data seed, test command, linter, type check, or build has been executed after this implementation.
+- **Remaining hurdles:** Run the new local replica-set suite with fake data, then type-check, lint, relevant Viva regressions, unit tests, and build. Existing pre-Milestone-11 unit failures remain unverified in this worktree.
+- **Next step:** Switch to a cheaper model, then run the requested local MongoDB replica-set validation.
+- **Suggested commit message:** `feat(viva): add result review and publication`
 
 ## Historical implementation record
 
