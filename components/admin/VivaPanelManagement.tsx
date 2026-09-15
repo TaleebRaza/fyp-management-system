@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Shuffle, Trash2 } from 'lucide-react';
 
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import type { VivaExaminerOption, VivaRoundDto } from '../../lib/vivaRoundAdmin';
@@ -45,6 +45,18 @@ function readPanel(value: unknown): VivaPanelDto | null {
   };
 }
 
+function readPanelDraft(value: unknown): Omit<VivaPanelDraft, 'id'> | null {
+  if (!isRecord(value) || !Array.isArray(value.examinerIds)) return null;
+  if (
+    typeof value.panelAdminId !== 'string'
+    || !value.examinerIds.every((examinerId) => typeof examinerId === 'string')
+  ) {
+    return null;
+  }
+
+  return { examinerIds: value.examinerIds, panelAdminId: value.panelAdminId };
+}
+
 function readSaveResponse(value: unknown): { panels: VivaPanelDto[]; panelRevision: number } | null {
   if (!isRecord(value) || !Array.isArray(value.panels)) return null;
 
@@ -60,6 +72,25 @@ function readSaveResponse(value: unknown): { panels: VivaPanelDto[]; panelRevisi
 
   return {
     panels: panels.filter((panel): panel is VivaPanelDto => Boolean(panel)),
+    panelRevision: value.panelRevision,
+  };
+}
+
+function readAllocationResponse(value: unknown): { panels: Array<Omit<VivaPanelDraft, 'id'>>; panelRevision: number } | null {
+  if (!isRecord(value) || !Array.isArray(value.panels)) return null;
+
+  const panels = value.panels.map(readPanelDraft);
+  if (panels.some((panel) => !panel)) return null;
+  if (
+    typeof value.panelRevision !== 'number'
+    || !Number.isSafeInteger(value.panelRevision)
+    || value.panelRevision < 0
+  ) {
+    return null;
+  }
+
+  return {
+    panels: panels.filter((panel): panel is Omit<VivaPanelDraft, 'id'> => Boolean(panel)),
     panelRevision: value.panelRevision,
   };
 }
@@ -90,10 +121,11 @@ export default function VivaPanelManagement({
   const [search, setSearch] = useState('');
   const [nextDraftId, setNextDraftId] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
   const isFrozen = Boolean(round.frozenAt);
-  const controlsDisabled = isFrozen || isSaving || isRoundSaving;
+  const controlsDisabled = isFrozen || isSaving || isGenerating || isRoundSaving;
 
   const examinerById = useMemo(
     () => new Map(examiners.map((examiner) => [examiner.id, examiner])),
@@ -181,6 +213,38 @@ export default function VivaPanelManagement({
     setSavedMessage('');
   };
 
+  const swapExaminer = (sourcePanelId: string, examinerId: string, replacementExaminerId: string) => {
+    const sourcePanel = draftPanels.find((panel) => panel.id === sourcePanelId);
+    const replacementPanel = draftPanels.find((panel) => panel.examinerIds.includes(replacementExaminerId));
+    if (!sourcePanel || !replacementPanel || sourcePanel.id === replacementPanel.id) return;
+    if (sourcePanel.panelAdminId === examinerId || replacementPanel.panelAdminId === replacementExaminerId) {
+      setError('Choose replacement panel admins before swapping either current panel admin.');
+      return;
+    }
+
+    setDraftPanels((current) => current.map((panel) => {
+      if (panel.id === sourcePanelId) {
+        return {
+          ...panel,
+          examinerIds: panel.examinerIds.map((candidate) => (
+            candidate === examinerId ? replacementExaminerId : candidate
+          )),
+        };
+      }
+      if (panel.id === replacementPanel.id) {
+        return {
+          ...panel,
+          examinerIds: panel.examinerIds.map((candidate) => (
+            candidate === replacementExaminerId ? examinerId : candidate
+          )),
+        };
+      }
+      return panel;
+    }));
+    setError('');
+    setSavedMessage('');
+  };
+
   const discardPanel = (panelId: string) => {
     setDraftPanels((current) => current.filter((panel) => panel.id !== panelId));
     setError('');
@@ -222,6 +286,42 @@ export default function VivaPanelManagement({
     }
   };
 
+  const generateRandomPanels = async () => {
+    if (controlsDisabled) return;
+
+    setIsGenerating(true);
+    setError('');
+    setSavedMessage('');
+
+    try {
+      const response = await fetch('/api/admin/viva', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate-panels',
+          roundId: round.id,
+          panelRevision: round.panelRevision,
+        }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to generate Viva panels.'));
+
+      const allocation = readAllocationResponse(body);
+      if (!allocation) throw new Error('Viva panel allocation response was invalid.');
+
+      setDraftPanels(allocation.panels.map((panel, index) => ({
+        id: `draft-${nextDraftId + index}`,
+        ...panel,
+      })));
+      setNextDraftId((current) => current + allocation.panels.length);
+      setSavedMessage('Random panel draft generated. Review it, then save when ready.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to generate Viva panels.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <DashboardPanel aria-busy={isSaving}>
       <SectionHeader
@@ -232,9 +332,15 @@ export default function VivaPanelManagement({
             : 'Assign each selected teacher once. Every saved panel has one panel admin.'
         }
         action={
-          <Button variant="outline" onClick={addPanel} disabled={controlsDisabled}>
-            <Plus size={16} />Add Panel
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => void generateRandomPanels()} disabled={controlsDisabled}>
+              {isGenerating ? <Loader2 className="animate-spin" size={16} /> : <Shuffle size={16} />}
+              {isGenerating ? 'Generating...' : 'Generate Random Draft'}
+            </Button>
+            <Button variant="outline" onClick={addPanel} disabled={controlsDisabled}>
+              <Plus size={16} />Add Panel
+            </Button>
+          </div>
         }
       />
 
@@ -333,7 +439,7 @@ export default function VivaPanelManagement({
                               </div>
                               {isPanelAdmin && <Badge variant="accent">Panel admin</Badge>}
                             </div>
-                            <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                            <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                               <Select
                                 value=""
                                 aria-label={`Move ${name} to another panel`}
@@ -344,6 +450,25 @@ export default function VivaPanelManagement({
                                 <option value="">Move to panel...</option>
                                 {panelChoices.filter(({ panel: candidate }) => candidate.id !== panel.id && candidate.examinerIds.length < round.targetPanelSize).map(({ panel: candidate, number }) => (
                                   <option key={candidate.id} value={candidate.id}>Panel {number}</option>
+                                ))}
+                              </Select>
+                              <Select
+                                value=""
+                                aria-label={`Swap ${name} with another teacher`}
+                                disabled={controlsDisabled || isPanelAdmin || draftPanels.length < 2}
+                                title={isPanelAdmin ? 'Choose a replacement panel admin before swapping this teacher.' : undefined}
+                                onChange={(event) => swapExaminer(panel.id, examinerId, event.target.value)}
+                              >
+                                <option value="">Swap with...</option>
+                                {panelChoices.flatMap(({ panel: candidate, number }) => (
+                                  candidate.id === panel.id
+                                    ? []
+                                    : candidate.examinerIds
+                                      .filter((candidateId) => candidate.panelAdminId !== candidateId)
+                                      .map((candidateId) => {
+                                        const candidateExaminer = examinerById.get(candidateId);
+                                        return <option key={candidateId} value={candidateId}>Panel {number}: {candidateExaminer?.name || 'Unavailable teacher'}</option>;
+                                      })
                                 ))}
                               </Select>
                               <Button variant="ghost" className="min-h-9 px-3" onClick={() => removeExaminer(panel.id, examinerId)} disabled={controlsDisabled || isPanelAdmin} title={isPanelAdmin ? 'Choose a replacement panel admin before removing this teacher.' : undefined}>Remove</Button>

@@ -15,7 +15,9 @@ const [
     updateVivaRound,
   },
   {
+    parseVivaPanelAllocationInput,
     parseVivaPanelSaveInput,
+    previewRandomVivaPanels,
     saveVivaPanels,
   },
 ] = await Promise.all([
@@ -36,6 +38,12 @@ const actor = {
 
 function saveInput(roundId, panelRevision, panels) {
   const parsed = parseVivaPanelSaveInput({ roundId, panelRevision, panels });
+  assert.equal(parsed.success, true, parsed.success ? '' : parsed.error);
+  return parsed.input;
+}
+
+function allocationInput(roundId, panelRevision) {
+  const parsed = parseVivaPanelAllocationInput({ roundId, panelRevision });
   assert.equal(parsed.success, true, parsed.success ? '' : parsed.error);
   return parsed.input;
 }
@@ -193,6 +201,66 @@ export async function runVivaPanelAdminIntegration(testDatabaseUri) {
     assert.equal(updatedPanels.panels[0].panelAdminId, String(supervisorTwo._id));
     assert.equal(await VivaAuditEvent.countDocuments({ roundId: round._id, event: 'panel-updated' }), 1);
 
+    const inactiveAllocation = await previewRandomVivaPanels(allocationInput(String(round._id), 2));
+    assert.equal(inactiveAllocation.success, false);
+    assert.equal(inactiveAllocation.reason, 'invalid');
+
+    await VivaRound.updateOne({ _id: round._id }, {
+      $set: {
+        examinerIds: [supervisorOne, supervisorTwo, supervisorThree].map(({ _id }) => _id),
+      },
+    });
+    const randomAllocation = await previewRandomVivaPanels(allocationInput(String(round._id), 2));
+    assert.equal(randomAllocation.success, true, randomAllocation.success ? '' : randomAllocation.error);
+    assert.equal(randomAllocation.panels.length, 2);
+    assert.deepEqual(randomAllocation.panels.map(({ examinerIds }) => examinerIds.length), [2, 1]);
+    assert.deepEqual(
+      randomAllocation.panels.flatMap(({ examinerIds }) => examinerIds).sort(),
+      [supervisorOne, supervisorTwo, supervisorThree].map(({ _id }) => String(_id)).sort()
+    );
+    assert.equal(
+      randomAllocation.panels.every(({ examinerIds, panelAdminId }) => examinerIds.includes(panelAdminId)),
+      true
+    );
+    assert.equal(await VivaPanel.countDocuments({ roundId: round._id }), 2);
+
+    const savedRandomAllocation = await saveVivaPanels(
+      saveInput(String(round._id), 2, randomAllocation.panels),
+      actor
+    );
+    assert.equal(savedRandomAllocation.success, true, savedRandomAllocation.success ? '' : savedRandomAllocation.error);
+    assert.equal(savedRandomAllocation.panelRevision, 3);
+
+    const staleAllocation = await previewRandomVivaPanels(allocationInput(String(round._id), 2));
+    assert.equal(staleAllocation.success, false);
+    assert.equal(staleAllocation.reason, 'concurrent-change');
+
+    const largeSupervisors = await User.create(Array.from({ length: 500 }, (_, index) => ({
+      name: `Allocation Supervisor ${index + 1}`,
+      email: `allocation.supervisor.${index + 1}@example.test`,
+      rollNo: `E26-${index + 1000}`,
+      password: 'not-a-real-password',
+      role: 'supervisor',
+    })));
+    const largeRound = await VivaRound.create(roundInput(
+      String(project._id),
+      largeSupervisors.map(({ _id }) => String(_id)),
+      { name: 'Large allocation Viva', targetPanelSize: 3, minimumPanelSize: 2 }
+    ));
+    const largeAllocation = await previewRandomVivaPanels(allocationInput(String(largeRound._id), 0));
+    assert.equal(largeAllocation.success, true, largeAllocation.success ? '' : largeAllocation.error);
+    assert.equal(largeAllocation.panels.length, 167);
+    assert.equal(largeAllocation.panels.at(-1)?.examinerIds.length, 2);
+    assert.deepEqual(
+      largeAllocation.panels.flatMap(({ examinerIds }) => examinerIds).sort(),
+      largeSupervisors.map(({ _id }) => String(_id)).sort()
+    );
+    assert.equal(
+      largeAllocation.panels.every(({ examinerIds, panelAdminId }) => examinerIds.includes(panelAdminId)),
+      true
+    );
+    assert.equal(await VivaPanel.countDocuments({ roundId: largeRound._id }), 0);
+
     const staleResult = await saveVivaPanels(saveInput(String(round._id), 1, [{
       examinerIds: [String(supervisorThree._id)],
       panelAdminId: String(supervisorThree._id),
@@ -210,7 +278,7 @@ export async function runVivaPanelAdminIntegration(testDatabaseUri) {
     assert.equal(incompatibleRoundUpdate.reason, 'selection-unavailable');
 
     await VivaRound.updateOne({ _id: round._id }, { $set: { frozenAt: new Date() } });
-    const frozenResult = await saveVivaPanels(saveInput(String(round._id), 2, [{
+    const frozenResult = await saveVivaPanels(saveInput(String(round._id), 3, [{
       examinerIds: [String(supervisorOne._id), String(supervisorTwo._id)],
       panelAdminId: String(supervisorTwo._id),
     }]), actor);
@@ -220,9 +288,9 @@ export async function runVivaPanelAdminIntegration(testDatabaseUri) {
 
     console.log(JSON.stringify({
       database: testDatabase.pathname.slice(1),
-      seededUsers: 6,
+      seededUsers: 506,
       seededTeams: 1,
-      verified: ['panel-admin', 'below-minimum-panel', 'active-teacher', 'round-selection', 'atomic-save', 'concurrent-save', 'round-update-protection', 'frozen-membership'],
+      verified: ['panel-admin', 'below-minimum-panel', 'active-teacher', 'random-allocation', 'random-panel-admin', 'remainder-panel', 'preview-without-write', 'large-allocation', 'atomic-save', 'concurrent-save', 'round-update-protection', 'frozen-membership'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

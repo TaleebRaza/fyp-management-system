@@ -7,7 +7,12 @@ import {
   parseVivaRoundInput,
   updateVivaRound,
 } from '../../../../lib/vivaRoundAdmin';
-import { parseVivaPanelSaveInput, saveVivaPanels } from '../../../../lib/vivaPanelAdmin';
+import {
+  parseVivaPanelAllocationInput,
+  parseVivaPanelSaveInput,
+  previewRandomVivaPanels,
+  saveVivaPanels,
+} from '../../../../lib/vivaPanelAdmin';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isRecord } from '../../../../lib/security/input';
 
@@ -15,15 +20,6 @@ export const dynamic = 'force-dynamic';
 
 function adminActor(user: { id: string; name: string; rollNo: string }) {
   return { id: user.id, name: user.name, rollNo: user.rollNo };
-}
-
-async function readRoundInput(req: NextRequest) {
-  try {
-    const body: unknown = await req.json();
-    return parseVivaRoundInput(body);
-  } catch {
-    return parseVivaRoundInput(null);
-  }
 }
 
 export async function GET(req: NextRequest) {
@@ -46,7 +42,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
-  const parsed = await readRoundInput(req);
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid Viva request.' }, { status: 400 });
+  }
+
+  if (isRecord(body) && body.action === 'generate-panels') {
+    const parsed = parseVivaPanelAllocationInput(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    try {
+      const result = await previewRandomVivaPanels(parsed.input);
+      if (!result.success) {
+        const status = result.reason === 'not-found' ? 404 : result.reason === 'invalid' ? 400 : 409;
+        return NextResponse.json({ error: result.error }, { status });
+      }
+      return NextResponse.json({ panels: result.panels, panelRevision: result.panelRevision });
+    } catch (error) {
+      console.error('Admin Viva panel allocation error:', error);
+      return NextResponse.json({ error: 'Failed to generate Viva panels.' }, { status: 500 });
+    }
+  }
+
+  const parsed = parseVivaRoundInput(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }

@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestone 4 are complete. Revised Milestone 5, random allocation and accessible adjustments, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–5 are complete. Revised Milestone 6, manual team scheduling, is next.
 
 ## Update template
 
@@ -649,6 +649,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** The normal build runner reached successful compilation and TypeScript checks but did not return a final exit status before the command environment stopped it; a completed production build was not claimed. Team-specific own-supervisor conflicts will be enforced when scheduling assigns a team to a panel in Milestone 6.
 - **Next step:** Implement Revised Milestone 5, random allocation, random panel-admin selection, and accessible adjustments.
 - **Suggested commit message:** `feat(viva): add manual panel management`
+
+### 2026-09-15, Revised Milestone 5 complete
+
+- **Milestone and status:** Random panel allocation, random panel-admin selection, and accessible adjustments are complete. Revised Milestone 6 is next.
+- **Research findings:** The existing panel save transaction and per-round revision already provide the one authoritative pre-start write path. MongoDB's official replica-set guidance confirms that transactions require a replica set, started with `--replSet` and initialized once with `rs.initiate()`.
+- **Implemented:** Added a server-side Fisher–Yates allocation preview that shuffles the selected active teachers once, partitions them by target size, retains the final remainder panel, and randomly assigns one of each panel's members as panel admin. The admin UI shows the generated draft before the existing atomic Save action runs. Native select controls now also support member swaps, while explicit panel-admin replacement remains required before moving or swapping a panel admin.
+- **Complexity avoided:** No drag-and-drop dependency, second persistence path, allocation table, retry loop, database write for preview, account mutation, or premature team-supervisor conflict logic. The existing save validation and revision check remain the authority.
+- **Validation:** `npx tsc --noEmit`, `npm run lint`, `node --test tests/viva.test.mjs`, `node --test tests/viva-panel-allocation.test.mjs`, and `npm run build` with a disposable local `MONGODB_URI` passed. Local MongoDB 4.4.29 `rs0` integration tests passed for persistence, round configuration, and panels. The panel test seeded 506 fake users, including 500 supervisors, verified a 167-panel allocation with a two-member remainder, random in-panel admins, no preview write, atomic save, stale revisions, and frozen rounds; all disposable databases and the container were removed. `npm run test:unit` passed 50 of 52 files; the existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
+- **Remaining hurdles:** Team-specific own-supervisor conflicts still belong to manual scheduling in Milestone 6, where a team is actually assigned to a panel.
+- **Next step:** Implement Revised Milestone 6, manual team scheduling and centralized overlap/conflict validation.
+- **Suggested commit message:** `feat(viva): add random panel allocation`
 
 ## Historical implementation record
 

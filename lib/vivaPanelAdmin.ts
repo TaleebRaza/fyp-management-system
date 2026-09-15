@@ -13,14 +13,15 @@ export type VivaPanelDto = {
   panelAdminId: string;
 };
 
+export type VivaPanelDraft = Pick<VivaPanelDto, 'examinerIds' | 'panelAdminId'>;
+
 export type VivaPanelSaveInput = {
   roundId: string;
   panelRevision: number;
-  panels: Array<{
-    examinerIds: string[];
-    panelAdminId: string;
-  }>;
+  panels: VivaPanelDraft[];
 };
+
+export type VivaPanelAllocationInput = Pick<VivaPanelSaveInput, 'roundId' | 'panelRevision'>;
 
 export type VivaPanelActor = {
   id: string;
@@ -30,6 +31,14 @@ export type VivaPanelActor = {
 
 export type VivaPanelSaveResult =
   | { success: true; panels: VivaPanelDto[]; panelRevision: number }
+  | {
+      success: false;
+      reason: 'invalid' | 'not-found' | 'frozen' | 'concurrent-change';
+      error: string;
+    };
+
+export type VivaPanelAllocationResult =
+  | { success: true; panels: VivaPanelDraft[]; panelRevision: number }
   | {
       success: false;
       reason: 'invalid' | 'not-found' | 'frozen' | 'concurrent-change';
@@ -91,7 +100,7 @@ function serializeVivaPanel(panel: VivaPanelRecord): VivaPanelDto | null {
   };
 }
 
-function parsePanel(value: unknown): { examinerIds: string[]; panelAdminId: string } | null {
+function parsePanel(value: unknown): VivaPanelDraft | null {
   if (!isRecord(value)) return null;
 
   const examinerIds = asObjectIdList(value.examinerIds);
@@ -133,6 +142,58 @@ export function parseVivaPanelSaveInput(value: unknown):
   };
 }
 
+export function parseVivaPanelAllocationInput(value: unknown):
+  | { success: true; input: VivaPanelAllocationInput }
+  | { success: false; error: string } {
+  if (!isRecord(value)) {
+    return { success: false, error: 'Invalid Viva panel allocation request.' };
+  }
+
+  const roundId = asObjectId(value.roundId);
+  const expectedPanelRevision = asPanelRevision(value.panelRevision);
+  if (!roundId || expectedPanelRevision === null) {
+    return { success: false, error: 'Invalid Viva panel allocation request.' };
+  }
+
+  return { success: true, input: { roundId, panelRevision: expectedPanelRevision } };
+}
+
+export function allocateRandomVivaPanels(
+  examinerIds: readonly string[],
+  targetPanelSize: number,
+  random = Math.random
+): VivaPanelDraft[] | null {
+  if (
+    !Number.isSafeInteger(targetPanelSize)
+    || targetPanelSize < 2
+    || examinerIds.length === 0
+    || examinerIds.some((examinerId) => !examinerId.trim())
+    || new Set(examinerIds).size !== examinerIds.length
+  ) {
+    return null;
+  }
+
+  const shuffledExaminerIds = [...examinerIds];
+  for (let index = shuffledExaminerIds.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [shuffledExaminerIds[index], shuffledExaminerIds[swapIndex]] = [
+      shuffledExaminerIds[swapIndex],
+      shuffledExaminerIds[index],
+    ];
+  }
+
+  const panels: VivaPanelDraft[] = [];
+  for (let start = 0; start < shuffledExaminerIds.length; start += targetPanelSize) {
+    const panelExaminerIds = shuffledExaminerIds.slice(start, start + targetPanelSize);
+    panels.push({
+      examinerIds: panelExaminerIds,
+      panelAdminId: panelExaminerIds[Math.floor(random() * panelExaminerIds.length)],
+    });
+  }
+
+  return panels;
+}
+
 export async function getVivaPanels(): Promise<VivaPanelDto[]> {
   const panels = await VivaPanel.find()
     .select('_id roundId examinerIds panelAdminId chairId createdAt')
@@ -172,7 +233,7 @@ export async function validateVivaPanelsForRound(
 async function validatePanelsForSave(
   input: VivaPanelSaveInput,
   round: VivaRoundRecord,
-  session: ClientSession
+  session?: ClientSession
 ): Promise<string | null> {
   const targetPanelSize = Number(round.targetPanelSize);
   if (!Number.isSafeInteger(targetPanelSize) || targetPanelSize < 2) {
@@ -191,22 +252,68 @@ async function validatePanelsForSave(
     return 'Panels can contain only teachers selected for this Viva round.';
   }
 
-  const activeExaminers = assignedExaminerIds.length > 0
-    ? await User.find({
-        _id: { $in: assignedExaminerIds },
-        role: 'supervisor',
-        isActive: true,
-      })
-        .select('_id')
-        .session(session)
-        .lean<UserRecord[]>()
-    : [];
+  let activeExaminers: UserRecord[] = [];
+  if (assignedExaminerIds.length > 0) {
+    const query = User.find({
+      _id: { $in: assignedExaminerIds },
+      role: 'supervisor',
+      isActive: true,
+    })
+      .select('_id');
+    if (session) query.session(session);
+    activeExaminers = await query.lean<UserRecord[]>();
+  }
 
   if (activeExaminers.length !== assignedExaminerIds.length) {
     return 'One or more panel teachers are no longer active supervisors.';
   }
 
   return null;
+}
+
+export async function previewRandomVivaPanels(
+  input: VivaPanelAllocationInput
+): Promise<VivaPanelAllocationResult> {
+  const round = await VivaRound.findById(input.roundId)
+    .select('_id examinerIds targetPanelSize frozenAt panelRevision')
+    .lean<VivaRoundRecord | null>();
+  if (!round) {
+    return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
+  }
+  if (round.frozenAt) {
+    return {
+      success: false,
+      reason: 'frozen',
+      error: 'This Viva round has started and its panels can no longer be changed.',
+    };
+  }
+  if (panelRevision(round.panelRevision) !== input.panelRevision) {
+    return {
+      success: false,
+      reason: 'concurrent-change',
+      error: 'Another administrator changed these panels. Reload before generating a new draft.',
+    };
+  }
+
+  const examinerIds = Array.isArray(round.examinerIds) ? round.examinerIds.map(String) : [];
+  const panels = allocateRandomVivaPanels(examinerIds, Number(round.targetPanelSize));
+  if (!panels) {
+    return {
+      success: false,
+      reason: 'invalid',
+      error: 'This Viva round needs unique selected teachers and a valid target panel size.',
+    };
+  }
+
+  const validationError = await validatePanelsForSave(
+    { roundId: input.roundId, panelRevision: input.panelRevision, panels },
+    round
+  );
+  if (validationError) {
+    return { success: false, reason: 'invalid', error: validationError };
+  }
+
+  return { success: true, panels, panelRevision: panelRevision(round.panelRevision) };
 }
 
 export async function saveVivaPanels(
