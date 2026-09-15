@@ -15,6 +15,7 @@ export async function findSharedStorageKeys({
   excludedVoiceNoteIds = [],
   excludedSupervisorIds = [],
   excludedStudentIds = [],
+  excludedVivaSessionIds = [],
   session,
 }: {
   keys: string[];
@@ -22,6 +23,7 @@ export async function findSharedStorageKeys({
   excludedVoiceNoteIds?: unknown[];
   excludedSupervisorIds?: unknown[];
   excludedStudentIds?: unknown[];
+  excludedVivaSessionIds?: unknown[];
   session: ClientSession;
 }) {
   const candidateKeys = new Set(keys);
@@ -49,6 +51,7 @@ export async function findSharedStorageKeys({
     studentMessageContent: { $exists: true, $nin: ['', null] },
   }).select('studentMessageContent').session(session).lean();
   const vivaSessions = await VivaSession.find({
+    ...excludingIds(excludedVivaSessionIds),
     'projectSnapshot.pdfUrl': { $exists: true, $nin: ['', null] },
   }).select('projectSnapshot.pdfUrl').session(session).lean();
 

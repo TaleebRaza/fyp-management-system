@@ -1,8 +1,19 @@
 import mongoose, { type ClientSession } from 'mongoose';
 
 import VivaRound from '../models/VivaRound';
+import VivaAuditEvent from '../models/VivaAuditEvent';
+import VivaPanel from '../models/VivaPanel';
+import VivaSession from '../models/VivaSession';
 import Project from '../models/Project';
 import User from '../models/User';
+import { collectStorageDeletionTargets } from './storageDeletionTargets';
+import { findSharedStorageKeys } from './storageReferenceSafety';
+import {
+  assertStorageLedgerReady,
+  enqueueStorageDeletion,
+  StorageProtocolError,
+} from './storageProtocol';
+import { normalizeStorageKey } from './storageValidation';
 import { getVivaPanels, type VivaPanelDto, validateVivaPanelsForRound } from './vivaPanelAdmin';
 import { getVivaAssessments, type VivaAssessmentDto } from './vivaPublication';
 import { getVivaSchedules, type VivaScheduleDto } from './vivaScheduling';
@@ -88,6 +99,14 @@ export type VivaRoundSaveResult =
   | {
       success: false;
       reason: 'selection-unavailable' | 'not-found' | 'frozen';
+      error: string;
+    };
+
+export type VivaRoundDeleteResult =
+  | { success: true }
+  | {
+      success: false;
+      reason: 'invalid' | 'not-found' | 'frozen';
       error: string;
     };
 
@@ -392,5 +411,85 @@ export async function updateVivaRound(
     );
 
     return { success: true, round: serializeVivaRound(updated) };
+  });
+}
+
+export async function deleteVivaRound(
+  roundId: string,
+  actor: VivaRoundActor
+): Promise<VivaRoundDeleteResult> {
+  if (!mongoose.Types.ObjectId.isValid(roundId)) {
+    return { success: false, reason: 'invalid', error: 'Invalid Viva round.' };
+  }
+
+  return withVivaTransaction(async (session) => {
+    const existing = await VivaRound.findById(roundId)
+      .select('frozenAt')
+      .session(session)
+      .lean<{ frozenAt?: Date | null }>();
+    if (!existing) {
+      return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
+    }
+    if (existing.frozenAt) {
+      return {
+        success: false,
+        reason: 'frozen',
+        error: 'This Viva round has started and can no longer be changed.',
+      };
+    }
+
+    const deletedRound = await VivaRound.findOneAndDelete({ _id: roundId, frozenAt: null }, { session });
+    if (!deletedRound) {
+      return {
+        success: false,
+        reason: 'frozen',
+        error: 'This Viva round has started and can no longer be changed.',
+      };
+    }
+
+    const vivaSessions = await VivaSession.find({ roundId })
+      .select('_id projectSnapshot.pdfUrl projectSnapshot.pdfSize')
+      .session(session)
+      .lean<Array<{
+        _id: unknown;
+        projectSnapshot?: { pdfUrl?: unknown; pdfSize?: unknown };
+      }>>();
+    const snapshotFiles = vivaSessions.map(({ projectSnapshot }) => ({
+      key: projectSnapshot?.pdfUrl,
+      bytes: projectSnapshot?.pdfSize,
+    }));
+    const invalidSnapshotFile = snapshotFiles.some(({ key }) => (
+      key !== null
+      && key !== undefined
+      && String(key).trim() !== ''
+      && (typeof key !== 'string' || !normalizeStorageKey(key))
+    ));
+    if (invalidSnapshotFile) {
+      throw new StorageProtocolError(
+        'The Viva round has an invalid snapshot file reference. Run the storage integrity audit before deleting it.',
+        409
+      );
+    }
+
+    const storageTargets = collectStorageDeletionTargets(snapshotFiles);
+    if (storageTargets.length > 0) {
+      await assertStorageLedgerReady(session);
+      const sharedKeys = await findSharedStorageKeys({
+        keys: storageTargets.map(({ key }) => key),
+        excludedVivaSessionIds: vivaSessions.map(({ _id }) => _id),
+        session,
+      });
+      for (const storageTarget of storageTargets) {
+        if (!sharedKeys.has(storageTarget.key)) {
+          await enqueueStorageDeletion({ ...storageTarget, reason: 'viva-round-deleted' }, session);
+        }
+      }
+    }
+
+    await VivaSession.deleteMany({ roundId }, { session });
+    await VivaPanel.deleteMany({ roundId }, { session });
+    await VivaAuditEvent.deleteMany({ roundId }, { session });
+
+    return { success: true };
   });
 }

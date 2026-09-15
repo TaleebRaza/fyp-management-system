@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import {
   createVivaRound,
+  deleteVivaRound,
   getVivaRoundAdminData,
   parseVivaRoundInput,
   updateVivaRound,
@@ -233,5 +234,25 @@ export async function PATCH(req: NextRequest) {
   } catch (error) {
     console.error('Admin Viva panel save error:', error);
     return NextResponse.json({ error: 'Failed to save Viva panels.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const currentUser = await requireCurrentUser(req, ['admin']);
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
+  }
+
+  const roundId = req.nextUrl.searchParams.get('roundId') || '';
+  try {
+    const result = await deleteVivaRound(roundId, adminActor(currentUser));
+    if (!result.success) {
+      const status = result.reason === 'not-found' ? 404 : result.reason === 'frozen' ? 409 : 400;
+      return NextResponse.json({ error: result.error }, { status });
+    }
+    return NextResponse.json({ deletedRoundId: roundId });
+  } catch (error) {
+    console.error('Admin Viva round deletion error:', error);
+    return NextResponse.json({ error: 'Failed to delete the Viva round.' }, { status: 500 });
   }
 }

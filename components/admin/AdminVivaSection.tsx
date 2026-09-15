@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { Loader2, Plus, RotateCcw } from 'lucide-react';
+import { Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 
 import type {
   VivaExaminerOption,
@@ -405,6 +405,36 @@ export default function AdminVivaSection() {
     }
   };
 
+  const deleteRound = async () => {
+    if (!selectedRound || isFrozen || isSaving) return;
+    if (!window.confirm(`Delete “${selectedRound.name}” and all of its panels, schedules, and Viva audit records?`)) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+    setSavedMessage('');
+    try {
+      const response = await fetch(`/api/admin/viva?roundId=${encodeURIComponent(selectedRound.id)}`, {
+        method: 'DELETE',
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to delete the Viva round.'));
+
+      setRounds((current) => current.filter((round) => round.id !== selectedRound.id));
+      setPanels((current) => current.filter((panel) => panel.roundId !== selectedRound.id));
+      setSchedules((current) => current.filter((schedule) => schedule.roundId !== selectedRound.id));
+      setAssessments((current) => current.filter((assessment) => assessment.roundId !== selectedRound.id));
+      setSelectedRoundId(null);
+      setDraft(EMPTY_DRAFT);
+      setSavedMessage('Viva round deleted.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to delete the Viva round.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">
@@ -465,9 +495,14 @@ export default function AdminVivaSection() {
             }
             action={
               selectedRound ? (
-                <Button variant="ghost" onClick={startNewRound} disabled={isSaving}>
-                  <RotateCcw size={16} />Start New
-                </Button>
+                <span className="flex flex-wrap gap-2">
+                  <Button variant="danger" onClick={() => void deleteRound()} disabled={isFrozen || isSaving}>
+                    <Trash2 size={16} />Delete Round
+                  </Button>
+                  <Button variant="ghost" onClick={startNewRound} disabled={isSaving}>
+                    <RotateCcw size={16} />Start New
+                  </Button>
+                </span>
               ) : undefined
             }
           />

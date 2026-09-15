@@ -8,9 +8,12 @@ const [
   { default: User },
   { default: Project },
   { default: VivaRound },
+  { default: VivaPanel },
+  { default: VivaSession },
   { default: VivaAuditEvent },
   {
     createVivaRound,
+    deleteVivaRound,
     getVivaRoundAdminData,
     parseVivaRoundInput,
     updateVivaRound,
@@ -19,6 +22,8 @@ const [
   importTypeScriptModuleWithDependencies('models/User.ts'),
   importTypeScriptModuleWithDependencies('models/Project.ts'),
   importTypeScriptModuleWithDependencies('models/VivaRound.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaPanel.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaRoundAdmin.ts'),
 ]);
@@ -59,7 +64,14 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
   try {
     await mongoose.connect(testDatabaseUri);
     await mongoose.connection.dropDatabase();
-    await Promise.all([User.init(), Project.init(), VivaRound.init(), VivaAuditEvent.init()]);
+    await Promise.all([
+      User.init(),
+      Project.init(),
+      VivaRound.init(),
+      VivaPanel.init(),
+      VivaSession.init(),
+      VivaAuditEvent.init(),
+    ]);
 
     const [supervisorOne, supervisorTwo, inactiveSupervisor, studentOne, studentTwo, inactiveStudent] = await User.create([
       {
@@ -183,6 +195,36 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     assert.equal(inactiveTeamResult.success, false);
     assert.equal(inactiveTeamResult.reason, 'selection-unavailable');
 
+    const deletable = await createVivaRound(
+      mustParse(roundRequest([String(activeTeam._id)], [String(supervisorOne._id), String(supervisorTwo._id)], {
+        name: 'Delete this unstarted Viva',
+        targetPanelSize: 2,
+      })),
+      actor
+    );
+    assert.equal(deletable.success, true, deletable.success ? '' : deletable.error);
+    const deletablePanel = await VivaPanel.create({
+      roundId: deletable.round.id,
+      examinerIds: [supervisorOne._id, supervisorTwo._id],
+      panelAdminId: supervisorOne._id,
+    });
+    await VivaSession.create({
+      roundId: deletable.round.id,
+      panelId: deletablePanel._id,
+      projectId: activeTeam._id,
+      scheduledAt: new Date('2026-10-10T09:00:00.000Z'),
+      vivaEndsAt: new Date('2026-10-10T09:30:00.000Z'),
+    });
+    const invalidDelete = await deleteVivaRound('invalid-round-id', actor);
+    assert.equal(invalidDelete.success, false);
+    assert.equal(invalidDelete.reason, 'invalid');
+    const deleted = await deleteVivaRound(deletable.round.id, actor);
+    assert.equal(deleted.success, true, deleted.success ? '' : deleted.error);
+    assert.equal(await VivaRound.countDocuments({ _id: deletable.round.id }), 0);
+    assert.equal(await VivaPanel.countDocuments({ roundId: deletable.round.id }), 0);
+    assert.equal(await VivaSession.countDocuments({ roundId: deletable.round.id }), 0);
+    assert.equal(await VivaAuditEvent.countDocuments({ roundId: deletable.round.id }), 0);
+
     await VivaRound.updateOne({ _id: createdRound.id }, { $set: { frozenAt: new Date() } });
     const frozenUpdate = await updateVivaRound(
       createdRound.id,
@@ -196,12 +238,16 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     assert.equal(frozenUpdate.success, false);
     assert.equal(frozenUpdate.reason, 'frozen');
     assert.equal((await VivaRound.findById(createdRound.id).lean()).name, 'Fall 2026 Final Viva');
+    const frozenDelete = await deleteVivaRound(createdRound.id, actor);
+    assert.equal(frozenDelete.success, false);
+    assert.equal(frozenDelete.reason, 'frozen');
+    assert.ok(await VivaRound.exists({ _id: createdRound.id }));
 
     console.log(JSON.stringify({
       database: testDatabase.pathname.slice(1),
       seededUsers: 6,
       seededTeams: 2,
-      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'frozen-round-rejection'],
+      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'unstarted-round-deletion', 'frozen-round-rejection'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {
