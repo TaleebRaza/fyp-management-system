@@ -4,6 +4,7 @@ import VivaRound from '../models/VivaRound';
 import Project from '../models/Project';
 import User from '../models/User';
 import { getVivaPanels, type VivaPanelDto, validateVivaPanelsForRound } from './vivaPanelAdmin';
+import { getVivaSchedules, type VivaScheduleDto } from './vivaScheduling';
 import {
   type VivaConfiguration,
   validateVivaConfiguration,
@@ -41,6 +42,7 @@ export type VivaRoundAdminData = {
   teams: VivaTeamOption[];
   examiners: VivaExaminerOption[];
   panels: VivaPanelDto[];
+  schedules: VivaScheduleDto[];
 };
 
 export type VivaRoundActor = {
@@ -251,7 +253,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
     new Set(projects.flatMap((project) => (project.members || []).map(String)))
   );
 
-  const [students, examiners, rounds, panels] = await Promise.all([
+  const [students, examiners, rounds, panels, schedules] = await Promise.all([
     studentIds.length > 0
       ? User.find({ _id: { $in: studentIds }, role: 'student', isActive: true })
           .select('_id name rollNo')
@@ -268,6 +270,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       .sort({ createdAt: -1 })
       .lean<VivaRoundRecord[]>(),
     getVivaPanels(),
+    getVivaSchedules(),
   ]);
 
   const studentsById = new Map(
@@ -304,6 +307,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       rollNo: typeof examiner.rollNo === 'string' ? examiner.rollNo : '',
     })),
     panels,
+    schedules,
   };
 }
 

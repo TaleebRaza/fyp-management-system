@@ -126,6 +126,7 @@ VivaSessionSchema.index(
   { unique: true, partialFilterExpression: { cancelledAt: null } }
 );
 VivaSessionSchema.index({ roundId: 1, scheduledAt: 1 });
+VivaSessionSchema.index({ cancelledAt: 1, completedAt: 1, scheduledAt: 1, vivaEndsAt: 1 });
 
 const VivaSession = mongoose.models.VivaSession || mongoose.model('VivaSession', VivaSessionSchema);
 

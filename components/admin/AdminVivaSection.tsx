@@ -10,8 +10,10 @@ import type {
   VivaTeamOption,
 } from '../../lib/vivaRoundAdmin';
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
+import type { VivaScheduleDto } from '../../lib/vivaScheduling';
 import { Badge, Button, DashboardPanel, SectionHeader, StyledInput } from '../ui';
 import VivaPanelManagement from './VivaPanelManagement';
+import VivaScheduleManagement from './VivaScheduleManagement';
 
 type VivaRoundDraft = {
   name: string;
@@ -27,6 +29,7 @@ type VivaConfigurationResponse = {
   teams: VivaTeamOption[];
   examiners: VivaExaminerOption[];
   panels: VivaPanelDto[];
+  schedules: VivaScheduleDto[];
 };
 
 const EMPTY_DRAFT: VivaRoundDraft = {
@@ -148,6 +151,38 @@ function readPanel(value: unknown): VivaPanelDto | null {
   };
 }
 
+function readSchedule(value: unknown): VivaScheduleDto | null {
+  if (!isRecord(value)) return null;
+
+  const version = typeof value.version === 'number' && Number.isSafeInteger(value.version) && value.version >= 0
+    ? value.version
+    : null;
+
+  if (
+    typeof value.id !== 'string'
+    || typeof value.roundId !== 'string'
+    || typeof value.panelId !== 'string'
+    || typeof value.projectId !== 'string'
+    || typeof value.scheduledAt !== 'string'
+    || typeof value.vivaEndsAt !== 'string'
+    || typeof value.locationLabel !== 'string'
+    || version === null
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    roundId: value.roundId,
+    panelId: value.panelId,
+    projectId: value.projectId,
+    scheduledAt: value.scheduledAt,
+    vivaEndsAt: value.vivaEndsAt,
+    locationLabel: value.locationLabel,
+    version,
+  };
+}
+
 function readList<T>(value: unknown, readItem: (item: unknown) => T | null): T[] | null {
   if (!Array.isArray(value)) return null;
 
@@ -169,7 +204,8 @@ function readConfiguration(value: unknown): VivaConfigurationResponse | null {
   const teams = readList(value.teams, readTeam);
   const examiners = readList(value.examiners, readExaminer);
   const panels = readList(value.panels, readPanel);
-  return rounds && teams && examiners && panels ? { rounds, teams, examiners, panels } : null;
+  const schedules = readList(value.schedules, readSchedule);
+  return rounds && teams && examiners && panels && schedules ? { rounds, teams, examiners, panels, schedules } : null;
 }
 
 function readError(value: unknown, fallback: string) {
@@ -198,6 +234,7 @@ export default function AdminVivaSection() {
   const [teams, setTeams] = useState<VivaTeamOption[]>([]);
   const [examiners, setExaminers] = useState<VivaExaminerOption[]>([]);
   const [panels, setPanels] = useState<VivaPanelDto[]>([]);
+  const [schedules, setSchedules] = useState<VivaScheduleDto[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null);
   const [draft, setDraft] = useState<VivaRoundDraft>(EMPTY_DRAFT);
   const [isLoading, setIsLoading] = useState(true);
@@ -227,6 +264,7 @@ export default function AdminVivaSection() {
       setTeams(data.teams);
       setExaminers(data.examiners);
       setPanels(data.panels);
+      setSchedules(data.schedules);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load Viva configuration.');
     } finally {
@@ -440,6 +478,21 @@ export default function AdminVivaSection() {
             )));
           }}
           onReload={loadConfiguration}
+        />
+      )}
+      {selectedRound && (
+        <VivaScheduleManagement
+          key={selectedRound.id}
+          round={selectedRound}
+          teams={teams}
+          examiners={examiners}
+          panels={panels.filter((panel) => panel.roundId === selectedRound.id)}
+          schedules={schedules}
+          isRoundSaving={isSaving}
+          onSaved={(savedSchedule) => setSchedules((current) => [
+            ...current.filter((schedule) => schedule.id !== savedSchedule.id),
+            savedSchedule,
+          ].sort((first, second) => first.scheduledAt.localeCompare(second.scheduledAt)))}
         />
       )}
       </div>

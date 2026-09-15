@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestones 4–5 are complete. Revised Milestone 6, manual team scheduling, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–6 are complete. Revised Milestone 7, the single panel-admin session dashboard and start flow, is next.
 
 ## Update template
 
@@ -660,6 +660,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** Team-specific own-supervisor conflicts still belong to manual scheduling in Milestone 6, where a team is actually assigned to a panel.
 - **Next step:** Implement Revised Milestone 6, manual team scheduling and centralized overlap/conflict validation.
 - **Suggested commit message:** `feat(viva): add random panel allocation`
+
+### 2026-09-15, Revised Milestone 6 complete
+
+- **Milestone and status:** Manual team scheduling is complete. Revised Milestone 7 is next.
+- **Research findings:** `VivaSession` already had the UTC `scheduledAt`, `vivaEndsAt`, `locationLabel`, and optimistic `version` fields required to reserve an interval, while the existing round, panel, project, audit, and transaction infrastructure supplied the remaining authoritative data. Native `Intl.DateTimeFormat.formatToParts()` provides the exact Asia/Karachi date/time components required by the native `datetime-local` control without a date-library dependency.
+- **Implemented:** Added a transaction-backed schedule/reschedule path. It validates round/team/panel membership, viable panel size and admin, active panel members, active students, own-supervisor conflicts, duplicate round attempts, teacher overlaps, student overlaps, and started/cancelled/completed sessions. It reserves the exact planned interval using the current round duration, records immutable scheduling audit events, and rejects stale writes. A per-round schedule revision serializes concurrent overlap checks. The admin Viva page now has an accessible native-control schedule form and schedule list, with schedule input/display fixed to Asia/Karachi and UTC persisted to MongoDB.
+- **Complexity avoided:** No calendar dependency, drag-and-drop, second session/result collection, generic scheduling engine, background job, full session scan, duplicate client-side conflict logic, or new account role.
+- **Validation:** `npx tsc --noEmit` and `npm run lint` passed. `npm run build` compiled successfully and completed its TypeScript validation with a disposable local MongoDB URI. A local MongoDB 8.0.16 single-node `rs0` replica set passed the existing persistence, round-admin, and panel-admin database suites, plus the new scheduling suite. The new suite seeded 12 fake users and six fake teams, then verified panel eligibility, own-supervisor exclusion, teacher/student interval conflicts, duplicate attempts, UTC interval reservation, rescheduling, stale versions, started-session rejection, and concurrent overlap protection. `npm run test:unit` passed 52 of 54 files; the two existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
+- **Remaining hurdles:** No user-facing cancellation, session-start dashboard, temporary login restriction, grade completion, or publication behavior exists yet; those belong to subsequent milestones. The normal unit suite remains blocked from an all-green result by the two pre-existing unrelated structural tests.
+- **Next step:** Implement Revised Milestone 7, the panel-admin-only dashboard and concurrency-safe session start.
+- **Suggested commit message:** `feat(viva): add manual team scheduling`
 
 ## Historical implementation record
 
