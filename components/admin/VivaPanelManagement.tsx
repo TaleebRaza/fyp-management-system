@@ -469,7 +469,7 @@ export default function VivaPanelManagement({
                           <Badge variant={isFull ? 'accent' : 'muted'}>{panel.examinerIds.length}/{round.targetPanelSize}</Badge>
                         </div>
                       </div>
-                      <Button variant="ghost" className="min-h-9 w-9 shrink-0 px-0" onClick={() => discardPanel(panel.id)} disabled={controlsDisabled} aria-label={`Discard panel ${index + 1}`} title={`Discard panel ${index + 1}`}>
+                      <Button variant="ghost" className="min-h-9 w-9 shrink-0 px-0!" onClick={() => discardPanel(panel.id)} disabled={controlsDisabled} aria-label={`Discard panel ${index + 1}`} title={`Discard panel ${index + 1}`}>
                         <Trash2 size={16} />
                       </Button>
                     </div>
@@ -509,7 +509,7 @@ export default function VivaPanelManagement({
                             <div className="mt-3 flex items-center justify-end gap-2">
                               <Button
                                 variant="ghost"
-                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-primary-soft)] p-0 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white"
+                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-primary-soft)] p-0! text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white"
                                 onClick={() => openPanelAction({ type: 'move', panelId: panel.id, examinerId })}
                                 disabled={controlsDisabled || isPanelAdmin || moveTargets.length === 0}
                                 aria-label={`Move ${name} to another panel`}
@@ -519,7 +519,7 @@ export default function VivaPanelManagement({
                               </Button>
                               <Button
                                 variant="ghost"
-                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-accent-soft)] p-0 text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-black"
+                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-accent-soft)] p-0! text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-black"
                                 onClick={() => openPanelAction({ type: 'swap', panelId: panel.id, examinerId })}
                                 disabled={controlsDisabled || isPanelAdmin || swapTargets.length === 0}
                                 aria-label={`Swap ${name} with another teacher`}
@@ -529,7 +529,7 @@ export default function VivaPanelManagement({
                               </Button>
                               <Button
                                 variant="ghost"
-                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-danger-soft)] bg-[var(--color-danger-soft)] p-0 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
+                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-danger-soft)] bg-[var(--color-danger-soft)] p-0! text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
                                 onClick={() => removeExaminer(panel.id, examinerId)}
                                 disabled={controlsDisabled || isPanelAdmin}
                                 aria-label={`Remove ${name} from panel ${index + 1}`}
