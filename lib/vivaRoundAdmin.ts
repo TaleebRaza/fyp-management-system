@@ -504,13 +504,13 @@ export async function deleteVivaRound(
 
   return withVivaTransaction(async (session) => {
     const existing = await VivaRound.findById(roundId)
-      .select('frozenAt confirmedAt')
+      .select('frozenAt')
       .session(session)
-      .lean<{ frozenAt?: Date | null; confirmedAt?: Date | null }>();
+      .lean<{ frozenAt?: Date | null }>();
     if (!existing) {
       return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
     }
-    if (existing.frozenAt || existing.confirmedAt) {
+    if (existing.frozenAt) {
       return {
         success: false,
         reason: 'frozen',
@@ -518,7 +518,7 @@ export async function deleteVivaRound(
       };
     }
 
-    const deletedRound = await VivaRound.findOneAndDelete({ _id: roundId, frozenAt: null, confirmedAt: null }, { session });
+    const deletedRound = await VivaRound.findOneAndDelete({ _id: roundId, frozenAt: null }, { session });
     if (!deletedRound) {
       return {
         success: false,

@@ -431,8 +431,8 @@ export default function AdminVivaSection() {
   };
 
   const deleteRound = async () => {
-    if (!selectedRound || isFrozen || isSaving) return;
-    if (!window.confirm(`Delete “${selectedRound.name}” and all of its panels, schedules, and Viva audit records?`)) {
+    if (!selectedRound || selectedRound.frozenAt || isSaving) return;
+    if (!window.confirm(`Delete “${selectedRound.name}” and all of its panels, scheduled sessions, assessment data, and Viva audit records?`)) {
       return;
     }
 
@@ -550,7 +550,7 @@ export default function AdminVivaSection() {
             action={
               selectedRound ? (
                 <span className="flex flex-wrap gap-2">
-                  <Button variant="danger" onClick={() => void deleteRound()} disabled={isFrozen || isSaving}>
+                  <Button variant="danger" onClick={() => void deleteRound()} disabled={Boolean(selectedRound.frozenAt) || isSaving}>
                     <Trash2 size={16} />Delete Round
                   </Button>
                   <Button variant="ghost" onClick={startNewRound} disabled={isSaving}>

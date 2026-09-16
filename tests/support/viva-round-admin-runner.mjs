@@ -13,6 +13,7 @@ const [
   { default: VivaAuditEvent },
   {
     createVivaRound,
+    confirmVivaRound,
     deleteVivaRound,
     getVivaRoundAdminData,
     parseVivaRoundInput,
@@ -197,7 +198,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
 
     const deletable = await createVivaRound(
       mustParse(roundRequest([String(activeTeam._id)], [String(supervisorOne._id), String(supervisorTwo._id)], {
-        name: 'Delete this unstarted Viva',
+        name: 'Delete this scheduled Viva',
         targetPanelSize: 2,
       })),
       actor
@@ -215,6 +216,8 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
       scheduledAt: new Date('2026-10-10T09:00:00.000Z'),
       vivaEndsAt: new Date('2026-10-10T09:30:00.000Z'),
     });
+    const confirmedDeletable = await confirmVivaRound(deletable.round.id, actor);
+    assert.equal(confirmedDeletable.success, true, confirmedDeletable.success ? '' : confirmedDeletable.error);
     const invalidDelete = await deleteVivaRound('invalid-round-id', actor);
     assert.equal(invalidDelete.success, false);
     assert.equal(invalidDelete.reason, 'invalid');
@@ -247,7 +250,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 6,
       seededTeams: 2,
-      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'unstarted-round-deletion', 'frozen-round-rejection'],
+      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'scheduled-round-deletion', 'frozen-round-rejection'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {
