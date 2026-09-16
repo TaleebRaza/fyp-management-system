@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, ArrowRight, Loader2, Shuffle, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Loader2, MoveRight, Shuffle, Trash2, UserMinus } from 'lucide-react';
 
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import type { VivaExaminerOption, VivaRoundDto } from '../../lib/vivaRoundAdmin';
@@ -509,33 +509,33 @@ export default function VivaPanelManagement({
                             <div className="mt-3 flex items-center justify-end gap-2">
                               <Button
                                 variant="ghost"
-                                className="min-h-9 w-9 px-0"
+                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-primary-soft)] p-0 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white"
                                 onClick={() => openPanelAction({ type: 'move', panelId: panel.id, examinerId })}
                                 disabled={controlsDisabled || isPanelAdmin || moveTargets.length === 0}
                                 aria-label={`Move ${name} to another panel`}
                                 title={isPanelAdmin ? 'Choose a replacement panel admin before moving this teacher.' : moveTargets.length === 0 ? 'No panel has room for this teacher.' : 'Move to another panel'}
                               >
-                                <ArrowRight size={16} />
+                                <MoveRight size={20} strokeWidth={2.5} aria-hidden="true" />
                               </Button>
                               <Button
                                 variant="ghost"
-                                className="min-h-9 w-9 px-0"
+                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-accent-soft)] p-0 text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-black"
                                 onClick={() => openPanelAction({ type: 'swap', panelId: panel.id, examinerId })}
                                 disabled={controlsDisabled || isPanelAdmin || swapTargets.length === 0}
                                 aria-label={`Swap ${name} with another teacher`}
                                 title={isPanelAdmin ? 'Choose a replacement panel admin before swapping this teacher.' : swapTargets.length === 0 ? 'No teacher is available to swap.' : 'Swap with another teacher'}
                               >
-                                <ArrowLeftRight size={16} />
+                                <ArrowLeftRight size={20} strokeWidth={2.5} aria-hidden="true" />
                               </Button>
                               <Button
                                 variant="ghost"
-                                className="min-h-9 w-9 px-0"
+                                className="min-h-10 w-10 shrink-0 rounded-lg border border-[var(--color-danger-soft)] bg-[var(--color-danger-soft)] p-0 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
                                 onClick={() => removeExaminer(panel.id, examinerId)}
                                 disabled={controlsDisabled || isPanelAdmin}
                                 aria-label={`Remove ${name} from panel ${index + 1}`}
                                 title={isPanelAdmin ? 'Choose a replacement panel admin before removing this teacher.' : 'Remove from panel'}
                               >
-                                <Trash2 size={16} />
+                                <UserMinus size={20} strokeWidth={2.5} aria-hidden="true" />
                               </Button>
                             </div>
                           </div>

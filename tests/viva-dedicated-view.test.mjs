@@ -33,6 +33,9 @@ test('Viva has focused admin and student workspaces', async () => {
   assert.match(panelManagement, /Panels Saved/);
   assert.match(panelManagement, /pendingAction/);
   assert.match(panelManagement, /<Dialog/);
+  assert.match(panelManagement, /MoveRight size=\{20\}/);
+  assert.match(panelManagement, /ArrowLeftRight size=\{20\}/);
+  assert.match(panelManagement, /UserMinus size=\{20\}/);
   for (const section of ['setup', 'panels', 'schedule', 'results']) {
     assert.match(adminViva, new RegExp(`activeWorkspaceSection === '${section}'`));
   }
