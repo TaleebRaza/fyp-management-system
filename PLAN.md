@@ -614,7 +614,7 @@ Cover adequate/insufficient capacity, constrained teams, own-supervisor conflict
 
 Append updates after each implementation step. Record evidence, not estimates presented as completed work.
 
-**Overall status:** Reconciliation and Revised Milestones 4–12 are implemented and verified. Revised Milestone 13, automatic team scheduling, is next.
+**Overall status:** Reconciliation and Revised Milestones 4–13 are implemented and verified. Broader repository validation remains separately tracked below.
 
 ## Update template
 
@@ -737,6 +737,17 @@ Append updates after each implementation step. Record evidence, not estimates pr
 - **Remaining hurdles:** The two unrelated unit failures remain outside Viva and were not changed. Milestone 13 still needs automatic team scheduling.
 - **Next step:** Implement Revised Milestone 13, automatic team scheduling.
 - **Suggested commit message:** `test(viva): add full workflow integration coverage`
+
+### 2026-09-16, Revised Milestone 13 complete
+
+- **Milestone and status:** Automatic team scheduling is implemented and verified.
+- **Research findings:** The existing manual scheduling validator and transaction path already enforce panel eligibility, own-supervisor exclusion, overlapping teacher/student reservations, attempt uniqueness, audit writes, and schedule revisions. The automatic flow reuses those boundaries when applying a reviewed draft.
+- **Implemented:** Added deterministic preview generation from available windows, valid panels, current bookings, and remaining teams. The preview orders teams by available-option count, then uses earliest slots, lower panel workload, and stable panel-ID tie-breakers. Admin can edit or remove draft entries before one atomic, fully revalidated save. The integration runner seeds only fake records into local `fyp_viva_m13_test`.
+- **Complexity avoided:** No solver, scheduling dependency, retry loop, automatic replacement, second persistence path, or client-trusted draft.
+- **Validation:** `VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m13_test?replicaSet=rs0' npm run test:viva:auto-scheduling` passed against a disposable local MongoDB 8.0.16 single-node `rs0` replica set. The runner seeded 13 fake users and six fake teams, then removed the disposable database. It verified deterministic drafts, constrained and unplaced teams, insufficient capacity, panel eligibility, existing bookings, atomic apply, and stale-draft revalidation. `npx tsc --noEmit` passed. `npm run lint` passed with one warning in `lib/vivaRoundAdmin.ts:419` for an existing unused `actor` parameter. The full unit suite and production build were not run in this pass.
+- **Remaining hurdles:** The two previously recorded unrelated unit-test failures remain outside Viva. A broader repository validation pass should still run the full unit suite and production build.
+- **Next step:** No further feature milestone is defined; perform broader repository validation when needed.
+- **Suggested commit message:** `feat(viva): add deterministic automatic team scheduling`
 
 ## Historical implementation record
 
