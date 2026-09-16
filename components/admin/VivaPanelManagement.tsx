@@ -323,7 +323,7 @@ export default function VivaPanelManagement({
   };
 
   return (
-    <DashboardPanel aria-busy={isSaving}>
+    <DashboardPanel className="p-4 sm:p-5" aria-busy={isSaving}>
       <SectionHeader
         title="Panel Management"
         description={
@@ -347,8 +347,8 @@ export default function VivaPanelManagement({
       {error && <p role="alert" className="mb-4 rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
       {savedMessage && <p role="status" className="mb-4 rounded-xl bg-[var(--color-success-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-success)]">{savedMessage}</p>}
 
-      <div className="grid gap-6 2xl:grid-cols-[18rem_minmax(0,1fr)]">
-        <section aria-labelledby="viva-unassigned-teachers">
+      <div className="grid gap-5 2xl:grid-cols-[15rem_minmax(0,1fr)]">
+        <section className="h-fit 2xl:sticky 2xl:top-4" aria-labelledby="viva-unassigned-teachers">
           <h3 id="viva-unassigned-teachers" className="text-sm font-bold text-[var(--color-text)]">Unassigned Teachers</h3>
           <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">Search the teachers selected for this round, then add them to a panel.</p>
           <StyledInput
@@ -359,7 +359,7 @@ export default function VivaPanelManagement({
             className="mt-4"
             disabled={controlsDisabled}
           />
-          <div className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+          <div className="portal-scrollbar mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
             {unassignedExaminers.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--color-border)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">No matching unassigned teachers.</p>
             ) : unassignedExaminers.map((examiner) => (
@@ -388,12 +388,12 @@ export default function VivaPanelManagement({
           {draftPanels.length === 0 ? (
             <p className="rounded-xl border border-dashed border-[var(--color-border)] p-5 text-sm leading-6 text-[var(--color-text-muted)]">Add a panel, then choose teachers from the unassigned list.</p>
           ) : (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="portal-scrollbar grid gap-4 2xl:max-h-[calc(100vh-19rem)] 2xl:grid-cols-3 2xl:overflow-y-auto 2xl:pr-2">
               {draftPanels.map((panel, index) => {
                 const isReady = panel.examinerIds.length >= round.minimumPanelSize;
                 const isFull = panel.examinerIds.length === round.targetPanelSize;
                 return (
-                  <article key={panel.id} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                  <article key={panel.id} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3.5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h4 className="font-bold text-[var(--color-text)]">Panel {index + 1}</h4>
@@ -407,7 +407,7 @@ export default function VivaPanelManagement({
                       </Button>
                     </div>
 
-                    <label className="mt-5 block text-sm font-bold text-[var(--color-text)]">
+                    <label className="mt-4 block text-sm font-bold text-[var(--color-text)]">
                       Panel admin
                       <Select
                         value={panel.panelAdminId}
@@ -423,7 +423,7 @@ export default function VivaPanelManagement({
                       </Select>
                     </label>
 
-                    <div className="mt-5 space-y-2">
+                    <div className="mt-4 space-y-2">
                       {panel.examinerIds.length === 0 ? (
                         <p className="rounded-xl border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-text-muted)]">This empty panel will be discarded unless you add a teacher.</p>
                       ) : panel.examinerIds.map((examinerId) => {
@@ -431,7 +431,7 @@ export default function VivaPanelManagement({
                         const name = examiner?.name || 'Unavailable teacher';
                         const isPanelAdmin = panel.panelAdminId === examinerId;
                         return (
-                          <div key={examinerId} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                          <div key={examinerId} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2.5">
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold text-[var(--color-text)]">{name}</p>

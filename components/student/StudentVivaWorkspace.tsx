@@ -10,7 +10,7 @@ export default function StudentVivaWorkspace({
   results: VivaPublishedResult[];
 }) {
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       {results.length === 0 ? (
         <EmptyState
           icon={<ClipboardCheck size={24} />}

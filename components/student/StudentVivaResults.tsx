@@ -18,25 +18,28 @@ export default function StudentVivaResults({ results }: { results: VivaPublished
   if (results.length === 0) return null;
 
   return (
-    <DashboardPanel>
+    <DashboardPanel className="overflow-hidden">
       <SectionHeader
         title="Published Viva Results"
-        description="Your team receives the same final grade for each published Viva round."
+        description={`${results.length} published ${results.length === 1 ? 'result' : 'results'}. Your team receives the same final grade for each Viva round.`}
       />
-      <div className="space-y-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         {results.map((result) => (
-          <div key={result.assessmentId} className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
+          <article key={result.assessmentId} className="flex min-w-0 flex-col justify-between gap-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-5">
+            <div className="flex min-w-0 items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
                 <GraduationCap size={20} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-bold text-[var(--color-text)]">{result.roundName}</p>
                 <p className="mt-1 text-sm text-[var(--color-text-muted)]">Published {formatPublishedAt(result.publishedAt)}</p>
               </div>
             </div>
-            <Badge variant="success">{result.grade} ({result.percentage}%)</Badge>
-          </div>
+            <div className="flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
+              <span className="text-sm font-semibold text-[var(--color-text-muted)]">Final result</span>
+              <Badge variant="success" className="px-3 py-1.5 text-sm">{result.grade} ({result.percentage}%)</Badge>
+            </div>
+          </article>
         ))}
       </div>
     </DashboardPanel>

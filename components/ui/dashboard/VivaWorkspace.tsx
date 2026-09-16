@@ -37,7 +37,7 @@ export function VivaWorkspaceShell({
   const headingId = useId();
 
   return (
-    <section className="mx-auto w-full max-w-7xl" aria-labelledby={headingId}>
+    <section className="mx-auto w-[calc(100%-1rem)] max-w-[120rem] sm:w-[calc(100%-3rem)]" aria-labelledby={headingId}>
       <header className="rounded-t-2xl bg-[var(--color-primary)] px-5 py-6 text-white sm:px-8 sm:py-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -61,7 +61,7 @@ export function VivaWorkspaceShell({
           </button>
         </div>
       </header>
-      <div className="rounded-b-2xl border border-t-0 border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-[var(--shadow-card)] sm:p-6">
+      <div className="rounded-b-2xl border border-t-0 border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-[var(--shadow-card)] sm:p-6 lg:p-7">
         {children}
       </div>
     </section>
