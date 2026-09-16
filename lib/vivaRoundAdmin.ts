@@ -32,6 +32,8 @@ export type VivaRoundInput = VivaConfiguration & {
 export type VivaRoundDto = VivaRoundInput & {
   id: string;
   panelRevision: number;
+  heldProjectIds: string[];
+  confirmedAt: string | null;
   frozenAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -40,7 +42,6 @@ export type VivaRoundDto = VivaRoundInput & {
 export type VivaTeamOption = {
   id: string;
   title: string;
-  hasTitle: boolean;
   members: Array<{ id: string; name: string; rollNo: string }>;
 };
 
@@ -74,6 +75,9 @@ type VivaRoundRecord = {
   projectIds?: unknown;
   examinerIds?: unknown;
   panelRevision?: unknown;
+  scheduleRevision?: unknown;
+  heldProjectIds?: unknown;
+  confirmedAt?: Date | null;
   frozenAt?: Date | null;
   createdAt?: Date | null;
   updatedAt?: Date | null;
@@ -83,6 +87,7 @@ type ProjectRecord = {
   _id: unknown;
   title?: unknown;
   members?: unknown[];
+  supervisorId?: unknown;
 };
 
 type UserRecord = {
@@ -110,6 +115,10 @@ export type VivaRoundDeleteResult =
       reason: 'invalid' | 'not-found' | 'frozen';
       error: string;
     };
+
+export type VivaRoundConfirmationResult =
+  | { success: true; round: VivaRoundDto }
+  | { success: false; reason: 'invalid' | 'not-found' | 'confirmed' | 'concurrent-change'; error: string };
 
 function readRequiredText(value: unknown, maximumLength: number): string | null {
   if (typeof value !== 'string') return null;
@@ -166,6 +175,8 @@ function serializeVivaRound(round: VivaRoundRecord): VivaRoundDto {
     projectIds: asStringList(round.projectIds),
     examinerIds: asStringList(round.examinerIds),
     panelRevision: asPanelRevision(round.panelRevision),
+    heldProjectIds: asStringList(round.heldProjectIds),
+    confirmedAt: asDateString(round.confirmedAt),
     frozenAt: asDateString(round.frozenAt),
     createdAt: asDateString(round.createdAt),
     updatedAt: asDateString(round.updatedAt),
@@ -215,7 +226,7 @@ async function validateSelectedPeopleAndTeams(
 ): Promise<string | null> {
   const [projects, examiners] = await Promise.all([
     Project.find({ _id: { $in: input.projectIds } })
-      .select('_id members')
+      .select('_id title members supervisorId')
       .session(session)
       .lean<ProjectRecord[]>(),
     User.find({
@@ -230,6 +241,13 @@ async function validateSelectedPeopleAndTeams(
 
   if (projects.length !== input.projectIds.length) {
     return 'One or more selected teams no longer exist.';
+  }
+  if (projects.some((project) => (
+    typeof project.title !== 'string'
+    || !project.title.trim()
+    || !mongoose.Types.ObjectId.isValid(String(project.supervisorId || ''))
+  ))) {
+    return 'Every selected team needs a title and assigned supervisor.';
   }
   if (examiners.length !== input.examinerIds.length) {
     return 'One or more selected teachers are no longer active supervisors.';
@@ -270,7 +288,7 @@ function toRoundFields(input: VivaRoundInput) {
 
 export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
   const projects = await Project.find({ members: { $exists: true, $ne: [] } })
-    .select('_id title members')
+    .select('_id title members supervisorId')
     .sort({ title: 1, _id: 1 })
     .lean<ProjectRecord[]>();
   const studentIds = Array.from(
@@ -289,7 +307,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       .lean<UserRecord[]>(),
     VivaRound.find()
       .select(
-        'name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds examinerIds panelRevision frozenAt createdAt updatedAt'
+        'name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds examinerIds panelRevision heldProjectIds confirmedAt frozenAt createdAt updatedAt'
       )
       .sort({ createdAt: -1 })
       .lean<VivaRoundRecord[]>(),
@@ -319,11 +337,11 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       if (members.length === 0) return [];
 
       const title = typeof project.title === 'string' ? project.title.trim() : '';
+      if (!title || !mongoose.Types.ObjectId.isValid(String(project.supervisorId || ''))) return [];
 
       return [{
         id: String(project._id),
-        title: title || 'Untitled project',
-        hasTitle: Boolean(title),
+        title,
         members,
       }];
     }),
@@ -373,13 +391,13 @@ export async function updateVivaRound(
 ): Promise<VivaRoundSaveResult> {
   return withVivaTransaction(async (session) => {
     const existing = await VivaRound.findById(roundId)
-      .select('frozenAt')
+      .select('frozenAt confirmedAt')
       .session(session)
-      .lean<{ frozenAt?: Date | null }>();
+      .lean<{ frozenAt?: Date | null; confirmedAt?: Date | null }>();
     if (!existing) {
       return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
     }
-    if (existing.frozenAt) {
+    if (existing.frozenAt || existing.confirmedAt) {
       return { success: false, reason: 'frozen', error: 'This Viva round has started and can no longer be changed.' };
     }
 
@@ -394,7 +412,7 @@ export async function updateVivaRound(
     }
 
     const updated = await VivaRound.findOneAndUpdate(
-      { _id: roundId, frozenAt: null },
+      { _id: roundId, frozenAt: null, confirmedAt: null },
       { $set: toRoundFields(input) },
       { returnDocument: 'after', runValidators: true, session }
     ).lean<VivaRoundRecord | null>();
@@ -418,6 +436,66 @@ export async function updateVivaRound(
   });
 }
 
+export async function confirmVivaRound(
+  roundId: string,
+  actor: VivaRoundActor,
+  confirmedAt = new Date()
+): Promise<VivaRoundConfirmationResult> {
+  if (!mongoose.Types.ObjectId.isValid(roundId) || !(confirmedAt instanceof Date) || !Number.isFinite(confirmedAt.getTime())) {
+    return { success: false, reason: 'invalid', error: 'Invalid Viva round confirmation.' };
+  }
+
+  return withVivaTransaction(async (session) => {
+    const round = await VivaRound.findById(roundId)
+      .select('_id projectIds confirmedAt scheduleRevision')
+      .session(session)
+      .lean<VivaRoundRecord | null>();
+    if (!round) return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
+    if (round.confirmedAt) return { success: false, reason: 'confirmed', error: 'This Viva round is already confirmed.' };
+
+    const projectIds = asStringList(round.projectIds);
+    const scheduledSessions = await VivaSession.find({
+      roundId,
+      projectId: { $in: projectIds },
+      cancelledAt: null,
+      scheduledAt: { $type: 'date' },
+    })
+      .select('projectId')
+      .session(session)
+      .lean<Array<{ projectId?: unknown }>>();
+    const scheduledProjectIds = new Set(scheduledSessions.map((vivaSession) => String(vivaSession.projectId)));
+    const heldProjectIds = projectIds.filter((projectId) => !scheduledProjectIds.has(projectId));
+    const scheduleRevision = typeof round.scheduleRevision === 'number' && Number.isSafeInteger(round.scheduleRevision)
+      ? round.scheduleRevision
+      : 0;
+    const revisionFilter = scheduleRevision === 0
+      ? { $or: [{ scheduleRevision: 0 }, { scheduleRevision: { $exists: false } }] }
+      : { scheduleRevision };
+    const confirmedRound = await VivaRound.findOneAndUpdate(
+      { _id: roundId, confirmedAt: null, ...revisionFilter },
+      { $set: { confirmedAt, heldProjectIds }, $inc: { scheduleRevision: 1 } },
+      { returnDocument: 'after', runValidators: true, session }
+    ).lean<VivaRoundRecord | null>();
+    if (!confirmedRound) {
+      return { success: false, reason: 'concurrent-change', error: 'Another administrator changed this schedule. Reload before confirming.' };
+    }
+
+    await recordVivaAuditEvent(
+      {
+        roundId,
+        event: 'round-confirmed',
+        actorId: actor.id,
+        actorRole: 'admin',
+        actorName: actor.name,
+        actorRollNo: actor.rollNo,
+        occurredAt: confirmedAt,
+      },
+      session
+    );
+    return { success: true, round: serializeVivaRound(confirmedRound) };
+  });
+}
+
 export async function deleteVivaRound(
   roundId: string,
   actor: VivaRoundActor
@@ -428,13 +506,13 @@ export async function deleteVivaRound(
 
   return withVivaTransaction(async (session) => {
     const existing = await VivaRound.findById(roundId)
-      .select('frozenAt')
+      .select('frozenAt confirmedAt')
       .session(session)
-      .lean<{ frozenAt?: Date | null }>();
+      .lean<{ frozenAt?: Date | null; confirmedAt?: Date | null }>();
     if (!existing) {
       return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
     }
-    if (existing.frozenAt) {
+    if (existing.frozenAt || existing.confirmedAt) {
       return {
         success: false,
         reason: 'frozen',
@@ -442,7 +520,7 @@ export async function deleteVivaRound(
       };
     }
 
-    const deletedRound = await VivaRound.findOneAndDelete({ _id: roundId, frozenAt: null }, { session });
+    const deletedRound = await VivaRound.findOneAndDelete({ _id: roundId, frozenAt: null, confirmedAt: null }, { session });
     if (!deletedRound) {
       return {
         success: false,

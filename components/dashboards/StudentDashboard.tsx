@@ -7,7 +7,6 @@ import { Loader2, LogIn, Pencil, Settings } from 'lucide-react';
 import {
   Button,
   DashboardShell,
-  VivaShortcut,
   VivaWorkspaceShell,
 } from '../ui';
 import FinePaymentPanel from '../student/FinePaymentPanel';
@@ -97,9 +96,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     isSupervisorChangeLocked,
     announcementItems,
   } = buildStudentDashboardViewModel(data, headline, tools);
-  const { activeTab, setActiveTab, navItems } = useStudentDashboardNavigation(
-    Boolean(fineRestriction)
-  );
+  const { activeTab, setActiveTab, navItems } = useStudentDashboardNavigation(Boolean(fineRestriction), () => setIsVivaView(true));
   const {
     visibleTemplates,
     isFetchingTemplates,
@@ -251,7 +248,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         description="This is the dedicated place for your team’s published Viva results."
         onExit={() => setIsVivaView(false)}
       >
-        <StudentVivaWorkspace results={data?.vivaResults || []} />
+        <StudentVivaWorkspace results={data?.vivaResults || []} sessions={data?.vivaSessions || []} />
       </VivaWorkspaceShell>
     );
   }
@@ -383,8 +380,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         hasAssignedSupervisor={hasAssignedSupervisor}
         supervisorName={supervisor?.name}
       />
-
-      <VivaShortcut onOpen={() => setIsVivaView(true)} />
 
       <SupervisorChangeDialog
         open={isSupervisorWarningOpen}

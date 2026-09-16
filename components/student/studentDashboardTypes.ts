@@ -3,6 +3,7 @@ import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { FineRestrictionPolicy } from '../../types/registrationPolicy';
 import type { ProjectRatings } from '../../config/projectRatings';
 import type { VivaPublishedResultDto } from '../../lib/vivaPublication';
+import type { VivaStudentSessionDto } from '../../lib/vivaScheduling';
 
 export type WordTemplate = {
   id: string;
@@ -96,6 +97,7 @@ export type StudentDashboardData = {
   fineRestrictions?: FineRestrictionPolicy;
   projectSubmissionsOpen?: boolean;
   vivaResults?: VivaPublishedResultDto[];
+  vivaSessions?: VivaStudentSessionDto[];
 };
 
 export type VivaPublishedResult = VivaPublishedResultDto;

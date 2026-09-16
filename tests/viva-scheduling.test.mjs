@@ -6,13 +6,14 @@ import { importTypeScriptModuleWithDependencies } from './support/importTypeScri
 
 const { parseVivaScheduleInput, parseVivaScheduleUpdateInput } = await importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts');
 
-test('manual Viva scheduling includes its selected round in the request', async () => {
+test('Viva scheduling is automatic-only', async () => {
   const component = await readFile(
     new URL('../components/admin/VivaScheduleManagement.tsx', import.meta.url),
     'utf8'
   );
 
-  assert.match(component, /action: editingSchedule \? 'reschedule-session' : 'schedule-session',[\s\S]*roundId: round\.id,/);
+  assert.match(component, /action: 'preview-automatic-schedule'/);
+  assert.doesNotMatch(component, /schedule-session|reschedule-session|Manual Team Scheduling/);
 });
 
 test('parses UTC Viva schedule input and rejects ambiguous timestamps', () => {

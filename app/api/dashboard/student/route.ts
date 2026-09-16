@@ -63,6 +63,7 @@ import {
 } from '../../../../lib/storageProtocol';
 import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
 import { getPublishedVivaResultsForStudent } from '../../../../lib/vivaPublication';
+import { getConfirmedVivaSchedulesForStudent } from '../../../../lib/vivaScheduling';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,12 +95,13 @@ export async function GET(req: NextRequest) {
 
     const fineRestriction = buildFineRestriction(student);
 
-    const [project, policyDocument, vivaResults] = await Promise.all([
+    const [project, policyDocument, vivaResults, vivaSessions] = await Promise.all([
       Project.findOne({ members: student._id })
         .select('_id supervisorId members title description status reviewRemarks stage version domains tools pdfUrl inviteCode maxTeamSize ratings')
         .lean(),
       getOrCreateRegistrationPolicy(),
       getPublishedVivaResultsForStudent(studentId),
+      getConfirmedVivaSchedulesForStudent(studentId),
     ]);
     const supervisor = project?.supervisorId
       ? await User.findById(project.supervisorId)
@@ -186,6 +188,7 @@ export async function GET(req: NextRequest) {
         fineRestrictions: fineRestriction || teamFineRestriction ? policy.fineRestrictions : undefined,
         projectSubmissionsOpen: policy.projectSubmissionsOpen,
         vivaResults,
+        vivaSessions,
       },
       {
         status: 200,

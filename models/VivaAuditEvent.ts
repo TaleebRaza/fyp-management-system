@@ -3,6 +3,7 @@ import mongoose, { Schema } from 'mongoose';
 export const VIVA_AUDIT_EVENT_TYPES = [
   'round-created',
   'round-updated',
+  'round-confirmed',
   'panel-created',
   'panel-updated',
   'session-scheduled',

@@ -23,6 +23,8 @@ const VivaRoundSchema = new Schema(
     examinerIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     panelRevision: { type: Number, required: true, default: 0, min: 0 },
     scheduleRevision: { type: Number, required: true, default: 0, min: 0 },
+    heldProjectIds: [{ type: Schema.Types.ObjectId, ref: 'Project' }],
+    confirmedAt: { type: Date, default: null },
     frozenAt: { type: Date, default: null },
   },
   { timestamps: true }

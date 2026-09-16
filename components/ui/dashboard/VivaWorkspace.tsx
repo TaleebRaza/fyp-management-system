@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ClipboardList } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useId, type ReactNode } from 'react';
 
 type VivaWorkspaceShellProps = {
@@ -10,22 +10,6 @@ type VivaWorkspaceShellProps = {
   onExit: () => void;
   children: ReactNode;
 };
-
-export function VivaShortcut({ onOpen }: { onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="fixed right-4 top-20 z-40 inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--color-accent)]/45 bg-[var(--color-accent-soft)] px-4 py-2 text-sm font-bold text-[var(--color-text)] shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5 hover:bg-[var(--color-accent)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] sm:right-6"
-      aria-label="Open Viva workspace"
-    >
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-primary)]">
-        <ClipboardList size={14} aria-hidden="true" />
-      </span>
-      Viva
-    </button>
-  );
-}
 
 export function VivaWorkspaceShell({
   eyebrow,

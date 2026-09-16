@@ -58,6 +58,7 @@ type VivaRoundRecord = {
   examinerIds?: unknown;
   targetPanelSize?: unknown;
   frozenAt?: Date | null;
+  confirmedAt?: Date | null;
   panelRevision?: unknown;
 };
 
@@ -275,12 +276,12 @@ export async function previewRandomVivaPanels(
   input: VivaPanelAllocationInput
 ): Promise<VivaPanelAllocationResult> {
   const round = await VivaRound.findById(input.roundId)
-    .select('_id examinerIds targetPanelSize frozenAt panelRevision')
+    .select('_id examinerIds targetPanelSize frozenAt confirmedAt panelRevision')
     .lean<VivaRoundRecord | null>();
   if (!round) {
     return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
   }
-  if (round.frozenAt) {
+  if (round.frozenAt || round.confirmedAt) {
     return {
       success: false,
       reason: 'frozen',
@@ -322,13 +323,13 @@ export async function saveVivaPanels(
 ): Promise<VivaPanelSaveResult> {
   return withVivaTransaction(async (session) => {
     const round = await VivaRound.findById(input.roundId)
-      .select('_id examinerIds targetPanelSize frozenAt panelRevision')
+      .select('_id examinerIds targetPanelSize frozenAt confirmedAt panelRevision')
       .session(session)
       .lean<VivaRoundRecord | null>();
     if (!round) {
       return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
     }
-    if (round.frozenAt) {
+    if (round.frozenAt || round.confirmedAt) {
       return {
         success: false,
         reason: 'frozen',
@@ -352,7 +353,7 @@ export async function saveVivaPanels(
       ? { $or: [{ panelRevision: 0 }, { panelRevision: { $exists: false } }] }
       : { panelRevision: input.panelRevision };
     const reservedRound = await VivaRound.findOneAndUpdate(
-      { _id: input.roundId, frozenAt: null, ...revisionFilter },
+      { _id: input.roundId, frozenAt: null, confirmedAt: null, ...revisionFilter },
       { $inc: { panelRevision: 1 } },
       { returnDocument: 'after', session }
     ).lean<VivaRoundRecord | null>();

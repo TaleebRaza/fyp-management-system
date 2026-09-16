@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Loader2, Plus, Shuffle, Trash2 } from 'lucide-react';
+import { Loader2, Shuffle, Trash2 } from 'lucide-react';
 
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import type { VivaExaminerOption, VivaRoundDto } from '../../lib/vivaRoundAdmin';
@@ -118,13 +118,13 @@ export default function VivaPanelManagement({
   onReload,
 }: VivaPanelManagementProps) {
   const [draftPanels, setDraftPanels] = useState(() => initialDrafts(panels));
-  const [search, setSearch] = useState('');
   const [nextDraftId, setNextDraftId] = useState(1);
+  const [search, setSearch] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
-  const isFrozen = Boolean(round.frozenAt);
+  const isFrozen = Boolean(round.frozenAt || round.confirmedAt);
   const controlsDisabled = isFrozen || isSaving || isGenerating || isRoundSaving;
 
   const examinerById = useMemo(
@@ -148,16 +148,6 @@ export default function VivaPanelManagement({
         || `${examiner.name} ${examiner.rollNo}`.toLocaleLowerCase().includes(normalizedSearch);
     });
   }, [assignedExaminerIds, examiners, search, selectedExaminerIds]);
-
-  const addPanel = () => {
-    setDraftPanels((current) => [
-      ...current,
-      { id: `new-${nextDraftId}`, examinerIds: [], panelAdminId: '' },
-    ]);
-    setNextDraftId((current) => current + 1);
-    setError('');
-    setSavedMessage('');
-  };
 
   const addExaminer = (panelId: string, examinerId: string) => {
     if (!examinerId) return;
@@ -337,9 +327,6 @@ export default function VivaPanelManagement({
               {isGenerating ? <Loader2 className="animate-spin" size={16} /> : <Shuffle size={16} />}
               {isGenerating ? 'Generating...' : 'Generate Random Draft'}
             </Button>
-            <Button variant="outline" onClick={addPanel} disabled={controlsDisabled}>
-              <Plus size={16} />Add Panel
-            </Button>
           </div>
         }
       />
@@ -386,7 +373,7 @@ export default function VivaPanelManagement({
         <section aria-labelledby="viva-panel-cards">
           <h3 id="viva-panel-cards" className="sr-only">Viva panels</h3>
           {draftPanels.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-[var(--color-border)] p-5 text-sm leading-6 text-[var(--color-text-muted)]">Add a panel, then choose teachers from the unassigned list.</p>
+            <p className="rounded-xl border border-dashed border-[var(--color-border)] p-5 text-sm leading-6 text-[var(--color-text-muted)]">Generate a panel draft to begin.</p>
           ) : (
             <div className="portal-scrollbar grid gap-4 2xl:max-h-[calc(100vh-19rem)] 2xl:grid-cols-3 2xl:overflow-y-auto 2xl:pr-2">
               {draftPanels.map((panel, index) => {

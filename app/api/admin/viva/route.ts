@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import {
   createVivaRound,
+  confirmVivaRound,
   deleteVivaRound,
   getVivaRoundAdminData,
   parseVivaRoundInput,
@@ -21,11 +22,7 @@ import {
   parseVivaAutomaticScheduleInput,
   parseVivaAutomaticScheduleSaveInput,
   parseVivaSessionCancellationInput,
-  parseVivaScheduleInput,
-  parseVivaScheduleUpdateInput,
   previewAutomaticVivaSchedule,
-  rescheduleVivaSession,
-  scheduleVivaSession,
 } from '../../../../lib/vivaScheduling';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isRecord } from '../../../../lib/security/input';
@@ -79,25 +76,6 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.error('Admin Viva panel allocation error:', error);
       return NextResponse.json({ error: 'Failed to generate Viva panels.' }, { status: 500 });
-    }
-  }
-
-  if (isRecord(body) && body.action === 'schedule-session') {
-    const parsed = parseVivaScheduleInput(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 });
-    }
-
-    try {
-      const result = await scheduleVivaSession(parsed.input, adminActor(currentUser));
-      if (!result.success) {
-        const status = result.reason === 'concurrent-change' ? 409 : 400;
-        return NextResponse.json({ error: result.error }, { status });
-      }
-      return NextResponse.json({ schedule: result.schedule }, { status: 201 });
-    } catch (error) {
-      console.error('Admin Viva session scheduling error:', error);
-      return NextResponse.json({ error: 'Failed to schedule the Viva session.' }, { status: 500 });
     }
   }
 
@@ -183,27 +161,20 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid Viva panel request.' }, { status: 400 });
   }
 
-  if (isRecord(body) && body.action === 'reschedule-session') {
-    const parsed = parseVivaScheduleUpdateInput(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 });
+  if (isRecord(body) && body.action === 'confirm-round') {
+    if (typeof body.roundId !== 'string') {
+      return NextResponse.json({ error: 'Choose a valid Viva round.' }, { status: 400 });
     }
-
     try {
-      const result = await rescheduleVivaSession(
-        parsed.sessionId,
-        parsed.version,
-        parsed.input,
-        adminActor(currentUser)
-      );
+      const result = await confirmVivaRound(body.roundId, adminActor(currentUser));
       if (!result.success) {
         const status = result.reason === 'not-found' ? 404 : result.reason === 'concurrent-change' ? 409 : 400;
         return NextResponse.json({ error: result.error }, { status });
       }
-      return NextResponse.json({ schedule: result.schedule });
+      return NextResponse.json({ round: result.round });
     } catch (error) {
-      console.error('Admin Viva session rescheduling error:', error);
-      return NextResponse.json({ error: 'Failed to reschedule the Viva session.' }, { status: 500 });
+      console.error('Admin Viva round confirmation error:', error);
+      return NextResponse.json({ error: 'Failed to confirm the Viva round.' }, { status: 500 });
     }
   }
 

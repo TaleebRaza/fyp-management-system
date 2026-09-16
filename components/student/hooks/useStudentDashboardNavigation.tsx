@@ -5,6 +5,7 @@ import {
   CircleDollarSign,
   Download,
   FileText,
+  ClipboardList,
   LayoutDashboard,
   Users,
 } from 'lucide-react';
@@ -12,13 +13,19 @@ import type { DashboardNavItem } from '../../ui/dashboard/DashboardShell';
 
 export type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources';
 
-export function useStudentDashboardNavigation(hasFineRestriction: boolean) {
+export function useStudentDashboardNavigation(hasFineRestriction: boolean, onOpenViva: () => void) {
   const [requestedTab, setRequestedTab] = useState<StudentTab>('overview');
   const activeTab: StudentTab =
     requestedTab === 'fine' && !hasFineRestriction ? 'project' : requestedTab;
 
   const navItems = useMemo<DashboardNavItem[]>(
     () => [
+      {
+        id: 'viva',
+        label: 'Viva',
+        icon: <ClipboardList size={18} />,
+        onClick: onOpenViva,
+      },
       {
         id: 'overview',
         label: 'Overview',
@@ -62,7 +69,7 @@ export function useStudentDashboardNavigation(hasFineRestriction: boolean) {
         onClick: () => setRequestedTab('resources'),
       },
     ],
-    [activeTab, hasFineRestriction]
+    [activeTab, hasFineRestriction, onOpenViva]
   );
 
   return {

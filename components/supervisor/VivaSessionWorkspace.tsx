@@ -142,10 +142,9 @@ function readError(value: unknown, fallback: string) {
 function formatDateTime(value: string) {
   const date = new Date(value);
   return Number.isFinite(date.getTime())
-    ? new Intl.DateTimeFormat('en-PK', {
+    ? new Intl.DateTimeFormat(undefined, {
         dateStyle: 'medium',
         timeStyle: 'short',
-        timeZone: 'Asia/Karachi',
       }).format(date)
     : 'Unavailable';
 }

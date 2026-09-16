@@ -7,8 +7,7 @@ function formatPublishedAt(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return 'Published date unavailable';
 
-  return new Intl.DateTimeFormat('en-PK', {
-    timeZone: 'Asia/Karachi',
+  return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);

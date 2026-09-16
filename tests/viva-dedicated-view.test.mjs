@@ -14,14 +14,14 @@ test('Viva has focused admin and student workspaces', async () => {
     read('components/ui/dashboard/VivaWorkspace.tsx'),
   ]);
 
-  assert.match(workspace, /export function VivaShortcut/);
   assert.match(workspace, /export function VivaWorkspaceShell/);
-  assert.match(adminDashboard, /<VivaShortcut onOpen=\{\(\) => setIsVivaView\(true\)\} \/>/);
+  assert.doesNotMatch(workspace, /VivaShortcut/);
+  assert.doesNotMatch(adminDashboard, /VivaShortcut/);
   assert.match(adminDashboard, /<VivaWorkspaceShell/);
   assert.match(adminDashboard, /<AdminVivaSection \/>/);
   assert.doesNotMatch(adminDashboard, /activeTab === 'viva'/);
-  assert.match(studentDashboard, /<VivaShortcut onOpen=\{\(\) => setIsVivaView\(true\)\} \/>/);
-  assert.match(studentDashboard, /<StudentVivaWorkspace results=\{data\?\.vivaResults \|\| \[\]\} \/>/);
+  assert.doesNotMatch(studentDashboard, /VivaShortcut/);
+  assert.match(studentDashboard, /<StudentVivaWorkspace results=\{data\?\.vivaResults \|\| \[\]\} sessions=\{data\?\.vivaSessions \|\| \[\]\} \/>/);
   assert.doesNotMatch(studentOverview, /StudentVivaResults/);
   assert.match(studentViva, /No Viva result published yet/);
   assert.match(adminViva, /VIVA_WORKSPACE_SECTIONS/);
@@ -30,14 +30,13 @@ test('Viva has focused admin and student workspaces', async () => {
   }
 });
 
-test('Viva setup can deselect selected projects without titles', async () => {
+test('Viva setup exposes only eligible teams', async () => {
   const [adminViva, vivaRoundAdmin] = await Promise.all([
     read('components/admin/AdminVivaSection.tsx'),
     read('lib/vivaRoundAdmin.ts'),
   ]);
 
-  assert.match(vivaRoundAdmin, /hasTitle: Boolean\(title\)/);
-  assert.match(adminViva, /Deselect untitled/);
-  assert.match(adminViva, /teams\.filter\(\(team\) => !team\.hasTitle\)/);
-  assert.match(adminViva, /projectIds: current\.projectIds\.filter\(\(id\) => !untitledTeamIds\.has\(id\)\)/);
+  assert.doesNotMatch(adminViva, /Deselect untitled/);
+  assert.doesNotMatch(vivaRoundAdmin, /hasTitle/);
+  assert.match(vivaRoundAdmin, /Every selected team needs a title and assigned supervisor/);
 });

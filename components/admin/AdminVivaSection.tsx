@@ -94,6 +94,8 @@ function readRound(value: unknown): VivaRoundDto | null {
     || targetPanelSize === null
     || minimumPanelSize === null
     || vivaDurationMinutes === null
+    || !Array.isArray(value.heldProjectIds) || !value.heldProjectIds.every((id) => typeof id === 'string')
+    || (value.confirmedAt !== null && typeof value.confirmedAt !== 'string')
     || (value.frozenAt !== null && typeof value.frozenAt !== 'string')
     || (value.createdAt !== null && typeof value.createdAt !== 'string')
     || (value.updatedAt !== null && typeof value.updatedAt !== 'string')
@@ -110,6 +112,8 @@ function readRound(value: unknown): VivaRoundDto | null {
     projectIds,
     examinerIds,
     panelRevision,
+    heldProjectIds: value.heldProjectIds,
+    confirmedAt: value.confirmedAt,
     frozenAt: value.frozenAt,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
@@ -121,7 +125,6 @@ function readTeam(value: unknown): VivaTeamOption | null {
     !isRecord(value)
     || typeof value.id !== 'string'
     || typeof value.title !== 'string'
-    || typeof value.hasTitle !== 'boolean'
     || !Array.isArray(value.members)
   ) {
     return null;
@@ -140,7 +143,7 @@ function readTeam(value: unknown): VivaTeamOption | null {
   });
 
   return members.length === value.members.length
-    ? { id: value.id, title: value.title, hasTitle: value.hasTitle, members }
+    ? { id: value.id, title: value.title, members }
     : null;
 }
 
@@ -341,12 +344,7 @@ export default function AdminVivaSection() {
     () => rounds.find((round) => round.id === selectedRoundId) || null,
     [rounds, selectedRoundId]
   );
-  const isFrozen = Boolean(selectedRound?.frozenAt);
-  const untitledTeamIds = useMemo(
-    () => new Set(teams.filter((team) => !team.hasTitle).map((team) => team.id)),
-    [teams]
-  );
-  const selectedUntitledTeamCount = draft.projectIds.filter((id) => untitledTeamIds.has(id)).length;
+  const isFrozen = Boolean(selectedRound?.frozenAt || selectedRound?.confirmedAt);
 
   const loadConfiguration = useCallback(async () => {
     setIsLoading(true);
@@ -391,7 +389,7 @@ export default function AdminVivaSection() {
   const openRound = (round: VivaRoundDto) => {
     setSelectedRoundId(round.id);
     setActiveWorkspaceSection('setup');
-    setDraft(toDraft(round));
+    setDraft({ ...toDraft(round), projectIds: round.projectIds.filter((id) => teams.some((team) => team.id === id)) });
     setError('');
     setSavedMessage('');
   };
@@ -597,18 +595,6 @@ export default function AdminVivaSection() {
             onToggle={(id) => setDraft((current) => ({ ...current, projectIds: toggleSelection(current.projectIds, id) }))}
             onSelectAll={() => setDraft((current) => ({ ...current, projectIds: teams.map((team) => team.id) }))}
             onClear={() => setDraft((current) => ({ ...current, projectIds: [] }))}
-            additionalAction={
-              <Button
-                variant="ghost"
-                disabled={isFrozen || isSaving || selectedUntitledTeamCount === 0}
-                onClick={() => setDraft((current) => ({
-                  ...current,
-                  projectIds: current.projectIds.filter((id) => !untitledTeamIds.has(id)),
-                }))}
-              >
-                Deselect untitled
-              </Button>
-            }
             renderItem={(team) => (
               <>
                 <span className="block font-bold text-[var(--color-text)]">{team.title}</span>
@@ -665,7 +651,6 @@ export default function AdminVivaSection() {
           key={selectedRound.id}
           round={selectedRound}
           teams={teams}
-          examiners={examiners}
           panels={panels.filter((panel) => panel.roundId === selectedRound.id)}
           schedules={schedules}
           isRoundSaving={isSaving}
@@ -673,6 +658,10 @@ export default function AdminVivaSection() {
             ...current.filter((schedule) => schedule.id !== savedSchedule.id),
             savedSchedule,
           ].sort((first, second) => first.scheduledAt.localeCompare(second.scheduledAt)))}
+          onConfirmed={(confirmedRound) => {
+            setRounds((current) => current.map((round) => round.id === confirmedRound.id ? confirmedRound : round));
+            setDraft(toDraft(confirmedRound));
+          }}
         />
       )}
       {selectedRound && activeWorkspaceSection === 'results' && (

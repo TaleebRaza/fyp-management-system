@@ -22,6 +22,8 @@ export type VivaScheduleDto = {
   cancellationReason: string;
 };
 
+export type VivaStudentSessionDto = VivaScheduleDto & { roundName: string };
+
 export type VivaScheduleInput = {
   roundId: string;
   panelId: string;
@@ -106,6 +108,7 @@ type VivaRoundRecord = {
   minimumPanelSize?: unknown;
   vivaDurationMinutes?: unknown;
   scheduleRevision?: unknown;
+  confirmedAt?: Date | null;
 };
 
 type VivaPanelRecord = {
@@ -153,6 +156,7 @@ type ScheduleReservation = {
   vivaEndsAt: Date;
   panelExaminerIds: string[];
   projectMemberIds: string[];
+  locationLabel: string;
 };
 
 type AutomaticSchedulePanel = {
@@ -199,6 +203,10 @@ function asLocationLabel(value: unknown): string | null {
 
   const label = value.trim();
   return label.length <= 160 ? label : null;
+}
+
+function roomKey(value: string): string {
+  return value.trim().toLocaleLowerCase();
 }
 
 function asCancellationReason(value: unknown): string | null {
@@ -275,7 +283,7 @@ export function parseVivaScheduleInput(value: unknown):
   const projectId = asObjectId(value.projectId);
   const scheduledAt = asScheduledAt(value.scheduledAt);
   const locationLabel = asLocationLabel(value.locationLabel);
-  if (!roundId || !panelId || !projectId || !scheduledAt || locationLabel === null) {
+  if (!roundId || !panelId || !projectId || !scheduledAt || !locationLabel) {
     return { success: false, error: 'Choose a valid team, panel, date, time, and location.' };
   }
 
@@ -301,15 +309,15 @@ export function parseVivaAutomaticScheduleInput(value: unknown):
     const startsAt = asScheduledAt(window.startsAt);
     const endsAt = asScheduledAt(window.endsAt);
     const locationLabel = asLocationLabel(window.locationLabel);
-    return startsAt && endsAt && startsAt < endsAt && locationLabel !== null
+    return startsAt && endsAt && startsAt < endsAt && locationLabel
       ? [{ startsAt, endsAt, locationLabel }]
       : [];
   }).sort((first, second) => first.startsAt.getTime() - second.startsAt.getTime());
   if (availability.length !== value.availability.length) {
     return { success: false, error: 'Each Viva availability window needs valid start and end times.' };
   }
-  if (availability.some((window, index) => index > 0 && window.startsAt < availability[index - 1].endsAt)) {
-    return { success: false, error: 'Viva availability windows cannot overlap.' };
+  if (new Set(availability.map((window) => roomKey(window.locationLabel))).size !== availability.length) {
+    return { success: false, error: 'Each Viva room must be listed once.' };
   }
 
   return { success: true, input: { roundId, availability } };
@@ -427,10 +435,6 @@ function validateScheduleParticipants(
   if (!context.projectMemberIds.some((memberId) => activeParticipantsById.get(memberId) === 'student')) {
     return 'The selected team has no active students.';
   }
-  if (context.panelExaminerIds.includes(String(context.project.supervisorId || ''))) {
-    return 'A team cannot be examined by its own supervisor.';
-  }
-
   return null;
 }
 
@@ -482,6 +486,7 @@ function reservationFromScheduleContext(input: VivaScheduleInput, context: Sched
     vivaEndsAt: context.vivaEndsAt,
     panelExaminerIds: context.panelExaminerIds,
     projectMemberIds: context.projectMemberIds,
+    locationLabel: input.locationLabel,
   };
 }
 
@@ -498,6 +503,9 @@ function findReservationConflict(
     }
     if (hasOverlap(candidate.projectMemberIds, reservation.projectMemberIds)) {
       return 'A selected team member is already booked during this time.';
+    }
+    if (roomKey(candidate.locationLabel) === roomKey(reservation.locationLabel)) {
+      return 'This Viva room is already booked during this time.';
     }
   }
 
@@ -531,6 +539,7 @@ function reservationsForSchedule(
       vivaEndsAt,
       panelExaminerIds: asIdList(panel.examinerIds),
       projectMemberIds: asIdList(project.members),
+      locationLabel: typeof candidate.locationLabel === 'string' ? candidate.locationLabel : '',
     });
   }
 
@@ -550,7 +559,7 @@ async function findScheduleConflict(
     scheduledAt: { $lt: context.vivaEndsAt },
     vivaEndsAt: { $gt: input.scheduledAt },
   })
-    .select('_id panelId projectId scheduledAt vivaEndsAt')
+    .select('_id panelId projectId scheduledAt vivaEndsAt locationLabel')
     .session(session)
     .lean<VivaSessionRecord[]>();
   if (candidates.length === 0) return null;
@@ -678,7 +687,7 @@ async function readExistingScheduleReservations(
     scheduledAt: { $lt: endsAt },
     vivaEndsAt: { $gt: startsAt },
   })
-    .select('_id panelId projectId scheduledAt vivaEndsAt')
+    .select('_id panelId projectId scheduledAt vivaEndsAt locationLabel')
     .lean<VivaSessionRecord[]>();
   if (sessions.length === 0) return { reservations: [] };
 
@@ -714,6 +723,7 @@ async function readExistingScheduleReservations(
       vivaEndsAt: scheduledSession.vivaEndsAt,
       panelExaminerIds,
       projectMemberIds,
+      locationLabel: typeof scheduledSession.locationLabel === 'string' ? scheduledSession.locationLabel : '',
     });
   }
 
@@ -731,8 +741,6 @@ function automaticScheduleOptionSummary(
   let first: AutomaticScheduleOption | null = null;
 
   for (const panel of panels) {
-    if (panel.examinerIds.includes(project.supervisorId)) continue;
-
     for (const slot of slots) {
       const conflict = findReservationConflict(
         {
@@ -740,6 +748,7 @@ function automaticScheduleOptionSummary(
           vivaEndsAt: slot.vivaEndsAt,
           panelExaminerIds: panel.examinerIds,
           projectMemberIds: project.memberIds,
+          locationLabel: slot.locationLabel,
         },
         reservations
       );
@@ -773,11 +782,12 @@ export async function previewAutomaticVivaSchedule(
   input: VivaAutomaticScheduleInput
 ): Promise<VivaAutomaticSchedulePreviewResult> {
   const round = await VivaRound.findById(input.roundId)
-    .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes')
+    .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes confirmedAt')
     .lean<VivaRoundRecord | null>();
   if (!round) {
     return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
   }
+  if (round.confirmedAt) return { success: false, reason: 'invalid', error: 'This Viva round is confirmed and cannot be scheduled.' };
 
   const vivaDurationMinutes = Number(round.vivaDurationMinutes);
   if (!Number.isFinite(vivaDurationMinutes) || vivaDurationMinutes <= 0) {
@@ -864,11 +874,6 @@ export async function previewAutomaticVivaSchedule(
       unplaced.push({ projectId, reason: 'No valid Viva panel is available.' });
       continue;
     }
-    if (validPanels.every((panel) => panel.examinerIds.includes(supervisorId))) {
-      unplaced.push({ projectId, reason: 'The team supervisor belongs to every available panel.' });
-      continue;
-    }
-
     schedulableProjects.push({ id: projectId, supervisorId, memberIds });
   }
 
@@ -912,6 +917,7 @@ export async function previewAutomaticVivaSchedule(
       vivaEndsAt: option.slot.vivaEndsAt,
       panelExaminerIds: option.panel.examinerIds,
       projectMemberIds: project.memberIds,
+      locationLabel: option.slot.locationLabel,
     });
     panelWorkloads.set(option.panel.id, (panelWorkloads.get(option.panel.id) || 0) + 1);
   }
@@ -924,12 +930,13 @@ async function validateAutomaticScheduleBatch(
   session: ClientSession
 ): Promise<{ success: true; contexts: ScheduleContext[] } | { success: false; error: string }> {
   const round = await VivaRound.findById(input.roundId)
-    .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes scheduleRevision')
+    .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes scheduleRevision confirmedAt')
     .session(session)
     .lean<VivaRoundRecord | null>();
   if (!round) {
     return { success: false, error: 'The selected Viva round, team, or panel no longer exists.' };
   }
+  if (round.confirmedAt) return { success: false, error: 'This Viva round is confirmed and cannot be scheduled.' };
 
   const targetPanelSize = Number(round.targetPanelSize);
   const minimumPanelSize = Number(round.minimumPanelSize);
@@ -960,7 +967,7 @@ async function validateAutomaticScheduleBatch(
       },
     ],
   })
-    .select('_id roundId panelId projectId scheduledAt vivaEndsAt completedAt')
+    .select('_id roundId panelId projectId scheduledAt vivaEndsAt completedAt locationLabel')
     .session(session)
     .lean<VivaSessionRecord[]>();
   const existingAttemptProjectIds = new Set(
@@ -1126,6 +1133,22 @@ export async function getVivaSchedules(): Promise<VivaScheduleDto[]> {
   return sessions.flatMap((session) => {
     const schedule = toScheduleDto(session);
     return schedule ? [schedule] : [];
+  });
+}
+
+export async function getConfirmedVivaSchedulesForStudent(studentId: string): Promise<VivaStudentSessionDto[]> {
+  if (!mongoose.Types.ObjectId.isValid(studentId)) return [];
+  const project = await Project.findOne({ members: studentId }).select('_id').lean<{ _id: unknown } | null>();
+  if (!project) return [];
+  const rounds = await VivaRound.find({ confirmedAt: { $type: 'date' } }).select('_id name').lean<Array<{ _id: unknown; name?: unknown }>>();
+  if (rounds.length === 0) return [];
+  const names = new Map(rounds.map((round) => [String(round._id), typeof round.name === 'string' ? round.name : 'Viva round']));
+  const sessions = await VivaSession.find({ roundId: { $in: rounds.map((round) => round._id) }, projectId: project._id, scheduledAt: { $type: 'date' } })
+    .select('_id roundId panelId projectId scheduledAt vivaEndsAt startedAt completedAt cancelledAt cancellationReason locationLabel version')
+    .sort({ scheduledAt: 1, _id: 1 }).lean<VivaSessionRecord[]>();
+  return sessions.flatMap((session) => {
+    const schedule = toScheduleDto(session);
+    return schedule ? [{ ...schedule, roundName: names.get(schedule.roundId) || 'Viva round' }] : [];
   });
 }
 

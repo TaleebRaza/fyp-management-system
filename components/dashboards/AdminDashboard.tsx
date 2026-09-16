@@ -18,7 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 
-import { Button, DashboardShell, VivaShortcut, VivaWorkspaceShell } from '../ui';
+import { Button, DashboardShell, VivaWorkspaceShell } from '../ui';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
 import FineManagementPanel from '../admin/FineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';
@@ -389,8 +389,6 @@ const AdminDashboard = ({
           />
         )}
       </DashboardShell>
-
-      <VivaShortcut onOpen={() => setIsVivaView(true)} />
 
       <SupervisorSlotEditorDialog
         supervisor={supervisors.slotEditorSupervisor}
