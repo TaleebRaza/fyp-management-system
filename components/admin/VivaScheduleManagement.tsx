@@ -453,33 +453,82 @@ export default function VivaScheduleManagement({
 
       <DashboardPanel>
         <SectionHeader title="Scheduled sessions" description="Only cancellation remains available after confirmation." />
-        {roundSchedules.map((schedule) => (
-          <div key={schedule.id} className="mb-3 rounded-xl border border-[var(--color-border)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p>
-                <strong>{teamsById.get(schedule.projectId)?.title || 'Unavailable team'}</strong>
-                <span className="block text-sm text-[var(--color-text-muted)]">
-                  {formatLocalTime(schedule.scheduledAt)} to {formatLocalTime(schedule.vivaEndsAt)}, {schedule.locationLabel}
-                </span>
-              </p>
-              <Badge variant={schedule.phase === 'cancelled' ? 'warning' : 'success'}>{schedule.phase}</Badge>
-              {schedule.phase === 'scheduled' && (
-                <Button variant="danger" onClick={() => setCancellingId(schedule.id)} disabled={busy !== null}>
-                  <XCircle size={16} />Cancel
-                </Button>
-              )}
-            </div>
-            {cancellingId === schedule.id && (
-              <div className="mt-3">
-                <TextArea value={cancellationReason} maxLength={1000} onChange={(event) => setCancellationReason(event.target.value)} placeholder="Cancellation reason" />
-                <div className="mt-2 flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setCancellingId(null)}>Keep session</Button>
-                  <Button variant="danger" onClick={() => void cancel(schedule)} disabled={busy !== null || !cancellationReason.trim()}>Confirm cancellation</Button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+        <div className="max-h-[38rem] overflow-auto rounded-xl border border-[var(--color-border)]">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-[var(--color-surface-muted)]">
+              <tr>
+                <th className="px-4 py-3">Team</th>
+                <th className="whitespace-nowrap px-4 py-3">Date & Time</th>
+                <th className="whitespace-nowrap px-4 py-3">Room</th>
+                <th className="whitespace-nowrap px-4 py-3">Status</th>
+                <th className="whitespace-nowrap px-4 py-3">Action</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {roundSchedules.map((schedule) => (
+                <tr key={schedule.id} className="border-t border-[var(--color-border)]">
+                  <td className="px-4 py-3 font-semibold">
+                    {teamsById.get(schedule.projectId)?.title || 'Unavailable team'}
+                  </td>
+
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {formatLocalTime(schedule.scheduledAt)} to{' '}
+                    {formatLocalTime(schedule.vivaEndsAt)}
+                  </td>
+
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {schedule.locationLabel}
+                  </td>
+
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <Badge variant={schedule.phase === 'cancelled' ? 'warning' : 'success'}>
+                      {schedule.phase}
+                    </Badge>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    {schedule.phase === 'scheduled' && (
+                      <>
+                        <Button
+                          variant="danger"
+                          onClick={() => setCancellingId(schedule.id)}
+                          disabled={busy !== null}
+                        >
+                          <XCircle size={16} />
+                          Cancel
+                        </Button>
+
+                        {cancellingId === schedule.id && (
+                          <div className="mt-3 min-w-72">
+                            <TextArea
+                              value={cancellationReason}
+                              maxLength={1000}
+                              onChange={(event) => setCancellationReason(event.target.value)}
+                              placeholder="Cancellation reason"
+                            />
+                            <div className="mt-2 flex justify-end gap-2">
+                              <Button variant="ghost" onClick={() => setCancellingId(null)}>
+                                Keep session
+                              </Button>
+                              <Button
+                                variant="danger"
+                                onClick={() => void cancel(schedule)}
+                                disabled={busy !== null || !cancellationReason.trim()}
+                              >
+                                Confirm cancellation
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </DashboardPanel>
     </div>
   );
