@@ -123,6 +123,7 @@ flowchart LR
 * Create a named round with selected teams, active teachers, panel sizes, and a Viva duration
 * Assemble panels manually or generate a random draft, with exactly one eligible panel admin per panel
 * Schedule a team in a viable panel, with server-side checks for teacher, student, and own-supervisor conflicts
+* Generate a deterministic automatic scheduling draft from an admin-defined availability window, then review or adjust it before one atomic, server-revalidated save
 * Run the Viva from the assigned panel admin's single workspace, while other panel members are temporarily restricted
 * Select one canonical final grade, publish completed results, and show the same saved grade and percentage to every snapshotted team member
 

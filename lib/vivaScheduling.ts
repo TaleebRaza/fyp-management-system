@@ -41,6 +41,35 @@ export type VivaSessionCancellationInput = {
   cancellationReason: string;
 };
 
+export type VivaScheduleAvailabilityInput = {
+  startsAt: Date;
+  endsAt: Date;
+  locationLabel: string;
+};
+
+export type VivaAutomaticScheduleInput = {
+  roundId: string;
+  availability: VivaScheduleAvailabilityInput[];
+};
+
+export type VivaAutomaticScheduleDraft = {
+  projectId: string;
+  panelId: string;
+  scheduledAt: string;
+  vivaEndsAt: string;
+  locationLabel: string;
+};
+
+export type VivaAutomaticSchedulePreview = {
+  scheduled: VivaAutomaticScheduleDraft[];
+  unplaced: Array<{ projectId: string; reason: string }>;
+};
+
+export type VivaAutomaticScheduleSaveInput = {
+  roundId: string;
+  schedules: VivaScheduleInput[];
+};
+
 export type VivaScheduleSaveResult =
   | { success: true; schedule: VivaScheduleDto }
   | {
@@ -54,6 +83,18 @@ export type VivaSessionCancellationResult =
   | {
       success: false;
       reason: 'invalid' | 'not-found' | 'not-cancellable' | 'concurrent-change';
+      error: string;
+    };
+
+export type VivaAutomaticSchedulePreviewResult =
+  | { success: true; draft: VivaAutomaticSchedulePreview }
+  | { success: false; reason: 'invalid' | 'not-found'; error: string };
+
+export type VivaAutomaticScheduleSaveResult =
+  | { success: true; schedules: VivaScheduleDto[] }
+  | {
+      success: false;
+      reason: 'invalid' | 'not-found' | 'concurrent-change';
       error: string;
     };
 
@@ -105,6 +146,39 @@ type ScheduleContext = {
   projectMemberIds: string[];
   vivaEndsAt: Date;
 };
+
+type ScheduleReservation = {
+  scheduledAt: Date;
+  vivaEndsAt: Date;
+  panelExaminerIds: string[];
+  projectMemberIds: string[];
+};
+
+type AutomaticSchedulePanel = {
+  id: string;
+  examinerIds: string[];
+};
+
+type AutomaticScheduleProject = {
+  id: string;
+  supervisorId: string;
+  memberIds: string[];
+};
+
+type AutomaticScheduleSlot = {
+  scheduledAt: Date;
+  vivaEndsAt: Date;
+  locationLabel: string;
+};
+
+type AutomaticScheduleOption = {
+  panel: AutomaticSchedulePanel;
+  slot: AutomaticScheduleSlot;
+};
+
+const MAX_AUTOMATIC_SCHEDULE_AVAILABILITY_WINDOWS = 32;
+const MAX_AUTOMATIC_SCHEDULE_SLOTS = 1_000;
+const MAX_AUTOMATIC_SCHEDULE_ENTRIES = 1_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -205,6 +279,68 @@ export function parseVivaScheduleInput(value: unknown):
   }
 
   return { success: true, input: { roundId, panelId, projectId, scheduledAt, locationLabel } };
+}
+
+export function parseVivaAutomaticScheduleInput(value: unknown):
+  | { success: true; input: VivaAutomaticScheduleInput }
+  | { success: false; error: string } {
+  if (!isRecord(value) || !Array.isArray(value.availability)) {
+    return { success: false, error: 'Provide at least one Viva availability window.' };
+  }
+
+  const roundId = asObjectId(value.roundId);
+  if (!roundId) return { success: false, error: 'Choose a valid Viva round.' };
+  if (value.availability.length === 0 || value.availability.length > MAX_AUTOMATIC_SCHEDULE_AVAILABILITY_WINDOWS) {
+    return { success: false, error: 'Provide between 1 and 32 Viva availability windows.' };
+  }
+
+  const availability = value.availability.flatMap((window) => {
+    if (!isRecord(window)) return [];
+
+    const startsAt = asScheduledAt(window.startsAt);
+    const endsAt = asScheduledAt(window.endsAt);
+    const locationLabel = asLocationLabel(window.locationLabel);
+    return startsAt && endsAt && startsAt < endsAt && locationLabel !== null
+      ? [{ startsAt, endsAt, locationLabel }]
+      : [];
+  }).sort((first, second) => first.startsAt.getTime() - second.startsAt.getTime());
+  if (availability.length !== value.availability.length) {
+    return { success: false, error: 'Each Viva availability window needs valid start and end times.' };
+  }
+  if (availability.some((window, index) => index > 0 && window.startsAt < availability[index - 1].endsAt)) {
+    return { success: false, error: 'Viva availability windows cannot overlap.' };
+  }
+
+  return { success: true, input: { roundId, availability } };
+}
+
+export function parseVivaAutomaticScheduleSaveInput(value: unknown):
+  | { success: true; input: VivaAutomaticScheduleSaveInput }
+  | { success: false; error: string } {
+  if (!isRecord(value) || !Array.isArray(value.schedules)) {
+    return { success: false, error: 'Provide an automatic Viva schedule draft to save.' };
+  }
+
+  const roundId = asObjectId(value.roundId);
+  if (!roundId) return { success: false, error: 'Choose a valid Viva round.' };
+  if (value.schedules.length === 0 || value.schedules.length > MAX_AUTOMATIC_SCHEDULE_ENTRIES) {
+    return { success: false, error: 'Provide between 1 and 1,000 Viva schedule entries.' };
+  }
+
+  const schedules = value.schedules.flatMap((candidate) => {
+    if (!isRecord(candidate)) return [];
+
+    const parsed = parseVivaScheduleInput({ ...candidate, roundId });
+    return parsed.success ? [parsed.input] : [];
+  });
+  if (schedules.length !== value.schedules.length) {
+    return { success: false, error: 'Every automatic Viva schedule entry must be valid.' };
+  }
+  if (new Set(schedules.map((schedule) => schedule.projectId)).size !== schedules.length) {
+    return { success: false, error: 'A team can appear only once in an automatic Viva schedule draft.' };
+  }
+
+  return { success: true, input: { roundId, schedules } };
 }
 
 export function parseVivaScheduleUpdateInput(value: unknown):
@@ -322,6 +458,34 @@ async function readScheduleContext(
   };
 }
 
+function reservationFromScheduleContext(input: VivaScheduleInput, context: ScheduleContext): ScheduleReservation {
+  return {
+    scheduledAt: input.scheduledAt,
+    vivaEndsAt: context.vivaEndsAt,
+    panelExaminerIds: context.panelExaminerIds,
+    projectMemberIds: context.projectMemberIds,
+  };
+}
+
+function findReservationConflict(
+  candidate: ScheduleReservation,
+  reservations: readonly ScheduleReservation[]
+): string | null {
+  for (const reservation of reservations) {
+    if (reservation.scheduledAt >= candidate.vivaEndsAt || reservation.vivaEndsAt <= candidate.scheduledAt) {
+      continue;
+    }
+    if (hasOverlap(candidate.panelExaminerIds, reservation.panelExaminerIds)) {
+      return 'A selected panel teacher is already booked during this time.';
+    }
+    if (hasOverlap(candidate.projectMemberIds, reservation.projectMemberIds)) {
+      return 'A selected team member is already booked during this time.';
+    }
+  }
+
+  return null;
+}
+
 async function findScheduleConflict(
   input: VivaScheduleInput,
   context: ScheduleContext,
@@ -335,7 +499,7 @@ async function findScheduleConflict(
     scheduledAt: { $lt: context.vivaEndsAt },
     vivaEndsAt: { $gt: input.scheduledAt },
   })
-    .select('_id panelId projectId')
+    .select('_id panelId projectId scheduledAt vivaEndsAt')
     .session(session)
     .lean<VivaSessionRecord[]>();
   if (candidates.length === 0) return null;
@@ -357,21 +521,27 @@ async function findScheduleConflict(
     projects.map((project) => [String(project._id), asIdList(project.members)])
   );
 
+  const reservations: ScheduleReservation[] = [];
   for (const candidate of candidates) {
     const panelMembers = panelMembersById.get(String(candidate.panelId));
     const projectMembers = projectMembersById.get(String(candidate.projectId));
-    if (!panelMembers || !projectMembers) {
+    if (
+      !panelMembers
+      || !projectMembers
+      || !(candidate.scheduledAt instanceof Date)
+      || !(candidate.vivaEndsAt instanceof Date)
+    ) {
       return 'An existing Viva schedule has incomplete resources. Resolve it before scheduling another session.';
     }
-    if (hasOverlap(context.panelExaminerIds, panelMembers)) {
-      return 'A selected panel teacher is already booked during this time.';
-    }
-    if (hasOverlap(context.projectMemberIds, projectMembers)) {
-      return 'A selected team member is already booked during this time.';
-    }
+    reservations.push({
+      scheduledAt: candidate.scheduledAt,
+      vivaEndsAt: candidate.vivaEndsAt,
+      panelExaminerIds: panelMembers,
+      projectMemberIds: projectMembers,
+    });
   }
 
-  return null;
+  return findReservationConflict(reservationFromScheduleContext(input, context), reservations);
 }
 
 async function hasExistingAttempt(
@@ -435,6 +605,320 @@ async function writeScheduleAudit(
     },
     session
   );
+}
+
+function availabilitySlots(
+  availability: readonly VivaScheduleAvailabilityInput[],
+  vivaDurationMinutes: number
+): AutomaticScheduleSlot[] {
+  const durationMilliseconds = vivaDurationMinutes * 60_000;
+  const slots: AutomaticScheduleSlot[] = [];
+
+  for (const window of availability) {
+    for (
+      let startsAt = new Date(window.startsAt);
+      startsAt.getTime() + durationMilliseconds <= window.endsAt.getTime();
+      startsAt = new Date(startsAt.getTime() + durationMilliseconds)
+    ) {
+      slots.push({
+        scheduledAt: startsAt,
+        vivaEndsAt: new Date(startsAt.getTime() + durationMilliseconds),
+        locationLabel: window.locationLabel,
+      });
+      if (slots.length > MAX_AUTOMATIC_SCHEDULE_SLOTS) return [];
+    }
+  }
+
+  return slots;
+}
+
+async function readExistingScheduleReservations(
+  startsAt: Date,
+  endsAt: Date
+): Promise<{ reservations: ScheduleReservation[] } | { error: string }> {
+  const sessions = await VivaSession.find({
+    cancelledAt: null,
+    completedAt: null,
+    scheduledAt: { $lt: endsAt },
+    vivaEndsAt: { $gt: startsAt },
+  })
+    .select('_id panelId projectId scheduledAt vivaEndsAt')
+    .lean<VivaSessionRecord[]>();
+  if (sessions.length === 0) return { reservations: [] };
+
+  const [panels, projects] = await Promise.all([
+    VivaPanel.find({ _id: { $in: sessions.map((scheduledSession) => scheduledSession.panelId) } })
+      .select('_id examinerIds')
+      .lean<VivaPanelRecord[]>(),
+    Project.find({ _id: { $in: sessions.map((scheduledSession) => scheduledSession.projectId) } })
+      .select('_id members')
+      .lean<ProjectRecord[]>(),
+  ]);
+  const panelMembersById = new Map(
+    panels.map((panel) => [String(panel._id), asIdList(panel.examinerIds)])
+  );
+  const projectMembersById = new Map(
+    projects.map((project) => [String(project._id), asIdList(project.members)])
+  );
+  const reservations: ScheduleReservation[] = [];
+
+  for (const scheduledSession of sessions) {
+    const panelExaminerIds = panelMembersById.get(String(scheduledSession.panelId));
+    const projectMemberIds = projectMembersById.get(String(scheduledSession.projectId));
+    if (
+      !panelExaminerIds
+      || !projectMemberIds
+      || !(scheduledSession.scheduledAt instanceof Date)
+      || !(scheduledSession.vivaEndsAt instanceof Date)
+    ) {
+      return { error: 'An existing Viva schedule has incomplete resources. Resolve it before generating a draft.' };
+    }
+    reservations.push({
+      scheduledAt: scheduledSession.scheduledAt,
+      vivaEndsAt: scheduledSession.vivaEndsAt,
+      panelExaminerIds,
+      projectMemberIds,
+    });
+  }
+
+  return { reservations };
+}
+
+function automaticScheduleOptions(
+  project: AutomaticScheduleProject,
+  panels: readonly AutomaticSchedulePanel[],
+  slots: readonly AutomaticScheduleSlot[],
+  reservations: readonly ScheduleReservation[],
+  panelWorkloads: ReadonlyMap<string, number>
+): AutomaticScheduleOption[] {
+  return panels.flatMap((panel) => {
+    if (panel.examinerIds.includes(project.supervisorId)) return [];
+
+    return slots.flatMap((slot) => {
+      const conflict = findReservationConflict(
+        {
+          scheduledAt: slot.scheduledAt,
+          vivaEndsAt: slot.vivaEndsAt,
+          panelExaminerIds: panel.examinerIds,
+          projectMemberIds: project.memberIds,
+        },
+        reservations
+      );
+      return conflict ? [] : [{ panel, slot }];
+    });
+  }).sort((first, second) => (
+    first.slot.scheduledAt.getTime() - second.slot.scheduledAt.getTime()
+    || (panelWorkloads.get(first.panel.id) || 0) - (panelWorkloads.get(second.panel.id) || 0)
+    || first.panel.id.localeCompare(second.panel.id)
+  ));
+}
+
+export async function previewAutomaticVivaSchedule(
+  input: VivaAutomaticScheduleInput
+): Promise<VivaAutomaticSchedulePreviewResult> {
+  const round = await VivaRound.findById(input.roundId)
+    .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes')
+    .lean<VivaRoundRecord | null>();
+  if (!round) {
+    return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
+  }
+
+  const vivaDurationMinutes = Number(round.vivaDurationMinutes);
+  if (!Number.isFinite(vivaDurationMinutes) || vivaDurationMinutes <= 0) {
+    return { success: false, reason: 'invalid', error: 'This Viva round has an invalid session duration.' };
+  }
+  const slots = availabilitySlots(input.availability, vivaDurationMinutes);
+  if (slots.length === 0) {
+    return {
+      success: false,
+      reason: 'invalid',
+      error: 'Availability must contain at least one complete Viva slot and no more than 1,000 slots.',
+    };
+  }
+
+  const projectIds = asIdList(round.projectIds);
+  const [projects, panels, scheduledAttempts, existingReservations] = await Promise.all([
+    Project.find({ _id: { $in: projectIds } }).select('_id supervisorId members').lean<ProjectRecord[]>(),
+    VivaPanel.find({ roundId: input.roundId }).select('_id examinerIds panelAdminId').lean<VivaPanelRecord[]>(),
+    VivaSession.find({ roundId: input.roundId, cancelledAt: null }).select('projectId panelId').lean<VivaSessionRecord[]>(),
+    readExistingScheduleReservations(slots[0].scheduledAt, slots[slots.length - 1].vivaEndsAt),
+  ]);
+  if ('error' in existingReservations) {
+    return { success: false, reason: 'invalid', error: existingReservations.error };
+  }
+
+  const targetPanelSize = Number(round.targetPanelSize);
+  const minimumPanelSize = Number(round.minimumPanelSize);
+  const panelExaminerIds = panels.flatMap((panel) => asIdList(panel.examinerIds));
+  const projectMemberIds = projects.flatMap((project) => asIdList(project.members));
+  const users = await User.find({
+    _id: { $in: [...new Set([...panelExaminerIds, ...projectMemberIds])] },
+    isActive: true,
+  })
+    .select('_id role')
+    .lean<Array<UserRecord & { role?: unknown }>>();
+  const activeSupervisorIds = new Set(
+    users.filter((user) => user.role === 'supervisor').map((user) => String(user._id))
+  );
+  const activeStudentIds = new Set(
+    users.filter((user) => user.role === 'student').map((user) => String(user._id))
+  );
+  const validPanels = panels.flatMap((panel) => {
+    const examinerIds = asIdList(panel.examinerIds);
+    const panelId = String(panel._id);
+    if (
+      !mongoose.Types.ObjectId.isValid(panelId)
+      || examinerIds.length < minimumPanelSize
+      || examinerIds.length > targetPanelSize
+      || !isVivaPanelAdmin(examinerIds, String(panel.panelAdminId || ''))
+      || !examinerIds.every((examinerId) => activeSupervisorIds.has(examinerId))
+    ) {
+      return [];
+    }
+    return [{ id: panelId, examinerIds }];
+  });
+  const projectsById = new Map(projects.map((project) => [String(project._id), project]));
+  const attemptedProjectIds = new Set(scheduledAttempts.map((scheduledAttempt) => String(scheduledAttempt.projectId)));
+  const panelWorkloads = new Map<string, number>();
+  for (const scheduledAttempt of scheduledAttempts) {
+    const panelId = String(scheduledAttempt.panelId);
+    panelWorkloads.set(panelId, (panelWorkloads.get(panelId) || 0) + 1);
+  }
+
+  const schedulableProjects: AutomaticScheduleProject[] = [];
+  const unplaced: VivaAutomaticSchedulePreview['unplaced'] = [];
+  for (const projectId of projectIds) {
+    if (attemptedProjectIds.has(projectId)) {
+      unplaced.push({ projectId, reason: 'This team already has a Viva attempt in the selected round.' });
+      continue;
+    }
+
+    const project = projectsById.get(projectId);
+    const memberIds = project ? asIdList(project.members) : [];
+    const supervisorId = project ? String(project.supervisorId || '') : '';
+    if (!project || !mongoose.Types.ObjectId.isValid(supervisorId)) {
+      unplaced.push({ projectId, reason: 'This selected team is no longer available.' });
+      continue;
+    }
+    if (!memberIds.some((memberId) => activeStudentIds.has(memberId))) {
+      unplaced.push({ projectId, reason: 'This team has no active students.' });
+      continue;
+    }
+    if (validPanels.length === 0) {
+      unplaced.push({ projectId, reason: 'No valid Viva panel is available.' });
+      continue;
+    }
+    if (validPanels.every((panel) => panel.examinerIds.includes(supervisorId))) {
+      unplaced.push({ projectId, reason: 'The team supervisor belongs to every available panel.' });
+      continue;
+    }
+
+    schedulableProjects.push({ id: projectId, supervisorId, memberIds });
+  }
+
+  const orderedProjects = schedulableProjects.map((project) => ({
+    project,
+    options: automaticScheduleOptions(
+      project,
+      validPanels,
+      slots,
+      existingReservations.reservations,
+      panelWorkloads
+    ),
+  })).sort((first, second) => (
+    first.options.length - second.options.length || first.project.id.localeCompare(second.project.id)
+  ));
+  const reservations = [...existingReservations.reservations];
+  const scheduled: VivaAutomaticScheduleDraft[] = [];
+
+  for (const { project } of orderedProjects) {
+    const option = automaticScheduleOptions(project, validPanels, slots, reservations, panelWorkloads)[0];
+    if (!option) {
+      unplaced.push({ projectId: project.id, reason: 'No available Viva slot remains after constrained teams were placed.' });
+      continue;
+    }
+
+    scheduled.push({
+      projectId: project.id,
+      panelId: option.panel.id,
+      scheduledAt: option.slot.scheduledAt.toISOString(),
+      vivaEndsAt: option.slot.vivaEndsAt.toISOString(),
+      locationLabel: option.slot.locationLabel,
+    });
+    reservations.push({
+      scheduledAt: option.slot.scheduledAt,
+      vivaEndsAt: option.slot.vivaEndsAt,
+      panelExaminerIds: option.panel.examinerIds,
+      projectMemberIds: project.memberIds,
+    });
+    panelWorkloads.set(option.panel.id, (panelWorkloads.get(option.panel.id) || 0) + 1);
+  }
+
+  return { success: true, draft: { scheduled, unplaced } };
+}
+
+export async function applyAutomaticVivaSchedule(
+  input: VivaAutomaticScheduleSaveInput,
+  actor: VivaScheduleActor
+): Promise<VivaAutomaticScheduleSaveResult> {
+  try {
+    return await withVivaTransaction(async (session) => {
+      const contexts: ScheduleContext[] = [];
+      const draftReservations: ScheduleReservation[] = [];
+
+      for (const scheduleInput of input.schedules) {
+        const validation = await validateSchedule(scheduleInput, session);
+        if (!validation.success) {
+          return { success: false, reason: 'invalid', error: validation.error };
+        }
+
+        const reservation = reservationFromScheduleContext(scheduleInput, validation.context);
+        const conflict = findReservationConflict(reservation, draftReservations);
+        if (conflict) return { success: false, reason: 'invalid', error: conflict };
+
+        contexts.push(validation.context);
+        draftReservations.push(reservation);
+      }
+
+      if (!await reserveScheduleChange(contexts[0], session)) {
+        return {
+          success: false,
+          reason: 'concurrent-change',
+          error: 'Another administrator changed this schedule. Generate a fresh draft before saving.',
+        };
+      }
+
+      const schedules: VivaScheduleDto[] = [];
+      for (let index = 0; index < input.schedules.length; index += 1) {
+        const scheduleInput = input.schedules[index];
+        const vivaSession = new VivaSession({
+          roundId: input.roundId,
+          panelId: scheduleInput.panelId,
+          projectId: scheduleInput.projectId,
+          scheduledAt: scheduleInput.scheduledAt,
+          vivaEndsAt: contexts[index].vivaEndsAt,
+          locationLabel: scheduleInput.locationLabel,
+        });
+        await vivaSession.save({ session });
+        await writeScheduleAudit(input.roundId, vivaSession._id, actor, session);
+
+        const schedule = toScheduleDto(vivaSession.toObject());
+        if (!schedule) throw new Error('Automatic Viva schedule could not be serialized.');
+        schedules.push(schedule);
+      }
+
+      return { success: true, schedules };
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      return {
+        success: false,
+        reason: 'concurrent-change',
+        error: 'A team was scheduled by another administrator. Generate a fresh draft before saving.',
+      };
+    }
+    throw error;
+  }
 }
 
 export async function getVivaSchedules(): Promise<VivaScheduleDto[]> {

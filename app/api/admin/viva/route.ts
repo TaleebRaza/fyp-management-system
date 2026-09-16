@@ -16,10 +16,14 @@ import {
 } from '../../../../lib/vivaPanelAdmin';
 import { parseVivaPublicationInput, publishVivaResults } from '../../../../lib/vivaPublication';
 import {
+  applyAutomaticVivaSchedule,
   cancelVivaSession,
+  parseVivaAutomaticScheduleInput,
+  parseVivaAutomaticScheduleSaveInput,
   parseVivaSessionCancellationInput,
   parseVivaScheduleInput,
   parseVivaScheduleUpdateInput,
+  previewAutomaticVivaSchedule,
   rescheduleVivaSession,
   scheduleVivaSession,
 } from '../../../../lib/vivaScheduling';
@@ -94,6 +98,24 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.error('Admin Viva session scheduling error:', error);
       return NextResponse.json({ error: 'Failed to schedule the Viva session.' }, { status: 500 });
+    }
+  }
+
+  if (isRecord(body) && body.action === 'preview-automatic-schedule') {
+    const parsed = parseVivaAutomaticScheduleInput(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    try {
+      const result = await previewAutomaticVivaSchedule(parsed.input);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: result.reason === 'not-found' ? 404 : 400 });
+      }
+      return NextResponse.json({ draft: result.draft });
+    } catch (error) {
+      console.error('Admin Viva automatic schedule preview error:', error);
+      return NextResponse.json({ error: 'Failed to generate the Viva schedule draft.' }, { status: 500 });
     }
   }
 
@@ -201,6 +223,25 @@ export async function PATCH(req: NextRequest) {
     } catch (error) {
       console.error('Admin Viva session cancellation error:', error);
       return NextResponse.json({ error: 'Failed to cancel the Viva session.' }, { status: 500 });
+    }
+  }
+
+  if (isRecord(body) && body.action === 'apply-automatic-schedule') {
+    const parsed = parseVivaAutomaticScheduleSaveInput(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    try {
+      const result = await applyAutomaticVivaSchedule(parsed.input, adminActor(currentUser));
+      if (!result.success) {
+        const status = result.reason === 'not-found' ? 404 : result.reason === 'concurrent-change' ? 409 : 400;
+        return NextResponse.json({ error: result.error }, { status });
+      }
+      return NextResponse.json({ schedules: result.schedules }, { status: 201 });
+    } catch (error) {
+      console.error('Admin Viva automatic schedule save error:', error);
+      return NextResponse.json({ error: 'Failed to save the Viva schedule draft.' }, { status: 500 });
     }
   }
 
