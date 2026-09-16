@@ -290,6 +290,7 @@ export default function VivaScheduleManagement({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: editingSchedule ? 'reschedule-session' : 'schedule-session',
+          roundId: round.id,
           ...draft,
           scheduledAt,
           ...(editingSchedule ? { sessionId: editingSchedule.id, version: editingSchedule.version } : {}),

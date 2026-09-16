@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { importTypeScriptModuleWithDependencies } from './support/importTypeScript.mjs';
 
 const { parseVivaScheduleInput, parseVivaScheduleUpdateInput } = await importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts');
+
+test('manual Viva scheduling includes its selected round in the request', async () => {
+  const component = await readFile(
+    new URL('../components/admin/VivaScheduleManagement.tsx', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(component, /action: editingSchedule \? 'reschedule-session' : 'schedule-session',[\s\S]*roundId: round\.id,/);
+});
 
 test('parses UTC Viva schedule input and rejects ambiguous timestamps', () => {
   const parsed = parseVivaScheduleInput({
