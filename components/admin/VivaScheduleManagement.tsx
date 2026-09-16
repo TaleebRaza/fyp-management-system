@@ -387,11 +387,32 @@ export default function VivaScheduleManagement({
         {draft && (
           <div className="mt-6 space-y-4">
             <p className="text-sm text-[var(--color-text-muted)]">{draft.scheduled.length} sessions are ready to save unchanged.</p>
-            {draft.scheduled.map((session) => (
-              <p key={session.projectId} className="rounded-xl border border-[var(--color-border)] p-3 text-sm">
-                <strong>{teamsById.get(session.projectId)?.title || 'Unavailable team'}</strong>, {formatLocalTime(session.scheduledAt)}, {session.locationLabel}
-              </p>
-            ))}
+            <div className="max-h-[38rem] overflow-auto rounded-xl border border-[var(--color-border)]">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-[var(--color-surface-muted)]">
+                  <tr>
+                    <th className="px-4 py-3">Team</th>
+                    <th className="whitespace-nowrap px-4 py-3">Date & Time</th>
+                    <th className="whitespace-nowrap px-4 py-3">Room</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {draft.scheduled.map((session) => (
+                    <tr key={session.projectId} className="border-t border-[var(--color-border)]">
+                      <td className="px-4 py-3 font-semibold">
+                        {teamsById.get(session.projectId)?.title || 'Unavailable team'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {formatLocalTime(session.scheduledAt)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {session.locationLabel}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {draft.unplaced.length > 0 && (
               <div className="rounded-xl border border-[var(--color-border)] p-4">
                 <p className="font-bold">Will be held if this round is confirmed</p>
