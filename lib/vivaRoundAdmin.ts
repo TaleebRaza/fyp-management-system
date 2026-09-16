@@ -224,20 +224,18 @@ async function validateSelectedPeopleAndTeams(
   input: VivaRoundInput,
   session: ClientSession
 ): Promise<string | null> {
-  const [projects, examiners] = await Promise.all([
-    Project.find({ _id: { $in: input.projectIds } })
-      .select('_id title members supervisorId')
-      .session(session)
-      .lean<ProjectRecord[]>(),
-    User.find({
-      _id: { $in: input.examinerIds },
-      role: 'supervisor',
-      isActive: true,
-    })
-      .select('_id')
-      .session(session)
-      .lean<UserRecord[]>(),
-  ]);
+  const projects = await Project.find({ _id: { $in: input.projectIds } })
+    .select('_id title members supervisorId')
+    .session(session)
+    .lean<ProjectRecord[]>();
+  const examiners = await User.find({
+    _id: { $in: input.examinerIds },
+    role: 'supervisor',
+    isActive: true,
+  })
+    .select('_id')
+    .session(session)
+    .lean<UserRecord[]>();
 
   if (projects.length !== input.projectIds.length) {
     return 'One or more selected teams no longer exist.';
