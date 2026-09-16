@@ -7,6 +7,8 @@ import { Loader2, LogIn, Pencil, Settings } from 'lucide-react';
 import {
   Button,
   DashboardShell,
+  VivaShortcut,
+  VivaWorkspaceShell,
 } from '../ui';
 import FinePaymentPanel from '../student/FinePaymentPanel';
 import StudentOverviewSection from '../student/StudentOverviewSection';
@@ -14,6 +16,7 @@ import StudentProjectSubmissionSection from '../student/StudentProjectSubmission
 import StudentResourcesSection from '../student/StudentResourcesSection';
 import StudentTeamSection from '../student/StudentTeamSection';
 import StudentMessageWidget from '../student/StudentMessageWidget';
+import StudentVivaWorkspace from '../student/StudentVivaWorkspace';
 import {
   AcademicUpdateDialog,
   SupervisorChangeDialog,
@@ -39,6 +42,7 @@ import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
 import { updateStudentName } from '../student/api/studentWorkflowApi';
 const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDashboardProps) => {
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
+  const [isVivaView, setIsVivaView] = useState(false);
 
   const currentUserId = String((session.user as { id?: string }).id || '');
   const {
@@ -239,6 +243,19 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     );
   }
 
+  if (isVivaView) {
+    return (
+      <VivaWorkspaceShell
+        eyebrow="Your Viva"
+        title="Viva results"
+        description="This is the dedicated place for your team’s published Viva results."
+        onExit={() => setIsVivaView(false)}
+      >
+        <StudentVivaWorkspace results={data?.vivaResults || []} />
+      </VivaWorkspaceShell>
+    );
+  }
+
   return (
     <>
       <DashboardShell
@@ -287,7 +304,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             projectStatus={project?.status}
             projectRatings={project?.ratings}
             projectMembers={projectMembers}
-            vivaResults={data?.vivaResults || []}
             getSecureMediaUrl={getSecureMediaUrl}
             onOpenProject={() => setActiveTab('project')}
             onOpenTeam={() => setActiveTab('team')}
@@ -367,6 +383,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         hasAssignedSupervisor={hasAssignedSupervisor}
         supervisorName={supervisor?.name}
       />
+
+      <VivaShortcut onOpen={() => setIsVivaView(true)} />
 
       <SupervisorChangeDialog
         open={isSupervisorWarningOpen}

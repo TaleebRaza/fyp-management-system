@@ -5,3 +5,4 @@ export * from "./DashboardPanel";
 export * from "./DashboardShell";
 export * from "./SectionHeader";
 export * from "./StatCard";
+export * from "./VivaWorkspace";

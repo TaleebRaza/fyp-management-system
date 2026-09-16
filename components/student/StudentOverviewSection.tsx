@@ -25,7 +25,6 @@ import {
 } from '../ui/Timeline';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
 import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
-import StudentVivaResults from './StudentVivaResults';
 import type { ProjectRatings } from '../../config/projectRatings';
 import {
   getStudentProjectStatusPill,
@@ -36,7 +35,6 @@ import type {
   ProjectMember,
   StudentSummary,
   SupervisorSummary,
-  VivaPublishedResult,
 } from './studentDashboardTypes';
 
 const formatAnnouncementTime = (value?: string | Date | null) => {
@@ -73,7 +71,6 @@ export default function StudentOverviewSection({
   projectStatus,
   projectRatings,
   projectMembers,
-  vivaResults,
   getSecureMediaUrl,
   onOpenProject,
   onOpenTeam,
@@ -88,7 +85,6 @@ export default function StudentOverviewSection({
   projectStatus?: string;
   projectRatings?: ProjectRatings;
   projectMembers: ProjectMember[];
-  vivaResults: VivaPublishedResult[];
   getSecureMediaUrl: (url?: string) => string;
   onOpenProject: () => void;
   onOpenTeam: () => void;
@@ -222,8 +218,6 @@ export default function StudentOverviewSection({
           icon={<Users size={18} />}
         />
       </DashboardGrid>
-
-      <StudentVivaResults results={vivaResults} />
 
       <Timeline currentStage={currentStage} descriptionSuffix="based on the current stage." />
 

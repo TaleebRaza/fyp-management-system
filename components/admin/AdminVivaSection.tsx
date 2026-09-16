@@ -26,6 +26,19 @@ type VivaRoundDraft = {
   examinerIds: string[];
 };
 
+type VivaWorkspaceSection = 'setup' | 'panels' | 'schedule' | 'results';
+
+const VIVA_WORKSPACE_SECTIONS: Array<{
+  id: VivaWorkspaceSection;
+  label: string;
+  requiresRound: boolean;
+}> = [
+  { id: 'setup', label: 'Round setup', requiresRound: false },
+  { id: 'panels', label: 'Panels', requiresRound: true },
+  { id: 'schedule', label: 'Schedule', requiresRound: true },
+  { id: 'results', label: 'Results', requiresRound: true },
+];
+
 type VivaConfigurationResponse = {
   rounds: VivaRoundDto[];
   teams: VivaTeamOption[];
@@ -311,6 +324,7 @@ export default function AdminVivaSection() {
   const [schedules, setSchedules] = useState<VivaScheduleDto[]>([]);
   const [assessments, setAssessments] = useState<VivaAssessmentDto[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null);
+  const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<VivaWorkspaceSection>('setup');
   const [draft, setDraft] = useState<VivaRoundDraft>(EMPTY_DRAFT);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -357,6 +371,7 @@ export default function AdminVivaSection() {
 
   const startNewRound = () => {
     setSelectedRoundId(null);
+    setActiveWorkspaceSection('setup');
     setDraft(EMPTY_DRAFT);
     setError('');
     setSavedMessage('');
@@ -364,6 +379,7 @@ export default function AdminVivaSection() {
 
   const openRound = (round: VivaRoundDto) => {
     setSelectedRoundId(round.id);
+    setActiveWorkspaceSection('setup');
     setDraft(toDraft(round));
     setError('');
     setSavedMessage('');
@@ -426,6 +442,7 @@ export default function AdminVivaSection() {
       setSchedules((current) => current.filter((schedule) => schedule.roundId !== selectedRound.id));
       setAssessments((current) => current.filter((assessment) => assessment.roundId !== selectedRound.id));
       setSelectedRoundId(null);
+      setActiveWorkspaceSection('setup');
       setDraft(EMPTY_DRAFT);
       setSavedMessage('Viva round deleted.');
     } catch (requestError) {
@@ -444,7 +461,34 @@ export default function AdminVivaSection() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
+    <div className="space-y-6">
+      <DashboardPanel className="p-3 sm:p-4">
+        <nav className="flex gap-2 overflow-x-auto" aria-label="Viva management sections">
+          {VIVA_WORKSPACE_SECTIONS.map((section) => {
+            const isActive = activeWorkspaceSection === section.id;
+            const isAvailable = !section.requiresRound || Boolean(selectedRound);
+
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => setActiveWorkspaceSection(section.id)}
+                disabled={!isAvailable}
+                aria-current={isActive ? 'page' : undefined}
+                className={`min-h-10 shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  isActive
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                {section.label}
+              </button>
+            );
+          })}
+        </nav>
+      </DashboardPanel>
+
+      <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
       <DashboardPanel className="h-fit xl:sticky xl:top-0">
         <SectionHeader
           title="Viva Rounds"
@@ -484,6 +528,7 @@ export default function AdminVivaSection() {
       </DashboardPanel>
 
       <div className="space-y-6">
+      {activeWorkspaceSection === 'setup' && (
       <form onSubmit={saveRound} className="space-y-6" aria-busy={isSaving}>
         <DashboardPanel>
           <SectionHeader
@@ -571,8 +616,9 @@ export default function AdminVivaSection() {
           {!isFrozen && <Button type="submit" disabled={isSaving}>{isSaving ? <Loader2 className="animate-spin" size={16} /> : null}{isSaving ? 'Saving...' : selectedRound ? 'Save Changes' : 'Create Viva Round'}</Button>}
         </div>
       </form>
+      )}
 
-      {selectedRound && (
+      {selectedRound && activeWorkspaceSection === 'panels' && (
         <VivaPanelManagement
           key={`${selectedRound.id}:${selectedRound.panelRevision}`}
           round={selectedRound}
@@ -591,7 +637,7 @@ export default function AdminVivaSection() {
           onReload={loadConfiguration}
         />
       )}
-      {selectedRound && (
+      {selectedRound && activeWorkspaceSection === 'schedule' && (
         <VivaScheduleManagement
           key={selectedRound.id}
           round={selectedRound}
@@ -606,7 +652,7 @@ export default function AdminVivaSection() {
           ].sort((first, second) => first.scheduledAt.localeCompare(second.scheduledAt)))}
         />
       )}
-      {selectedRound && (
+      {selectedRound && activeWorkspaceSection === 'results' && (
         <VivaResultPublication
           round={selectedRound}
           assessments={assessments}
@@ -615,6 +661,7 @@ export default function AdminVivaSection() {
           )))}
         />
       )}
+      </div>
       </div>
     </div>
   );

@@ -18,7 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 
-import { Button, DashboardShell } from '../ui';
+import { Button, DashboardShell, VivaShortcut, VivaWorkspaceShell } from '../ui';
 import RegistrationControlPanel from '../admin/RegistrationControlPanel';
 import FineManagementPanel from '../admin/FineManagementPanel';
 import AdminOverviewSection from '../admin/AdminOverviewSection';
@@ -76,7 +76,6 @@ type AdminTab =
   | 'students'
   | 'messages'
   | 'reviews'
-  | 'viva'
   | 'logs'
   | 'registration'
   | 'fines';
@@ -92,6 +91,7 @@ const AdminDashboard = ({
   onPortalPauseChange,
 }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [isVivaView, setIsVivaView] = useState(false);
   const [isUpdatingPortal, setIsUpdatingPortal] = useState(false);
   const headline = useAdminHeadline(showDialog);
   const students = useAdminStudents(showDialog);
@@ -201,8 +201,7 @@ const AdminDashboard = ({
       label: 'Viva',
       section: 'Portal Operations',
       icon: <ClipboardList size={18} />,
-      active: activeTab === 'viva',
-      onClick: () => setActiveTab('viva'),
+      onClick: () => setIsVivaView(true),
     },
     {
       id: 'messages',
@@ -257,6 +256,19 @@ const AdminDashboard = ({
       onClick: () => setActiveTab('logs'),
     },
   ];
+
+  if (isVivaView) {
+    return (
+      <VivaWorkspaceShell
+        eyebrow="Viva administration"
+        title="Manage Viva rounds"
+        description="Set up rounds, panels, sessions, and result publication in one focused workspace."
+        onExit={() => setIsVivaView(false)}
+      >
+        <AdminVivaSection />
+      </VivaWorkspaceShell>
+    );
+  }
 
   return (
     <>
@@ -364,8 +376,6 @@ const AdminDashboard = ({
           <AdminProjectReviewsPanel showDialog={showDialog} />
         )}
 
-        {activeTab === 'viva' && <AdminVivaSection />}
-
         {activeTab === 'messages' && <StudentMessagesPanel isDarkMode={isDarkMode} />}
 
         {activeTab === 'logs' && <AdminActivityLogsPanel />}
@@ -379,6 +389,8 @@ const AdminDashboard = ({
           />
         )}
       </DashboardShell>
+
+      <VivaShortcut onOpen={() => setIsVivaView(true)} />
 
       <SupervisorSlotEditorDialog
         supervisor={supervisors.slotEditorSupervisor}
