@@ -29,3 +29,15 @@ test('Viva has focused admin and student workspaces', async () => {
     assert.match(adminViva, new RegExp(`activeWorkspaceSection === '${section}'`));
   }
 });
+
+test('Viva setup can deselect selected projects without titles', async () => {
+  const [adminViva, vivaRoundAdmin] = await Promise.all([
+    read('components/admin/AdminVivaSection.tsx'),
+    read('lib/vivaRoundAdmin.ts'),
+  ]);
+
+  assert.match(vivaRoundAdmin, /hasTitle: Boolean\(title\)/);
+  assert.match(adminViva, /Deselect untitled/);
+  assert.match(adminViva, /teams\.filter\(\(team\) => !team\.hasTitle\)/);
+  assert.match(adminViva, /projectIds: current\.projectIds\.filter\(\(id\) => !untitledTeamIds\.has\(id\)\)/);
+});

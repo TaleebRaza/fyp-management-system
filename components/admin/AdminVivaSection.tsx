@@ -117,7 +117,13 @@ function readRound(value: unknown): VivaRoundDto | null {
 }
 
 function readTeam(value: unknown): VivaTeamOption | null {
-  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.title !== 'string' || !Array.isArray(value.members)) {
+  if (
+    !isRecord(value)
+    || typeof value.id !== 'string'
+    || typeof value.title !== 'string'
+    || typeof value.hasTitle !== 'boolean'
+    || !Array.isArray(value.members)
+  ) {
     return null;
   }
 
@@ -134,7 +140,7 @@ function readTeam(value: unknown): VivaTeamOption | null {
   });
 
   return members.length === value.members.length
-    ? { id: value.id, title: value.title, members }
+    ? { id: value.id, title: value.title, hasTitle: value.hasTitle, members }
     : null;
 }
 
@@ -336,6 +342,11 @@ export default function AdminVivaSection() {
     [rounds, selectedRoundId]
   );
   const isFrozen = Boolean(selectedRound?.frozenAt);
+  const untitledTeamIds = useMemo(
+    () => new Set(teams.filter((team) => !team.hasTitle).map((team) => team.id)),
+    [teams]
+  );
+  const selectedUntitledTeamCount = draft.projectIds.filter((id) => untitledTeamIds.has(id)).length;
 
   const loadConfiguration = useCallback(async () => {
     setIsLoading(true);
@@ -586,6 +597,18 @@ export default function AdminVivaSection() {
             onToggle={(id) => setDraft((current) => ({ ...current, projectIds: toggleSelection(current.projectIds, id) }))}
             onSelectAll={() => setDraft((current) => ({ ...current, projectIds: teams.map((team) => team.id) }))}
             onClear={() => setDraft((current) => ({ ...current, projectIds: [] }))}
+            additionalAction={
+              <Button
+                variant="ghost"
+                disabled={isFrozen || isSaving || selectedUntitledTeamCount === 0}
+                onClick={() => setDraft((current) => ({
+                  ...current,
+                  projectIds: current.projectIds.filter((id) => !untitledTeamIds.has(id)),
+                }))}
+              >
+                Deselect untitled
+              </Button>
+            }
             renderItem={(team) => (
               <>
                 <span className="block font-bold text-[var(--color-text)]">{team.title}</span>
@@ -676,6 +699,7 @@ function SelectionPanel<T extends { id: string }>({
   onToggle,
   onSelectAll,
   onClear,
+  additionalAction,
   renderItem,
 }: {
   title: string;
@@ -686,6 +710,7 @@ function SelectionPanel<T extends { id: string }>({
   onToggle: (id: string) => void;
   onSelectAll: () => void;
   onClear: () => void;
+  additionalAction?: ReactNode;
   renderItem: (item: T) => ReactNode;
 }) {
   return (
@@ -697,6 +722,7 @@ function SelectionPanel<T extends { id: string }>({
           <span className="flex gap-2">
             <Button variant="ghost" disabled={disabled || items.length === 0} onClick={onSelectAll}>All</Button>
             <Button variant="ghost" disabled={disabled || selectedIds.length === 0} onClick={onClear}>Clear</Button>
+            {additionalAction}
           </span>
         }
       />

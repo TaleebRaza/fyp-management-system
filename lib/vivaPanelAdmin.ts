@@ -364,8 +364,7 @@ export async function saveVivaPanels(
       };
     }
 
-    const existingPanelCount = await VivaPanel.countDocuments({ roundId: input.roundId }).session(session);
-    await VivaPanel.deleteMany({ roundId: input.roundId }).session(session);
+    const deletedPanels = await VivaPanel.deleteMany({ roundId: input.roundId }).session(session);
     const savedPanels = input.panels.length > 0
       ? await VivaPanel.create(
           input.panels.map((panel) => ({ ...panel, roundId: input.roundId })),
@@ -373,11 +372,11 @@ export async function saveVivaPanels(
         )
       : [];
 
-    if (existingPanelCount > 0 || savedPanels.length > 0) {
+    if (deletedPanels.deletedCount > 0 || savedPanels.length > 0) {
       await recordVivaAuditEvent(
         {
           roundId: input.roundId,
-          event: existingPanelCount > 0 ? 'panel-updated' : 'panel-created',
+          event: deletedPanels.deletedCount > 0 ? 'panel-updated' : 'panel-created',
           actorId: actor.id,
           actorRole: 'admin',
           actorName: actor.name,

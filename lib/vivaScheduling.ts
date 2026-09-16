@@ -2,6 +2,7 @@ import mongoose, { type ClientSession } from 'mongoose';
 
 import Project from '../models/Project';
 import User from '../models/User';
+import VivaAuditEvent from '../models/VivaAuditEvent';
 import VivaPanel from '../models/VivaPanel';
 import VivaRound from '../models/VivaRound';
 import VivaSession from '../models/VivaSession';
@@ -120,7 +121,7 @@ type ProjectRecord = {
   members?: unknown;
 };
 
-type UserRecord = { _id: unknown };
+type UserRecord = { _id: unknown; role?: unknown };
 
 type VivaSessionRecord = {
   _id: unknown;
@@ -374,28 +375,12 @@ export function parseVivaSessionCancellationInput(value: unknown):
   return { success: true, input: { sessionId, version, cancellationReason } };
 }
 
-async function readScheduleContext(
+function buildScheduleContext(
   input: VivaScheduleInput,
-  session: ClientSession
-): Promise<{ success: true; context: ScheduleContext } | { success: false; error: string }> {
-  const [round, panel, project] = await Promise.all([
-    VivaRound.findById(input.roundId)
-      .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes scheduleRevision')
-      .session(session)
-      .lean<VivaRoundRecord | null>(),
-    VivaPanel.findById(input.panelId)
-      .select('_id roundId examinerIds panelAdminId')
-      .session(session)
-      .lean<VivaPanelRecord | null>(),
-    Project.findById(input.projectId)
-      .select('_id supervisorId members')
-      .session(session)
-      .lean<ProjectRecord | null>(),
-  ]);
-
-  if (!round || !panel || !project) {
-    return { success: false, error: 'The selected Viva round, team, or panel no longer exists.' };
-  }
+  round: VivaRoundRecord,
+  panel: VivaPanelRecord,
+  project: ProjectRecord
+): { success: true; context: ScheduleContext } | { success: false; error: string } {
   if (!asIdList(round.projectIds).includes(input.projectId)) {
     return { success: false, error: 'This team is not selected for the Viva round.' };
   }
@@ -419,32 +404,6 @@ async function readScheduleContext(
     return { success: false, error: 'The selected panel cannot conduct a Viva session.' };
   }
 
-  const activePanelMembers = await User.find({
-    _id: { $in: panelExaminerIds },
-    role: 'supervisor',
-    isActive: true,
-  })
-    .select('_id')
-    .session(session)
-    .lean<UserRecord[]>();
-  if (activePanelMembers.length !== panelExaminerIds.length) {
-    return { success: false, error: 'One or more selected panel teachers are no longer active.' };
-  }
-
-  const projectMemberIds = asIdList(project.members);
-  const activeProjectMembers = projectMemberIds.length > 0
-    ? await User.find({ _id: { $in: projectMemberIds }, role: 'student', isActive: true })
-        .select('_id')
-        .session(session)
-        .lean<UserRecord[]>()
-    : [];
-  if (activeProjectMembers.length === 0) {
-    return { success: false, error: 'The selected team has no active students.' };
-  }
-  if (panelExaminerIds.includes(String(project.supervisorId || ''))) {
-    return { success: false, error: 'A team cannot be examined by its own supervisor.' };
-  }
-
   return {
     success: true,
     context: {
@@ -452,10 +411,69 @@ async function readScheduleContext(
       panel,
       project,
       panelExaminerIds,
-      projectMemberIds,
+      projectMemberIds: asIdList(project.members),
       vivaEndsAt: new Date(input.scheduledAt.getTime() + vivaDurationMinutes * 60_000),
     },
   };
+}
+
+function validateScheduleParticipants(
+  context: ScheduleContext,
+  activeParticipantsById: ReadonlyMap<string, unknown>
+): string | null {
+  if (!context.panelExaminerIds.every((examinerId) => activeParticipantsById.get(examinerId) === 'supervisor')) {
+    return 'One or more selected panel teachers are no longer active.';
+  }
+  if (!context.projectMemberIds.some((memberId) => activeParticipantsById.get(memberId) === 'student')) {
+    return 'The selected team has no active students.';
+  }
+  if (context.panelExaminerIds.includes(String(context.project.supervisorId || ''))) {
+    return 'A team cannot be examined by its own supervisor.';
+  }
+
+  return null;
+}
+
+async function readScheduleContext(
+  input: VivaScheduleInput,
+  session: ClientSession
+): Promise<{ success: true; context: ScheduleContext } | { success: false; error: string }> {
+  const [round, panel, project] = await Promise.all([
+    VivaRound.findById(input.roundId)
+      .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes scheduleRevision')
+      .session(session)
+      .lean<VivaRoundRecord | null>(),
+    VivaPanel.findById(input.panelId)
+      .select('_id roundId examinerIds panelAdminId')
+      .session(session)
+      .lean<VivaPanelRecord | null>(),
+    Project.findById(input.projectId)
+      .select('_id supervisorId members')
+      .session(session)
+      .lean<ProjectRecord | null>(),
+  ]);
+
+  if (!round || !panel || !project) {
+    return { success: false, error: 'The selected Viva round, team, or panel no longer exists.' };
+  }
+  const context = buildScheduleContext(input, round, panel, project);
+  if (!context.success) return context;
+
+  const participantIds = [...new Set([
+    ...context.context.panelExaminerIds,
+    ...context.context.projectMemberIds,
+  ])];
+  const activeParticipants = participantIds.length > 0
+    ? await User.find({ _id: { $in: participantIds }, isActive: true })
+        .select('_id role')
+        .session(session)
+        .lean<UserRecord[]>()
+    : [];
+  const activeParticipantsById = new Map(
+    activeParticipants.map((participant) => [String(participant._id), participant.role])
+  );
+  const participantError = validateScheduleParticipants(context.context, activeParticipantsById);
+  return participantError ? { success: false, error: participantError } : context;
 }
 
 function reservationFromScheduleContext(input: VivaScheduleInput, context: ScheduleContext): ScheduleReservation {
@@ -486,6 +504,39 @@ function findReservationConflict(
   return null;
 }
 
+function reservationsForSchedule(
+  input: VivaScheduleInput,
+  context: ScheduleContext,
+  candidates: readonly VivaSessionRecord[],
+  panelsById: ReadonlyMap<string, VivaPanelRecord>,
+  projectsById: ReadonlyMap<string, ProjectRecord>,
+  incompleteResourcesError: string
+): { success: true; reservations: ScheduleReservation[] } | { success: false; error: string } {
+  const reservations: ScheduleReservation[] = [];
+
+  for (const candidate of candidates) {
+    const scheduledAt = candidate.scheduledAt;
+    const vivaEndsAt = candidate.vivaEndsAt;
+    if (!(scheduledAt instanceof Date) || !(vivaEndsAt instanceof Date)) {
+      return { success: false, error: incompleteResourcesError };
+    }
+    if (scheduledAt >= context.vivaEndsAt || vivaEndsAt <= input.scheduledAt) continue;
+
+    const panel = panelsById.get(String(candidate.panelId));
+    const project = projectsById.get(String(candidate.projectId));
+    if (!panel || !project) return { success: false, error: incompleteResourcesError };
+
+    reservations.push({
+      scheduledAt,
+      vivaEndsAt,
+      panelExaminerIds: asIdList(panel.examinerIds),
+      projectMemberIds: asIdList(project.members),
+    });
+  }
+
+  return { success: true, reservations };
+}
+
 async function findScheduleConflict(
   input: VivaScheduleInput,
   context: ScheduleContext,
@@ -514,34 +565,17 @@ async function findScheduleConflict(
       .session(session)
       .lean<ProjectRecord[]>(),
   ]);
-  const panelMembersById = new Map(
-    panels.map((panel) => [String(panel._id), asIdList(panel.examinerIds)])
+  const reservations = reservationsForSchedule(
+    input,
+    context,
+    candidates,
+    new Map(panels.map((panel) => [String(panel._id), panel])),
+    new Map(projects.map((project) => [String(project._id), project])),
+    'An existing Viva schedule has incomplete resources. Resolve it before scheduling another session.'
   );
-  const projectMembersById = new Map(
-    projects.map((project) => [String(project._id), asIdList(project.members)])
-  );
+  if (!reservations.success) return reservations.error;
 
-  const reservations: ScheduleReservation[] = [];
-  for (const candidate of candidates) {
-    const panelMembers = panelMembersById.get(String(candidate.panelId));
-    const projectMembers = projectMembersById.get(String(candidate.projectId));
-    if (
-      !panelMembers
-      || !projectMembers
-      || !(candidate.scheduledAt instanceof Date)
-      || !(candidate.vivaEndsAt instanceof Date)
-    ) {
-      return 'An existing Viva schedule has incomplete resources. Resolve it before scheduling another session.';
-    }
-    reservations.push({
-      scheduledAt: candidate.scheduledAt,
-      vivaEndsAt: candidate.vivaEndsAt,
-      panelExaminerIds: panelMembers,
-      projectMemberIds: projectMembers,
-    });
-  }
-
-  return findReservationConflict(reservationFromScheduleContext(input, context), reservations);
+  return findReservationConflict(reservationFromScheduleContext(input, context), reservations.reservations);
 }
 
 async function hasExistingAttempt(
@@ -562,11 +596,13 @@ async function validateSchedule(
   session: ClientSession,
   excludedSessionId?: string
 ): Promise<{ success: true; context: ScheduleContext } | { success: false; error: string }> {
-  if (await hasExistingAttempt(input, session, excludedSessionId)) {
+  const [existingAttempt, context] = await Promise.all([
+    hasExistingAttempt(input, session, excludedSessionId),
+    readScheduleContext(input, session),
+  ]);
+  if (existingAttempt) {
     return { success: false, error: 'This team already has a Viva attempt in the selected round.' };
   }
-
-  const context = await readScheduleContext(input, session);
   if (!context.success) return context;
 
   const conflictError = await findScheduleConflict(input, context.context, session, excludedSessionId);
@@ -684,17 +720,20 @@ async function readExistingScheduleReservations(
   return { reservations };
 }
 
-function automaticScheduleOptions(
+function automaticScheduleOptionSummary(
   project: AutomaticScheduleProject,
   panels: readonly AutomaticSchedulePanel[],
   slots: readonly AutomaticScheduleSlot[],
   reservations: readonly ScheduleReservation[],
   panelWorkloads: ReadonlyMap<string, number>
-): AutomaticScheduleOption[] {
-  return panels.flatMap((panel) => {
-    if (panel.examinerIds.includes(project.supervisorId)) return [];
+): { count: number; first: AutomaticScheduleOption | null } {
+  let count = 0;
+  let first: AutomaticScheduleOption | null = null;
 
-    return slots.flatMap((slot) => {
+  for (const panel of panels) {
+    if (panel.examinerIds.includes(project.supervisorId)) continue;
+
+    for (const slot of slots) {
       const conflict = findReservationConflict(
         {
           scheduledAt: slot.scheduledAt,
@@ -704,13 +743,30 @@ function automaticScheduleOptions(
         },
         reservations
       );
-      return conflict ? [] : [{ panel, slot }];
-    });
-  }).sort((first, second) => (
-    first.slot.scheduledAt.getTime() - second.slot.scheduledAt.getTime()
-    || (panelWorkloads.get(first.panel.id) || 0) - (panelWorkloads.get(second.panel.id) || 0)
-    || first.panel.id.localeCompare(second.panel.id)
-  ));
+      if (conflict) continue;
+
+      count += 1;
+      const option = { panel, slot };
+      if (
+        !first
+        || option.slot.scheduledAt.getTime() < first.slot.scheduledAt.getTime()
+        || (
+          option.slot.scheduledAt.getTime() === first.slot.scheduledAt.getTime()
+          && (
+            (panelWorkloads.get(option.panel.id) || 0) < (panelWorkloads.get(first.panel.id) || 0)
+            || (
+              (panelWorkloads.get(option.panel.id) || 0) === (panelWorkloads.get(first.panel.id) || 0)
+              && option.panel.id < first.panel.id
+            )
+          )
+        )
+      ) {
+        first = option;
+      }
+    }
+  }
+
+  return { count, first };
 }
 
 export async function previewAutomaticVivaSchedule(
@@ -818,21 +874,27 @@ export async function previewAutomaticVivaSchedule(
 
   const orderedProjects = schedulableProjects.map((project) => ({
     project,
-    options: automaticScheduleOptions(
+    optionCount: automaticScheduleOptionSummary(
       project,
       validPanels,
       slots,
       existingReservations.reservations,
       panelWorkloads
-    ),
+    ).count,
   })).sort((first, second) => (
-    first.options.length - second.options.length || first.project.id.localeCompare(second.project.id)
+    first.optionCount - second.optionCount || first.project.id.localeCompare(second.project.id)
   ));
   const reservations = [...existingReservations.reservations];
   const scheduled: VivaAutomaticScheduleDraft[] = [];
 
   for (const { project } of orderedProjects) {
-    const option = automaticScheduleOptions(project, validPanels, slots, reservations, panelWorkloads)[0];
+    const { first: option } = automaticScheduleOptionSummary(
+      project,
+      validPanels,
+      slots,
+      reservations,
+      panelWorkloads
+    );
     if (!option) {
       unplaced.push({ projectId: project.id, reason: 'No available Viva slot remains after constrained teams were placed.' });
       continue;
@@ -857,30 +919,154 @@ export async function previewAutomaticVivaSchedule(
   return { success: true, draft: { scheduled, unplaced } };
 }
 
+async function validateAutomaticScheduleBatch(
+  input: VivaAutomaticScheduleSaveInput,
+  session: ClientSession
+): Promise<{ success: true; contexts: ScheduleContext[] } | { success: false; error: string }> {
+  const round = await VivaRound.findById(input.roundId)
+    .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes scheduleRevision')
+    .session(session)
+    .lean<VivaRoundRecord | null>();
+  if (!round) {
+    return { success: false, error: 'The selected Viva round, team, or panel no longer exists.' };
+  }
+
+  const targetPanelSize = Number(round.targetPanelSize);
+  const minimumPanelSize = Number(round.minimumPanelSize);
+  const vivaDurationMinutes = Number(round.vivaDurationMinutes);
+  if (
+    !Number.isSafeInteger(targetPanelSize)
+    || !Number.isSafeInteger(minimumPanelSize)
+    || !Number.isFinite(vivaDurationMinutes)
+    || vivaDurationMinutes <= 0
+  ) {
+    return { success: false, error: 'The selected panel cannot conduct a Viva session.' };
+  }
+
+  const projectIds = [...new Set(input.schedules.map((schedule) => schedule.projectId))];
+  const panelIds = [...new Set(input.schedules.map((schedule) => schedule.panelId))];
+  const startsAt = new Date(Math.min(...input.schedules.map((schedule) => schedule.scheduledAt.getTime())));
+  const endsAt = new Date(Math.max(...input.schedules.map((schedule) => (
+    schedule.scheduledAt.getTime() + vivaDurationMinutes * 60_000
+  ))));
+  const sessions = await VivaSession.find({
+    $or: [
+      { roundId: input.roundId, projectId: { $in: projectIds }, cancelledAt: null },
+      {
+        cancelledAt: null,
+        completedAt: null,
+        scheduledAt: { $lt: endsAt },
+        vivaEndsAt: { $gt: startsAt },
+      },
+    ],
+  })
+    .select('_id roundId panelId projectId scheduledAt vivaEndsAt completedAt')
+    .session(session)
+    .lean<VivaSessionRecord[]>();
+  const existingAttemptProjectIds = new Set(
+    sessions
+      .filter((scheduledSession) => (
+        String(scheduledSession.roundId) === input.roundId
+        && projectIds.includes(String(scheduledSession.projectId))
+      ))
+      .map((scheduledSession) => String(scheduledSession.projectId))
+  );
+  const overlappingSessions = sessions.filter((scheduledSession) => (
+    !(scheduledSession.completedAt instanceof Date)
+    && scheduledSession.scheduledAt instanceof Date
+    && scheduledSession.vivaEndsAt instanceof Date
+    && scheduledSession.scheduledAt < endsAt
+    && scheduledSession.vivaEndsAt > startsAt
+  ));
+  const resourcePanelIds = [...new Set([
+    ...panelIds,
+    ...overlappingSessions.map((scheduledSession) => String(scheduledSession.panelId)),
+  ])].filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const resourceProjectIds = [...new Set([
+    ...projectIds,
+    ...overlappingSessions.map((scheduledSession) => String(scheduledSession.projectId)),
+  ])].filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const [panels, projects] = await Promise.all([
+    VivaPanel.find({ _id: { $in: resourcePanelIds } })
+      .select('_id roundId examinerIds panelAdminId')
+      .session(session)
+      .lean<VivaPanelRecord[]>(),
+    Project.find({ _id: { $in: resourceProjectIds } })
+      .select('_id supervisorId members')
+      .session(session)
+      .lean<ProjectRecord[]>(),
+  ]);
+  const panelsById = new Map(panels.map((panel) => [String(panel._id), panel]));
+  const projectsById = new Map(projects.map((project) => [String(project._id), project]));
+  const participantIds = [...new Set(input.schedules.flatMap((schedule) => {
+    const panel = panelsById.get(schedule.panelId);
+    const project = projectsById.get(schedule.projectId);
+    return [
+      ...asIdList(panel?.examinerIds),
+      ...asIdList(project?.members),
+    ];
+  }))];
+  const activeParticipants = participantIds.length > 0
+    ? await User.find({ _id: { $in: participantIds }, isActive: true })
+        .select('_id role')
+        .session(session)
+        .lean<UserRecord[]>()
+    : [];
+  const activeParticipantsById = new Map(
+    activeParticipants.map((participant) => [String(participant._id), participant.role])
+  );
+  const contexts: ScheduleContext[] = [];
+  const draftReservations: ScheduleReservation[] = [];
+
+  for (const scheduleInput of input.schedules) {
+    if (existingAttemptProjectIds.has(scheduleInput.projectId)) {
+      return { success: false, error: 'This team already has a Viva attempt in the selected round.' };
+    }
+
+    const panel = panelsById.get(scheduleInput.panelId);
+    const project = projectsById.get(scheduleInput.projectId);
+    if (!panel || !project) {
+      return { success: false, error: 'The selected Viva round, team, or panel no longer exists.' };
+    }
+    const context = buildScheduleContext(scheduleInput, round, panel, project);
+    if (!context.success) return context;
+    const participantError = validateScheduleParticipants(context.context, activeParticipantsById);
+    if (participantError) return { success: false, error: participantError };
+
+    const existingReservations = reservationsForSchedule(
+      scheduleInput,
+      context.context,
+      overlappingSessions,
+      panelsById,
+      projectsById,
+      'An existing Viva schedule has incomplete resources. Resolve it before scheduling another session.'
+    );
+    if (!existingReservations.success) return existingReservations;
+
+    const reservation = reservationFromScheduleContext(scheduleInput, context.context);
+    const existingConflict = findReservationConflict(reservation, existingReservations.reservations);
+    if (existingConflict) return { success: false, error: existingConflict };
+
+    const draftConflict = findReservationConflict(reservation, draftReservations);
+    if (draftConflict) return { success: false, error: draftConflict };
+
+    contexts.push(context.context);
+    draftReservations.push(reservation);
+  }
+
+  return { success: true, contexts };
+}
+
 export async function applyAutomaticVivaSchedule(
   input: VivaAutomaticScheduleSaveInput,
   actor: VivaScheduleActor
 ): Promise<VivaAutomaticScheduleSaveResult> {
   try {
     return await withVivaTransaction(async (session) => {
-      const contexts: ScheduleContext[] = [];
-      const draftReservations: ScheduleReservation[] = [];
+      const validation = await validateAutomaticScheduleBatch(input, session);
+      if (!validation.success) return { success: false, reason: 'invalid', error: validation.error };
 
-      for (const scheduleInput of input.schedules) {
-        const validation = await validateSchedule(scheduleInput, session);
-        if (!validation.success) {
-          return { success: false, reason: 'invalid', error: validation.error };
-        }
-
-        const reservation = reservationFromScheduleContext(scheduleInput, validation.context);
-        const conflict = findReservationConflict(reservation, draftReservations);
-        if (conflict) return { success: false, reason: 'invalid', error: conflict };
-
-        contexts.push(validation.context);
-        draftReservations.push(reservation);
-      }
-
-      if (!await reserveScheduleChange(contexts[0], session)) {
+      if (!await reserveScheduleChange(validation.contexts[0], session)) {
         return {
           success: false,
           reason: 'concurrent-change',
@@ -888,24 +1074,34 @@ export async function applyAutomaticVivaSchedule(
         };
       }
 
-      const schedules: VivaScheduleDto[] = [];
-      for (let index = 0; index < input.schedules.length; index += 1) {
-        const scheduleInput = input.schedules[index];
-        const vivaSession = new VivaSession({
+      const savedSessions = await VivaSession.insertMany(
+        input.schedules.map((scheduleInput, index) => ({
           roundId: input.roundId,
           panelId: scheduleInput.panelId,
           projectId: scheduleInput.projectId,
           scheduledAt: scheduleInput.scheduledAt,
-          vivaEndsAt: contexts[index].vivaEndsAt,
+          vivaEndsAt: validation.contexts[index].vivaEndsAt,
           locationLabel: scheduleInput.locationLabel,
-        });
-        await vivaSession.save({ session });
-        await writeScheduleAudit(input.roundId, vivaSession._id, actor, session);
-
+        })),
+        { session, ordered: true }
+      );
+      await VivaAuditEvent.insertMany(
+        savedSessions.map((vivaSession) => ({
+          roundId: input.roundId,
+          sessionId: String(vivaSession._id),
+          event: 'session-scheduled',
+          actorId: actor.id,
+          actorRole: 'admin',
+          actorName: actor.name,
+          actorRollNo: actor.rollNo,
+        })),
+        { session, ordered: true }
+      );
+      const schedules = savedSessions.map((vivaSession) => {
         const schedule = toScheduleDto(vivaSession.toObject());
         if (!schedule) throw new Error('Automatic Viva schedule could not be serialized.');
-        schedules.push(schedule);
-      }
+        return schedule;
+      });
 
       return { success: true, schedules };
     });

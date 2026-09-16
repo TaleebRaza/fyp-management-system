@@ -40,6 +40,7 @@ export type VivaRoundDto = VivaRoundInput & {
 export type VivaTeamOption = {
   id: string;
   title: string;
+  hasTitle: boolean;
   members: Array<{ id: string; name: string; rollNo: string }>;
 };
 
@@ -212,18 +213,20 @@ async function validateSelectedPeopleAndTeams(
   input: VivaRoundInput,
   session: ClientSession
 ): Promise<string | null> {
-  const projects = await Project.find({ _id: { $in: input.projectIds } })
-    .select('_id members')
-    .session(session)
-    .lean<ProjectRecord[]>();
-  const examiners = await User.find({
-    _id: { $in: input.examinerIds },
-    role: 'supervisor',
-    isActive: true,
-  })
-    .select('_id')
-    .session(session)
-    .lean<UserRecord[]>();
+  const [projects, examiners] = await Promise.all([
+    Project.find({ _id: { $in: input.projectIds } })
+      .select('_id members')
+      .session(session)
+      .lean<ProjectRecord[]>(),
+    User.find({
+      _id: { $in: input.examinerIds },
+      role: 'supervisor',
+      isActive: true,
+    })
+      .select('_id')
+      .session(session)
+      .lean<UserRecord[]>(),
+  ]);
 
   if (projects.length !== input.projectIds.length) {
     return 'One or more selected teams no longer exist.';
@@ -315,11 +318,12 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       });
       if (members.length === 0) return [];
 
+      const title = typeof project.title === 'string' ? project.title.trim() : '';
+
       return [{
         id: String(project._id),
-        title: typeof project.title === 'string' && project.title.trim()
-          ? project.title.trim()
-          : 'Untitled project',
+        title: title || 'Untitled project',
+        hasTitle: Boolean(title),
         members,
       }];
     }),
