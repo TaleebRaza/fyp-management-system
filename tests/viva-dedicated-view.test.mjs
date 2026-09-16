@@ -5,9 +5,10 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Viva has focused admin and student workspaces', async () => {
-  const [adminDashboard, adminViva, studentDashboard, studentOverview, studentViva, workspace] = await Promise.all([
+  const [adminDashboard, adminViva, panelManagement, studentDashboard, studentOverview, studentViva, workspace] = await Promise.all([
     read('components/dashboards/AdminDashboard.tsx'),
     read('components/admin/AdminVivaSection.tsx'),
+    read('components/admin/VivaPanelManagement.tsx'),
     read('components/dashboards/StudentDashboard.tsx'),
     read('components/student/StudentOverviewSection.tsx'),
     read('components/student/StudentVivaWorkspace.tsx'),
@@ -25,6 +26,13 @@ test('Viva has focused admin and student workspaces', async () => {
   assert.doesNotMatch(studentOverview, /StudentVivaResults/);
   assert.match(studentViva, /No Viva result published yet/);
   assert.match(adminViva, /VIVA_WORKSPACE_SECTIONS/);
+  assert.match(adminViva, /id="viva-round-selector"/);
+  assert.doesNotMatch(adminViva, /window\.confirm/);
+  assert.match(adminViva, /<Dialog/);
+  assert.match(panelManagement, /hasUnassignedTeachers/);
+  assert.match(panelManagement, /Panels Saved/);
+  assert.match(panelManagement, /pendingAction/);
+  assert.match(panelManagement, /<Dialog/);
   for (const section of ['setup', 'panels', 'schedule', 'results']) {
     assert.match(adminViva, new RegExp(`activeWorkspaceSection === '${section}'`));
   }

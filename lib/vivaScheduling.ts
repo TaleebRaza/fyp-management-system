@@ -171,6 +171,7 @@ type AutomaticScheduleProject = {
 };
 
 type AutomaticScheduleSlot = {
+  id: number;
   scheduledAt: Date;
   vivaEndsAt: Date;
   locationLabel: string;
@@ -179,6 +180,15 @@ type AutomaticScheduleSlot = {
 type AutomaticScheduleOption = {
   panel: AutomaticSchedulePanel;
   slot: AutomaticScheduleSlot;
+};
+
+type AutomaticScheduleOccupancy = {
+  blockedSlotsByTeacher: Map<string, Uint32Array>;
+  blockedSlotsByStudent: Map<string, Uint32Array>;
+  blockedRoomSlots: Uint32Array;
+  overlappingSlotIds: number[][];
+  orderedSlotIds: number[];
+  validSlotBits: Uint32Array;
 };
 
 const MAX_AUTOMATIC_SCHEDULE_AVAILABILITY_WINDOWS = 32;
@@ -442,20 +452,18 @@ async function readScheduleContext(
   input: VivaScheduleInput,
   session: ClientSession
 ): Promise<{ success: true; context: ScheduleContext } | { success: false; error: string }> {
-  const [round, panel, project] = await Promise.all([
-    VivaRound.findById(input.roundId)
-      .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes scheduleRevision')
-      .session(session)
-      .lean<VivaRoundRecord | null>(),
-    VivaPanel.findById(input.panelId)
-      .select('_id roundId examinerIds panelAdminId')
-      .session(session)
-      .lean<VivaPanelRecord | null>(),
-    Project.findById(input.projectId)
-      .select('_id supervisorId members')
-      .session(session)
-      .lean<ProjectRecord | null>(),
-  ]);
+  const round = await VivaRound.findById(input.roundId)
+    .select('_id projectIds targetPanelSize minimumPanelSize vivaDurationMinutes scheduleRevision')
+    .session(session)
+    .lean<VivaRoundRecord | null>();
+  const panel = await VivaPanel.findById(input.panelId)
+    .select('_id roundId examinerIds panelAdminId')
+    .session(session)
+    .lean<VivaPanelRecord | null>();
+  const project = await Project.findById(input.projectId)
+    .select('_id supervisorId members')
+    .session(session)
+    .lean<ProjectRecord | null>();
 
   if (!round || !panel || !project) {
     return { success: false, error: 'The selected Viva round, team, or panel no longer exists.' };
@@ -564,16 +572,14 @@ async function findScheduleConflict(
     .lean<VivaSessionRecord[]>();
   if (candidates.length === 0) return null;
 
-  const [panels, projects] = await Promise.all([
-    VivaPanel.find({ _id: { $in: candidates.map((candidate) => candidate.panelId) } })
-      .select('_id examinerIds')
-      .session(session)
-      .lean<VivaPanelRecord[]>(),
-    Project.find({ _id: { $in: candidates.map((candidate) => candidate.projectId) } })
-      .select('_id members')
-      .session(session)
-      .lean<ProjectRecord[]>(),
-  ]);
+  const panels = await VivaPanel.find({ _id: { $in: candidates.map((candidate) => candidate.panelId) } })
+    .select('_id examinerIds')
+    .session(session)
+    .lean<VivaPanelRecord[]>();
+  const projects = await Project.find({ _id: { $in: candidates.map((candidate) => candidate.projectId) } })
+    .select('_id members')
+    .session(session)
+    .lean<ProjectRecord[]>();
   const reservations = reservationsForSchedule(
     input,
     context,
@@ -605,10 +611,8 @@ async function validateSchedule(
   session: ClientSession,
   excludedSessionId?: string
 ): Promise<{ success: true; context: ScheduleContext } | { success: false; error: string }> {
-  const [existingAttempt, context] = await Promise.all([
-    hasExistingAttempt(input, session, excludedSessionId),
-    readScheduleContext(input, session),
-  ]);
+  const existingAttempt = await hasExistingAttempt(input, session, excludedSessionId);
+  const context = await readScheduleContext(input, session);
   if (existingAttempt) {
     return { success: false, error: 'This team already has a Viva attempt in the selected round.' };
   }
@@ -666,6 +670,7 @@ function availabilitySlots(
       startsAt = new Date(startsAt.getTime() + durationMilliseconds)
     ) {
       slots.push({
+        id: slots.length,
         scheduledAt: startsAt,
         vivaEndsAt: new Date(startsAt.getTime() + durationMilliseconds),
         locationLabel: window.locationLabel,
@@ -730,31 +735,171 @@ async function readExistingScheduleReservations(
   return { reservations };
 }
 
-function automaticScheduleOptionSummary(
+function markOccupiedSlots(
+  occupiedSlotsByResource: Map<string, Uint32Array>,
+  resourceIds: readonly string[],
+  slotIds: readonly number[],
+  wordCount: number
+) {
+  for (const resourceId of resourceIds) {
+    let occupiedSlotIds = occupiedSlotsByResource.get(resourceId);
+    if (!occupiedSlotIds) {
+      occupiedSlotIds = new Uint32Array(wordCount);
+      occupiedSlotsByResource.set(resourceId, occupiedSlotIds);
+    }
+    for (const slotId of slotIds) {
+      occupiedSlotIds[slotId >>> 5] |= 1 << (slotId & 31);
+    }
+  }
+}
+
+function markBlockedRoomSlots(
+  slots: readonly AutomaticScheduleSlot[],
+  blockedRoomSlots: Uint32Array,
+  room: string,
+  slotIds: readonly number[]
+) {
+  for (const slotId of slotIds) {
+    if (roomKey(slots[slotId].locationLabel) === room) {
+      blockedRoomSlots[slotId >>> 5] |= 1 << (slotId & 31);
+    }
+  }
+}
+
+function hasOccupiedSlot(occupiedSlots: Uint32Array | undefined, slotId: number): boolean {
+  const occupiedWord = occupiedSlots?.[slotId >>> 5];
+  return occupiedWord !== undefined && Boolean(occupiedWord & (1 << (slotId & 31)));
+}
+
+function countSetBits(value: number): number {
+  let bits = value >>> 0;
+  bits -= (bits >>> 1) & 0x55555555;
+  bits = (bits & 0x33333333) + ((bits >>> 2) & 0x33333333);
+  return (((bits + (bits >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+function slotIdsOverlappingInterval(
+  slots: readonly AutomaticScheduleSlot[],
+  scheduledAt: Date,
+  vivaEndsAt: Date
+): number[] {
+  const overlappingSlotIds: number[] = [];
+  for (const slot of slots) {
+    if (slot.scheduledAt < vivaEndsAt && slot.vivaEndsAt > scheduledAt) {
+      overlappingSlotIds.push(slot.id);
+    }
+  }
+  return overlappingSlotIds;
+}
+
+function createAutomaticScheduleOccupancy(
+  slots: readonly AutomaticScheduleSlot[],
+  reservations: readonly ScheduleReservation[]
+): AutomaticScheduleOccupancy {
+  const wordCount = Math.ceil(slots.length / 32);
+  const blockedSlotsByTeacher = new Map<string, Uint32Array>();
+  const blockedSlotsByStudent = new Map<string, Uint32Array>();
+  const blockedRoomSlots = new Uint32Array(wordCount);
+  const overlappingSlotIds = slots.map((slot) => (
+    slotIdsOverlappingInterval(slots, slot.scheduledAt, slot.vivaEndsAt)
+  ));
+  const orderedSlotIds = [...slots]
+    .sort((first, second) => first.scheduledAt.getTime() - second.scheduledAt.getTime() || first.id - second.id)
+    .map((slot) => slot.id);
+  const validSlotBits = new Uint32Array(wordCount);
+  for (const slot of slots) validSlotBits[slot.id >>> 5] |= 1 << (slot.id & 31);
+
+  for (const reservation of reservations) {
+    const slotIds = slotIdsOverlappingInterval(slots, reservation.scheduledAt, reservation.vivaEndsAt);
+    markOccupiedSlots(blockedSlotsByTeacher, reservation.panelExaminerIds, slotIds, wordCount);
+    markOccupiedSlots(blockedSlotsByStudent, reservation.projectMemberIds, slotIds, wordCount);
+    markBlockedRoomSlots(slots, blockedRoomSlots, roomKey(reservation.locationLabel), slotIds);
+  }
+
+  return {
+    blockedSlotsByTeacher,
+    blockedSlotsByStudent,
+    blockedRoomSlots,
+    overlappingSlotIds,
+    orderedSlotIds,
+    validSlotBits,
+  };
+}
+
+function resourceHasOccupiedSlot(
+  occupiedSlotsByResource: ReadonlyMap<string, Uint32Array>,
+  resourceIds: readonly string[],
+  slotId: number
+): boolean {
+  return resourceIds.some((resourceId) => hasOccupiedSlot(occupiedSlotsByResource.get(resourceId), slotId));
+}
+
+function automaticScheduleOptionIsAvailable(
+  project: AutomaticScheduleProject,
+  panel: AutomaticSchedulePanel,
+  slot: AutomaticScheduleSlot,
+  occupancy: AutomaticScheduleOccupancy
+): boolean {
+  return !hasOccupiedSlot(occupancy.blockedRoomSlots, slot.id)
+    && !resourceHasOccupiedSlot(occupancy.blockedSlotsByTeacher, panel.examinerIds, slot.id)
+    && !resourceHasOccupiedSlot(occupancy.blockedSlotsByStudent, project.memberIds, slot.id);
+}
+
+function reserveAutomaticScheduleOption(
+  project: AutomaticScheduleProject,
+  option: AutomaticScheduleOption,
+  occupancy: AutomaticScheduleOccupancy,
+  slots: readonly AutomaticScheduleSlot[]
+) {
+  const overlappingSlotIds = occupancy.overlappingSlotIds[option.slot.id];
+  const wordCount = occupancy.validSlotBits.length;
+  markOccupiedSlots(occupancy.blockedSlotsByTeacher, option.panel.examinerIds, overlappingSlotIds, wordCount);
+  markOccupiedSlots(occupancy.blockedSlotsByStudent, project.memberIds, overlappingSlotIds, wordCount);
+  markBlockedRoomSlots(
+    slots,
+    occupancy.blockedRoomSlots,
+    roomKey(option.slot.locationLabel),
+    overlappingSlotIds
+  );
+}
+
+function automaticScheduleOptionCount(
+  project: AutomaticScheduleProject,
+  panels: readonly AutomaticSchedulePanel[],
+  occupancy: AutomaticScheduleOccupancy
+): number {
+  let count = 0;
+
+  for (const panel of panels) {
+    for (let wordIndex = 0; wordIndex < occupancy.validSlotBits.length; wordIndex += 1) {
+      let blockedSlots = occupancy.blockedRoomSlots[wordIndex];
+      for (const examinerId of panel.examinerIds) {
+        blockedSlots |= occupancy.blockedSlotsByTeacher.get(examinerId)?.[wordIndex] || 0;
+      }
+      for (const memberId of project.memberIds) {
+        blockedSlots |= occupancy.blockedSlotsByStudent.get(memberId)?.[wordIndex] || 0;
+      }
+      count += countSetBits(occupancy.validSlotBits[wordIndex] & ~blockedSlots);
+    }
+  }
+
+  return count;
+}
+
+function firstAutomaticScheduleOption(
   project: AutomaticScheduleProject,
   panels: readonly AutomaticSchedulePanel[],
   slots: readonly AutomaticScheduleSlot[],
-  reservations: readonly ScheduleReservation[],
+  occupancy: AutomaticScheduleOccupancy,
   panelWorkloads: ReadonlyMap<string, number>
-): { count: number; first: AutomaticScheduleOption | null } {
-  let count = 0;
+): AutomaticScheduleOption | null {
   let first: AutomaticScheduleOption | null = null;
 
   for (const panel of panels) {
-    for (const slot of slots) {
-      const conflict = findReservationConflict(
-        {
-          scheduledAt: slot.scheduledAt,
-          vivaEndsAt: slot.vivaEndsAt,
-          panelExaminerIds: panel.examinerIds,
-          projectMemberIds: project.memberIds,
-          locationLabel: slot.locationLabel,
-        },
-        reservations
-      );
-      if (conflict) continue;
+    for (const slotId of occupancy.orderedSlotIds) {
+      const slot = slots[slotId];
+      if (!automaticScheduleOptionIsAvailable(project, panel, slot, occupancy)) continue;
 
-      count += 1;
       const option = { panel, slot };
       if (
         !first
@@ -772,10 +917,11 @@ function automaticScheduleOptionSummary(
       ) {
         first = option;
       }
+      break;
     }
   }
 
-  return { count, first };
+  return first;
 }
 
 export async function previewAutomaticVivaSchedule(
@@ -877,27 +1023,26 @@ export async function previewAutomaticVivaSchedule(
     schedulableProjects.push({ id: projectId, supervisorId, memberIds });
   }
 
+  const initialOccupancy = createAutomaticScheduleOccupancy(slots, existingReservations.reservations);
   const orderedProjects = schedulableProjects.map((project) => ({
     project,
-    optionCount: automaticScheduleOptionSummary(
+    optionCount: automaticScheduleOptionCount(
       project,
       validPanels,
-      slots,
-      existingReservations.reservations,
-      panelWorkloads
-    ).count,
+      initialOccupancy
+    ),
   })).sort((first, second) => (
     first.optionCount - second.optionCount || first.project.id.localeCompare(second.project.id)
   ));
-  const reservations = [...existingReservations.reservations];
+  const occupancy = createAutomaticScheduleOccupancy(slots, existingReservations.reservations);
   const scheduled: VivaAutomaticScheduleDraft[] = [];
 
   for (const { project } of orderedProjects) {
-    const { first: option } = automaticScheduleOptionSummary(
+    const option = firstAutomaticScheduleOption(
       project,
       validPanels,
       slots,
-      reservations,
+      occupancy,
       panelWorkloads
     );
     if (!option) {
@@ -912,13 +1057,7 @@ export async function previewAutomaticVivaSchedule(
       vivaEndsAt: option.slot.vivaEndsAt.toISOString(),
       locationLabel: option.slot.locationLabel,
     });
-    reservations.push({
-      scheduledAt: option.slot.scheduledAt,
-      vivaEndsAt: option.slot.vivaEndsAt,
-      panelExaminerIds: option.panel.examinerIds,
-      projectMemberIds: project.memberIds,
-      locationLabel: option.slot.locationLabel,
-    });
+    reserveAutomaticScheduleOption(project, option, occupancy, slots);
     panelWorkloads.set(option.panel.id, (panelWorkloads.get(option.panel.id) || 0) + 1);
   }
 
@@ -993,16 +1132,14 @@ async function validateAutomaticScheduleBatch(
     ...projectIds,
     ...overlappingSessions.map((scheduledSession) => String(scheduledSession.projectId)),
   ])].filter((id) => mongoose.Types.ObjectId.isValid(id));
-  const [panels, projects] = await Promise.all([
-    VivaPanel.find({ _id: { $in: resourcePanelIds } })
-      .select('_id roundId examinerIds panelAdminId')
-      .session(session)
-      .lean<VivaPanelRecord[]>(),
-    Project.find({ _id: { $in: resourceProjectIds } })
-      .select('_id supervisorId members')
-      .session(session)
-      .lean<ProjectRecord[]>(),
-  ]);
+  const panels = await VivaPanel.find({ _id: { $in: resourcePanelIds } })
+    .select('_id roundId examinerIds panelAdminId')
+    .session(session)
+    .lean<VivaPanelRecord[]>();
+  const projects = await Project.find({ _id: { $in: resourceProjectIds } })
+    .select('_id supervisorId members')
+    .session(session)
+    .lean<ProjectRecord[]>();
   const panelsById = new Map(panels.map((panel) => [String(panel._id), panel]));
   const projectsById = new Map(projects.map((project) => [String(project._id), project]));
   const participantIds = [...new Set(input.schedules.flatMap((schedule) => {

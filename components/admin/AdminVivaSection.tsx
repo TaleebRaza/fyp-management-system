@@ -12,7 +12,7 @@ import type {
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import type { VivaAssessmentDto } from '../../lib/vivaPublication';
 import type { VivaScheduleDto } from '../../lib/vivaScheduling';
-import { Badge, Button, DashboardPanel, SectionHeader, StyledInput } from '../ui';
+import { Button, DashboardPanel, Dialog, SectionHeader, StyledInput } from '../ui';
 import VivaPanelManagement from './VivaPanelManagement';
 import VivaResultPublication from './VivaResultPublication';
 import VivaScheduleManagement from './VivaScheduleManagement';
@@ -337,6 +337,7 @@ export default function AdminVivaSection() {
   const [draft, setDraft] = useState<VivaRoundDraft>(EMPTY_DRAFT);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
 
@@ -382,6 +383,7 @@ export default function AdminVivaSection() {
     setSelectedRoundId(null);
     setActiveWorkspaceSection('setup');
     setDraft(EMPTY_DRAFT);
+    setIsDeleteDialogOpen(false);
     setError('');
     setSavedMessage('');
   };
@@ -390,6 +392,7 @@ export default function AdminVivaSection() {
     setSelectedRoundId(round.id);
     setActiveWorkspaceSection('setup');
     setDraft({ ...toDraft(round), projectIds: round.projectIds.filter((id) => teams.some((team) => team.id === id)) });
+    setIsDeleteDialogOpen(false);
     setError('');
     setSavedMessage('');
   };
@@ -432,9 +435,6 @@ export default function AdminVivaSection() {
 
   const deleteRound = async () => {
     if (!selectedRound || selectedRound.frozenAt || isSaving) return;
-    if (!window.confirm(`Delete “${selectedRound.name}” and all of its panels, scheduled sessions, assessment data, and Viva audit records?`)) {
-      return;
-    }
 
     setIsSaving(true);
     setError('');
@@ -453,6 +453,7 @@ export default function AdminVivaSection() {
       setSelectedRoundId(null);
       setActiveWorkspaceSection('setup');
       setDraft(EMPTY_DRAFT);
+      setIsDeleteDialogOpen(false);
       setSavedMessage('Viva round deleted.');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to delete the Viva round.');
@@ -473,6 +474,26 @@ export default function AdminVivaSection() {
     <div className="space-y-6">
       <DashboardPanel className="p-3 sm:p-4">
         <nav className="flex gap-2 overflow-x-auto" aria-label="Viva management sections">
+          <label className="sr-only" htmlFor="viva-round-selector">Selected Viva round</label>
+          <select
+            id="viva-round-selector"
+            value={selectedRoundId || ''}
+            disabled={isSaving}
+            onChange={(event) => {
+              const nextRound = rounds.find((round) => round.id === event.target.value);
+              if (nextRound) openRound(nextRound);
+              else startNewRound();
+            }}
+            className="min-h-10 max-w-56 shrink-0 cursor-pointer rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-bold text-[var(--color-text)] outline-none transition-colors focus:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <option value="">New Viva Round</option>
+            {rounds.map((round) => (
+              <option key={round.id} value={round.id}>{round.name}</option>
+            ))}
+          </select>
+          <Button variant="outline" className="min-h-10 shrink-0 px-3" onClick={startNewRound} disabled={isSaving}>
+            <Plus size={16} />New
+          </Button>
           {VIVA_WORKSPACE_SECTIONS.map((section) => {
             const isActive = activeWorkspaceSection === section.id;
             const isAvailable = !section.requiresRound || Boolean(selectedRound);
@@ -497,49 +518,9 @@ export default function AdminVivaSection() {
         </nav>
       </DashboardPanel>
 
-      <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
-      <DashboardPanel className="h-fit xl:sticky xl:top-0">
-        <SectionHeader
-          title="Viva Rounds"
-          description="Create a round, then return here to change it until its first session starts."
-          action={
-            <Button variant="outline" onClick={startNewRound} disabled={isSaving}>
-              <Plus size={16} />New Round
-            </Button>
-          }
-        />
-        {rounds.length === 0 ? (
-          <p className="text-sm leading-6 text-[var(--color-text-muted)]">No Viva rounds have been created.</p>
-        ) : (
-          <div className="space-y-2">
-            {rounds.map((round) => (
-              <button
-                key={round.id}
-                type="button"
-                onClick={() => openRound(round)}
-                className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
-                  selectedRoundId === round.id
-                    ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]'
-                    : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'
-                }`}
-              >
-                <span className="block truncate text-sm font-bold text-[var(--color-text)]">{round.name}</span>
-                <span className="mt-1 flex flex-wrap gap-1">
-                  <Badge variant={round.frozenAt ? 'warning' : 'success'}>
-                    {round.frozenAt ? 'Started' : 'Unstarted'}
-                  </Badge>
-                  <Badge variant="muted">{round.projectIds.length} teams</Badge>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </DashboardPanel>
-
-      <div className="space-y-6">
       {activeWorkspaceSection === 'setup' && (
       <form onSubmit={saveRound} className="space-y-6" aria-busy={isSaving}>
-        <DashboardPanel>
+        <DashboardPanel className="p-4 sm:p-5">
           <SectionHeader
             title={selectedRound ? `Configure ${selectedRound.name}` : 'New Viva Round'}
             description={
@@ -550,7 +531,7 @@ export default function AdminVivaSection() {
             action={
               selectedRound ? (
                 <span className="flex flex-wrap gap-2">
-                  <Button variant="danger" onClick={() => void deleteRound()} disabled={Boolean(selectedRound.frozenAt) || isSaving}>
+                  <Button variant="danger" onClick={() => setIsDeleteDialogOpen(true)} disabled={Boolean(selectedRound.frozenAt) || isSaving}>
                     <Trash2 size={16} />Delete Round
                   </Button>
                   <Button variant="ghost" onClick={startNewRound} disabled={isSaving}>
@@ -564,24 +545,22 @@ export default function AdminVivaSection() {
           {error && <p role="alert" className="mb-4 rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
           {savedMessage && <p role="status" className="mb-4 rounded-xl bg-[var(--color-success-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-success)]">{savedMessage}</p>}
 
-          <fieldset disabled={isFrozen || isSaving} className="space-y-6 disabled:opacity-65">
-            <div>
+          <fieldset disabled={isFrozen || isSaving} className="grid gap-4 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(7rem,1fr))] disabled:opacity-65">
+            <div className="md:col-span-1">
               <label htmlFor="viva-round-name" className="mb-2 block text-sm font-bold text-[var(--color-text)]">Round name</label>
               <StyledInput id="viva-round-name" value={draft.name} maxLength={120} required placeholder="For example, Fall 2026 Viva" onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              {([
-                ['targetPanelSize', 'Target panel size', 2],
-                ['minimumPanelSize', 'Minimum panel size', 2],
-                ['vivaDurationMinutes', 'Viva minutes', 1],
-              ] as const).map(([field, label, minimum]) => (
-                <div key={field}>
-                  <label htmlFor={`viva-${field}`} className="mb-2 block text-sm font-bold text-[var(--color-text)]">{label}</label>
-                  <StyledInput id={`viva-${field}`} type="number" min={minimum} step={1} required value={draft[field]} onChange={(event) => setDraft((current) => ({ ...current, [field]: Number(event.target.value) }))} />
-                </div>
-              ))}
-            </div>
+            {([
+              ['targetPanelSize', 'Target panel size', 2],
+              ['minimumPanelSize', 'Minimum panel size', 2],
+              ['vivaDurationMinutes', 'Viva minutes', 1],
+            ] as const).map(([field, label, minimum]) => (
+              <div key={field}>
+                <label htmlFor={`viva-${field}`} className="mb-2 block text-sm font-bold text-[var(--color-text)]">{label}</label>
+                <StyledInput id={`viva-${field}`} type="number" min={minimum} step={1} required value={draft[field]} onChange={(event) => setDraft((current) => ({ ...current, [field]: Number(event.target.value) }))} />
+              </div>
+            ))}
           </fieldset>
         </DashboardPanel>
 
@@ -673,8 +652,28 @@ export default function AdminVivaSection() {
           )))}
         />
       )}
-      </div>
-      </div>
+
+      <Dialog
+        open={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        closeDisabled={isSaving}
+        title="Delete Viva round?"
+        description={selectedRound ? `Delete “${selectedRound.name}” permanently.` : undefined}
+        size="sm"
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isSaving}>Keep Round</Button>
+            <Button variant="danger" onClick={() => void deleteRound()} disabled={isSaving}>
+              {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+              {isSaving ? 'Deleting...' : 'Delete Round'}
+            </Button>
+          </>
+        )}
+      >
+        <p className="rounded-xl border border-[var(--color-danger)]/25 bg-[var(--color-danger-soft)] p-4 text-sm leading-6 text-[var(--color-text)]">
+          This removes the round, its panels, scheduled sessions, assessment data, and Viva audit records. This cannot be undone.
+        </p>
+      </Dialog>
     </div>
   );
 }

@@ -14,6 +14,9 @@ test('Viva scheduling is automatic-only', async () => {
 
   assert.match(component, /action: 'preview-automatic-schedule'/);
   assert.doesNotMatch(component, /schedule-session|reschedule-session|Manual Team Scheduling/);
+  assert.match(component, /type="date"/);
+  assert.match(component, /type="time"/);
+  assert.doesNotMatch(component, /datetime-local/);
 });
 
 test('parses UTC Viva schedule input and rejects ambiguous timestamps', () => {

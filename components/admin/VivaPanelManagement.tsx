@@ -1,17 +1,21 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Loader2, Shuffle, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Loader2, Shuffle, Trash2 } from 'lucide-react';
 
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import type { VivaExaminerOption, VivaRoundDto } from '../../lib/vivaRoundAdmin';
-import { Badge, Button, DashboardPanel, SectionHeader, Select, StyledInput } from '../ui';
+import { Badge, Button, DashboardPanel, Dialog, SectionHeader, Select, StyledInput } from '../ui';
 
 type VivaPanelDraft = {
   id: string;
   examinerIds: string[];
   panelAdminId: string;
 };
+
+type PendingPanelAction =
+  | { type: 'move'; panelId: string; examinerId: string }
+  | { type: 'swap'; panelId: string; examinerId: string };
 
 type VivaPanelManagementProps = {
   round: VivaRoundDto;
@@ -122,6 +126,9 @@ export default function VivaPanelManagement({
   const [search, setSearch] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(() => round.panelRevision === 0);
+  const [pendingAction, setPendingAction] = useState<PendingPanelAction | null>(null);
+  const [actionTargetId, setActionTargetId] = useState('');
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
   const isFrozen = Boolean(round.frozenAt || round.confirmedAt);
@@ -140,14 +147,51 @@ export default function VivaPanelManagement({
     () => new Set(draftPanels.flatMap((panel) => panel.examinerIds)),
     [draftPanels]
   );
+  const allUnassignedExaminers = useMemo(() => (
+    examiners.filter((examiner) => (
+      selectedExaminerIds.has(examiner.id) && !assignedExaminerIds.has(examiner.id)
+    ))
+  ), [assignedExaminerIds, examiners, selectedExaminerIds]);
   const unassignedExaminers = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase();
-    return examiners.filter((examiner) => {
-      if (!selectedExaminerIds.has(examiner.id) || assignedExaminerIds.has(examiner.id)) return false;
+    return allUnassignedExaminers.filter((examiner) => {
       return !normalizedSearch
         || `${examiner.name} ${examiner.rollNo}`.toLocaleLowerCase().includes(normalizedSearch);
     });
-  }, [assignedExaminerIds, examiners, search, selectedExaminerIds]);
+  }, [allUnassignedExaminers, search]);
+  const panelNumberById = useMemo(
+    () => new Map(panelChoices.map(({ panel, number }) => [panel.id, number])),
+    [panelChoices]
+  );
+  const pendingExaminer = pendingAction ? examinerById.get(pendingAction.examinerId) : null;
+  const pendingPanelNumber = pendingAction ? panelNumberById.get(pendingAction.panelId) : null;
+  const actionCandidates = useMemo(() => {
+    if (!pendingAction) return [];
+    if (pendingAction.type === 'move') {
+      return panelChoices
+        .filter(({ panel }) => panel.id !== pendingAction.panelId && panel.examinerIds.length < round.targetPanelSize)
+        .map(({ panel, number }) => ({ id: panel.id, label: `Panel ${number}` }));
+    }
+
+    return panelChoices.flatMap(({ panel, number }) => (
+      panel.id === pendingAction.panelId
+        ? []
+        : panel.examinerIds
+          .filter((examinerId) => panel.panelAdminId !== examinerId)
+          .map((examinerId) => ({
+            id: examinerId,
+            label: `Panel ${number}: ${examinerById.get(examinerId)?.name || 'Unavailable teacher'}`,
+          }))
+    ));
+  }, [examinerById, panelChoices, pendingAction, round.targetPanelSize]);
+  const panelsAreSaved = !hasUnsavedChanges && round.panelRevision > 0;
+  const hasUnassignedTeachers = allUnassignedExaminers.length > 0;
+
+  const markDraftChanged = () => {
+    setError('');
+    setSavedMessage('');
+    setHasUnsavedChanges(true);
+  };
 
   const addExaminer = (panelId: string, examinerId: string) => {
     if (!examinerId) return;
@@ -160,8 +204,7 @@ export default function VivaPanelManagement({
         panelAdminId: panel.panelAdminId || examinerId,
       };
     }));
-    setError('');
-    setSavedMessage('');
+    markDraftChanged();
   };
 
   const removeExaminer = (panelId: string, examinerId: string) => {
@@ -175,8 +218,7 @@ export default function VivaPanelManagement({
 
       return { ...panel, examinerIds: panel.examinerIds.filter((id) => id !== examinerId) };
     }));
-    setError('');
-    setSavedMessage('');
+    markDraftChanged();
   };
 
   const moveExaminer = (sourcePanelId: string, examinerId: string, targetPanelId: string) => {
@@ -199,8 +241,7 @@ export default function VivaPanelManagement({
       }
       return panel;
     }));
-    setError('');
-    setSavedMessage('');
+    markDraftChanged();
   };
 
   const swapExaminer = (sourcePanelId: string, examinerId: string, replacementExaminerId: string) => {
@@ -231,14 +272,39 @@ export default function VivaPanelManagement({
       }
       return panel;
     }));
-    setError('');
-    setSavedMessage('');
+    markDraftChanged();
+  };
+
+  const setPanelAdmin = (panelId: string, panelAdminId: string) => {
+    setDraftPanels((current) => current.map((panel) => (
+      panel.id === panelId ? { ...panel, panelAdminId } : panel
+    )));
+    markDraftChanged();
   };
 
   const discardPanel = (panelId: string) => {
     setDraftPanels((current) => current.filter((panel) => panel.id !== panelId));
-    setError('');
-    setSavedMessage('');
+    markDraftChanged();
+  };
+
+  const openPanelAction = (action: PendingPanelAction) => {
+    setPendingAction(action);
+    setActionTargetId('');
+  };
+
+  const closePanelAction = () => {
+    setPendingAction(null);
+    setActionTargetId('');
+  };
+
+  const confirmPanelAction = () => {
+    if (!pendingAction || !actionTargetId) return;
+    if (pendingAction.type === 'move') {
+      moveExaminer(pendingAction.panelId, pendingAction.examinerId, actionTargetId);
+    } else {
+      swapExaminer(pendingAction.panelId, pendingAction.examinerId, actionTargetId);
+    }
+    closePanelAction();
   };
 
   const savePanels = async () => {
@@ -267,6 +333,7 @@ export default function VivaPanelManagement({
       if (!saved) throw new Error('Viva panel response was invalid.');
 
       setDraftPanels(initialDrafts(saved.panels));
+      setHasUnsavedChanges(false);
       onSaved(saved.panels, saved.panelRevision);
       setSavedMessage('Viva panels saved.');
     } catch (requestError) {
@@ -304,6 +371,7 @@ export default function VivaPanelManagement({
         ...panel,
       })));
       setNextDraftId((current) => current + allocation.panels.length);
+      setHasUnsavedChanges(true);
       setSavedMessage('Random panel draft generated. Review it, then save when ready.');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to generate Viva panels.');
@@ -334,63 +402,75 @@ export default function VivaPanelManagement({
       {error && <p role="alert" className="mb-4 rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
       {savedMessage && <p role="status" className="mb-4 rounded-xl bg-[var(--color-success-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-success)]">{savedMessage}</p>}
 
-      <div className="grid gap-5 2xl:grid-cols-[15rem_minmax(0,1fr)]">
-        <section className="h-fit 2xl:sticky 2xl:top-4" aria-labelledby="viva-unassigned-teachers">
-          <h3 id="viva-unassigned-teachers" className="text-sm font-bold text-[var(--color-text)]">Unassigned Teachers</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">Search the teachers selected for this round, then add them to a panel.</p>
-          <StyledInput
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search teachers"
-            className="mt-4"
-            disabled={controlsDisabled}
-          />
-          <div className="portal-scrollbar mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-            {unassignedExaminers.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-[var(--color-border)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">No matching unassigned teachers.</p>
-            ) : unassignedExaminers.map((examiner) => (
-              <div key={examiner.id} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                <p className="font-bold text-[var(--color-text)]">{examiner.name}</p>
-                {examiner.rollNo && <p className="mt-1 text-xs text-[var(--color-text-muted)]">{examiner.rollNo}</p>}
-                <Select
-                  value=""
-                  aria-label={`Add ${examiner.name} to a panel`}
-                  className="mt-3"
-                  disabled={controlsDisabled || draftPanels.length === 0}
-                  onChange={(event) => addExaminer(event.target.value, examiner.id)}
-                >
-                  <option value="">Add to panel...</option>
-                  {panelChoices.filter(({ panel }) => panel.examinerIds.length < round.targetPanelSize).map(({ panel, number }) => (
-                    <option key={panel.id} value={panel.id}>Panel {number}</option>
-                  ))}
-                </Select>
-              </div>
-            ))}
-          </div>
-        </section>
+      <div className={`grid gap-5 ${hasUnassignedTeachers ? '2xl:grid-cols-[15rem_minmax(0,1fr)]' : ''}`}>
+        {hasUnassignedTeachers && (
+          <section className="h-fit 2xl:sticky 2xl:top-4" aria-labelledby="viva-unassigned-teachers">
+            <h3 id="viva-unassigned-teachers" className="text-sm font-bold text-[var(--color-text)]">Unassigned Teachers</h3>
+            <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">Search the teachers selected for this round, then add them to a panel.</p>
+            <StyledInput
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search teachers"
+              className="mt-4"
+              disabled={controlsDisabled}
+            />
+            <div className="portal-scrollbar mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+              {unassignedExaminers.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-[var(--color-border)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">No matching unassigned teachers.</p>
+              ) : unassignedExaminers.map((examiner) => (
+                <div key={examiner.id} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                  <p className="font-bold text-[var(--color-text)]">{examiner.name}</p>
+                  {examiner.rollNo && <p className="mt-1 text-xs text-[var(--color-text-muted)]">{examiner.rollNo}</p>}
+                  <Select
+                    value=""
+                    aria-label={`Add ${examiner.name} to a panel`}
+                    className="mt-3"
+                    disabled={controlsDisabled || draftPanels.length === 0}
+                    onChange={(event) => addExaminer(event.target.value, examiner.id)}
+                  >
+                    <option value="">Add to panel...</option>
+                    {panelChoices.filter(({ panel }) => panel.examinerIds.length < round.targetPanelSize).map(({ panel, number }) => (
+                      <option key={panel.id} value={panel.id}>Panel {number}</option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section aria-labelledby="viva-panel-cards">
           <h3 id="viva-panel-cards" className="sr-only">Viva panels</h3>
           {draftPanels.length === 0 ? (
             <p className="rounded-xl border border-dashed border-[var(--color-border)] p-5 text-sm leading-6 text-[var(--color-text-muted)]">Generate a panel draft to begin.</p>
           ) : (
-            <div className="portal-scrollbar grid gap-4 2xl:max-h-[calc(100vh-19rem)] 2xl:grid-cols-3 2xl:overflow-y-auto 2xl:pr-2">
+            <div className={`portal-scrollbar grid gap-4 lg:grid-cols-2 2xl:grid-cols-3 ${hasUnassignedTeachers ? '2xl:max-h-[calc(100vh-19rem)] 2xl:overflow-y-auto 2xl:pr-2' : ''}`}>
               {draftPanels.map((panel, index) => {
                 const isReady = panel.examinerIds.length >= round.minimumPanelSize;
                 const isFull = panel.examinerIds.length === round.targetPanelSize;
+                const moveTargets = panelChoices.filter(({ panel: candidate }) => (
+                  candidate.id !== panel.id && candidate.examinerIds.length < round.targetPanelSize
+                ));
+                const swapTargets = panelChoices.flatMap(({ panel: candidate }) => (
+                  candidate.id === panel.id
+                    ? []
+                    : candidate.examinerIds.filter((candidateId) => candidate.panelAdminId !== candidateId)
+                ));
                 return (
                   <article key={panel.id} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3.5">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 className="font-bold text-[var(--color-text)]">Panel {index + 1}</h4>
-                        <div className="mt-2 flex flex-wrap gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-bold text-[var(--color-text)]">Panel {index + 1}</h4>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
                           <Badge variant={isReady ? 'success' : 'warning'}>{isReady ? 'Ready to schedule' : `Needs ${round.minimumPanelSize - panel.examinerIds.length} more`}</Badge>
-                          <Badge variant={isFull ? 'accent' : 'muted'}>{panel.examinerIds.length}/{round.targetPanelSize} teachers</Badge>
+                          <Badge variant={isFull ? 'accent' : 'muted'}>{panel.examinerIds.length}/{round.targetPanelSize}</Badge>
                         </div>
                       </div>
-                      <Button variant="ghost" className="min-h-9 px-3" onClick={() => discardPanel(panel.id)} disabled={controlsDisabled} aria-label={`Discard panel ${index + 1}`}>
-                        <Trash2 size={16} />Discard
+                      <Button variant="ghost" className="min-h-9 w-9 shrink-0 px-0" onClick={() => discardPanel(panel.id)} disabled={controlsDisabled} aria-label={`Discard panel ${index + 1}`} title={`Discard panel ${index + 1}`}>
+                        <Trash2 size={16} />
                       </Button>
                     </div>
 
@@ -400,7 +480,7 @@ export default function VivaPanelManagement({
                         value={panel.panelAdminId}
                         className="mt-2"
                         disabled={controlsDisabled || panel.examinerIds.length === 0}
-                        onChange={(event) => setDraftPanels((current) => current.map((candidate) => candidate.id === panel.id ? { ...candidate, panelAdminId: event.target.value } : candidate))}
+                        onChange={(event) => setPanelAdmin(panel.id, event.target.value)}
                       >
                         {panel.examinerIds.length === 0 ? <option value="">Add a teacher first</option> : null}
                         {panel.examinerIds.map((examinerId) => {
@@ -426,39 +506,37 @@ export default function VivaPanelManagement({
                               </div>
                               {isPanelAdmin && <Badge variant="accent">Panel admin</Badge>}
                             </div>
-                            <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                              <Select
-                                value=""
+                            <div className="mt-3 flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                className="min-h-9 w-9 px-0"
+                                onClick={() => openPanelAction({ type: 'move', panelId: panel.id, examinerId })}
+                                disabled={controlsDisabled || isPanelAdmin || moveTargets.length === 0}
                                 aria-label={`Move ${name} to another panel`}
-                                disabled={controlsDisabled || isPanelAdmin || draftPanels.length < 2}
-                                title={isPanelAdmin ? 'Choose a replacement panel admin before moving this teacher.' : undefined}
-                                onChange={(event) => moveExaminer(panel.id, examinerId, event.target.value)}
+                                title={isPanelAdmin ? 'Choose a replacement panel admin before moving this teacher.' : moveTargets.length === 0 ? 'No panel has room for this teacher.' : 'Move to another panel'}
                               >
-                                <option value="">Move to panel...</option>
-                                {panelChoices.filter(({ panel: candidate }) => candidate.id !== panel.id && candidate.examinerIds.length < round.targetPanelSize).map(({ panel: candidate, number }) => (
-                                  <option key={candidate.id} value={candidate.id}>Panel {number}</option>
-                                ))}
-                              </Select>
-                              <Select
-                                value=""
+                                <ArrowRight size={16} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                className="min-h-9 w-9 px-0"
+                                onClick={() => openPanelAction({ type: 'swap', panelId: panel.id, examinerId })}
+                                disabled={controlsDisabled || isPanelAdmin || swapTargets.length === 0}
                                 aria-label={`Swap ${name} with another teacher`}
-                                disabled={controlsDisabled || isPanelAdmin || draftPanels.length < 2}
-                                title={isPanelAdmin ? 'Choose a replacement panel admin before swapping this teacher.' : undefined}
-                                onChange={(event) => swapExaminer(panel.id, examinerId, event.target.value)}
+                                title={isPanelAdmin ? 'Choose a replacement panel admin before swapping this teacher.' : swapTargets.length === 0 ? 'No teacher is available to swap.' : 'Swap with another teacher'}
                               >
-                                <option value="">Swap with...</option>
-                                {panelChoices.flatMap(({ panel: candidate, number }) => (
-                                  candidate.id === panel.id
-                                    ? []
-                                    : candidate.examinerIds
-                                      .filter((candidateId) => candidate.panelAdminId !== candidateId)
-                                      .map((candidateId) => {
-                                        const candidateExaminer = examinerById.get(candidateId);
-                                        return <option key={candidateId} value={candidateId}>Panel {number}: {candidateExaminer?.name || 'Unavailable teacher'}</option>;
-                                      })
-                                ))}
-                              </Select>
-                              <Button variant="ghost" className="min-h-9 px-3" onClick={() => removeExaminer(panel.id, examinerId)} disabled={controlsDisabled || isPanelAdmin} title={isPanelAdmin ? 'Choose a replacement panel admin before removing this teacher.' : undefined}>Remove</Button>
+                                <ArrowLeftRight size={16} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                className="min-h-9 w-9 px-0"
+                                onClick={() => removeExaminer(panel.id, examinerId)}
+                                disabled={controlsDisabled || isPanelAdmin}
+                                aria-label={`Remove ${name} from panel ${index + 1}`}
+                                title={isPanelAdmin ? 'Choose a replacement panel admin before removing this teacher.' : 'Remove from panel'}
+                              >
+                                <Trash2 size={16} />
+                              </Button>
                             </div>
                           </div>
                         );
@@ -475,9 +553,38 @@ export default function VivaPanelManagement({
       {!isFrozen && (
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Button variant="outline" onClick={() => void onReload()} disabled={controlsDisabled}>Reload Panels</Button>
-          <Button onClick={() => void savePanels()} disabled={controlsDisabled}>{isSaving ? <Loader2 className="animate-spin" size={16} /> : null}{isSaving ? 'Saving...' : 'Save Panels'}</Button>
+          <Button variant={panelsAreSaved ? 'success' : 'danger'} onClick={() => void savePanels()} disabled={controlsDisabled || panelsAreSaved}>
+            {isSaving ? <Loader2 className="animate-spin" size={16} /> : null}
+            {isSaving ? 'Saving...' : panelsAreSaved ? 'Panels Saved' : 'Save Panels'}
+          </Button>
         </div>
       )}
+
+      <Dialog
+        open={Boolean(pendingAction)}
+        onClose={closePanelAction}
+        title={pendingAction?.type === 'swap' ? 'Swap teacher' : 'Move teacher'}
+        description={pendingExaminer && pendingPanelNumber ? `${pendingExaminer.name} is currently in Panel ${pendingPanelNumber}.` : undefined}
+        size="sm"
+        footer={(
+          <>
+            <Button variant="outline" onClick={closePanelAction}>Cancel</Button>
+            <Button onClick={confirmPanelAction} disabled={!actionTargetId}>
+              {pendingAction?.type === 'swap' ? 'Swap Teacher' : 'Move Teacher'}
+            </Button>
+          </>
+        )}
+      >
+        <label className="block text-sm font-bold text-[var(--color-text)]">
+          {pendingAction?.type === 'swap' ? 'Swap with' : 'Move to'}
+          <Select value={actionTargetId} className="mt-2" onChange={(event) => setActionTargetId(event.target.value)}>
+            <option value="">Choose an option...</option>
+            {actionCandidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>{candidate.label}</option>
+            ))}
+          </Select>
+        </label>
+      </Dialog>
     </DashboardPanel>
   );
 }
