@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'You are already in this team.' }, { status: 400 });
         }
 
-        // 3. Program & Batch Matching & Fetching Teammate State
+        // 3. Program matching and teammate lookup.
         let firstMember = null;
         if (targetProject.members.length > 0) {
           firstMember = await User.findById(targetProject.members[0]).session(session);
@@ -89,12 +89,6 @@ export async function POST(req: NextRequest) {
                 error: `Program Mismatch! You are in ${student.program}, but this team belongs to ${firstMember.program} students.`
               }, { status: 403 });
             }
-            if (firstMember.batch !== student.batch) {
-              return NextResponse.json({
-                error: `Batch Mismatch! You are in ${student.batch || 'an unknown batch'}, but this team belongs to ${firstMember.batch || 'another batch'} students.`
-              }, { status: 403 });
-            }
-
           }
         }
 
