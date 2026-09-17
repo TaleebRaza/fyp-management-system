@@ -135,6 +135,12 @@ function readSessions(value: unknown): VivaSessionWorkspaceDto[] | null {
   return sessions;
 }
 
+function orderSessions(sessions: VivaSessionWorkspaceDto[]): VivaSessionWorkspaceDto[] {
+  return [...sessions].sort(
+    (left, right) => Number(left.phase === 'completed') - Number(right.phase === 'completed'),
+  );
+}
+
 function readError(value: unknown, fallback: string) {
   return isRecord(value) && typeof value.error === 'string' && value.error.trim()
     ? value.error
@@ -168,7 +174,7 @@ export default function VivaSessionWorkspace() {
 
       const nextSessions = readSessions(body);
       if (!nextSessions) throw new Error('Viva session response was invalid.');
-      setSessions(nextSessions);
+      setSessions(orderSessions(nextSessions));
       setGradeDrafts(Object.fromEntries(nextSessions.map((session) => [session.id, session.result?.grade || ''])));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load Viva sessions.');
@@ -258,7 +264,13 @@ export default function VivaSessionWorkspace() {
       const body: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(body, 'Unable to complete the Viva session.'));
       if (!isRecord(body) || body.completed !== true) throw new Error('Viva completion response was invalid.');
-      await loadSessions();
+      const completedSession = readSession(body.session);
+      if (!completedSession || completedSession.phase !== 'completed') {
+        throw new Error('Viva completion response was invalid.');
+      }
+      setSessions((current) => orderSessions(current.map((currentSession) => (
+        currentSession.id === completedSession.id ? completedSession : currentSession
+      ))));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to complete the Viva session.');
       await loadSessions();

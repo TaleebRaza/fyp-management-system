@@ -12,7 +12,7 @@ const [
   { default: VivaPanel },
   { default: VivaSession },
   { default: VivaAuditEvent },
-  { applyAutomaticVivaSchedule, previewAutomaticVivaSchedule, scheduleVivaSession },
+  { applyAutomaticVivaSchedule, parseVivaAutomaticScheduleInput, previewAutomaticVivaSchedule, scheduleVivaSession },
 ] = await Promise.all([
   importTypeScriptModuleWithDependencies('models/User.ts'),
   importTypeScriptModuleWithDependencies('models/Project.ts'),
@@ -247,17 +247,17 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
     assert.equal(limitedPreview.draft.unplaced.length, 5);
     assert.ok(limitedPreview.draft.unplaced.some((entry) => entry.projectId === String(existing._id)));
 
-    const overlappingWindowPreview = await previewAutomaticVivaSchedule({
+    const overlappingWindowPreview = parseVivaAutomaticScheduleInput({
       roundId: String(round._id),
       availability: [
         {
-          startsAt: new Date('2026-11-10T09:00:00.000Z'),
-          endsAt: new Date('2026-11-10T10:00:00.000Z'),
+          startsAt: '2026-11-10T09:00:00.000Z',
+          endsAt: '2026-11-10T10:00:00.000Z',
           locationLabel: 'Lab 3',
         },
         {
-          startsAt: new Date('2026-11-10T09:15:00.000Z'),
-          endsAt: new Date('2026-11-10T10:15:00.000Z'),
+          startsAt: '2026-11-10T09:15:00.000Z',
+          endsAt: '2026-11-10T10:15:00.000Z',
           locationLabel: 'Lab 4',
         },
       ],

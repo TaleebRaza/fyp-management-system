@@ -1,786 +1,2055 @@
-# Viva implementation plan
-
-## Objective
-
-Build the Viva feature in small, testable milestones using the least code and infrastructure that reliably satisfy the current requirements.
-
-**Document status:** Active implementation tracker.
-
-**Current design revision:** Single panel-admin dashboard and grade-based evaluation. This revision supersedes the earlier per-examiner factor-scoring design.
-
-## Working rules
-
-Every milestone follows this sequence:
-
-1. **Research:** Read the actual implementation, callers, tests, and relevant configuration. Consult current official documentation where external behavior needs verification.
-2. **Choose the simplest approach:** Reuse repository code, then native platform features, then installed dependencies. Introduce abstractions only for demonstrated duplication or a concrete correctness boundary.
-3. **Implement:** Make a focused change that completes the milestone.
-4. **Verify:** Test the owned behavior, review the diff, and remove unnecessary code introduced by the change.
-5. **Record progress:** Document actual results, remaining issues, and a suggested commit message.
-
-Keep research proportional to the milestone. Record useful findings and decisions, not lengthy research diaries.
-
-**Minimal means fewer moving parts, not compressed code.** Preserve validation, authorization, accessibility, error handling, concurrency protection, and explicitly requested features.
-
-Do not introduce speculative configuration, generic workflow engines, service/repository wrappers without a purpose, global state libraries, background infrastructure, or new dependencies when existing tools suffice. Optimize measured bottlenecks rather than hypothetical ones.
-
-## Agreed behavior
-
-- Each Viva session examines one project team. All team members receive the same final result.
-- Admin creates named rounds and selects participating teams and active supervisors.
-- Teachers cannot examine their own supervised teams.
-- Admin sets target/minimum panel sizes and session timing.
-- Support manual panels, random teacher allocation, and panel-member adjustments.
-- Random allocation may produce a smaller final panel. Panels below the minimum remain unusable until corrected.
-- Every generated panel has exactly one **panel admin**.
-- When panels are generated randomly, the panel admin is also selected randomly from that panel's eligible members.
-- The system administrator can change a panel's panel admin when required, as long as the replacement is an eligible member of that same panel.
-- There is only **one Viva grading dashboard per panel/session**, and it is used on the panel admin's device.
-- Other panel members do not receive separate Viva dashboards and must not be allowed to log in while that panel's Viva session is active.
-- The panel admin controls the active Viva session and submits the project's grade from the single dashboard.
-- Grading uses a fixed grade list from **A+ through F**. No grading factors, per-factor marks, per-examiner sheets, or examiner averages are shown or collected.
-- The dashboard displays each allowed grade together with its percentage representation, for example `A+ (100%)`.
-- The grade-to-percentage mapping must exist in one canonical domain constant, not duplicated across API and UI code.
-- The exact full grade-to-percentage table must be confirmed before the grading UI is finalized; `A+ (100%)` is currently the confirmed example.
-- A saved result stores both the selected grade and its canonical percentage so historical results remain stable if display rules change later.
-- Students participating in the active Viva remain restricted according to the session access rules.
-- When the session completes or is cancelled, temporary login/access restrictions are released automatically from authoritative session state.
-- Admin publishes completed results. Students see the final grade and percentage for their team.
-- Serious interruptions use cancellation and a fresh attempt.
-- Automatic team scheduling comes last.
-
-## Explicitly superseded behavior
-
-The following requirements from the previous plan are no longer part of the target design:
-
-- Per-examiner grading dashboards.
-- Examiner readiness from every panel member.
-- Separate examiner score sheets.
-- Configurable grading factors.
-- Integer factor marks from 1–10.
-- Equal weighting across factors or examiners.
-- Factor averages or examiner averages.
-- Extra grading time used to fill skipped factors.
-- Deadline-generated zero marks for missing factors.
-- Hiding other examiners' sheets, because separate examiner sheets no longer exist.
-
-Do not continue implementing these superseded behaviors unless the requirements are changed again explicitly.
-
-## Technical boundaries and defaults
-
-- Keep existing proposal/thesis ratings unchanged.
-- Use current Next.js, Mongoose, authentication, dashboard components, and npm tooling.
-- Store UTC timestamps; display schedules in Asia/Karachi.
-- Require positive session durations and a minimum panel size of at least two, no greater than the target.
-- Freeze round timing and panel membership when its first session starts, except where an explicitly supported pre-start edit is allowed.
-- Allow one non-cancelled attempt per team per round.
-- Preserve team, panel, panel-admin, project, selected-grade, percentage, and relevant assessment snapshots for historical results.
-- Published assessments are immutable in this version.
-- Exclude external examiners, video calls, question banks, pause/resume, deadline extensions, factor scoring, per-examiner marks, and mark-correction workflows.
-- Server authorization is authoritative. UI hiding alone never grants or removes permission.
-- Login blocking for non-admin panel members must be derived from active session membership/state rather than a permanent account flag.
-
-# Safe reconciliation of work already completed
-
-Milestones 1–3 were implemented against the previous factor/per-examiner design. Do **not** delete the Viva feature wholesale. Reconcile it in place so reusable infrastructure survives.
-
-## Reconciliation goal
-
-Keep all work that is still useful for the new design, remove only behavior that directly conflicts with the new requirements, and avoid destructive schema/data changes until replacement fields and migration behavior are ready.
-
-## Preserve these components unless repository inspection proves they are unusable
-
-- Viva round, panel, and session models.
-- Session lifecycle/state handling that is independent of factor scoring.
-- UTC timestamp handling and phase calculation that still applies to session start/end.
-- Cancellation and replacement-attempt concepts.
-- Historical team/project/member snapshots.
-- Durable Viva audit history.
-- Transaction helpers and concurrency protections.
-- Existing indexes that still support real reads or uniqueness rules.
-- Storage-reference protections for Viva snapshots.
-- Admin Viva navigation and page shell.
-- Admin round create/reopen flow.
-- Team and supervisor selection logic.
-- Panel-size and duration validation.
-- Existing authorization/error conventions.
-- Tests for reusable lifecycle, persistence, transaction, snapshot, authorization, and frozen-round behavior.
+# Viva Workflow Optimization Plan
 
-## Replace or remove only the superseded parts
-
-### Domain layer
-
-- Remove factor-specific validation from the active Viva configuration contract.
-- Remove factor-score mutation rules from the active grading flow.
-- Remove equal-weight factor/examiner averaging from the authoritative result calculation.
-- Keep generic lifecycle helpers if still valid.
-- Add a canonical grade scale abstraction containing allowed grade labels and percentages.
-- Store/return selected grade and percentage as the authoritative result.
+> **Repository:** `TaleebRaza/fyp-management-system`  
+> **Primary goal:** optimize the existing Viva workflow so the current deployment/resources can reliably handle approximately **50 simultaneous active Viva sessions** with lower database load, lower request latency, lower compute/memory use, and better concurrency.  
+> **Execution target:** Codex (or another coding agent) should follow this document as an implementation contract, not as a loose suggestion list.
+>
+> **Audit baseline observed before this plan:** main was previously observed at commit `e7c2f6b` (`Allow mixed-batch student teams`). **Before changing code, verify the actual current HEAD.** If HEAD differs, record it in the implementation notes and re-check every assumption in this plan against the current code before editing.
 
-### Persistence layer
+---
 
-- Do not delete the existing session/round/panel collections simply because their old fields are no longer used.
-- First add the new fields required by the revised design, such as panel-admin identity and final grade snapshot.
-- If old factor/examiner-sheet fields already exist, make them legacy/unused before considering removal.
-- Prefer a compatibility migration or optional legacy fields over a destructive migration during development.
-- Remove old fields only after code search proves there are no remaining reads/writes and test data has been handled safely.
-- Preserve audit records and historical snapshots created under previous milestones.
+## 1. Mission
 
-### Admin round configuration
+Optimize the Viva workflow **without increasing infrastructure as the primary solution**.
 
-- Preserve the existing Viva admin area and round CRUD behavior.
-- Remove grading-factor controls from the UI and request payload.
-- Remove server requirements that a round must contain at least one factor.
-- Preserve team selection, supervisor selection, panel sizes, durations, validation, loading/error states, freeze rules, and audit writes.
+The implementation must prioritize:
 
-### Panel management
+1. fewer database operations per logical user action;
+2. bounded database work as the number of active/scheduled Vivas grows;
+3. less transaction contention;
+4. fewer unnecessary writes;
+5. less response payload and serialization work where safely possible;
+6. better behavior with many simultaneous sessions;
+7. preserving all existing authorization, correctness, audit, scheduling, and concurrency guarantees.
 
-- Reuse the existing panel model/assignment direction.
-- Add exactly one panel-admin reference per panel.
-- During random panel generation, select the panel admin randomly from that panel's eligible members.
-- Allow the system admin to replace the panel admin manually before the affected session starts.
-- Validate that the selected panel admin is active, eligible, unique for the panel role, and a current member of that panel.
+The target is not merely “make benchmarks faster.” The target is to make the architecture behave predictably when approximately 50 Viva sessions are active at the same time.
 
-### Grading UI/API
+---
 
-- Do not build or retain separate examiner grading workspaces.
-- Build one session dashboard for the panel admin.
-- The grade control shows only the allowed grade list with percentages.
-- Do not show grading factors, mark inputs, examiner identities for scoring, averages, or weighting controls.
+# 2. Non-negotiable rules for Codex
 
-### Access control
+Codex **must follow these rules throughout the work**.
 
-- Do not permanently deactivate panel-member accounts.
-- Add a temporary login/session restriction derived from an active Viva session.
-- The current panel admin remains allowed to authenticate and use the Viva dashboard.
-- Other members of that same active panel are denied login/access until the session reaches a terminal state.
-- Release the restriction automatically when the session ends or is cancelled.
-- Preserve unrelated supervisor/student/admin behavior.
+## 2.1 Do not solve this by adding resources
 
-## Safe reconciliation sequence
+Do **not** make any of the following the primary optimization:
 
-Perform this sequence before starting the next feature milestone:
+- increasing MongoDB Atlas tier;
+- increasing Vercel/server compute;
+- increasing `maxPoolSize`;
+- adding Redis;
+- adding a queue service;
+- adding a new external cache;
+- adding another server;
+- adding a background worker platform.
 
-1. Create a checkpoint branch/commit containing the current working implementation if it is not already safely committed.
-2. Run the current Viva and repository tests and record the baseline failures before changing anything.
-3. Search all Viva code for factor configuration, examiner sheets, mark averaging, readiness, extra grading, and deadline-zero behavior.
-4. Classify each occurrence as **preserve**, **adapt**, or **remove**. Do not delete a shared helper just because one caller is obsolete.
-5. Add the revised domain contract first: panel admin + canonical grade scale + selected grade/percentage result.
-6. Adapt persistence to accept the revised contract while keeping legacy fields readable/optional during the transition.
-7. Adapt the admin round API/UI to stop creating or requiring factors.
-8. Update tests to the new requirements only after replacement behavior exists.
-9. Remove obsolete factor/examiner code paths only after code search and tests prove they are unreachable.
-10. Run type-check, lint, Viva tests, database integration tests, and build.
-11. Review the diff specifically for accidental deletion of reusable models, audit logic, snapshots, transaction helpers, authorization helpers, or dashboard components.
-12. Commit the reconciliation separately from the next new milestone so it can be reverted independently if necessary.
+The desired result must come primarily from reducing work.
 
-## Prohibited rollback shortcuts
+Infrastructure tuning may be considered only after query/transaction/request amplification is fixed and benchmarks prove a remaining need.
 
-- Do not use `git reset --hard` against uncommitted work unless an intentional backup/checkpoint exists.
-- Do not delete all Viva models and recreate them from scratch.
-- Do not drop Viva collections/databases to simplify the schema transition.
-- Do not remove shared dashboard/auth/database helpers used elsewhere in the application.
-- Do not revert entire Milestone 1–3 commits if they also contain infrastructure still required by the revised feature.
-- Do not rewrite unrelated legacy modules under the label of cleanup.
+## 2.2 Preserve existing behavior unless this plan explicitly changes it
 
-## Reconciliation complete when
+The following are invariants:
 
-- The repository still contains the reusable Viva lifecycle, persistence, audit, history, and admin-round infrastructure.
-- Active configuration no longer requires grading factors.
-- Active grading no longer uses examiner sheets or numeric factor marks.
-- Panels support exactly one panel admin.
-- A canonical grade list can be returned by the server and rendered by the future grading dashboard.
-- Current relevant tests pass or remaining failures are documented as pre-existing/unrelated.
+- only the authorized panel admin may start/manage/grade/finalize a Viva where current behavior requires it;
+- optimistic concurrency through `version` must remain effective;
+- audit events must remain atomic with the state change they describe;
+- cancelled/completed sessions must not become startable again;
+- the project supervisor must not become an examiner for their own project if existing validation forbids it;
+- panel-size validation must remain intact;
+- inactive/invalid participants must continue to be rejected according to existing rules;
+- existing scheduling conflict rules must continue to work;
+- active-session access restrictions must continue to work;
+- a participant must not be able to occupy two active Vivas at once;
+- existing API response semantics should remain compatible unless a coordinated API/UI change is explicitly performed;
+- existing historical snapshots must remain readable;
+- old/legacy Viva records supported by the current code must not be broken casually.
 
-# Revised milestones
+## 2.3 Mixed-batch teams are now valid
 
-## Milestone 1: Revised domain rules and grade scale
+Do **not** reintroduce a same-batch assumption.
 
-**Research first**
+For Viva logic:
 
-Inspect `lib/viva` and its callers/tests from the earlier implementation. Separate reusable session lifecycle logic from superseded factor/examiner scoring logic.
+- treat `Project.members` as authoritative for team membership;
+- do not infer project membership from a single batch;
+- do not reject a project because its student members belong to different batches;
+- add/keep a regression test proving a mixed-batch project can proceed through the relevant Viva workflow.
 
-**What to do and how**
+## 2.4 Do not weaken consistency for speed
 
-Define the revised domain contract:
+Do not remove transactions merely to improve latency if doing so makes session state and audit state diverge.
 
-- panel-admin identity rules;
-- allowed grade values from A+ through F;
-- canonical grade-to-percentage mapping;
-- grade validation;
-- session lifecycle and terminal-state checks;
-- rules controlling when a grade can be selected, changed, and finalized.
+Keep transaction boundaries around operations that require atomicity.
 
-Keep the grade scale in one server-importable module and expose only the serialized values needed by the client.
+The goal is to make transactions **shorter and less contentious**, not to remove correctness.
 
-**Hurdles and complexity to avoid**
+## 2.5 Do not perform broad unrelated refactors
 
-- No numeric factor model hidden behind the grade UI.
-- No duplicate grade tables in frontend and backend.
-- No generic grading-engine abstraction.
-- Do not let arbitrary percentages arrive from the client.
+Do not:
 
-**Complete when**
+- rename large parts of the codebase;
+- change styling/UI unrelated to performance;
+- upgrade framework/dependencies as part of this work;
+- reformat unrelated files;
+- rewrite the scheduling algorithm unless a measured Viva concurrency problem requires it;
+- combine unrelated cleanup with optimization commits.
 
-The new grading rules work without database, HTTP, or UI dependencies, and old factor scoring is no longer authoritative.
+Keep diffs reviewable.
 
-**How to test**
+## 2.6 Do not claim an optimization without evidence
 
-Test every allowed grade, invalid labels, percentage derivation, immutable finalized results, exact phase boundaries, cancellation, and terminal states.
+For each phase, record:
 
-## Milestone 2: Persistence reconciliation and assessment history
+- tests run;
+- before/after query counts where applicable;
+- before/after timing where applicable;
+- behavior under concurrent execution;
+- any trade-offs introduced.
 
-**Research first**
+If a proposed change does not improve a measured hot path or materially simplify resource usage, do not keep it merely because it “looks cleaner.”
 
-Inspect existing VivaRound, VivaPanel, VivaSession, embedded examiner-sheet structures, indexes, transactions, and audit records created by the earlier milestones.
+---
 
-**What to do and how**
+# 3. Current hot-path observations to verify before editing
 
-Adapt persistence rather than replacing it:
+Codex must independently verify these observations against the current HEAD.
 
-- add panel-admin identity to the panel snapshot/model;
-- add selected grade and canonical percentage to the session/result snapshot;
-- retain historical team/project/panel context;
-- keep durable audit events;
-- make superseded factor/examiner-sheet fields optional/legacy if needed during transition;
-- keep concurrency protection around start, grade save/finalize, cancellation, and replacement attempts.
+Relevant files currently include:
 
-**Hurdles and complexity to avoid**
+- `lib/vivaSessionDashboard.ts`
+- `lib/vivaAccessRestriction.ts`
+- `lib/vivaPersistence.ts`
+- `lib/vivaScheduling.ts`
+- `lib/mongodb.ts`
+- `models/VivaSession.ts`
+- `models/VivaPanel.ts`
+- `proxy.ts`
+- `app/api/portal-status/route.ts`
+- `lib/portalPause.ts`
+- Viva API routes/call sites
+- Viva UI call sites
+- `tests/support/viva-workflow-runner.mjs`
+- Viva integration tests under `tests/`
 
-- No destructive collection reset.
-- No second result collection unless an actual query/consistency requirement demands it.
-- No duplicated final grade on unrelated source records as an authoritative copy.
-- Do not remove legacy fields before all active reads/writes are eliminated.
+Verify all call sites with `rg` before changing exported types/functions.
 
-**Complete when**
+## 3.1 Panel dashboard N+1 behavior
 
-New sessions can persist a panel admin and final grade safely while older development records do not break application startup or reads.
+At the audited version, `getVivaPanelSessions()`:
 
-**How to test**
+1. loads panels for an examiner;
+2. loads the sessions;
+3. for each scheduled session, calls `readCurrentContext()`;
+4. `readCurrentContext()` performs:
+   - round read;
+   - panel read;
+   - project read;
+   - participant/user read.
 
-Use a disposable database for schema validation, legacy-document compatibility, uniqueness, transaction rollback, concurrent grade writes, panel-admin changes, snapshots, cancellation, and replacement attempts.
+This makes scheduled agenda loading scale approximately with the number of sessions rather than remain bounded.
 
-## Milestone 3: Admin round configuration reconciliation
+The optimization must make the normal panel-session list require a small, bounded number of queries.
 
-**Research first**
+## 3.2 Active-participant conflict scan
 
-Inspect the existing admin Viva area and `/api/admin/viva` route completed under the previous plan.
+At the audited version, `startVivaSession()` calls logic equivalent to:
 
-**What to do and how**
+- load all other active sessions;
+- load panels used by those sessions;
+- load projects used by those sessions;
+- scan them for participant overlap.
 
-Preserve the existing screen and endpoint structure while removing factor configuration. Admin can:
+That makes the cost of starting one Viva increase as more Vivas become active.
 
-- create/reopen unstarted rounds;
-- select participating teams and active supervisors;
-- configure target/minimum panel sizes;
-- configure session timing required by the revised workflow.
+This must be replaced with constant/bounded conflict detection.
 
-Reject frozen-setting changes on the server.
+## 3.3 User documents are currently used as locks
 
-**Hurdles and complexity to avoid**
+At the audited version, starting a Viva performs `User.updateMany(... $currentDate: { updatedAt: true })` for students/examiners to intentionally create transaction conflicts.
 
-- No factor form left hidden in the client.
-- No server requirement for a non-empty factor array.
-- No replacement form/state framework.
-- Do not weaken existing authorization or freeze checks.
+This:
 
-**Complete when**
+- writes unrelated user records;
+- changes `updatedAt` when user data did not change;
+- creates write contention;
+- wastes write capacity;
+- increases transaction conflict/retry risk.
 
-Admin can save/reopen a valid unstarted round without any factor configuration.
+This mechanism must be removed after a dedicated participant-lock mechanism is proven.
 
-**How to test**
+## 3.4 Portal pause check amplifies requests
 
-Check unauthorized requests, invalid inputs, active selections, persistence, frozen-round rejection, and absence of factor requirements.
+At the audited version, `proxy.ts` fetches `/api/portal-status` with `cache: 'no-store'` for many matched requests, even though pause enforcement only affects a narrower set of requests.
 
-## Milestone 4: Manual panel management and panel-admin assignment
+`getPortalPause()` performs a MongoDB read.
 
-**Research first**
+This creates internal request and database amplification.
 
-Inspect supervisor eligibility, existing list/search components, panel persistence, account status behavior, and the partially prepared panel-management direction from the earlier plan.
+## 3.5 Pool size is not the first problem
 
-**What to do and how**
+At the audited version:
 
-Build searchable panel cards and an unassigned pool. Support manual assignment, removal, and movement of members.
+```ts
+maxPoolSize: 10
+minPoolSize: 1
+```
 
-Every valid panel must have exactly one panel admin. Admin can choose or replace the panel admin from current eligible members before the relevant session starts.
+Do **not** increase `maxPoolSize` before reducing query and transaction amplification.
 
-Validate uniqueness within a round, panel sizes, active teachers, own-supervisor conflicts, panel-admin membership, and frozen state.
+A bigger pool can simply let inefficient code overload MongoDB faster.
 
-**Hurdles and complexity to avoid**
+---
 
-- No new account role for panel admin. It is a per-panel responsibility, not a permanent user role.
-- Do not store both contradictory `isPanelAdmin` flags and a separate authoritative panel-admin reference.
-- No automatic reassignment after the current panel admin is removed unless the operation explicitly selects a replacement.
+# 4. Success criteria
 
-**Complete when**
+The work is complete only when these criteria are satisfied.
 
-Admin can assemble valid panels, assign/change the panel admin, and identify panels that cannot conduct sessions.
+## 4.1 Correctness
 
-**How to test**
+All existing Viva tests pass.
 
-Cover duplicate assignments, inactive teachers, own-supervisor conflicts, panel-admin changes, panel-admin removal, minimum/target sizes, and frozen membership.
+Add tests for the new concurrency architecture.
 
-## Milestone 5: Random allocation, random panel-admin selection, and accessible adjustments
+No authorization or audit regression is allowed.
 
-**Research first**
+## 4.2 Dashboard query behavior
 
-Review the manual assignment operations and existing random-allocation implementation/direction.
+For a panel dashboard containing scheduled sessions, query count must no longer grow as `4N`-style per-session hydration.
 
-**What to do and how**
+Desired steady-state target:
 
-Shuffle selected eligible teachers once and partition them into target-sized panels, retaining the final remainder panel.
+- no sessions: as few queries as practical;
+- scheduled sessions present: approximately **5 bounded reads** for the entire list, not per session:
+  1. actor panels;
+  2. sessions;
+  3. rounds;
+  4. projects;
+  5. users.
 
-For each generated panel, randomly select one eligible member as its panel admin in the same generation operation. Show the generated panels and chosen panel admins for admin review before saving.
+The exact number may differ slightly if the final implementation has a justified reason, but it must remain **O(1) database round trips with respect to the number of sessions displayed**, excluding pagination.
 
-Support accessible member swaps/moves and explicit panel-admin replacement. Save the complete validated change atomically.
+## 4.3 Start-session behavior
 
-**Hurdles and complexity to avoid**
+Starting a Viva must:
 
-- No second assignment implementation specifically for drag-and-drop.
-- No repeated random retry loops to force a preferred output.
-- Do not randomize on render or refresh.
-- Do not silently change panel admin when unrelated members move unless the current panel admin becomes invalid; require explicit resolution before save.
-- No database writes for hover/mouse-move events.
+- not scan all active Viva sessions;
+- not read panels/projects for unrelated active sessions;
+- not update `User.updatedAt` as a locking mechanism;
+- use a bounded number of operations;
+- reject participant collisions atomically;
+- remain safe when two conflicting starts occur simultaneously.
 
-**Complete when**
+## 4.4 Access restriction behavior
 
-Large allocations preserve every teacher exactly once, every valid panel has exactly one eligible panel admin, and admin adjustments remain valid.
+The active-Viva restriction check should become an indexed point lookup against dedicated active-participant state.
 
-**How to test**
+It must still distinguish the panel admin from restricted panel members if current UX allows the panel admin to continue navigating.
 
-Check divisible/remainder counts, insufficient teachers, 500-teacher input, supervisor conflicts, panel-admin distribution, panel-admin replacement, concurrent edits, failed saves, and keyboard/menu equivalence.
+## 4.5 Grade/save/finalize behavior
 
-## Milestone 6: Manual team scheduling
+The successful/happy path should avoid unnecessary pre-reads where an atomic conditional update can safely enforce the same rules.
 
-**Research first**
+Failure paths may perform a fallback read to preserve useful error semantics.
 
-Trace project membership, supervisor ownership, timezone handling, and scheduling queries. Identify the resources that must not overlap.
+## 4.6 50-session concurrency test
 
-**What to do and how**
+A local integration/load-style test must be able to:
 
-Let admin assign a team, panel, time, and optional location label. Reserve the complete session interval.
+- create 50 independent Viva sessions;
+- start them concurrently;
+- save grades concurrently;
+- complete them concurrently;
+- produce no unexpected transaction failures;
+- produce no participant-lock collisions for disjoint participants;
+- produce no Mongo pool exhaustion caused by application query fan-out;
+- leave no stale participant locks after completion.
 
-Centralize validation for panel eligibility, panel-admin availability, own-supervisor conflicts, duplicate attempts, and teacher/student overlaps. Allow rescheduling before start.
+Do not claim “supports 50 concurrent sessions” unless this test passes consistently on the agreed test environment.
 
-**Hurdles and complexity to avoid**
+## 4.7 Conflict-race test
 
-- No calendar framework when a schedule table and date/time inputs suffice.
-- No separate conflict rules in each screen.
-- No scanning every project or session for each validation.
-- Do not confuse scheduled time with actual start time.
-- Do not build automatic scheduling machinery yet.
+When two sessions share a participant and are started concurrently:
 
-**Complete when**
+- exactly one may acquire that participant;
+- the other must fail with the expected conflict result;
+- there must never be two committed active locks for one participant;
+- there must never be two simultaneously active sessions containing that same participant due to a race.
 
-Admin can create a valid schedule and understands why invalid assignments were rejected.
+---
 
-**How to test**
+# 5. Work order
 
-Cover conflicts, adjacent slots, overlaps, duplicate attempts, panel-admin conflicts, rescheduling, and UTC/local-time conversion.
+Do the work in the following order.
 
-## Milestone 7: Single panel-admin session dashboard and start
+Do not jump directly to connection-pool tuning.
 
-**Research first**
+---
 
-Inspect authentication, Viva participant authorization, project-document access, and concurrent session-start handling.
+# Phase 0 — Establish a reproducible baseline
 
-**What to do and how**
+## Goal
 
-Add the participant/session endpoint required by the single dashboard.
+Measure the existing behavior before changing it.
 
-The assigned panel admin can open the session workspace, confirm the team/session context, and start the Viva after server validation. Starting snapshots the required assessment context and records actual start/end timing.
+## Tasks
 
-Other panel members do not receive their own session dashboard.
+### 0.1 Verify repository state
 
-**Hurdles and complexity to avoid**
+Record:
 
-- No all-examiner readiness workflow.
-- No separate presence service or WebSocket infrastructure initially.
-- No frontend-only start validation.
-- Repeated start requests must not restart timers.
-- A read-then-write start check without concurrency protection is insufficient.
+```bash
+git rev-parse HEAD
+git status --short
+```
 
-**Complete when**
+Do not proceed on an unexpectedly dirty working tree without understanding the changes.
 
-Exactly one valid start occurs and the assigned panel admin receives the authoritative session dashboard.
+### 0.2 Inspect call sites
 
-**How to test**
+At minimum run searches equivalent to:
 
-Check non-panel-admin requests, changed panel membership, replaced panel admin, simultaneous starts, stale clients, overlapping active sessions, and repeated start requests.
+```bash
+rg "getVivaPanelSessions|getPanelAdminVivaSessions"
+rg "startVivaSession"
+rg "saveVivaGrade"
+rg "completeVivaSession"
+rg "isVivaSessionAccessRestricted"
+rg "getPortalPause|portal-status|portalPaused"
+rg "startedAt|completedAt|cancelledAt" lib app models tests
+```
 
-## Milestone 8: Panel-member login restriction during active session
+Purpose:
 
-**Research first**
+- identify all terminal paths that may need participant-lock cleanup;
+- identify every API/UI consumer before changing DTOs;
+- identify every portal-pause read/write path before adding caching.
 
-Map authentication entry points, protected routes, existing sessions/tokens, shared authorization, and account-status checks. Identify where a temporary Viva restriction can be enforced without mutating permanent account state.
+### 0.3 Run current tests
 
-**What to do and how**
+Run at least:
 
-While a panel's Viva session is active:
+```bash
+npm run lint
+npm run test:unit
+npm run test:viva:persistence
+npm run test:viva:admin
+npm run test:viva:panels
+npm run test:viva:scheduling
+npm run test:viva:session
+npm run test:viva:access
+npm run test:viva:grading
+npm run test:viva:cancellation
+npm run test:viva:publication
+npm run test:viva:workflow
+npm run test:viva:auto-scheduling
+npm run build
+```
 
-- allow the assigned panel admin to authenticate and access the Viva workspace;
-- deny login/access to other members of that active panel;
-- preserve required system-admin access;
-- preserve unrelated users' normal behavior.
+If the repository provides a narrower documented aggregate command, it may be used in addition, not as an excuse to skip Viva coverage.
 
-Derive the restriction from authoritative active-session state. Release it automatically when the session ends or is cancelled.
+### 0.4 Add baseline instrumentation for tests
 
-Decide and document how existing authenticated sessions for non-admin panel members are handled; direct API requests must obey the same restriction as fresh logins.
+Instrument the test environment only.
 
-**Hurdles and complexity to avoid**
+Use one of:
 
-- Do not set users permanently inactive.
-- Do not rely only on hiding navigation.
-- No scattered copies of lock logic across unrelated components.
-- Do not store a time-expiring boolean that requires cleanup to restore access.
-- Do not claim full device lockdown.
+- Mongoose debug callback;
+- MongoDB command monitoring;
+- another deterministic local query counter.
 
-**Complete when**
+Do not add noisy production logging just to count queries.
 
-Fresh logins, existing sessions, and direct API calls consistently enforce the temporary panel-member restriction and automatically restore access at terminal session state.
+Capture at least:
 
-**How to test**
+- panel-session list with 1 scheduled session;
+- panel-session list with 10 scheduled sessions;
+- panel-session list with 50 scheduled sessions;
+- start with 0 active sessions;
+- start with 10 unrelated active sessions;
+- start with 50 unrelated active sessions.
 
-Use multiple devices/tokens for panel admin, other panel members, unrelated supervisors, students, and system admin. Test active, ended, and cancelled states plus reconnects.
+Record:
 
-## Milestone 9: Grade selection, save, and session completion
+- DB command count;
+- elapsed duration;
+- operation types;
+- unexpected transaction retries if observable.
 
-**Research first**
+The baseline should demonstrate whether query count grows with `N`.
 
-Review existing API hooks, request cancellation/versioning patterns, session transaction helpers, and UI input components.
+## Phase 0 gate
 
-**What to do and how**
+Do not begin structural optimization until:
 
-On the panel-admin dashboard, show the canonical grade choices only, each with its percentage, for example `A+ (100%)`.
+- tests are green or existing failures are documented;
+- baseline query/timing data exists;
+- current HEAD is recorded.
 
-The panel admin selects the project's grade. The server validates the grade label, derives the canonical percentage, and saves the authoritative result with concurrency/version checks.
+---
 
-Provide a clear completion action. On completion:
+# Phase 1 — Remove panel-dashboard N+1 hydration
 
-- freeze the selected grade/result;
-- transition the session to its terminal completed state;
-- release temporary participant restrictions;
-- retain audit/history snapshots.
+## Goal
 
-**Hurdles and complexity to avoid**
+Make `getVivaPanelSessions()` perform bounded bulk reads.
 
-- No grading factors.
-- No numeric mark text fields unless later requirements explicitly add them.
-- Do not trust a client-submitted percentage.
-- No per-examiner state or averaging.
-- No autosave complexity beyond what is actually useful for one grade selection.
-- Do not allow a stale tab to overwrite a completed result.
+## Primary file
 
-**Complete when**
+`lib/vivaSessionDashboard.ts`
 
-The panel admin can select one valid grade, save it safely, complete the session, and no further grading writes are accepted.
+Potential tests:
 
-**How to test**
+- `tests/viva-session-dashboard.integration.test.mjs`
+- `tests/support/viva-workflow-runner.mjs`
+- new focused query-count test if appropriate.
 
-Exercise all grades, invalid/tampered percentage requests, refresh/reconnect, stale versions, multiple tabs, simultaneous completion/save, unauthorized panel members, and post-completion writes.
+## Required design
 
-## Milestone 10: Cancellation and fresh attempts
+### 1.1 Keep start-time snapshots semantically distinct
 
-**Research first**
+**Important:** do not casually populate the existing:
 
-Trace session termination, temporary login restrictions, uniqueness constraints, grade state, and audit persistence.
+- `roundSnapshot`
+- `projectSnapshot`
+- `panelSnapshot`
 
-**What to do and how**
+at scheduling time merely to speed up the dashboard.
 
-Let system admin cancel scheduled or active attempts with a required reason. Preserve the cancelled record, release restrictions, and allow a fresh attempt with a new session state and no inherited grade.
+Those fields currently function as frozen assessment/start-time context for active/completed sessions.
 
-Reject subsequent writes from cancelled workspaces.
+If they are populated early and later treated as authoritative, edits made between scheduling and starting could be hidden.
 
-**Hurdles and complexity to avoid**
+Preferred approach for this phase:
 
-- Do not reset or overwrite the original attempt.
-- No copying a cancelled grade into the replacement.
-- No pause/resume or extension controls.
-- Reuse the existing session-creation path for replacements.
-- Do not clear unrelated sessions' restrictions.
-- Do not silently turn a published result into a cancelled attempt.
+- scheduled sessions use **batched live hydration**;
+- starting a session still revalidates current authoritative round/panel/project/user state;
+- start-time snapshots remain frozen at start.
 
-**Complete when**
+### 1.2 Reuse the first panel query
 
-An interruption can be recovered from without losing history or permitting stale clients to alter the replacement.
+The initial panel query for the actor should fetch enough fields for scheduled-session hydration:
 
-**How to test**
+```text
+_id
+roundId
+examinerIds
+panelAdminId
+```
 
-Cancel scheduled and active sessions, retry cancellation, race cancellation against grade saving/completion, reconnect stale clients, verify restriction release, and start a replacement.
+Do not query those same panels again per scheduled session.
 
-## Milestone 11: Review and publication
+### 1.3 Batch rounds and projects
 
-**Research first**
+After loading sessions:
 
-Inspect student result displays, admin selection controls, serializers, and historical student/project handling.
+- gather unique `roundId`s for scheduled sessions;
+- gather unique `projectId`s for scheduled sessions;
+- bulk read rounds in one query;
+- bulk read projects in one query;
+- run these two independent reads concurrently.
 
-**What to do and how**
+Use narrow `.select(...)` projections.
 
-Show the system admin completed assessment context, selected grade, canonical percentage, panel, and panel admin. Support individual and bulk publication of completed, non-cancelled assessments.
+### 1.4 Batch users
 
-Return the same published grade and percentage to every snapshotted team member. Keep unpublished results private.
+From the already loaded panel/project records, gather unique:
 
-**Hurdles and complexity to avoid**
+- examiner IDs;
+- project member IDs;
+- project supervisor IDs if required for workspace display/validation.
 
-- No client-calculated authoritative percentage.
-- No duplicated authoritative result independently maintained on student, project, and session records.
-- No premature reporting/export subsystem.
-- Do not recalculate historical membership from the current project.
-- No hidden post-publication grade editor.
-- Bulk operations must report partial failures instead of claiming complete success.
+Fetch all needed users in one query.
 
-**Complete when**
+Build `Map<string, ...>` lookups in memory.
 
-Published results are consistent, durable, private by role, and safe to publish repeatedly.
+### 1.5 Avoid duplicated validation logic
 
-**How to test**
+Refactor current context construction so both:
 
-Verify grade/percentage integrity, API privacy, equal team results, repeat/bulk publication, historical membership, and cancelled-attempt exclusion.
+- single-session `readCurrentContext()` used by start;
+- batch dashboard hydration
 
-## Milestone 12: Integration, performance, and documentation
+share a **pure validation/assembly function** where practical.
 
-**Research first**
+For example, conceptually:
 
-Review the complete diff, query patterns, authentication checks, polling/refresh frequency if any, deployment limits, and existing CI/test commands.
+```ts
+assembleCurrentContext({
+  vivaSession,
+  round,
+  panel,
+  project,
+  peopleById,
+  actorId,
+})
+```
 
-**What to do and how**
+Do not maintain two diverging copies of Viva business rules.
 
-Exercise the full manual workflow across role-separated browsers/devices:
+### 1.6 Preserve failure behavior
 
-1. Admin creates round.
-2. Admin generates or manually creates panels.
-3. Each panel receives one random/default panel admin.
-4. Admin optionally changes panel admin.
-5. Admin schedules a team.
-6. Panel admin starts the session from the single dashboard.
-7. Other panel members are blocked while the session is active.
-8. Panel admin selects a grade and completes the session.
-9. Restrictions are released.
-10. Admin reviews and publishes the result.
-11. Students see the same grade and percentage.
+If a scheduled session references invalid/deleted resources, preserve current safe behavior.
 
-Measure representative operations with a large supervisor set using an isolated environment. Optimize only demonstrated bottlenecks.
+Do not make one corrupt scheduled record crash the entire panel dashboard unless that is already the intended behavior.
 
-**Hurdles and complexity to avoid**
+### 1.7 Do not use one aggregation merely for cleverness
 
-- No Redis, queue, cache layer, or real-time rewrite without measured need.
-- No production load testing without authorization.
-- Avoid tests that merely search source text for implementation details.
-- No fake performance claim based solely on array allocation benchmarks.
-- Do not rewrite unrelated legacy modules under the label of cleanup.
-- Avoid logging every heartbeat or UI interaction.
+A large `$lookup` pipeline is not required.
 
-**Complete when**
+Prefer several simple bounded indexed queries if they are easier to reason about and maintain.
 
-The revised manual feature works end to end, relevant checks pass, temporary restrictions restore correctly, and remaining limits are documented with evidence.
+The main requirement is bounded round trips, not “one Mongo query at all costs.”
 
-**How to test**
+## Tests for Phase 1
 
-Run `npm run lint`, `npm run test:unit`, and `npm run build`, plus Viva database integration, multi-browser/device authorization, cancellation, publication, and representative load checks. Recheck existing ratings, authentication, maintenance, and team workflows.
+Add tests proving:
 
-## Milestone 13: Automatic team scheduling
+- 1 scheduled session is returned correctly;
+- 10 scheduled sessions are returned correctly;
+- multiple rounds/projects/panels hydrate correctly;
+- scheduled session validation still rejects invalid state;
+- mixed-batch project members remain valid;
+- panel admin `canManage` behavior remains correct;
+- running/completed snapshot behavior remains unchanged.
 
-**Research first**
+Add a query-count assertion or benchmark that demonstrates list hydration is bounded.
 
-Use the completed manual scheduling flow and realistic round data to identify constraints, available slots, panel-admin conflicts, and common reasons teams cannot be placed.
+### Target
 
-**What to do and how**
+For many scheduled sessions belonging to actor panels:
 
-Generate a draft from selected teams, valid panels, and admin-provided availability. Preserve existing bookings and reuse scheduling validation.
+```text
+panel read
+session read
+round bulk read
+project bulk read
+user bulk read
+```
 
-Use a deterministic first approach: consider the most constrained teams first, then select the earliest valid slot, favoring panels with fewer assigned sessions and using stable tie-breakers.
+Approximately five data reads total.
 
-List unplaced teams and reasons. Permit manual adjustment and revalidate the complete draft before applying.
+## Phase 1 gate
 
-**Hurdles and complexity to avoid**
+Do not continue until:
 
-- No optimization solver or scheduling framework initially.
-- No promise of a globally optimal schedule.
-- Do not label an unplaced team “impossible” merely because the heuristic did not place it.
-- No repeated random retries or silent dropping of teams.
-- Do not duplicate manual scheduling rules.
-- No automatic replacement of existing bookings.
-- Do not scaffold this milestone's abstractions into earlier milestones.
+- functionality tests pass;
+- query count is proven bounded;
+- there is no new N+1 loop hidden inside a helper.
 
-**Complete when**
+---
 
-Admin can generate, review, adjust, and apply a valid draft, with explicit treatment of unplaced teams.
+# Phase 2 — Introduce dedicated active Viva participant locks
 
-**How to test**
+## Goal
 
-Cover adequate/insufficient capacity, constrained teams, own-supervisor conflicts, panel-admin conflicts, existing bookings, uneven workloads, deterministic output, and changes between preview and apply.
+Replace:
 
-# Progress
+- global active-session conflict scans;
+- fake writes to `User.updatedAt`;
 
-Append updates after each implementation step. Record evidence, not estimates presented as completed work.
+with small, indexed, purpose-built lock documents.
 
-**Overall status:** Reconciliation and Revised Milestones 4–13 are implemented and verified. Broader repository validation remains separately tracked below.
+## New model
 
-## Update template
+Create a model with a clear name such as:
 
-- **Date/time:**
-- **Milestone and status:**
-- **Research findings:** Relevant repository evidence and any official documentation consulted.
-- **Implemented:** Behavior completed and affected files.
-- **Complexity avoided:** Unnecessary code/dependencies rejected or removed.
-- **Validation:** Exact commands/scenarios and actual outcomes.
-- **Remaining hurdles:** Known failures, uncertainties, or unrun checks.
-- **Next step:**
-- **Suggested commit message:**
+`models/VivaParticipantLock.ts`
 
-### 2026-09-15, reconciliation complete
+Use the repository's naming conventions.
 
-- **Milestone and status:** Reconciled the superseded factor/per-examiner implementation. Revised Milestone 4 is next.
-- **Research findings:** Factor scoring was isolated to `lib/viva.ts`, Viva persistence models, the admin round flow, and their tests. Existing rounds, sessions, snapshots, audit events, transactions, indexes, and storage-reference protection remain reusable. MongoDB 8 cannot start on the local Linux 6.19 kernel, so the isolated test-only replica set used MongoDB 4.4.29 instead.
-- **Implemented:** Defined the canonical six-grade scale: A+ 100%, A 90%, B 80%, C 70%, D 60%, F 0%. Removed active factor scoring and extra-grading configuration. Added a required panel-admin reference for new panels, grade/percentage result snapshots, completion state, and a grade audit-event type. Legacy factor, chair, and examiner-sheet fields remain readable for historical records. Simplified the admin Viva form to round details, panel sizes, Viva duration, teams, and teachers.
-- **Complexity avoided:** No collection reset, data deletion, migration job, new dependency, separate result collection, grading engine, or duplicate grade table.
-- **Validation:** `npx tsc --noEmit`, `npm run lint`, `node --test tests/viva.test.mjs`, both Viva replica-set integration suites, and `npm run build` passed. The local integration suites seeded only fake data and dropped `fyp_viva_m2_test` and `fyp_viva_m3_test`. `npm run test:unit` still has the two unrelated existing failures in `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`; 48 of 50 files passed.
-- **Remaining hurdles:** The first local MongoDB 8 attempt was blocked by the host-kernel incompatibility. The temporary MongoDB 4.4.29 container is test-only and must not become a deployment dependency.
-- **Next step:** Implement revised Milestone 4, manual panel management and panel-admin assignment.
-- **Suggested commit message:** `feat(viva): reconcile panel-admin grade workflow`
+## Required fields
 
-### 2026-09-15, Revised Milestone 4 complete
+Recommended shape:
 
-- **Milestone and status:** Manual panel management and panel-admin assignment are complete. Revised Milestone 5 is next.
-- **Research findings:** Existing Viva panels already store examiner and panel-admin identities, and existing round, audit, transaction, and admin-dashboard infrastructure could be extended directly. A teacher's own-team conflict requires a concrete team-to-panel schedule, so that authoritative check remains centralized in the scheduling milestone rather than incorrectly excluding teachers from every panel in a round.
-- **Implemented:** Added searchable unassigned-teacher cards and editable panel cards in the admin Viva area. Admin can add/discard panels, assign, move, and remove teachers, choose a panel admin, and see panels below the configured minimum marked as not ready. Saving validates active selected supervisors, one assignment per round, panel capacity, panel-admin membership, and frozen rounds. A transaction replaces the complete pre-start panel draft atomically, records an audit event, and uses a per-round revision to reject stale concurrent saves. Round updates now reject changes that would invalidate saved panels.
-- **Complexity avoided:** No new role, drag-and-drop framework, account-state mutation, collection reset, migration job, extra result collection, or database writes for UI movement before Save.
-- **Validation:** `npm run lint` and `npx tsc --noEmit` passed. Local fake-data replica-set tests passed for Milestone 4 panel management and existing Milestones 2 and 3 persistence/configuration checks. The temporary MongoDB container and the disposable `fyp_viva_m2_test`, `fyp_viva_m3_test`, and `fyp_viva_m4_test` databases were removed. `npm run test:unit` passed 49 of 51 test files; the unrelated existing failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
-- **Remaining hurdles:** The normal build runner reached successful compilation and TypeScript checks but did not return a final exit status before the command environment stopped it; a completed production build was not claimed. Team-specific own-supervisor conflicts will be enforced when scheduling assigns a team to a panel in Milestone 6.
-- **Next step:** Implement Revised Milestone 5, random allocation, random panel-admin selection, and accessible adjustments.
-- **Suggested commit message:** `feat(viva): add manual panel management`
+```ts
+{
+  userId: ObjectId,
+  sessionId: ObjectId,
+  participantType: 'student' | 'examiner',
+  restrictPortal: boolean,
+  createdAt: Date
+}
+```
 
-### 2026-09-15, Revised Milestone 5 complete
+Do not store large snapshots in this collection.
 
-- **Milestone and status:** Random panel allocation, random panel-admin selection, and accessible adjustments are complete. Revised Milestone 6 is next.
-- **Research findings:** The existing panel save transaction and per-round revision already provide the one authoritative pre-start write path. MongoDB's official replica-set guidance confirms that transactions require a replica set, started with `--replSet` and initialized once with `rs.initiate()`.
-- **Implemented:** Added a server-side Fisher–Yates allocation preview that shuffles the selected active teachers once, partitions them by target size, retains the final remainder panel, and randomly assigns one of each panel's members as panel admin. The admin UI shows the generated draft before the existing atomic Save action runs. Native select controls now also support member swaps, while explicit panel-admin replacement remains required before moving or swapping a panel admin.
-- **Complexity avoided:** No drag-and-drop dependency, second persistence path, allocation table, retry loop, database write for preview, account mutation, or premature team-supervisor conflict logic. The existing save validation and revision check remain the authority.
-- **Validation:** `npx tsc --noEmit`, `npm run lint`, `node --test tests/viva.test.mjs`, `node --test tests/viva-panel-allocation.test.mjs`, and `npm run build` with a disposable local `MONGODB_URI` passed. Local MongoDB 4.4.29 `rs0` integration tests passed for persistence, round configuration, and panels. The panel test seeded 506 fake users, including 500 supervisors, verified a 167-panel allocation with a two-member remainder, random in-panel admins, no preview write, atomic save, stale revisions, and frozen rounds; all disposable databases and the container were removed. `npm run test:unit` passed 50 of 52 files; the existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
-- **Remaining hurdles:** Team-specific own-supervisor conflicts still belong to manual scheduling in Milestone 6, where a team is actually assigned to a panel.
-- **Next step:** Implement Revised Milestone 6, manual team scheduling and centralized overlap/conflict validation.
-- **Suggested commit message:** `feat(viva): add random panel allocation`
+## Required indexes
 
-### 2026-09-15, Revised Milestone 6 complete
+At minimum:
 
-- **Milestone and status:** Manual team scheduling is complete. Revised Milestone 7 is next.
-- **Research findings:** `VivaSession` already had the UTC `scheduledAt`, `vivaEndsAt`, `locationLabel`, and optimistic `version` fields required to reserve an interval, while the existing round, panel, project, audit, and transaction infrastructure supplied the remaining authoritative data. Native `Intl.DateTimeFormat.formatToParts()` provides the exact Asia/Karachi date/time components required by the native `datetime-local` control without a date-library dependency.
-- **Implemented:** Added a transaction-backed schedule/reschedule path. It validates round/team/panel membership, viable panel size and admin, active panel members, active students, own-supervisor conflicts, duplicate round attempts, teacher overlaps, student overlaps, and started/cancelled/completed sessions. It reserves the exact planned interval using the current round duration, records immutable scheduling audit events, and rejects stale writes. A per-round schedule revision serializes concurrent overlap checks. The admin Viva page now has an accessible native-control schedule form and schedule list, with schedule input/display fixed to Asia/Karachi and UTC persisted to MongoDB.
-- **Complexity avoided:** No calendar dependency, drag-and-drop, second session/result collection, generic scheduling engine, background job, full session scan, duplicate client-side conflict logic, or new account role.
-- **Validation:** `npx tsc --noEmit` and `npm run lint` passed. `npm run build` compiled successfully and completed its TypeScript validation with a disposable local MongoDB URI. A local MongoDB 8.0.16 single-node `rs0` replica set passed the existing persistence, round-admin, and panel-admin database suites, plus the new scheduling suite. The new suite seeded 12 fake users and six fake teams, then verified panel eligibility, own-supervisor exclusion, teacher/student interval conflicts, duplicate attempts, UTC interval reservation, rescheduling, stale versions, started-session rejection, and concurrent overlap protection. `npm run test:unit` passed 52 of 54 files; the two existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
-- **Remaining hurdles:** No user-facing cancellation, session-start dashboard, temporary login restriction, grade completion, or publication behavior exists yet; those belong to subsequent milestones. The normal unit suite remains blocked from an all-green result by the two pre-existing unrelated structural tests.
-- **Next step:** Implement Revised Milestone 7, the panel-admin-only dashboard and concurrency-safe session start.
-- **Suggested commit message:** `feat(viva): add manual team scheduling`
+```text
+unique userId
+sessionId
+```
 
-### 2026-09-15, Revised Milestone 7 complete
+Meaning:
 
-- **Milestone and status:** The single panel-admin session dashboard and concurrency-safe start flow are complete. Revised Milestone 8 is next.
-- **Research findings:** Scheduled sessions already provide the authoritative round, panel, project, UTC timing, audit, and transaction boundaries. The existing PDF access policy intentionally limits documents to project participants, so this milestone presents the required team and panel context without broadening document access.
-- **Implemented:** Added an authenticated supervisor Viva endpoint and a panel-admin workspace in the existing supervisor dashboard. The current assigned panel admin can inspect scheduled team/panel context and start exactly once. Start revalidates current membership, role, panel admin, active teachers, team ownership, and active-session participant conflicts; atomically snapshots the current assessment context, records actual start/end timing, freezes the round, and writes one audit event. Repeated starts return the established workspace without changing its timer.
-- **Complexity avoided:** No WebSocket/presence service, readiness workflow, extra role, second session/result collection, document-access expansion, duplicate dashboard, or client-trusted timing.
-- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. A disposable local MongoDB 8.0.16 `rs0` replica set passed all existing Viva persistence, round-admin, panel, and scheduling suites plus the new session suite. The new suite seeded 12 fake users and five fake teams, then verified panel-admin-only access, changed-membership snapshots, frozen rounds, repeat and concurrent starts, stale/replaced panel admins, and active-participant conflicts. `npm run test:unit` passed 53 of 55 files; the two pre-existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
-- **Remaining hurdles:** Temporary login/access restrictions for non-admin panel members and existing sessions are intentionally deferred to Milestone 8.
-- **Next step:** Implement Revised Milestone 8, derived temporary login and API restrictions for non-admin panel members while a Viva session is active.
-- **Suggested commit message:** `feat(viva): add panel-admin session start`
+- one user may belong to at most one active Viva;
+- all locks for a session can be deleted efficiently.
 
-### 2026-09-15, Revised Milestone 8 complete
+If timestamps are enabled, prefer created-at only unless updated-at has a real use.
 
-- **Milestone and status:** Temporary access restriction for non-admin members of an active Viva panel is complete. Revised Milestone 9 is next.
-- **Research findings:** Every authenticated application API route uses `requireCurrentUser`, while the NextAuth credentials provider has its own fresh-login authorization path. Middleware cannot safely perform the Mongoose lookup in its Edge runtime, so the shared server-side guard is the authority for direct API access and fresh credentials. The active session's panel snapshot is the historical, immutable membership source once the Viva starts.
-- **Implemented:** Added one indexed active-session lookup that restricts a snapshot panel member unless they are the snapshot panel admin. The shared check now runs during credential sign-in and in `requireCurrentUser`, so existing authenticated sessions lose all protected API access without any permanent account mutation. A supervisor-only status route signs an already-open browser session out at dashboard load, tab focus, or within 30 seconds. Completion or cancellation removes the condition directly from authoritative session state, so access releases automatically.
-- **Complexity avoided:** No account flag, cleanup job, WebSocket, middleware database call, extra session store, or client-only authorization rule.
-- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` with a disposable local MongoDB URI passed. A local MongoDB 8.0.16 `rs0` replica set passed the Milestone 7 baseline and the new Milestone 8 fake-data integration test. The new test seeded six users and one team, then verified panel-admin and unrelated access, snapshot membership, active-member restriction, and automatic completed/cancelled release. `npm run test:unit` passed 54 of 56 files; the two existing unrelated failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`.
-- **Remaining hurdles:** The browser checker signs a pre-existing session out at load, focus, or within 30 seconds. Server-side API authorization is immediate; this is not a full-device lockout. Credential-provider wiring is covered by the shared policy and code path, not a browser-level NextAuth test.
-- **Next step:** Implement Revised Milestone 9, canonical grade selection, safe save, and session completion.
-- **Suggested commit message:** `feat(viva): restrict active Viva panel members`
+## Do not add TTL expiry
 
-### 2026-09-15, Revised Milestone 9 complete
+Do **not** automatically expire active Viva locks after an arbitrary duration.
 
-- **Milestone and status:** Grade selection, save, and session completion are complete.
-- **Research findings:** The existing single panel-admin workspace already exposes server-authorized sessions, snapshots the active panel at start, and has a transactional write path with optimistic versions and durable audit events. `VivaSession.result`, the canonical grade scale, and the active-session restriction all already existed as reusable boundaries.
-- **Implemented:** The panel-admin workspace now receives the server-serialized canonical grade scale, persisted selection, and session version. It allows a panel admin to select and save one canonical grade, then complete the Viva. The shared endpoint derives the percentage from the grade server-side, rejects stale/invalid/unauthorized writes, records grade and completion audit events transactionally, finalizes the session, and consequently releases the temporary panel-member restriction. A fake-data replica-set integration suite targets only the disposable `fyp_viva_m9_test` database.
-- **Complexity avoided:** No numeric mark input, client percentage, separate grading endpoint, autosave, second result collection, migration, dependency, or real-time state mechanism.
-- **Validation:** `npm run test:viva:grading` passed against local MongoDB 8.0.16 `rs0`, seeding five fake users and one fake team in disposable `fyp_viva_m9_test`; it verified all grades, canonical percentages, tampering rejection, panel-admin authorization, refresh, stale versions, concurrent saves, save/complete races, immutable completion, and access release. Existing Milestone 2, 3, 4, 6, 7, and 8 replica-set suites passed against their isolated databases. `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed with a temporary local MongoDB URI. `npm run test:unit` passed 55 of 57 files; the two unrelated existing failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`. The disposable container and test databases were removed after verification.
-- **Remaining hurdles:** The two pre-existing unrelated unit failures remain outside Viva and were not changed.
-- **Next step:** Implement Revised Milestone 10, cancellation and fresh attempts.
-- **Suggested commit message:** `feat(viva): add grade selection and completion`
+A Viva may legitimately overrun its scheduled duration.
 
-### 2026-09-15, Revised Milestone 10 complete
+A TTL could silently allow a participant into a second active Viva.
 
-- **Milestone and status:** Cancellation and fresh attempts are implemented and verified.
-- **Research findings:** `VivaSession` already preserves `cancelledAt`, `cancellationReason`, result snapshots, audit records, and a partial unique index permitting one non-cancelled attempt per team/round. The current access restriction is derived from active-session state, so setting `cancelledAt` releases it without an account mutation. Scheduling already rejects only non-cancelled duplicate attempts and conflicts.
-- **Implemented:** Added one transaction-backed system-admin cancellation path requiring a reason, optimistic version check, terminal/published-result protection, immutable audit event, and cancelled schedule serialization. The admin schedule view exposes session state, a required cancellation-reason form, cancellation history, and fresh scheduling for a cancelled team. A replacement is a clean new session, so it does not inherit the cancelled attempt's grade. Added a fake-data integration test scaffold limited to disposable local `fyp_viva_m10_test` on a replica set.
-- **Complexity avoided:** No new collection, role, account flag, cleanup job, second session/result workflow, migration, background task, or dependency.
-- **Validation:** The new cancellation suite passed against local MongoDB 8.0.16 `rs0`, seeding seven fake users and three fake teams in disposable `fyp_viva_m10_test`. It verified required reasons, scheduled and active cancellation, audit history, restriction release, clean replacement attempts, no inherited grade, cancelled-write rejection, published-result protection, and cancellation/grade races. Existing isolated persistence, admin, panel, scheduling, session, access, and grading Viva suites also passed. `npx tsc --noEmit`, `npm run lint`, and the escalated `npm run build` passed. `npm run test:unit` passed 56 of 58 files; the two unrelated existing failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`. The disposable MongoDB container and test database were removed after verification.
-- **Remaining hurdles:** Existing completed results remain non-cancellable; publication UI/API remains Milestone 11 work. The two unrelated unit failures remain outside Viva.
-- **Next step:** Implement Revised Milestone 11, review and publication.
-- **Suggested commit message:** `feat(viva): add cancellation and fresh attempts`
+Cleanup must be tied to the authoritative session lifecycle.
 
-### 2026-09-15, Revised Milestone 11 complete
+## Lock membership semantics
 
-- **Milestone and status:** Review and publication are implemented and verified.
-- **Research findings:** Completed sessions already preserve immutable round, team, panel, panel-admin, and canonical grade snapshots. `publishedAt` and the immutable `result-published` audit type already existed. The current Mongoose transaction documentation confirms the established `withTransaction()` pattern and requires sequential work inside a transaction, so bulk publication processes selected results sequentially in one transaction.
-- **Implemented:** Added one admin-only publication path for individual or selected bulk results. It publishes only completed, non-cancelled sessions with complete historical snapshots, increments the session version, writes an immutable audit event, returns already-published records idempotently, and reports per-record bulk failures. The admin Viva dashboard now reviews the snapshotted team, panel, panel admin, canonical grade, percentage, completion time, and publication state. Student dashboard responses now look up only published results by the frozen team snapshot, so every historic team member receives the same grade and percentage even if source project membership later changes. Added a supporting snapshot-member publication index and a disposable fake-data replica-set test limited to `fyp_viva_m11_test`.
-- **Complexity avoided:** No second result collection, project/student grade copies, migration, queue, notification system, bulk-job framework, dependency, or post-publication editor.
-- **Validation:** `npx tsc --noEmit` and `npm run lint` passed. `npm run test:viva:publication` passed against local MongoDB 8.0.16 `rs0`, seeding eight fake users and three fake teams in disposable `fyp_viva_m11_test`; it verified unpublished privacy, individual publication, bulk partial failure, canonical grade percentages, snapshotted team history, equal team results, repeat publication, and audit history. Existing isolated Viva persistence, admin, panel, scheduling, session, access, grading, and cancellation suites also passed against disposable replica-set databases. `npm run test:unit` passed 57 of 59 files; the two unrelated existing failures remain `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`. `npm run build` passed with elevated process permissions and a temporary local MongoDB URI. Both disposable MongoDB containers and test databases were removed after verification.
-- **Remaining hurdles:** The two pre-existing unrelated unit failures remain outside Viva and were not changed. Milestone 12 still needs the complete role-separated workflow review, representative performance checks, and documentation pass.
-- **Next step:** Implement Revised Milestone 12, integration, performance, and documentation.
-- **Suggested commit message:** `feat(viva): add result review and publication`
+Preserve the behavior of the current conflict logic.
 
-### 2026-09-15, Revised Milestone 12 complete
+Lock:
 
-- **Milestone and status:** Integration, representative local measurement, and documentation are complete and verified.
-- **Research findings:** The existing nine isolated Viva integration suites already cover persistence, configuration, panels, scheduling, dashboard start, access restriction, grading, cancellation, and publication. The missing proof was one composed role-separated workflow across those established transactional paths. The existing panel suite already demonstrated 500-supervisor allocation, so the composed check uses the same representative scale and measures a real preview plus transactional panel save rather than an array-only benchmark.
-- **Implemented:** Added `test:viva:workflow`, a fake-data replica-set integration suite restricted to disposable local `fyp_viva_m12_test`. It creates a round, allocates 500 supervisors into panels, explicitly replaces one panel admin before saving, schedules and starts a session, verifies the temporary restriction and release, records A+ (100%), publishes the result, and confirms both snapshotted students receive the same result. The check logs observed preview/save durations without a timing threshold. Documented the Viva workflow, grade scale, and local verification command in `README.md`.
-- **Complexity avoided:** No browser framework, duplicate end-to-end fixture layer, production load test, timing gate, database reset outside the disposable test database, dependency, queue, cache, or real-time mechanism.
-- **Validation:** `VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m12_test?replicaSet=rs0' npm run test:viva:workflow` passed with 504 seeded fake users, 17.82 ms allocation preview, and 401.11 ms transactional panel save. The existing isolated `npm run test:viva:persistence`, `test:viva:admin`, `test:viva:panels`, `test:viva:scheduling`, `test:viva:session`, `test:viva:access`, `test:viva:grading`, `test:viva:cancellation`, and `test:viva:publication` suites all passed against local MongoDB 8.0.16 `rs0`. `npx tsc --noEmit`, `npm run lint`, and `MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_build_check?replicaSet=rs0' npm run build` passed. `npm run test:unit` recorded 160 passing, 2 failing, and 10 skipped; the failures are the established unrelated `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs` assertions, while Viva integration tests are skipped when no URI is supplied. All test databases were dropped by their runners and the disposable container was removed after verification.
-- **Remaining hurdles:** The two unrelated unit failures remain outside Viva and were not changed. Milestone 13 still needs automatic team scheduling.
-- **Next step:** Implement Revised Milestone 13, automatic team scheduling.
-- **Suggested commit message:** `test(viva): add full workflow integration coverage`
+- all project students participating in the Viva;
+- all panel examiners, including panel admin.
 
-### 2026-09-16, Revised Milestone 13 complete
+Do **not** add the project's supervisor merely because they supervise the project unless they are also an actual panel examiner.
 
-- **Milestone and status:** Automatic team scheduling is implemented and verified.
-- **Research findings:** The existing manual scheduling validator and transaction path already enforce panel eligibility, own-supervisor exclusion, overlapping teacher/student reservations, attempt uniqueness, audit writes, and schedule revisions. The automatic flow reuses those boundaries when applying a reviewed draft.
-- **Implemented:** Added deterministic preview generation from available windows, valid panels, current bookings, and remaining teams. The preview orders teams by available-option count, then uses earliest slots, lower panel workload, and stable panel-ID tie-breakers. Admin can edit or remove draft entries before one atomic, fully revalidated save. The integration runner seeds only fake records into local `fyp_viva_m13_test`.
-- **Complexity avoided:** No solver, scheduling dependency, retry loop, automatic replacement, second persistence path, or client-trusted draft.
-- **Validation:** `VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m13_test?replicaSet=rs0' npm run test:viva:auto-scheduling` passed against a disposable local MongoDB 8.0.16 single-node `rs0` replica set. The runner seeded 13 fake users and six fake teams, then removed the disposable database. It verified deterministic drafts, constrained and unplaced teams, insufficient capacity, panel eligibility, existing bookings, atomic apply, and stale-draft revalidation. `npx tsc --noEmit` passed. `npm run lint` passed with one warning in `lib/vivaRoundAdmin.ts:419` for an existing unused `actor` parameter. The full unit suite and production build were not run in this pass.
-- **Remaining hurdles:** The two previously recorded unrelated unit-test failures remain outside Viva. A broader repository validation pass should still run the full unit suite and production build.
-- **Next step:** No further feature milestone is defined; perform broader repository validation when needed.
-- **Suggested commit message:** `feat(viva): add deterministic automatic team scheduling`
+This mirrors the current active-participant conflict behavior.
 
-## Historical implementation record
+## `restrictPortal` semantics
 
-The following entries are retained as factual history. Their factor/per-examiner requirements are superseded by the current plan and must not be treated as the active specification.
+Recommended:
 
-### 2026-09-14, previous Milestone 1 complete
+- students: `true`;
+- non-admin examiners: `true`;
+- panel admin: `false`.
 
-- **Research findings:** Existing project-rating logic validates at a pure TypeScript boundary and uses Node's built-in test runner. Viva had no persistence or HTTP requirement at this stage.
-- **Implemented:** `lib/viva.ts` provided configuration validation, lifecycle derivation using supplied UTC times, separately tracked publication, permitted score changes, deadline-zero finalization, and final-only equal-weight averages. `tests/viva.test.mjs` covered invalid configuration, deadline boundaries, score locking, missing marks, zeros, equal weighting, and rounding.
-- **Complexity avoided:** No schema, index, migration, API route, UI, dependency, generic workflow engine, or database abstraction was added.
-- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. `tests/viva.test.mjs` passed. `npm run test:unit` ran 48 files: 46 passed, including Viva; two unrelated existing structure assertions failed.
-- **Remaining hurdles:** `project-rating-ui.test.mjs` expected "Download Excel" although the UI rendered "Download PDF". `storage-workflow-structure.test.mjs` expected a removed `student.domains = []` assignment. Neither file or behavior was touched here.
-- **Current interpretation:** Preserve reusable lifecycle/validation structure, but replace factor/score/zero/average behavior with the revised grade-domain rules.
+The panel admin still receives a lock, because they must be prevented from occupying another active Viva.
 
-### 2026-09-14, previous Milestone 2 complete
+`restrictPortal: false` means “not portal-restricted,” **not** “not locked.”
 
-- **Research findings:** Existing user and project workflows can change or delete source records, while `PortalActivityLog` is capped and best-effort, so neither preserves assessment history. MongoDB transactions require a replica set; the implementation followed the MongoDB and Mongoose transaction and index guidance reviewed for this milestone.
-- **Implemented:** Added persistent Viva rounds, panels, sessions, snapshots, examiner score sheets, and immutable audit events. Session writes and their audit records use a transaction. Added required MongoDB indexes, index-audit coverage, and storage-reference checks so a PDF retained in a Viva snapshot cannot be deleted as an orphan.
-- **Complexity avoided:** No Viva API/UI, dependency, generic repository layer, event-sourcing system, or changes to the existing User and Project models were added.
-- **Validation:** `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. `node --test tests/viva.test.mjs` passed. A local replica-set MongoDB test seeded seven fake users, three fake projects, one round, one panel, and one session; it passed validation, duplicate-panel, snapshot, storage-reference, replacement-attempt, rollback, and concurrent-write checks, then dropped the test database. `npm run test:unit` ran 49 files: 47 passed; the two unrelated existing assertion failures remained.
-- **Current interpretation:** Preserve round/panel/session persistence, snapshots, transactions, indexes, storage references, and audit history. Replace examiner-sheet/factor result storage with panel-admin + final-grade storage without destructive resets.
+## Start-session algorithm
 
-### 2026-09-14, previous Milestone 3 complete
+Refactor `startVivaSession()` in `lib/vivaSessionDashboard.ts`.
 
-- **Research findings:** Admin navigation is tab-based, dashboard panels and native form controls already provide the required interaction patterns, and `requireCurrentUser` establishes the existing admin boundary. Viva rounds and immutable audit events from the previous milestone provide the persistence needed for configuration.
-- **Implemented:** Added the admin-only `/api/admin/viva` route and Viva dashboard area. Admin could create and reopen unstarted rounds, select active project teams and active supervisors, configure panel sizes and both durations, and add, rename, reorder, or remove marking factors. Server validation rejected invalid settings, stale selections, and all changes after a round was frozen. Successful creates and updates were recorded in the durable Viva audit history.
-- **Complexity avoided:** No dependency, generic form/state framework, new design system, client-side-only lock, or storage change. One transaction-backed configuration path performed shared validation and audit writes.
-- **Validation:** `npx tsc --noEmit` and `npm run lint` passed. `npm run test:viva:admin` passed against a temporary local single-node MongoDB replica set, seeded six fake users and two fake teams, then dropped `fyp_viva_m3_test`; it verified invalid input, active selections, factor ordering, audit events, and frozen-round rejection. `npm run test:unit` ran 50 files: 48 passed, including Viva; two unrelated existing structure assertions failed. `npm run build` passed with a temporary local `MONGODB_URI`; the normal build was blocked by the workspace's missing `MONGODB_URI` setting. An unsigned local request was redirected to the existing sign-in guard before the Viva route.
-- **Current interpretation:** Preserve the admin area, endpoint, round CRUD, team/supervisor selection, panel-size/duration fields, auth, freeze behavior, and audit writes. Remove factor configuration from the active contract/UI/API.
+Desired order inside the transaction:
 
-### 2026-09-15, requirements revised
+1. read target session;
+2. reject completed/cancelled;
+3. handle already-running behavior carefully;
+4. read/revalidate current round/panel/project/users for an unstarted session;
+5. build participant lock rows;
+6. insert all participant locks in the transaction;
+7. if unique constraint collides, abort transaction and return the existing user-facing participant-conflict style error;
+8. atomically set `startedAt`, `vivaEndsAt`, and snapshots;
+9. freeze round if required;
+10. write audit event;
+11. commit.
 
-- **Milestone and status:** Design reconciliation required before further Viva feature work.
-- **Requirement change:** One panel-admin dashboard replaces per-examiner dashboards. Other active panel members are temporarily blocked from login/access during the session. Grading is a single A+–F grade with a canonical percentage, with no factors. Random panel generation also chooses a random panel admin, and system admin can replace that panel admin when required.
-- **Implementation instruction:** Follow the **Safe reconciliation of work already completed** section before revised Milestone 4. Preserve reusable infrastructure and remove only superseded behavior.
-- **Suggested commit message:** `docs(viva): revise plan for panel-admin grade workflow`
+### Duplicate key handling
+
+The unique index is the concurrency control.
+
+Do not implement:
+
+```text
+check lock exists
+then insert
+```
+
+as the only guard, because that is racy.
+
+Attempt the insert and let the unique index arbitrate simultaneous starts.
+
+On duplicate key:
+
+- abort the transaction;
+- return a clear expected conflict result;
+- do not expose raw Mongo errors.
+
+### Remove old locking work
+
+After tests prove the new mechanism:
+
+- delete `reserveStartParticipants()`;
+- remove the `User.updateMany(...updatedAt...)` concurrency trick;
+- delete `findActiveParticipantConflict()` and its global scan;
+- remove imports/types only used by those deleted paths.
+
+This phase should **reduce code**, not leave both implementations permanently.
+
+## Already-running session behavior
+
+Before changing it, inspect tests and current semantics.
+
+At the audited version, current-context revalidation happens before returning an already-running snapshot.
+
+Consider whether an already-running session should instead authorize against its frozen panel snapshot and return that snapshot without re-reading mutable project/panel state.
+
+This would be faster and usually better matches frozen-session semantics.
+
+However:
+
+- do not silently change authorization semantics;
+- write a regression test;
+- if behavior is intentionally changed, document it.
+
+## Lock cleanup
+
+Locks must be removed in the same transaction whenever a session stops being active.
+
+At minimum inspect and update every path that sets:
+
+- `completedAt`;
+- `cancelledAt`.
+
+Search globally; do not assume only two functions exist.
+
+### Completion
+
+On successful `completeVivaSession()`:
+
+```ts
+deleteMany({ sessionId }, { session })
+```
+
+must be part of the same transaction as completion/audit.
+
+### Cancellation
+
+If active sessions can be cancelled, cancellation must delete their locks in the same transaction.
+
+Deleting zero rows for a never-started scheduled session should be harmless.
+
+### Other terminal/admin/repair paths
+
+Search the entire repository for direct writes to `completedAt` and `cancelledAt`.
+
+Any path capable of terminating an active session must clean locks or deliberately invoke shared lifecycle logic.
+
+Do not leave a hidden stale-lock path.
+
+## Deployment/migration safety
+
+This model introduces derived active state.
+
+Before production rollout, choose and document one safe strategy:
+
+### Preferred operational strategy
+
+Deploy when there are no active Viva sessions, then all future starts create locks.
+
+OR:
+
+### Reconciliation strategy
+
+Create a script such as:
+
+`script/reconcile-viva-participant-locks.mjs`
+or use the repo's existing script naming convention.
+
+The script should:
+
+1. read active `VivaSession` records;
+2. use their frozen snapshots;
+3. derive examiner/student locks;
+4. detect duplicate users across already-active sessions;
+5. fail loudly on ambiguous/corrupt data;
+6. create missing locks;
+7. remove stale locks whose session is not active only in an explicit repair/apply mode.
+
+Do **not** silently pick a winner if historical data says one user is in two active sessions.
+
+## Tests for Phase 2
+
+Required tests:
+
+- one Viva starts normally;
+- 50 disjoint Vivas can start concurrently;
+- two simultaneous starts sharing one examiner result in exactly one success;
+- two simultaneous starts sharing one student result in exactly one success;
+- transaction rollback leaves no locks after failed start;
+- `User.updatedAt` does not change merely because Viva started;
+- completing session releases every lock for that session;
+- cancelling an active session releases every lock;
+- cancelling a scheduled/unstarted session is harmless;
+- panel admin is locked against another Viva but is not portal-restricted;
+- non-admin examiner is locked and portal-restricted;
+- student is locked and portal-restricted;
+- mixed-batch students lock normally.
+
+## Phase 2 gate
+
+Do not remove legacy conflict code until all race tests pass.
+
+---
+
+# Phase 3 — Make access restriction a point lookup
+
+## Goal
+
+Use the participant-lock collection for active-session portal restrictions.
+
+## File
+
+`lib/vivaAccessRestriction.ts`
+
+## Desired query
+
+Conceptually:
+
+```ts
+VivaParticipantLock.exists({
+  userId,
+  restrictPortal: true,
+})
+```
+
+This should be served by the unique `userId` index.
+
+## Rules
+
+- invalid IDs still return safely;
+- panel admin remains unrestricted if that is current intended behavior;
+- student/non-admin examiner restrictions remain intact;
+- no scan of active `VivaSession` snapshots should be needed in the final steady-state implementation.
+
+## Migration caveat
+
+Do not switch to lock-only reads in production if older active sessions can exist without lock rows.
+
+Use the Phase 2 deployment gate/reconciliation strategy.
+
+## Tests
+
+Update `tests/viva-access-restriction.integration.test.mjs` or equivalent.
+
+Include:
+
+- student active -> restricted;
+- examiner active -> restricted;
+- panel admin active -> not restricted;
+- completion -> unrestricted;
+- cancellation -> unrestricted;
+- unrelated user -> unrestricted.
+
+## Phase 3 gate
+
+Verify query is an indexed point lookup with `explain("executionStats")` or equivalent local evidence.
+
+---
+
+# Phase 4 — Shorten grade and completion transactions
+
+## Goal
+
+Remove unnecessary successful-path pre-reads while preserving error quality and audit atomicity.
+
+## File
+
+`lib/vivaSessionDashboard.ts`
+
+## 4.1 Grade save
+
+Current pattern is approximately:
+
+```text
+read session
+authorize
+validate
+conditional update
+audit
+serialize
+```
+
+Target successful path:
+
+```text
+validate input/grade in memory
+conditional update containing authorization + active state + version
+audit
+serialize
+```
+
+The atomic update filter should include the required state, for example:
+
+```text
+_id
+version
+startedAt is date
+completedAt null
+cancelledAt null
+panelSnapshot.panelAdmin.userId == actor.id
+```
+
+Do not copy this blindly; verify exact schema/types first.
+
+### Failure semantics
+
+If the update returns `null`, perform a fallback read **only on the failure path** to distinguish where practical:
+
+- not found;
+- forbidden;
+- not running/completed/cancelled;
+- concurrent version change.
+
+This keeps the common successful path fast while retaining useful errors.
+
+## 4.2 Completion
+
+Use the same pattern where safe.
+
+Successful completion should conditionally require:
+
+- correct session;
+- correct version;
+- active state;
+- authorized frozen panel admin;
+- a saved result.
+
+After update:
+
+- validate/canonicalize the returned result;
+- remove participant locks in the same transaction;
+- write audit event;
+- return result.
+
+If legacy malformed data is encountered, abort safely rather than finalizing corrupted data.
+
+## 4.3 Keep transaction atomicity
+
+Do not move the audit write outside the transaction just to reduce latency.
+
+Do not move lock cleanup outside the transaction.
+
+## Tests
+
+Required:
+
+- successful grade update;
+- stale version fails;
+- unauthorized examiner fails;
+- completed/cancelled session fails;
+- invalid grade fails before DB mutation;
+- completion requires saved grade;
+- completion releases locks;
+- audit is still written;
+- transaction rollback leaves state consistent.
+
+## Performance acceptance
+
+On successful grade save, no unconditional initial session read should remain unless Codex can demonstrate it is necessary for correctness.
+
+Same principle for completion.
+
+---
+
+# Phase 5 — Reduce portal-status request amplification
+
+## Goal
+
+Stop doing pause-status work on requests where the result cannot affect behavior, then safely coalesce/cache the remaining status reads for a very short period.
+
+## Files
+
+- `proxy.ts`
+- `app/api/portal-status/route.ts`
+- `lib/portalPause.ts`
+- admin portal-pause mutation code discovered via search.
+
+## 5.1 Narrow the proxy check first
+
+At the audited version, pause state only causes a response for API requests that are:
+
+- not required auth routes;
+- not admin requests.
+
+Therefore, do not fetch portal status for requests where it cannot affect the result.
+
+Construct an explicit predicate similar to:
+
+```text
+is API request
+AND not portal-status itself
+AND not required auth exception
+AND actor is not admin
+```
+
+Verify this exactly against current desired behavior.
+
+This change should preserve behavior while avoiding pointless internal fetches for:
+
+- page navigation where pause was not enforced anyway;
+- admin calls;
+- excluded auth paths;
+- the status route itself.
+
+## 5.2 Add short-lived status coalescing/cache
+
+After call-site inventory, implement a conservative cache for the status read.
+
+Recommended characteristics:
+
+- TTL around 3–5 seconds;
+- single-flight/coalescing so simultaneous cache misses on one instance share one Mongo read;
+- explicit invalidation in the admin mutation path on the current instance;
+- no long stale window;
+- preserve fail-closed behavior where currently required.
+
+A module-level server cache is acceptable if it matches the deployment runtime.
+
+If using a Next.js framework cache instead, verify the API is correct for the repository's pinned Next.js version before implementing it.
+
+Do not guess based on another Next.js version.
+
+## 5.3 Cache endpoint carefully
+
+If changing HTTP cache headers:
+
+- understand whether the pause reason is safe to cache publicly;
+- understand same-origin/internal fetch behavior;
+- keep the stale window very small;
+- document maximum delay before a newly paused portal is enforced on another warm instance.
+
+Do not introduce a long CDN cache merely for benchmark numbers.
+
+## Tests
+
+Add tests for:
+
+- admin request does not require portal-status fetch;
+- irrelevant page request does not require portal-status fetch if behavior is unchanged;
+- protected non-admin API still enforces paused state;
+- status failure remains fail-closed where intended;
+- cache expires;
+- concurrent cache miss is coalesced if implemented;
+- explicit invalidation works on mutation path.
+
+---
+
+# Phase 6 — Add indexes that match the hot queries
+
+## Goal
+
+Add only indexes justified by actual query shapes.
+
+## Candidate indexes
+
+### `VivaPanel`
+
+The hot panel lookup is:
+
+```ts
+{ examinerIds: actorId }
+```
+
+The existing unique compound index beginning with `roundId` is not an ideal direct match.
+
+Candidate:
+
+```ts
+VivaPanelSchema.index({ examinerIds: 1 });
+```
+
+### `VivaSession`
+
+The panel list hot query is approximately:
+
+```ts
+{
+  panelId: { $in: [...] },
+  cancelledAt: null
+}
+.sort({ scheduledAt: 1, _id: 1 })
+```
+
+Candidate:
+
+```ts
+VivaSessionSchema.index({
+  panelId: 1,
+  cancelledAt: 1,
+  scheduledAt: 1,
+  _id: 1,
+});
+```
+
+### Participant locks
+
+Required:
+
+```text
+unique userId
+sessionId
+```
+
+## Index rules
+
+Do not blindly add indexes.
+
+For each candidate:
+
+1. capture query shape;
+2. run `explain("executionStats")` before;
+3. add/apply index;
+4. run explain after;
+5. confirm reduced docs/keys examined and desired plan;
+6. keep a record in implementation notes.
+
+Do not remove existing indexes in the same optimization pass unless they are conclusively redundant and there is a separate index audit.
+
+Extra indexes also consume RAM and write resources.
+
+## Production index creation
+
+Do not rely blindly on runtime Mongoose auto-index creation in production.
+
+Inspect the repository's existing index migration/audit scripts:
+
+- `indexes:refactor:audit`
+- `indexes:refactor:apply`
+
+Follow that established pattern where possible.
+
+Create/update an explicit apply/audit script if required.
+
+---
+
+# Phase 7 — Reduce agenda payload and unbounded history, but only after call-site inspection
+
+## Goal
+
+Reduce Mongo transfer, server serialization, JSON payload, React/server memory, and client work.
+
+This phase is valuable but more invasive than the database concurrency fixes.
+
+Do it only after Phases 1–6 are stable.
+
+## Problem to verify
+
+At the audited version, `getVivaPanelSessions()` returns full workspace detail including fields such as:
+
+- project description;
+- domains;
+- tools;
+- all project members;
+- supervisor;
+- full panel;
+- grade scale;
+- result;
+- other workspace fields.
+
+It may also load all non-cancelled historical sessions for the actor's panels.
+
+Verify the current UI usage.
+
+## Preferred API shape
+
+Separate:
+
+### Agenda/list DTO
+
+Only fields needed to render the list/card, for example:
+
+```text
+session ID
+phase
+version
+scheduledAt
+startedAt
+vivaEndsAt
+location
+round name
+project title
+small participant summary only if displayed
+canManage
+result summary only if displayed
+```
+
+### Workspace/detail DTO
+
+Fetch full:
+
+- description;
+- domains;
+- tools;
+- members;
+- supervisor;
+- panel;
+- grading data;
+
+only when the user opens/selects a specific Viva.
+
+## Rules
+
+- inspect every UI consumer first;
+- do not break current rendering;
+- avoid duplicate client requests if one detail fetch can be cached locally for the selected session;
+- do not fetch all project descriptions for a screen that only shows titles/times;
+- preserve running-session responsiveness.
+
+## Historical sessions
+
+Do not arbitrarily truncate data.
+
+If the current panel page displays unbounded completed history:
+
+- add explicit pagination/cursor or a separate history request;
+- always include active/running and upcoming sessions;
+- expose older completed sessions through intentional pagination.
+
+Do not hide history merely to make benchmarks faster.
+
+## Acceptance
+
+Measure response byte size before/after on a realistic 50-session fixture.
+
+Keep this phase only if the reduction is meaningful and the UI remains simple.
+
+---
+
+# Phase 8 — Re-evaluate MongoDB pool configuration only after application work
+
+## Goal
+
+Tune connection settings based on measured behavior, not intuition.
+
+## Current audited values
+
+```ts
+maxPoolSize: 10
+minPoolSize: 1
+```
+
+## Rules
+
+### Do not raise `maxPoolSize` first
+
+The optimized code should create far fewer concurrent DB operations.
+
+Benchmark with the existing `maxPoolSize: 10` before changing it.
+
+### Evaluate `minPoolSize`
+
+For serverless environments, `minPoolSize: 0` may reduce idle socket retention across warm instances.
+
+Do not change it without measuring/understanding the deployment model.
+
+### Candidate test matrix
+
+After all query fixes:
+
+```text
+maxPoolSize 5
+maxPoolSize 10
+```
+
+Optionally another value only if deployment connection limits allow it.
+
+Compare:
+
+- p50/p95 latency;
+- timeout count;
+- connection count;
+- transaction failures;
+- database saturation.
+
+Choose the smallest pool that sustains the target workload comfortably.
+
+Do not optimize for a synthetic single request at the cost of 50-session stability.
+
+---
+
+# 6. Dedicated 50-session benchmark/integration harness
+
+Create or extend a test/support runner specifically for runtime Viva concurrency.
+
+The current workflow runner's large supervisor count is useful for panel allocation but is not sufficient evidence for 50 simultaneous active Viva sessions.
+
+## Fixture
+
+Create approximately:
+
+- 1 admin;
+- enough supervisors for 50 disjoint panels;
+- 100+ students for 50 two-student teams;
+- 50 projects;
+- one or more Viva rounds as appropriate;
+- 50 scheduled sessions;
+- 50 disjoint participant sets for the main throughput test.
+
+Use realistic panel sizes matching production defaults.
+
+Avoid accidentally sharing supervisors between the 50 throughput sessions.
+
+## Benchmark stages
+
+### Stage A — Panel agenda
+
+Measure list retrieval with:
+
+- 1 session;
+- 10 sessions;
+- 50 sessions.
+
+Capture:
+
+- DB command count;
+- duration;
+- returned byte size if practical.
+
+### Stage B — Concurrent starts
+
+Use:
+
+```ts
+Promise.allSettled(...)
+```
+
+Start all 50 independent sessions as close together as practical.
+
+Record individual durations.
+
+Calculate:
+
+- minimum;
+- p50;
+- p95;
+- maximum;
+- success count;
+- expected/actual failure count.
+
+### Stage C — Concurrent grades
+
+Save a valid grade to all 50 sessions concurrently.
+
+Record the same metrics.
+
+### Stage D — Concurrent completions
+
+Complete all 50 concurrently.
+
+Record metrics.
+
+### Stage E — Cleanup assertions
+
+Assert:
+
+- all expected sessions completed;
+- no active participant locks remain;
+- audit records exist;
+- no user `updatedAt` was touched solely for locking;
+- no unexpected active session remains.
+
+## Conflict benchmark
+
+Separately create two sessions that deliberately share one participant and race their starts.
+
+The test must prove the unique lock is the arbiter.
+
+Do not use scheduling validation as the only protection in this race test.
+
+## Repeatability
+
+Run the concurrency scenario multiple times in one test execution or provide a repeat option.
+
+One lucky run is not sufficient evidence.
+
+Avoid brittle absolute latency assertions in CI if CI hardware is variable.
+
+Use correctness assertions plus query-count/bounded-work assertions, and print timing as benchmark evidence.
+
+---
+
+# 7. Query-count targets
+
+These targets are intended to keep Codex focused on architecture.
+
+## Panel list
+
+Before:
+
+```text
+~2 + per-session hydration queries
+```
+
+After:
+
+```text
+bounded bulk reads, approximately <= 5 for scheduled list hydration
+```
+
+Do not accept a refactor that still calls a DB helper inside `sessions.map(...)`.
+
+## Start
+
+After optimization, start cost must not depend on the number of unrelated active sessions.
+
+There must be no operation equivalent to:
+
+```ts
+VivaSession.find(all active sessions)
+```
+
+for conflict detection.
+
+## Access restriction
+
+Target:
+
+```text
+1 indexed exists lookup
+```
+
+in final steady state.
+
+## Grade
+
+Successful path:
+
+- no unconditional session pre-read;
+- one conditional update;
+- audit write;
+- transaction overhead only.
+
+## Completion
+
+Successful path:
+
+- one conditional update;
+- lock cleanup;
+- audit write;
+- no unconditional pre-read if correctness can be preserved.
+
+---
+
+# 8. Transaction design rules
+
+## Keep transactions short
+
+Inside a transaction:
+
+- do only data required for the mutation;
+- avoid scanning large unrelated collections;
+- avoid bulk writes to unrelated users;
+- avoid network/external calls;
+- avoid CPU-heavy transformations that can happen before the transaction.
+
+## Do validation outside transactions where safe
+
+Examples:
+
+- ObjectId syntax;
+- grade enum/input shape;
+- date validity.
+
+Do not move validation outside if it depends on mutable authoritative DB state.
+
+## Use unique indexes as concurrency primitives where appropriate
+
+For active participant occupancy, prefer a unique lock document over broad application-level scans.
+
+## Preserve optimistic concurrency
+
+Keep `version` checks for grade/completion/reschedule behavior.
+
+Do not replace all concurrency handling with participant locks; they solve a different invariant.
+
+---
+
+# 9. Data model and lifecycle invariants for participant locks
+
+Treat this section as an implementation contract.
+
+## Invariant A
+
+For every active Viva session:
+
+```text
+startedAt is date
+completedAt is null
+cancelledAt is null
+```
+
+there should be one participant-lock document for every panel examiner and participating student.
+
+## Invariant B
+
+No `userId` can occur in more than one participant lock.
+
+Enforce this in MongoDB with a unique index.
+
+## Invariant C
+
+Every lock's `sessionId` points to the active session it represents.
+
+## Invariant D
+
+Completing/cancelling the active session removes its locks atomically with terminal state.
+
+## Invariant E
+
+No lock is released simply because `vivaEndsAt` passed.
+
+## Invariant F
+
+A panel admin remains locked from participating elsewhere even if `restrictPortal === false`.
+
+## Invariant G
+
+Project supervisor membership alone does not create a lock unless current business rules define them as an active panel examiner.
+
+## Invariant H
+
+Do not derive team membership from batch.
+
+Use `Project.members` / frozen project snapshot members.
+
+---
+
+# 10. Tests that must exist before the optimization is considered safe
+
+At minimum, ensure automated coverage for:
+
+## Dashboard
+
+- scheduled session rendering;
+- many scheduled sessions;
+- running session rendering from snapshot;
+- completed session rendering from snapshot;
+- invalid deleted context handling;
+- non-admin panel examiner can view but cannot manage if that is intended;
+- panel admin can manage.
+
+## Start
+
+- valid start;
+- duplicate click/idempotent running response behavior;
+- wrong admin forbidden;
+- inactive examiner invalid;
+- malformed panel invalid;
+- project supervisor/examiner conflict invalid;
+- participant already active conflict;
+- concurrent conflict race;
+- disjoint concurrent starts.
+
+## Grade
+
+- valid grade;
+- invalid grade;
+- wrong actor;
+- stale version;
+- completed state;
+- cancelled state;
+- concurrent update.
+
+## Complete
+
+- requires grade;
+- wrong actor;
+- stale version;
+- finalizes once;
+- creates audit;
+- deletes locks.
+
+## Cancel
+
+- scheduled cancellation;
+- active cancellation;
+- lock cleanup;
+- completed cannot cancel;
+- repeated cancellation.
+
+## Access restriction
+
+- student;
+- examiner;
+- panel admin;
+- after completion;
+- after cancellation;
+- unrelated user.
+
+## Mixed batch
+
+Construct a project with students from at least two batches and verify it can:
+
+- remain a valid project team;
+- be scheduled where appropriate;
+- be hydrated in panel agenda;
+- start;
+- create participant locks;
+- grade;
+- complete.
+
+No test should merely grep source text to prove this workflow behavior.
+
+---
+
+# 11. Performance anti-patterns Codex must not introduce
+
+Reject any implementation containing these patterns unless strongly justified.
+
+## 11.1 DB call inside an unbounded list map
+
+Bad:
+
+```ts
+await Promise.all(items.map(item => Model.findById(...)))
+```
+
+for dashboard hydration.
+
+Batch IDs instead.
+
+## 11.2 Check-then-insert lock race
+
+Bad:
+
+```ts
+if (!await Lock.exists({ userId })) {
+  await Lock.create(...)
+}
+```
+
+Use a unique index and atomic insert.
+
+## 11.3 Locking via unrelated entity writes
+
+Do not touch User, Project, Panel, etc. just to force transaction conflicts.
+
+## 11.4 Long cache for portal pause
+
+Do not create a 30–60 second stale pause window to make performance numbers look good.
+
+## 11.5 Giant aggregation without need
+
+Do not replace understandable bounded queries with a fragile aggregation pipeline solely to reduce the query counter from 5 to 1.
+
+## 11.6 Raising pool size to hide N+1
+
+Not acceptable.
+
+## 11.7 Premature snapshots
+
+Do not make scheduled-session data permanently stale just to avoid live hydration.
+
+## 11.8 Swallowing duplicate-key errors
+
+A participant-lock duplicate is an expected business conflict.
+
+Translate it into a known result; do not hide or generically 500 it.
+
+## 11.9 Removing detailed tests because internals changed
+
+Update tests to assert behavior, not implementation text.
+
+---
+
+# 12. File-by-file implementation checklist
+
+This list is a guide. Codex must verify actual current files before editing.
+
+## `models/VivaParticipantLock.ts` — new
+
+- [ ] small schema;
+- [ ] `userId`;
+- [ ] `sessionId`;
+- [ ] participant type;
+- [ ] `restrictPortal`;
+- [ ] unique user index;
+- [ ] session index;
+- [ ] no TTL.
+
+## `lib/vivaSessionDashboard.ts`
+
+- [ ] extract reusable pure current-context validation/assembly if needed;
+- [ ] replace scheduled-session N+1 with batch hydration;
+- [ ] preserve start-time snapshot semantics;
+- [ ] integrate participant-lock insert on start;
+- [ ] remove global active-session scan after tests pass;
+- [ ] remove User fake-lock update;
+- [ ] shorten grade successful path;
+- [ ] shorten completion successful path;
+- [ ] delete participant locks on completion;
+- [ ] avoid large unrelated refactor.
+
+## `lib/vivaAccessRestriction.ts`
+
+- [ ] use indexed participant-lock lookup;
+- [ ] preserve invalid-ID safety;
+- [ ] preserve panel-admin exception.
+
+## `lib/vivaScheduling.ts`
+
+- [ ] identify cancellation path(s);
+- [ ] delete active-session locks on cancellation in same transaction;
+- [ ] do not disturb scheduling conflict behavior;
+- [ ] do not reintroduce batch assumptions.
+
+## `models/VivaPanel.ts`
+
+- [ ] add justified examiner lookup index if explain proves useful.
+
+## `models/VivaSession.ts`
+
+- [ ] add justified panel/list index;
+- [ ] do not repurpose start snapshots as schedule snapshots without explicit design;
+- [ ] do not remove legacy schema compatibility casually.
+
+## `proxy.ts`
+
+- [ ] only fetch pause status when pause result can actually affect request;
+- [ ] preserve fail-closed behavior for relevant API requests;
+- [ ] do not expand middleware DB access.
+
+## `lib/portalPause.ts`
+
+- [ ] inspect all call sites;
+- [ ] add short cache/single-flight if appropriate;
+- [ ] provide explicit invalidation;
+- [ ] keep a fresh-read path if admin UI requires it.
+
+## `app/api/portal-status/route.ts`
+
+- [ ] coordinate cache semantics with proxy/cache implementation;
+- [ ] do not leave `no-store` if it defeats the chosen safe cache strategy;
+- [ ] preserve correct error handling.
+
+## Portal-pause admin mutation file(s)
+
+- [ ] invalidate local status cache immediately after successful mutation;
+- [ ] preserve audit/security behavior.
+
+## Integration tests
+
+- [ ] update existing behavior tests;
+- [ ] add lock race tests;
+- [ ] add 50-session concurrency test;
+- [ ] add query-count/bounded-work test;
+- [ ] add mixed-batch Viva workflow test.
+
+## Scripts
+
+- [ ] follow existing index apply/audit pattern;
+- [ ] add participant-lock reconciliation/audit script if deployment can encounter active legacy sessions.
+
+---
+
+# 13. Commit strategy
+
+Do not make one giant commit.
+
+Recommended sequence:
+
+## Commit 1 — measurement/tests
+
+- baseline/concurrency harness;
+- query-count helper;
+- no production behavior change.
+
+## Commit 2 — batch panel-session hydration
+
+- remove N+1;
+- relevant tests.
+
+## Commit 3 — participant-lock model and start path
+
+- model/index;
+- start locking;
+- race tests;
+- remove old User-write/global-scan mechanism only when passing.
+
+## Commit 4 — lock lifecycle/access restriction
+
+- completion/cancellation cleanup;
+- access restriction point lookup;
+- reconciliation tooling if required.
+
+## Commit 5 — grade/completion transaction shortening
+
+- happy-path conditional writes;
+- fallback failure reads;
+- tests.
+
+## Commit 6 — portal-status amplification reduction
+
+- narrow proxy predicate;
+- short cache/coalescing;
+- tests.
+
+## Commit 7 — hot-query indexes/migration
+
+- explain evidence;
+- apply/audit script.
+
+## Commit 8 — payload/pagination optimization
+
+Only if measured and needed.
+
+## Commit 9 — pool tuning
+
+Only if benchmarks show a justified change.
+
+Each commit should be independently reviewable and should leave tests green.
+
+---
+
+# 14. Benchmark report Codex must produce
+
+At the end, create a concise implementation report, e.g. `VIVA_OPTIMIZATION_RESULTS.md`, or include equivalent detail in the PR description.
+
+Include:
+
+## Environment
+
+```text
+commit before:
+commit after:
+Node version:
+MongoDB test environment:
+test command:
+pool settings:
+```
+
+## Panel list
+
+Table:
+
+```text
+Sessions | Before queries | After queries | Before ms | After ms | Before bytes | After bytes
+1
+10
+50
+```
+
+If payload split is not implemented, bytes may be omitted.
+
+## Concurrent start
+
+```text
+50 sessions:
+successes:
+unexpected failures:
+p50:
+p95:
+max:
+transaction retry/errors:
+```
+
+## Grade
+
+Same metrics.
+
+## Completion
+
+Same metrics.
+
+## Database behavior
+
+State explicitly:
+
+- active-session global scan removed: yes/no;
+- User fake-lock writes removed: yes/no;
+- access restriction point lookup: yes/no;
+- stale locks after benchmark: count;
+- query plan evidence for new indexes.
+
+## Trade-offs
+
+Document:
+
+- portal pause cache maximum staleness;
+- any API changes;
+- any migration/rollout requirement;
+- any remaining known bottleneck.
+
+Do not write “50 sessions supported” if the actual 50-session scenario has not been run successfully.
+
+---
+
+# 15. Rollout plan
+
+## Before deployment
+
+- [ ] all tests green;
+- [ ] build green;
+- [ ] new indexes applied/verified;
+- [ ] active participant-lock migration strategy chosen;
+- [ ] if lock-only access reads are enabled, confirm existing active sessions have locks;
+- [ ] verify no duplicate active participants in current production data;
+- [ ] record current Mongo connection usage;
+- [ ] keep previous release available for rollback.
+
+## Deployment gate for participant locks
+
+Before switching fully to lock-based reads/conflicts:
+
+Either:
+
+```text
+active Viva count == 0
+```
+
+or:
+
+```text
+reconciliation completed successfully
+```
+
+Do not assume there are no active sessions.
+
+## After deployment
+
+Monitor:
+
+- API latency;
+- Mongo connections;
+- Mongo operation rate;
+- transaction errors/retries;
+- duplicate-key participant conflicts;
+- portal-status error rate;
+- stale participant locks;
+- start/grade/complete failures.
+
+## Rollback concern
+
+If rolling application code back to a version that does not understand participant locks:
+
+- locks become unused derived records;
+- they must not be allowed to corrupt future redeployment.
+
+Document whether rollback requires clearing/reconciling the lock collection after confirming no active sessions.
+
+Never delete locks blindly while active sessions exist.
+
+---
+
+# 16. Definition of done
+
+The optimization is complete only when all of the following are true.
+
+- [ ] Current HEAD/baseline was recorded.
+- [ ] Existing Viva behavior tests pass.
+- [ ] Mixed-batch project behavior is covered by executable workflow tests.
+- [ ] Panel-session scheduled hydration no longer does per-session DB reads.
+- [ ] Dashboard query count is bounded.
+- [ ] Starting a Viva does not scan all unrelated active sessions.
+- [ ] Starting a Viva does not touch `User.updatedAt` for locking.
+- [ ] Dedicated participant locks use a unique user index.
+- [ ] Concurrent conflicting starts are race-safe.
+- [ ] Completion deletes participant locks atomically.
+- [ ] Active cancellation deletes participant locks atomically.
+- [ ] Access restriction uses the lock collection in steady state.
+- [ ] Grade happy path avoids unnecessary read-before-write.
+- [ ] Completion happy path avoids unnecessary read-before-write where safe.
+- [ ] Portal-status fetch is skipped when it cannot affect the request.
+- [ ] Remaining portal-status reads are safely coalesced/cached if implemented.
+- [ ] Hot-query indexes have `explain` evidence.
+- [ ] `maxPoolSize` was not increased to hide inefficient queries.
+- [ ] 50 disjoint sessions can start concurrently in the test scenario.
+- [ ] 50 sessions can grade concurrently.
+- [ ] 50 sessions can complete concurrently.
+- [ ] No stale participant locks remain after the completed benchmark.
+- [ ] No unexpected transaction/pool failures occur.
+- [ ] Final benchmark/report documents actual results and remaining limits.
+- [ ] Production rollout/migration instructions are documented.
+
+---
+
+# 17. Stop conditions
+
+Codex must stop and investigate instead of pushing forward if any of these occur:
+
+1. a change causes audit events to be non-atomic with state changes;
+2. two conflicting Vivas can both start;
+3. a panel admin loses required control of their running Viva;
+4. a student/non-admin examiner can bypass an active-session restriction unexpectedly;
+5. mixed-batch teams become invalid;
+6. scheduled-session snapshots become stale in a way that changes start-time truth;
+7. new indexes materially increase write/resource cost without improving the target queries;
+8. 50-session failures are being “fixed” only by increasing the DB pool;
+9. the implementation requires a broad unrelated rewrite;
+10. a migration can strand users behind stale locks;
+11. a production deployment could switch to lock-only reads while active sessions lack locks.
+
+When a stop condition occurs:
+
+- keep the failing regression test;
+- identify the violated invariant;
+- correct the design;
+- do not hide the issue with retries/timeouts/resource increases.
+
+---
+
+# 18. Preferred final architecture
+
+The intended steady-state architecture is:
+
+```text
+Panel agenda request
+    |
+    +-- one panel read
+    +-- one session read
+    +-- bounded bulk context reads
+    |
+    --> no per-session DB hydration
+
+Start Viva
+    |
+    +-- read/revalidate only this session's current context
+    +-- insert unique participant locks
+    +-- snapshot start context
+    +-- mark started
+    +-- audit
+    |
+    --> no global active-session scan
+    --> no fake User writes
+
+During active Viva
+    |
+    +-- access restriction = indexed participant-lock lookup
+    +-- grade = conditional update + audit
+    |
+    --> bounded work independent of number of other Vivas
+
+Complete/cancel
+    |
+    +-- terminal state update
+    +-- delete session participant locks
+    +-- audit
+    |
+    --> atomic cleanup
+
+Portal pause
+    |
+    +-- checked only where it matters
+    +-- very short safe caching/coalescing
+    |
+    --> no DB read amplification on irrelevant requests
+```
+
+The key property is:
+
+> **The amount of work required for one Viva must remain approximately constant as the number of unrelated active Vivas grows from 1 to 50.**
+
+That is the architectural condition Codex should optimize for.
+
+---
+
+# 19. First actions for Codex
+
+Start with these actions only:
+
+1. verify current HEAD and working tree;
+2. re-read the listed hot-path files;
+3. run all current Viva tests;
+4. add/prepare query-count and 50-session baseline instrumentation;
+5. record baseline behavior;
+6. implement Phase 1 only;
+7. prove Phase 1;
+8. proceed phase-by-phase.
+
+Do **not** begin by editing `lib/mongodb.ts`.
+
+Do **not** begin by increasing connection limits.
+
+Do **not** begin by creating a new infrastructure dependency.
+
+Reduce the work first.

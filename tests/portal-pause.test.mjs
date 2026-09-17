@@ -10,7 +10,9 @@ test('portal pause is server-enforced and keeps only admin access', async () => 
     readFile(new URL('../components/auth/LoginView.tsx', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(proxy, /portal\?\.paused[\s\S]*path\.startsWith\('\/api\/'\)[\s\S]*role !== 'admin'/);
+  assert.match(proxy, /shouldEnforcePortalPause\(path, role\)/);
+  assert.match(proxy, /path\.startsWith\('\/api\/'\)[\s\S]*path !== '\/api\/portal-status'[\s\S]*!isRequiredAuthRoute[\s\S]*role !== 'admin'/);
+  assert.match(proxy, /PORTAL_UNAVAILABLE/);
   assert.match(auth, /portal\.paused && user\.role !== 'admin'/);
   assert.match(adminRoute, /requireCurrentUser\(req, \['admin'\]\)/);
   assert.match(login, /Administrator access only/);

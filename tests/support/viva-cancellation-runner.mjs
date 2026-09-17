@@ -10,6 +10,7 @@ const [
   { default: VivaRound },
   { default: VivaPanel },
   { default: VivaSession },
+  { default: VivaParticipantLock },
   { default: VivaAuditEvent },
   { cancelVivaSession, getVivaSchedules, parseVivaSessionCancellationInput, scheduleVivaSession },
   { completeVivaSession, saveVivaGrade, startVivaSession },
@@ -20,6 +21,7 @@ const [
   importTypeScriptModuleWithDependencies('models/VivaRound.ts'),
   importTypeScriptModuleWithDependencies('models/VivaPanel.ts'),
   importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaParticipantLock.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaSessionDashboard.ts'),
@@ -58,6 +60,7 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
       VivaRound.init(),
       VivaPanel.init(),
       VivaSession.init(),
+      VivaParticipantLock.init(),
       VivaAuditEvent.init(),
     ]);
 

@@ -3,6 +3,7 @@ import mongoose, { type ClientSession } from 'mongoose';
 import Project from '../models/Project';
 import User from '../models/User';
 import VivaPanel from '../models/VivaPanel';
+import VivaParticipantLock from '../models/VivaParticipantLock';
 import VivaRound from '../models/VivaRound';
 import VivaSession from '../models/VivaSession';
 import {
@@ -83,7 +84,12 @@ export type VivaGradeSaveResult =
   | VivaSessionMutationFailure;
 
 export type VivaSessionCompletionResult =
-  | { success: true; result: VivaGradeResult; completedAt: string }
+  | {
+      success: true;
+      result: VivaGradeResult;
+      completedAt: string;
+      workspace: VivaSessionWorkspaceDto;
+    }
   | VivaSessionMutationFailure;
 
 type VivaSessionStartFailure = Extract<VivaSessionStartResult, { success: false }>;
@@ -92,6 +98,10 @@ class VivaStartAbort extends Error {
   constructor(readonly result: VivaSessionStartFailure) {
     super(result.error);
   }
+}
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return isRecord(error) && error.code === 11000;
 }
 
 type VivaRoundRecord = {
@@ -178,6 +188,10 @@ type CurrentContext = {
   projectMembers: VivaPersonDto[];
   projectSupervisor: VivaPersonDto | null;
 };
+
+type CurrentContextResult =
+  | { success: true; context: CurrentContext }
+  | Extract<VivaSessionStartResult, { success: false }>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -400,40 +414,27 @@ function toSessionSnapshots(context: CurrentContext) {
   };
 }
 
-async function readCurrentContext(
+function assembleCurrentContext(
   vivaSession: VivaSessionRecord,
-  actorId?: string,
-  databaseSession?: ClientSession
-): Promise<{ success: true; context: CurrentContext } | Extract<VivaSessionStartResult, { success: false }>> {
+  round: VivaRoundRecord | undefined,
+  panel: VivaPanelRecord | undefined,
+  project: VivaProjectRecord | undefined,
+  peopleById: ReadonlyMap<string, VivaUserRecord>,
+  actorId?: string
+): CurrentContextResult {
   const roundId = asId(vivaSession.roundId);
   const panelId = asId(vivaSession.panelId);
   const projectId = asId(vivaSession.projectId);
   if (!roundId || !panelId || !projectId) {
     return { success: false, reason: 'invalid', error: 'This Viva session has incomplete scheduling data.' };
   }
-
-  const roundQuery = VivaRound.findById(roundId)
-    .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes frozenAt');
-  const panelQuery = VivaPanel.findById(panelId).select('_id roundId examinerIds panelAdminId');
-  const projectQuery = Project.findById(projectId)
-    .select('_id supervisorId members title description domains tools pdfUrl pdfSize');
-  if (databaseSession) {
-    roundQuery.session(databaseSession);
-    panelQuery.session(databaseSession);
-    projectQuery.session(databaseSession);
-  }
-  const [round, panel, project] = await Promise.all([
-    roundQuery.lean<VivaRoundRecord | null>(),
-    panelQuery.lean<VivaPanelRecord | null>(),
-    projectQuery.lean<VivaProjectRecord | null>(),
-  ]);
   if (!round || !panel || !project) {
     return { success: false, reason: 'invalid', error: 'The scheduled Viva round, panel, or team no longer exists.' };
   }
-  if (String(panel.roundId) !== roundId || String(vivaSession.roundId) !== roundId) {
+  if (String(round._id) !== roundId || String(panel.roundId) !== roundId || String(panel._id) !== panelId) {
     return { success: false, reason: 'invalid', error: 'This Viva session no longer matches its scheduled panel.' };
   }
-  if (String(vivaSession.projectId) !== projectId) {
+  if (String(project._id) !== projectId) {
     return { success: false, reason: 'invalid', error: 'This Viva session no longer matches its scheduled team.' };
   }
 
@@ -461,6 +462,66 @@ async function readCurrentContext(
   if (actorId && panelAdminId !== actorId) {
     return { success: false, reason: 'forbidden', error: 'Only the assigned panel admin can open this Viva session.' };
   }
+
+  const panelUsers = panelMemberIds.map((id) => peopleById.get(id));
+  const projectUsers = projectMemberIds.map((id) => peopleById.get(id));
+  const panelMembers = panelUsers.map((person) => person && toPerson(person));
+  const projectMembers = projectUsers.map((person) => person && toPerson(person));
+  if (
+    !arePresent(panelMembers)
+    || !arePresent(projectMembers)
+    || panelUsers.some((person) => person?.role !== 'supervisor' || person.isActive !== true)
+    || projectUsers.some((person) => person?.role !== 'student')
+  ) {
+    return { success: false, reason: 'invalid', error: 'One or more current Viva participants are no longer valid.' };
+  }
+
+  const panelAdmin = panelMembers.find((person) => person.id === panelAdminId);
+  const supervisorRecord = projectSupervisorId ? peopleById.get(projectSupervisorId) : undefined;
+  const projectSupervisor = supervisorRecord?.role === 'supervisor' ? toPerson(supervisorRecord) : null;
+  if (!panelAdmin) {
+    return { success: false, reason: 'invalid', error: 'The assigned panel admin is no longer a valid panel member.' };
+  }
+
+  return {
+    success: true,
+    context: { round, panel, project, panelMembers, panelAdmin, projectMembers, projectSupervisor },
+  };
+}
+
+async function readCurrentContext(
+  vivaSession: VivaSessionRecord,
+  actorId?: string,
+  databaseSession?: ClientSession
+): Promise<CurrentContextResult> {
+  const roundId = asId(vivaSession.roundId);
+  const panelId = asId(vivaSession.panelId);
+  const projectId = asId(vivaSession.projectId);
+  if (!roundId || !panelId || !projectId) {
+    return { success: false, reason: 'invalid', error: 'This Viva session has incomplete scheduling data.' };
+  }
+
+  const roundQuery = VivaRound.findById(roundId)
+    .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes frozenAt');
+  const panelQuery = VivaPanel.findById(panelId).select('_id roundId examinerIds panelAdminId');
+  const projectQuery = Project.findById(projectId)
+    .select('_id supervisorId members title description domains tools pdfUrl pdfSize');
+  if (databaseSession) {
+    roundQuery.session(databaseSession);
+    panelQuery.session(databaseSession);
+    projectQuery.session(databaseSession);
+  }
+  const [round, panel, project] = await Promise.all([
+    roundQuery.lean<VivaRoundRecord | null>(),
+    panelQuery.lean<VivaPanelRecord | null>(),
+    projectQuery.lean<VivaProjectRecord | null>(),
+  ]);
+  if (!round || !panel || !project) {
+    return { success: false, reason: 'invalid', error: 'The scheduled Viva round, panel, or team no longer exists.' };
+  }
+  const panelMemberIds = asIdList(panel.examinerIds) || [];
+  const projectMemberIds = asIdList(project.members) || [];
+  const projectSupervisorId = asId(project.supervisorId);
   const participantIds = [...new Set([
     ...panelMemberIds,
     ...projectMemberIds,
@@ -471,108 +532,28 @@ async function readCurrentContext(
   if (databaseSession) peopleQuery.session(databaseSession);
   const people = await peopleQuery.lean<VivaUserRecord[]>();
   const peopleById = new Map(people.map((person) => [String(person._id), person]));
-
-  const panelMembers = panelMemberIds.map((id) => peopleById.get(id)).map((person) => person && toPerson(person));
-  const projectMembers = projectMemberIds.map((id) => peopleById.get(id)).map((person) => person && toPerson(person));
-  const panelUsers = panelMemberIds.map((id) => peopleById.get(id));
-  const projectUsers = projectMemberIds.map((id) => peopleById.get(id));
-  if (
-    !arePresent(panelMembers)
-    || !arePresent(projectMembers)
-    || panelUsers.some((person) => person?.role !== 'supervisor' || person.isActive !== true)
-    || projectUsers.some((person) => person?.role !== 'student')
-  ) {
-    return { success: false, reason: 'invalid', error: 'One or more current Viva participants are no longer valid.' };
-  }
-
-  const panelAdmin = panelMembers.find((person) => person?.id === panelAdminId);
-  const supervisorRecord = projectSupervisorId ? peopleById.get(projectSupervisorId) : undefined;
-  const projectSupervisor = supervisorRecord?.role === 'supervisor' ? toPerson(supervisorRecord) : null;
-  if (!panelAdmin) {
-    return { success: false, reason: 'invalid', error: 'The assigned panel admin is no longer a valid panel member.' };
-  }
-
-  return {
-    success: true,
-    context: {
-      round,
-      panel,
-      project,
-      panelMembers,
-      panelAdmin,
-      projectMembers,
-      projectSupervisor,
-    },
-  };
+  return assembleCurrentContext(vivaSession, round, panel, project, peopleById, actorId);
 }
 
-async function findActiveParticipantConflict(
-  vivaSession: VivaSessionRecord,
+async function createParticipantLocks(
+  sessionId: string,
   context: CurrentContext,
   databaseSession: ClientSession
-): Promise<string | null> {
-  const activeSessions = await VivaSession.find({
-    _id: { $ne: vivaSession._id },
-    startedAt: { $type: 'date' },
-    completedAt: null,
-    cancelledAt: null,
-  })
-    .select('_id panelId projectId')
-    .session(databaseSession)
-    .lean<VivaSessionRecord[]>();
-  if (activeSessions.length === 0) return null;
-
-  const [panels, projects] = await Promise.all([
-    VivaPanel.find({ _id: { $in: activeSessions.map((session) => session.panelId) } })
-      .select('_id examinerIds')
-      .session(databaseSession)
-      .lean<VivaPanelRecord[]>(),
-    Project.find({ _id: { $in: activeSessions.map((session) => session.projectId) } })
-      .select('_id members')
-      .session(databaseSession)
-      .lean<VivaProjectRecord[]>(),
-  ]);
-  const panelMembersById = new Map(
-    panels.map((panel) => [String(panel._id), asIdList(panel.examinerIds)])
-  );
-  const projectMembersById = new Map(
-    projects.map((project) => [String(project._id), asIdList(project.members)])
-  );
-  const panelMemberIds = new Set(context.panelMembers.map((member) => member.id));
-  const projectMemberIds = new Set(context.projectMembers.map((member) => member.id));
-
-  for (const activeSession of activeSessions) {
-    const activePanelMembers = panelMembersById.get(String(activeSession.panelId));
-    const activeProjectMembers = projectMembersById.get(String(activeSession.projectId));
-    if (!activePanelMembers || !activeProjectMembers) {
-      return 'An active Viva session has incomplete participant data. Resolve it before starting another session.';
-    }
-    if (
-      activePanelMembers.some((memberId) => panelMemberIds.has(memberId))
-      || activeProjectMembers.some((memberId) => projectMemberIds.has(memberId))
-    ) {
-      return 'A Viva participant is already in an active session.';
-    }
-  }
-
-  return null;
-}
-
-async function reserveStartParticipants(
-  context: CurrentContext,
-  databaseSession: ClientSession
-): Promise<boolean> {
-  const participantIds = [...new Set([
-    ...context.panelMembers.map((member) => member.id),
-    ...context.projectMembers.map((member) => member.id),
-  ])];
-  // This write makes concurrent starts that share a person conflict and retry as one transaction.
-  const result = await User.updateMany(
-    { _id: { $in: participantIds } },
-    { $currentDate: { updatedAt: true } },
-    { session: databaseSession, timestamps: false }
-  );
-  return result.matchedCount === participantIds.length;
+): Promise<void> {
+  await VivaParticipantLock.insertMany([
+    ...context.panelMembers.map((member) => ({
+      userId: member.id,
+      sessionId,
+      participantType: 'examiner',
+      restrictPortal: member.id !== context.panelAdmin.id,
+    })),
+    ...context.projectMembers.map((member) => ({
+      userId: member.id,
+      sessionId,
+      participantType: 'student',
+      restrictPortal: true,
+    })),
+  ], { session: databaseSession });
 }
 
 async function readSession(
@@ -638,21 +619,12 @@ export async function saveVivaGrade(
   if (asVersion(version) === null || !(selectedAt instanceof Date) || !Number.isFinite(selectedAt.getTime())) {
     return { success: false, reason: 'invalid', error: 'The Viva grade request is invalid.' };
   }
+  const permission = getVivaGradeChangePermission('running', grade);
+  if (!permission.permitted) {
+    return { success: false, reason: 'invalid', error: 'Select a valid Viva grade.' };
+  }
 
   return withVivaTransaction(async (databaseSession) => {
-    const vivaSession = await readSession(sessionId, databaseSession);
-    if (!vivaSession) {
-      return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
-    }
-
-    const authorization = gradeWritePermission(vivaSession, actor);
-    if (authorization) return authorization;
-
-    const permission = getVivaGradeChangePermission(sessionPhase(vivaSession), grade);
-    if (!permission.permitted) {
-      return { success: false, reason: 'invalid', error: 'Select a valid Viva grade.' };
-    }
-
     const updatedSession = await VivaSession.findOneAndUpdate(
       {
         _id: sessionId,
@@ -660,6 +632,7 @@ export async function saveVivaGrade(
         startedAt: { $type: 'date' },
         completedAt: null,
         cancelledAt: null,
+        'panelSnapshot.panelAdmin.userId': actor.id,
       },
       {
         $set: {
@@ -670,6 +643,12 @@ export async function saveVivaGrade(
       { returnDocument: 'after', runValidators: true, session: databaseSession }
     ).lean<VivaSessionRecord | null>();
     if (!updatedSession) {
+      const currentSession = await readSession(sessionId, databaseSession);
+      if (!currentSession) {
+        return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+      }
+      const authorization = gradeWritePermission(currentSession, actor);
+      if (authorization) return authorization;
       return {
         success: false,
         reason: 'concurrent-change',
@@ -711,23 +690,6 @@ export async function completeVivaSession(
   }
 
   return withVivaTransaction(async (databaseSession) => {
-    const vivaSession = await readSession(sessionId, databaseSession);
-    if (!vivaSession) {
-      return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
-    }
-
-    const authorization = gradeWritePermission(vivaSession, actor);
-    if (authorization) return authorization;
-
-    const result = canonicalSessionResult(vivaSession.result);
-    if (!result) {
-      return {
-        success: false,
-        reason: 'invalid',
-        error: 'Save a valid Viva grade before completing this session.',
-      };
-    }
-
     const completedSession = await VivaSession.findOneAndUpdate(
       {
         _id: sessionId,
@@ -735,8 +697,8 @@ export async function completeVivaSession(
         startedAt: { $type: 'date' },
         completedAt: null,
         cancelledAt: null,
-        'result.grade': result.grade,
-        'result.percentage': result.percentage,
+        'result.selectedAt': { $type: 'date' },
+        'panelSnapshot.panelAdmin.userId': actor.id,
       },
       {
         $set: { completedAt },
@@ -745,12 +707,30 @@ export async function completeVivaSession(
       { returnDocument: 'after', runValidators: true, session: databaseSession }
     ).lean<VivaSessionRecord | null>();
     if (!completedSession) {
+      const currentSession = await readSession(sessionId, databaseSession);
+      if (!currentSession) {
+        return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+      }
+      const authorization = gradeWritePermission(currentSession, actor);
+      if (authorization) return authorization;
+      if (!canonicalSessionResult(currentSession.result)) {
+        return {
+          success: false,
+          reason: 'invalid',
+          error: 'Save a valid Viva grade before completing this session.',
+        };
+      }
       return {
         success: false,
         reason: 'concurrent-change',
         error: 'Another tab changed this Viva session. Reload before completing it.',
       };
     }
+
+    const result = canonicalSessionResult(completedSession.result);
+    if (!result) throw new Error('Completed Viva result is invalid.');
+
+    await VivaParticipantLock.deleteMany({ sessionId }, { session: databaseSession });
 
     await recordVivaAuditEvent(
       {
@@ -766,14 +746,23 @@ export async function completeVivaSession(
       databaseSession
     );
 
-    return { success: true, result, completedAt: completedAt.toISOString() };
+    const workspace = workspaceFromSnapshot(completedSession);
+    if (!workspace) throw new Error('Completed Viva session could not be serialized.');
+    return {
+      success: true,
+      result,
+      completedAt: completedAt.toISOString(),
+      workspace: { ...workspace, canManage: true },
+    };
   });
 }
 
 export async function getVivaPanelSessions(actorId: string): Promise<VivaSessionWorkspaceDto[]> {
   if (!mongoose.Types.ObjectId.isValid(actorId)) return [];
 
-  const panels = await VivaPanel.find({ examinerIds: actorId }).select('_id panelAdminId').lean<VivaPanelRecord[]>();
+  const panels = await VivaPanel.find({ examinerIds: actorId })
+    .select('_id roundId examinerIds panelAdminId')
+    .lean<VivaPanelRecord[]>();
   if (panels.length === 0) return [];
 
   const sessions = await VivaSession.find({
@@ -783,8 +772,42 @@ export async function getVivaPanelSessions(actorId: string): Promise<VivaSession
     .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel result version roundSnapshot projectSnapshot panelSnapshot')
     .sort({ scheduledAt: 1, _id: 1 })
     .lean<VivaSessionRecord[]>();
+  if (sessions.length === 0) return [];
 
-  const workspaces = await Promise.all(sessions.map(async (vivaSession) => {
+  const scheduledSessions = sessions.filter((vivaSession) => sessionPhase(vivaSession) === 'scheduled');
+  const scheduledPanelIds = new Set(scheduledSessions.map((session) => String(session.panelId)));
+  const roundIds = [...new Set(scheduledSessions.flatMap((session) => asId(session.roundId) || []))];
+  const projectIds = [...new Set(scheduledSessions.flatMap((session) => asId(session.projectId) || []))];
+  const [rounds, projects] = await Promise.all([
+    roundIds.length === 0
+      ? []
+      : VivaRound.find({ _id: { $in: roundIds } })
+        .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes frozenAt')
+        .lean<VivaRoundRecord[]>(),
+    projectIds.length === 0
+      ? []
+      : Project.find({ _id: { $in: projectIds } })
+        .select('_id supervisorId members title description domains tools pdfUrl pdfSize')
+        .lean<VivaProjectRecord[]>(),
+  ]);
+  const panelsById = new Map(panels.map((panel) => [String(panel._id), panel]));
+  const roundsById = new Map(rounds.map((round) => [String(round._id), round]));
+  const projectsById = new Map(projects.map((project) => [String(project._id), project]));
+  const participantIds = [...new Set([
+    ...panels
+      .filter((panel) => scheduledPanelIds.has(String(panel._id)))
+      .flatMap((panel) => asIdList(panel.examinerIds) || []),
+    ...projects.flatMap((project) => asIdList(project.members) || []),
+    ...projects.flatMap((project) => asId(project.supervisorId) || []),
+  ])];
+  const people = participantIds.length === 0
+    ? []
+    : await User.find({ _id: { $in: participantIds } })
+      .select('_id name rollNo role isActive')
+      .lean<VivaUserRecord[]>();
+  const peopleById = new Map(people.map((person) => [String(person._id), person]));
+
+  const workspaces = sessions.map((vivaSession) => {
     const phase = sessionPhase(vivaSession);
     if (phase === 'running' || phase === 'completed') {
       const workspace = workspaceFromSnapshot(vivaSession);
@@ -792,11 +815,17 @@ export async function getVivaPanelSessions(actorId: string): Promise<VivaSession
     }
     if (phase !== 'scheduled') return null;
 
-    const context = await readCurrentContext(vivaSession);
+    const context = assembleCurrentContext(
+      vivaSession,
+      roundsById.get(String(vivaSession.roundId)),
+      panelsById.get(String(vivaSession.panelId)),
+      projectsById.get(String(vivaSession.projectId)),
+      peopleById
+    );
     if (!context.success) return null;
     const workspace = workspaceFromCurrentContext(vivaSession, context.context);
     return workspace ? { ...workspace, canManage: workspace.panel.admin.id === actorId } : null;
-  }));
+  });
 
   return workspaces.filter((workspace): workspace is VivaSessionWorkspaceDto => Boolean(workspace));
 }
@@ -827,32 +856,19 @@ export async function startVivaSession(
         return { success: false, reason: 'not-startable', error: 'This Viva session is no longer available to start.' };
       }
 
-      const currentContext = await readCurrentContext(vivaSession, actor.id, databaseSession);
-      if (!currentContext.success) return currentContext;
-
       if (phase === 'running') {
+        if (snapshotPanelAdminId(vivaSession) !== actor.id) {
+          return { success: false, reason: 'forbidden', error: 'Only the assigned panel admin can open this Viva session.' };
+        }
         const workspace = workspaceFromSnapshot(vivaSession);
         return workspace
           ? { success: true, workspace: { ...workspace, canManage: true }, started: false }
           : { success: false, reason: 'invalid', error: 'This active Viva session has incomplete assessment context.' };
       }
 
-      if (!await reserveStartParticipants(currentContext.context, databaseSession)) {
-        throw new VivaStartAbort({
-          success: false,
-          reason: 'invalid',
-          error: 'One or more Viva participants are no longer valid.',
-        });
-      }
-
-      const activeConflict = await findActiveParticipantConflict(
-        vivaSession,
-        currentContext.context,
-        databaseSession
-      );
-      if (activeConflict) {
-        throw new VivaStartAbort({ success: false, reason: 'invalid', error: activeConflict });
-      }
+      const currentContext = await readCurrentContext(vivaSession, actor.id, databaseSession);
+      if (!currentContext.success) return currentContext;
+      await createParticipantLocks(sessionId, currentContext.context, databaseSession);
 
       const vivaDurationMinutes = Number(currentContext.context.round.vivaDurationMinutes);
       const vivaEndsAt = new Date(startedAt.getTime() + vivaDurationMinutes * 60_000);
@@ -903,6 +919,13 @@ export async function startVivaSession(
     });
   } catch (error) {
     if (error instanceof VivaStartAbort) return error.result;
+    if (isDuplicateKeyError(error)) {
+      return {
+        success: false,
+        reason: 'invalid',
+        error: 'A Viva participant is already in an active session.',
+      };
+    }
     throw error;
   }
 }

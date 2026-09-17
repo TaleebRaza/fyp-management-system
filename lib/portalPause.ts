@@ -10,14 +10,41 @@ export type PortalPause = {
   reason: string;
 };
 
-export async function getPortalPause(): Promise<PortalPause> {
-  await connectToDatabase();
-  const config = await SystemConfig.findOne({ configKey: PORTAL_CONFIG_KEY })
-    .select('portalPaused portalPauseReason')
-    .lean();
+const PORTAL_PAUSE_CACHE_MS = 5_000;
+let cachedPortalPause: { value: PortalPause; expiresAt: number } | null = null;
+let portalPauseRead: Promise<PortalPause> | null = null;
+let portalPauseCacheGeneration = 0;
 
-  return {
-    paused: config?.portalPaused === true,
-    reason: String(config?.portalPauseReason || DEFAULT_PORTAL_PAUSE_REASON),
-  };
+export function invalidatePortalPauseCache(): void {
+  cachedPortalPause = null;
+  portalPauseCacheGeneration += 1;
+}
+
+export async function getPortalPause(): Promise<PortalPause> {
+  if (cachedPortalPause && cachedPortalPause.expiresAt > Date.now()) {
+    return cachedPortalPause.value;
+  }
+  if (portalPauseRead) return portalPauseRead;
+
+  const readGeneration = portalPauseCacheGeneration;
+  portalPauseRead = (async () => {
+    await connectToDatabase();
+    const config = await SystemConfig.findOne({ configKey: PORTAL_CONFIG_KEY })
+      .select('portalPaused portalPauseReason')
+      .lean();
+    const value = {
+      paused: config?.portalPaused === true,
+      reason: String(config?.portalPauseReason || DEFAULT_PORTAL_PAUSE_REASON),
+    };
+    if (readGeneration === portalPauseCacheGeneration) {
+      cachedPortalPause = { value, expiresAt: Date.now() + PORTAL_PAUSE_CACHE_MS };
+    }
+    return value;
+  })();
+
+  try {
+    return await portalPauseRead;
+  } finally {
+    portalPauseRead = null;
+  }
 }

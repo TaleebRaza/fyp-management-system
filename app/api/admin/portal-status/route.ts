@@ -3,6 +3,7 @@ import { requireCurrentUser } from '../../../../lib/security/auth';
 import connectToDatabase from '../../../../lib/mongodb';
 import {
   DEFAULT_PORTAL_PAUSE_REASON,
+  invalidatePortalPauseCache,
   PORTAL_CONFIG_KEY,
 } from '../../../../lib/portalPause';
 import SystemConfig from '../../../../models/SystemConfig';
@@ -27,6 +28,7 @@ export async function PUT(req: NextRequest) {
       { $set: { portalPaused: body.paused, portalPauseReason: reason } },
       { upsert: true }
     );
+    invalidatePortalPauseCache();
 
     return NextResponse.json({ paused: body.paused, reason });
   } catch (error) {

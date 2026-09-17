@@ -10,6 +10,7 @@ const [
   { default: VivaRound },
   { default: VivaPanel },
   { default: VivaSession },
+  { default: VivaParticipantLock },
   { default: VivaAuditEvent },
   { scheduleVivaSession },
   { getPanelAdminVivaSessions, startVivaSession },
@@ -19,6 +20,7 @@ const [
   importTypeScriptModuleWithDependencies('models/VivaRound.ts'),
   importTypeScriptModuleWithDependencies('models/VivaPanel.ts'),
   importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaParticipantLock.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaSessionDashboard.ts'),
@@ -26,6 +28,13 @@ const [
 
 function actor(user) {
   return { id: String(user._id), name: user.name, rollNo: user.rollNo };
+}
+
+async function endSessionForFixture(sessionId, completedAt) {
+  await Promise.all([
+    VivaSession.updateOne({ _id: sessionId }, { $set: { completedAt } }),
+    VivaParticipantLock.deleteMany({ sessionId }),
+  ]);
 }
 
 async function createScheduledSession({
@@ -82,6 +91,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       VivaRound.init(),
       VivaPanel.init(),
       VivaSession.init(),
+      VivaParticipantLock.init(),
       VivaAuditEvent.init(),
     ]);
 
@@ -170,7 +180,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
     assert.equal(repeatedStart.started, false);
     assert.equal(repeatedStart.workspace.startedAt, '2026-10-10T09:00:00.000Z');
     assert.equal(await VivaAuditEvent.countDocuments({ sessionId: membership.sessionId, event: 'session-started' }), 1);
-    await VivaSession.updateOne({ _id: membership.sessionId }, { $set: { completedAt: new Date('2026-10-10T09:30:00.000Z') } });
+    await endSessionForFixture(membership.sessionId, new Date('2026-10-10T09:30:00.000Z'));
 
     const replacement = await createScheduledSession({
       label: 'Replacement',
@@ -194,7 +204,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       new Date('2026-10-10T10:00:00.000Z')
     );
     assert.equal(replacementStart.success, true, replacementStart.success ? '' : replacementStart.error);
-    await VivaSession.updateOne({ _id: replacement.sessionId }, { $set: { completedAt: new Date('2026-10-10T10:30:00.000Z') } });
+    await endSessionForFixture(replacement.sessionId, new Date('2026-10-10T10:30:00.000Z'));
 
     const active = await createScheduledSession({
       label: 'Active',
@@ -231,7 +241,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       (await User.findById(panelAlternate._id).select('updatedAt').lean()).updatedAt.getTime(),
       conflictMemberBeforeRejectedStart.updatedAt.getTime()
     );
-    await VivaSession.updateOne({ _id: active.sessionId }, { $set: { completedAt: new Date('2026-10-10T11:30:00.000Z') } });
+    await endSessionForFixture(active.sessionId, new Date('2026-10-10T11:30:00.000Z'));
 
     const crossSessionRace = await createScheduledSession({
       label: 'Cross-session race',
@@ -249,10 +259,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
     assert.equal(overlappingStarts.filter((result) => !result.success).length, 1);
     const startedRace = overlappingStarts.find((result) => result.success && result.started);
     assert.ok(startedRace?.success);
-    await VivaSession.updateOne(
-      { _id: startedRace.workspace.id },
-      { $set: { completedAt: new Date('2026-10-10T12:30:00.000Z') } }
-    );
+    await endSessionForFixture(startedRace.workspace.id, new Date('2026-10-10T12:30:00.000Z'));
 
     const concurrent = await createScheduledSession({
       label: 'Concurrent',

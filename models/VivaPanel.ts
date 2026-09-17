@@ -32,6 +32,7 @@ VivaPanelSchema.pre('validate', function () {
 
 // A multikey unique index allows each examiner to appear in one panel per round.
 VivaPanelSchema.index({ roundId: 1, examinerIds: 1 }, { unique: true });
+VivaPanelSchema.index({ examinerIds: 1 });
 
 const VivaPanel = mongoose.models.VivaPanel || mongoose.model('VivaPanel', VivaPanelSchema);
 

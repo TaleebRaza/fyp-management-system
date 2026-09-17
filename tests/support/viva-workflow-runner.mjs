@@ -10,6 +10,7 @@ const [
   { default: VivaRound },
   { default: VivaPanel },
   { default: VivaSession },
+  { default: VivaParticipantLock },
   { default: VivaAuditEvent },
   { createVivaRound },
   { previewRandomVivaPanels, saveVivaPanels },
@@ -23,6 +24,7 @@ const [
   importTypeScriptModuleWithDependencies('models/VivaRound.ts'),
   importTypeScriptModuleWithDependencies('models/VivaPanel.ts'),
   importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaParticipantLock.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaRoundAdmin.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaPanelAdmin.ts'),
@@ -60,6 +62,7 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
       VivaRound.init(),
       VivaPanel.init(),
       VivaSession.init(),
+      VivaParticipantLock.init(),
       VivaAuditEvent.init(),
     ]);
 

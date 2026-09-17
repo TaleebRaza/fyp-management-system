@@ -126,6 +126,7 @@ VivaSessionSchema.index(
   { unique: true, partialFilterExpression: { cancelledAt: null } }
 );
 VivaSessionSchema.index({ roundId: 1, scheduledAt: 1 });
+VivaSessionSchema.index({ panelId: 1, cancelledAt: 1, scheduledAt: 1, _id: 1 });
 VivaSessionSchema.index({ cancelledAt: 1, completedAt: 1, scheduledAt: 1, vivaEndsAt: 1 });
 VivaSessionSchema.index({
   'panelSnapshot.examiners.userId': 1,

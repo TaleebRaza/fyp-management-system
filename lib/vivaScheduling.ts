@@ -4,6 +4,7 @@ import Project from '../models/Project';
 import User from '../models/User';
 import VivaAuditEvent from '../models/VivaAuditEvent';
 import VivaPanel from '../models/VivaPanel';
+import VivaParticipantLock from '../models/VivaParticipantLock';
 import VivaRound from '../models/VivaRound';
 import VivaSession from '../models/VivaSession';
 import { calculateVivaPhase, isVivaPanelAdmin, type VivaPhase } from './viva';
@@ -1494,6 +1495,8 @@ export async function cancelVivaSession(
         error: 'Another administrator changed this Viva session. Reload before cancelling it.',
       };
     }
+
+    await VivaParticipantLock.deleteMany({ sessionId: input.sessionId }, { session });
 
     await recordVivaAuditEvent(
       {

@@ -72,6 +72,7 @@ export const refactorIndexes = {
   ],
   vivapanels: [
     { key: { roundId: 1, examinerIds: 1 }, options: { unique: true } },
+    { key: { examinerIds: 1 } },
   ],
   vivasessions: [
     {
@@ -82,6 +83,11 @@ export const refactorIndexes = {
       },
     },
     { key: { roundId: 1, scheduledAt: 1 } },
+    { key: { panelId: 1, cancelledAt: 1, scheduledAt: 1, _id: 1 } },
+  ],
+  vivaparticipantlocks: [
+    { key: { userId: 1 }, options: { unique: true } },
+    { key: { sessionId: 1 } },
   ],
   vivaauditevents: [
     { key: { roundId: 1, occurredAt: -1 } },

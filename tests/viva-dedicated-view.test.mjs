@@ -59,3 +59,20 @@ test('Viva setup exposes only eligible teams', async () => {
   assert.doesNotMatch(vivaRoundAdmin, /hasTitle/);
   assert.match(vivaRoundAdmin, /Every selected team needs a title and assigned supervisor/);
 });
+
+test('completing a Viva updates its card and moves it below unfinished sessions', async () => {
+  const [supervisorWorkspace, supervisorRoute] = await Promise.all([
+    read('components/supervisor/VivaSessionWorkspace.tsx'),
+    read('app/api/dashboard/supervisor/viva/route.ts'),
+  ]);
+  const completionStart = supervisorWorkspace.indexOf('const completeSession');
+  const completionCatch = supervisorWorkspace.indexOf('    } catch (requestError)', completionStart);
+  const completionSuccessPath = supervisorWorkspace.slice(completionStart, completionCatch);
+
+  assert.ok(completionStart >= 0 && completionCatch > completionStart);
+  assert.match(supervisorWorkspace, /setSessions\(orderSessions\(nextSessions\)\)/);
+  assert.match(completionSuccessPath, /readSession\(body\.session\)/);
+  assert.match(completionSuccessPath, /setSessions\(\(current\) => orderSessions\(current\.map/);
+  assert.doesNotMatch(completionSuccessPath, /await loadSessions\(\)/);
+  assert.match(supervisorRoute, /session: result\.workspace/);
+});

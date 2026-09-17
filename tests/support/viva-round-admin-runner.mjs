@@ -74,7 +74,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
       VivaAuditEvent.init(),
     ]);
 
-    const [supervisorOne, supervisorTwo, inactiveSupervisor, studentOne, studentTwo, inactiveStudent] = await User.create([
+    const [supervisorOne, supervisorTwo, projectSupervisor, inactiveSupervisor, studentOne, studentTwo, inactiveStudent] = await User.create([
       {
         name: 'Examiner One',
         email: 'examiner.one@example.test',
@@ -90,9 +90,16 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
         role: 'supervisor',
       },
       {
+        name: 'Project Supervisor',
+        email: 'project.supervisor.round@example.test',
+        rollNo: 'E26-0003',
+        password: 'not-a-real-password',
+        role: 'supervisor',
+      },
+      {
         name: 'Inactive Examiner',
         email: 'inactive.examiner@example.test',
-        rollNo: 'E26-0003',
+        rollNo: 'E26-0004',
         password: 'not-a-real-password',
         role: 'supervisor',
         isActive: false,
@@ -123,11 +130,13 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
 
     const [activeTeam, inactiveTeam] = await Project.create([
       {
+        supervisorId: projectSupervisor._id,
         members: [studentOne._id, studentTwo._id],
         inviteCode: 'VIVA-M3-ONE',
         title: 'Active team project',
       },
       {
+        supervisorId: projectSupervisor._id,
         members: [inactiveStudent._id],
         inviteCode: 'VIVA-M3-TWO',
         title: 'Inactive team project',
@@ -164,7 +173,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     assert.deepEqual(selection.teams.map((team) => team.id), [String(activeTeam._id)]);
     assert.deepEqual(
       selection.examiners.map((examiner) => examiner.id),
-      [String(supervisorOne._id), String(supervisorTwo._id)]
+      [String(supervisorOne._id), String(supervisorTwo._id), String(projectSupervisor._id)]
     );
 
     const updated = await updateVivaRound(
@@ -248,7 +257,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
 
     console.log(JSON.stringify({
       database: testDatabase.pathname.slice(1),
-      seededUsers: 6,
+      seededUsers: 7,
       seededTeams: 2,
       verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'scheduled-round-deletion', 'frozen-round-rejection'],
     }));

@@ -10,6 +10,7 @@ const [
   { default: VivaRound },
   { default: VivaPanel },
   { default: VivaSession },
+  { default: VivaParticipantLock },
   { default: VivaAuditEvent },
   { scheduleVivaSession },
   { startVivaSession },
@@ -20,6 +21,7 @@ const [
   importTypeScriptModuleWithDependencies('models/VivaRound.ts'),
   importTypeScriptModuleWithDependencies('models/VivaPanel.ts'),
   importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaParticipantLock.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaSessionDashboard.ts'),
@@ -48,6 +50,7 @@ export async function runVivaAccessRestrictionIntegration(testDatabaseUri) {
       VivaRound.init(),
       VivaPanel.init(),
       VivaSession.init(),
+      VivaParticipantLock.init(),
       VivaAuditEvent.init(),
     ]);
 
@@ -107,6 +110,7 @@ export async function runVivaAccessRestrictionIntegration(testDatabaseUri) {
       { _id: scheduled.schedule.id },
       { $set: { completedAt: new Date('2026-10-10T09:30:00.000Z') } }
     );
+    await VivaParticipantLock.deleteMany({ sessionId: scheduled.schedule.id });
     assert.equal(await isVivaPanelMemberAccessRestricted(String(panelMember._id)), false);
     assert.equal(await isVivaPanelMemberAccessRestricted(String(student._id)), false);
 

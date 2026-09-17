@@ -19,6 +19,7 @@ const expectedIndexes = {
   vivarounds: refactorIndexes.vivarounds,
   vivapanels: refactorIndexes.vivapanels,
   vivasessions: refactorIndexes.vivasessions,
+  vivaparticipantlocks: refactorIndexes.vivaparticipantlocks,
   vivaauditevents: refactorIndexes.vivaauditevents,
 };
 

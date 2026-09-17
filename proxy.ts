@@ -46,16 +46,23 @@ function isProtectedRoute(path: string): boolean {
   return PROTECTED_ROUTES.some((route) => matchesProtectedRoute(path, route));
 }
 
+export function shouldEnforcePortalPause(path: string, role: unknown): boolean {
+  const isRequiredAuthRoute = path.startsWith('/api/auth/')
+    && path !== '/api/auth/forgot-password'
+    && path !== '/api/auth/reset-password';
+  return path.startsWith('/api/')
+    && path !== '/api/portal-status'
+    && !isRequiredAuthRoute
+    && role !== 'admin';
+}
+
 export default withAuth(
   async function proxy(req) {
     const token = req.nextauth.token;
     const path = req.nextUrl.pathname;
     const role = token?.role;
-    const isRequiredAuthRoute = path.startsWith('/api/auth/')
-      && path !== '/api/auth/forgot-password'
-      && path !== '/api/auth/reset-password';
 
-    if (path !== '/api/portal-status') {
+    if (shouldEnforcePortalPause(path, role)) {
       try {
         const statusResponse = await fetch(new URL('/api/portal-status', req.url), {
           cache: 'no-store',
@@ -64,12 +71,7 @@ export default withAuth(
           ? await statusResponse.json() as { paused?: boolean; reason?: string }
           : { paused: true, reason: 'Portal availability could not be verified.' };
 
-        if (
-          portal?.paused
-          && path.startsWith('/api/')
-          && !isRequiredAuthRoute
-          && role !== 'admin'
-        ) {
+        if (portal?.paused) {
           return NextResponse.json(
             { code: 'PORTAL_PAUSED', error: portal.reason },
             { status: 503 }
@@ -77,12 +79,10 @@ export default withAuth(
         }
       } catch (error) {
         console.error('Portal pause enforcement failed:', error);
-        if (path.startsWith('/api/') && !isRequiredAuthRoute && role !== 'admin') {
-          return NextResponse.json(
-            { code: 'PORTAL_UNAVAILABLE', error: 'Portal availability could not be verified.' },
-            { status: 503 }
-          );
-        }
+        return NextResponse.json(
+          { code: 'PORTAL_UNAVAILABLE', error: 'Portal availability could not be verified.' },
+          { status: 503 }
+        );
       }
     }
 

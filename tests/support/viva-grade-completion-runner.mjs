@@ -10,6 +10,7 @@ const [
   { default: VivaRound },
   { default: VivaPanel },
   { default: VivaSession },
+  { default: VivaParticipantLock },
   { default: VivaAuditEvent },
   { scheduleVivaSession },
   { completeVivaSession, getPanelAdminVivaSessions, saveVivaGrade, startVivaSession },
@@ -21,6 +22,7 @@ const [
   importTypeScriptModuleWithDependencies('models/VivaRound.ts'),
   importTypeScriptModuleWithDependencies('models/VivaPanel.ts'),
   importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaParticipantLock.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaSessionDashboard.ts'),
@@ -50,6 +52,7 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
       VivaRound.init(),
       VivaPanel.init(),
       VivaSession.init(),
+      VivaParticipantLock.init(),
       VivaAuditEvent.init(),
     ]);
 
@@ -185,11 +188,11 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
       saveVivaGrade(scheduled.schedule.id, workspace.version, 'D', actor(panelAdmin), new Date('2026-10-10T09:12:00.000Z')),
     ]);
     assert.equal(completionRace.filter((result) => result.success).length, 1);
-    const completedInRace = completionRace.find((result) => result.success && 'completedAt' in result);
-    if (!completedInRace) {
+    let completed = completionRace.find((result) => result.success && 'completedAt' in result);
+    if (!completed) {
       const savedInRace = completionRace.find((result) => result.success && 'workspace' in result);
       assert.ok(savedInRace?.success && 'workspace' in savedInRace);
-      const completed = await completeVivaSession(
+      completed = await completeVivaSession(
         scheduled.schedule.id,
         savedInRace.workspace.version,
         actor(panelAdmin),
@@ -197,9 +200,13 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
       );
       assert.equal(completed.success, true, completed.success ? '' : completed.error);
     }
+    assert.ok(completed?.success && 'completedAt' in completed);
 
     const completedSession = await VivaSession.findById(scheduled.schedule.id).lean();
     assert.ok(completedSession.completedAt);
+    assert.equal(completed.workspace.phase, 'completed');
+    assert.equal(completed.workspace.id, scheduled.schedule.id);
+    assert.equal(completed.workspace.version, completedSession.version);
     assert.ok(completedSession.result);
     assert.equal(completedSession.result.percentage, VIVA_GRADE_SCALE.find((grade) => grade.grade === completedSession.result.grade)?.percentage);
     assert.equal(await isVivaPanelMemberAccessRestricted(String(panelMember._id)), false);

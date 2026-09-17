@@ -81,7 +81,12 @@ export async function POST(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: responseStatus(result.reason) });
       }
-      return NextResponse.json({ completed: true, result: result.result, completedAt: result.completedAt });
+      return NextResponse.json({
+        completed: true,
+        result: result.result,
+        completedAt: result.completedAt,
+        session: result.workspace,
+      });
     }
 
     return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });
