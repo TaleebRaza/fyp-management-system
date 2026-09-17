@@ -78,6 +78,7 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
       roundId: round._id,
       examinerIds: [panelAdmin._id, panelMember._id],
       panelAdminId: panelAdmin._id,
+      locationLabel: 'Viva Lab',
     });
     const scheduled = await scheduleVivaSession(
       {
@@ -212,7 +213,10 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
     );
     assert.equal(postCompletionSave.success, false);
     assert.equal(postCompletionSave.reason, 'not-startable');
-    assert.equal(await getPanelAdminVivaSessions(String(panelAdmin._id)).then((sessions) => sessions.length), 0);
+    const completedAgenda = await getPanelAdminVivaSessions(String(panelAdmin._id));
+    assert.equal(completedAgenda.length, 1);
+    assert.equal(completedAgenda[0].phase, 'completed');
+    assert.equal(completedAgenda[0].canManage, true);
     assert.equal(await VivaAuditEvent.countDocuments({ sessionId: scheduled.schedule.id, event: 'session-finalized' }), 1);
 
     console.log(JSON.stringify({

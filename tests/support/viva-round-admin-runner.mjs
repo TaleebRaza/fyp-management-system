@@ -218,10 +218,10 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     });
     const confirmedDeletable = await confirmVivaRound(deletable.round.id, actor);
     assert.equal(confirmedDeletable.success, true, confirmedDeletable.success ? '' : confirmedDeletable.error);
-    const invalidDelete = await deleteVivaRound('invalid-round-id', actor);
+    const invalidDelete = await deleteVivaRound('invalid-round-id');
     assert.equal(invalidDelete.success, false);
     assert.equal(invalidDelete.reason, 'invalid');
-    const deleted = await deleteVivaRound(deletable.round.id, actor);
+    const deleted = await deleteVivaRound(deletable.round.id);
     assert.equal(deleted.success, true, deleted.success ? '' : deleted.error);
     assert.equal(await VivaRound.countDocuments({ _id: deletable.round.id }), 0);
     assert.equal(await VivaPanel.countDocuments({ roundId: deletable.round.id }), 0);
@@ -241,7 +241,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     assert.equal(frozenUpdate.success, false);
     assert.equal(frozenUpdate.reason, 'frozen');
     assert.equal((await VivaRound.findById(createdRound.id).lean()).name, 'Fall 2026 Final Viva');
-    const frozenDelete = await deleteVivaRound(createdRound.id, actor);
+    const frozenDelete = await deleteVivaRound(createdRound.id);
     assert.equal(frozenDelete.success, false);
     assert.equal(frozenDelete.reason, 'frozen');
     assert.ok(await VivaRound.exists({ _id: createdRound.id }));

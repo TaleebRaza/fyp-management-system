@@ -7,6 +7,8 @@ const VivaPanelSchema = new Schema(
     roundId: { type: Schema.Types.ObjectId, ref: 'VivaRound', required: true },
     examinerIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     panelAdminId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // Assigned by the first saved automatic schedule and retained for the panel's lifetime.
+    locationLabel: { type: String, trim: true, maxlength: 160, default: '' },
     // Retained for panels created before panel-admin assignment replaced the chair role.
     chairId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },

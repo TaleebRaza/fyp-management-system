@@ -15,7 +15,6 @@ import {
   previewRandomVivaPanels,
   saveVivaPanels,
 } from '../../../../lib/vivaPanelAdmin';
-import { parseVivaPublicationInput, publishVivaResults } from '../../../../lib/vivaPublication';
 import {
   applyAutomaticVivaSchedule,
   cancelVivaSession,
@@ -216,21 +215,6 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  if (isRecord(body) && body.action === 'publish-results') {
-    const parsed = parseVivaPublicationInput(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 });
-    }
-
-    try {
-      const publication = await publishVivaResults(parsed.input, adminActor(currentUser));
-      return NextResponse.json({ publication });
-    } catch (error) {
-      console.error('Admin Viva result publication error:', error);
-      return NextResponse.json({ error: 'Failed to publish Viva results.' }, { status: 500 });
-    }
-  }
-
   const parsed = parseVivaPanelSaveInput(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -257,7 +241,7 @@ export async function DELETE(req: NextRequest) {
 
   const roundId = req.nextUrl.searchParams.get('roundId') || '';
   try {
-    const result = await deleteVivaRound(roundId, adminActor(currentUser));
+    const result = await deleteVivaRound(roundId);
     if (!result.success) {
       const status = result.reason === 'not-found' ? 404 : result.reason === 'frozen' ? 409 : 400;
       return NextResponse.json({ error: result.error }, { status });

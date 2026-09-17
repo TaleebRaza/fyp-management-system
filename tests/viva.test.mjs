@@ -66,8 +66,6 @@ test('derives session phases and gives terminal states precedence', () => {
   assert.equal(viva.isVivaTerminalPhase('completed'), true);
   assert.equal(viva.isVivaTerminalPhase('cancelled'), true);
   assert.equal(viva.isVivaTerminalPhase('running'), false);
-  assert.equal(viva.isVivaPublished({ publishedAt: null }), false);
-  assert.equal(viva.isVivaPublished({ publishedAt: new Date() }), true);
 });
 
 test('uses one canonical grade scale and rejects tampered labels', () => {

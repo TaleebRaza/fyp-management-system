@@ -15,8 +15,8 @@ const [
   { previewRandomVivaPanels, saveVivaPanels },
   { scheduleVivaSession },
   { completeVivaSession, getPanelAdminVivaSessions, saveVivaGrade, startVivaSession },
-  { isVivaPanelMemberAccessRestricted },
-  { getPublishedVivaResultsForStudent, publishVivaResults },
+  { isVivaSessionAccessRestricted },
+  { getCompletedVivaResultsForStudent },
 ] = await Promise.all([
   importTypeScriptModuleWithDependencies('models/User.ts'),
   importTypeScriptModuleWithDependencies('models/Project.ts'),
@@ -29,7 +29,7 @@ const [
   importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaSessionDashboard.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaAccessRestriction.ts'),
-  importTypeScriptModuleWithDependencies('lib/vivaPublication.ts'),
+  importTypeScriptModuleWithDependencies('lib/vivaResults.ts'),
 ]);
 
 const SUPERVISOR_COUNT = 500;
@@ -134,6 +134,10 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
     ));
     assert.ok(panelAdmin);
     assert.ok(panelMember);
+    await VivaPanel.updateOne(
+      { _id: scheduledPanel.id },
+      { $set: { locationLabel: 'Viva Lab' } }
+    );
 
     const scheduled = await scheduleVivaSession({
       roundId: roundResult.round.id,
@@ -143,7 +147,9 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
       locationLabel: 'Viva Lab',
     }, actor(systemAdmin));
     assert.equal(scheduled.success, true, scheduled.success ? '' : scheduled.error);
-    assert.equal((await getPanelAdminVivaSessions(String(panelMember._id))).length, 0);
+    const panelMemberAgenda = await getPanelAdminVivaSessions(String(panelMember._id));
+    assert.equal(panelMemberAgenda.length, 1);
+    assert.equal(panelMemberAgenda[0].canManage, false);
     assert.equal((await getPanelAdminVivaSessions(String(panelAdmin._id))).length, 1);
 
     const started = await startVivaSession(
@@ -153,8 +159,9 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
     );
     assert.equal(started.success, true, started.success ? '' : started.error);
     assert.equal(started.workspace.panel.admin.id, String(panelAdmin._id));
-    assert.equal(await isVivaPanelMemberAccessRestricted(String(panelMember._id)), true);
-    assert.equal(await isVivaPanelMemberAccessRestricted(String(panelAdmin._id)), false);
+    assert.equal(await isVivaSessionAccessRestricted(String(panelMember._id)), true);
+    assert.equal(await isVivaSessionAccessRestricted(String(studentOne._id)), true);
+    assert.equal(await isVivaSessionAccessRestricted(String(panelAdmin._id)), false);
 
     const saved = await saveVivaGrade(
       scheduled.schedule.id,
@@ -174,24 +181,17 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
     );
     assert.equal(completed.success, true, completed.success ? '' : completed.error);
     assert.deepEqual(completed.result, { grade: 'A+', percentage: 100 });
-    assert.equal(await isVivaPanelMemberAccessRestricted(String(panelMember._id)), false);
-
-    const publication = await publishVivaResults(
-      { sessionIds: [scheduled.schedule.id] },
-      actor(systemAdmin),
-      new Date('2026-10-10T09:30:00.000Z')
-    );
-    assert.equal(publication.published.length, 1);
-    assert.equal(publication.failures.length, 0);
+    assert.equal(await isVivaSessionAccessRestricted(String(panelMember._id)), false);
+    assert.equal(await isVivaSessionAccessRestricted(String(studentOne._id)), false);
     assert.deepEqual(
-      await getPublishedVivaResultsForStudent(String(studentOne._id)),
-      await getPublishedVivaResultsForStudent(String(studentTwo._id))
+      await getCompletedVivaResultsForStudent(String(studentOne._id)),
+      await getCompletedVivaResultsForStudent(String(studentTwo._id))
     );
     assert.deepEqual(
-      (await getPublishedVivaResultsForStudent(String(studentOne._id))).map(({ grade, percentage }) => ({ grade, percentage })),
+      (await getCompletedVivaResultsForStudent(String(studentOne._id))).map(({ grade, percentage }) => ({ grade, percentage })),
       [{ grade: 'A+', percentage: 100 }]
     );
-    assert.equal(await VivaAuditEvent.countDocuments({ roundId: roundResult.round.id }), 7);
+    assert.equal(await VivaAuditEvent.countDocuments({ roundId: roundResult.round.id }), 6);
 
     console.log(JSON.stringify({
       database: testDatabase.pathname.slice(1),
@@ -207,10 +207,10 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
         'explicit-panel-admin-replacement',
         'transactional-panel-save',
         'panel-admin-only-workspace',
-        'temporary-panel-member-restriction',
+        'temporary-active-session-restriction',
         'canonical-grade-completion',
         'restriction-release',
-        'result-publication',
+        'immediate-result',
         'same-team-result',
       ],
     }));

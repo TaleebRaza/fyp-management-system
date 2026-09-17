@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import {
   completeVivaSession,
-  getPanelAdminVivaSessions,
+  getVivaPanelSessions,
   saveVivaGrade,
   startVivaSession,
 } from '../../../../../lib/vivaSessionDashboard';
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    return NextResponse.json({ sessions: await getPanelAdminVivaSessions(currentUser.id) });
+    return NextResponse.json({ sessions: await getVivaPanelSessions(currentUser.id) });
   } catch (error) {
     console.error('Supervisor Viva session fetch error:', error);
     return NextResponse.json({ error: 'Failed to load Viva sessions.' }, { status: 500 });

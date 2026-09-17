@@ -29,7 +29,8 @@ export type VivaGradeDto = {
 
 export type VivaSessionWorkspaceDto = {
   id: string;
-  phase: 'scheduled' | 'running';
+  phase: 'scheduled' | 'running' | 'completed';
+  canManage: boolean;
   version: number;
   gradeScale: VivaGradeDto[];
   result: VivaGradeDto | null;
@@ -280,6 +281,7 @@ function workspaceFromSnapshot(session: VivaSessionRecord): VivaSessionWorkspace
   const panelAdmin = toSnapshotPerson(panelSnapshot.panelAdmin);
   const supervisor = toSnapshotPerson(projectSnapshot.supervisor);
   const version = asVersion(session.version);
+  const phase = sessionPhase(session);
   if (
     !projectId
     || !panelId
@@ -291,6 +293,7 @@ function workspaceFromSnapshot(session: VivaSessionRecord): VivaSessionWorkspace
     || panelMembers.length === 0
     || !panelAdmin
     || version === null
+    || (phase !== 'running' && phase !== 'completed')
   ) {
     return null;
   }
@@ -300,7 +303,8 @@ function workspaceFromSnapshot(session: VivaSessionRecord): VivaSessionWorkspace
     : [];
   return {
     id: String(session._id),
-    phase: 'running',
+    phase,
+    canManage: false,
     version,
     gradeScale: workspaceGradeScale(),
     result: canonicalSessionResult(session.result),
@@ -339,6 +343,7 @@ function workspaceFromCurrentContext(
   return {
     id: String(vivaSession._id),
     phase: 'scheduled',
+    canManage: false,
     version,
     gradeScale: workspaceGradeScale(),
     result: null,
@@ -397,7 +402,7 @@ function toSessionSnapshots(context: CurrentContext) {
 
 async function readCurrentContext(
   vivaSession: VivaSessionRecord,
-  actorId: string,
+  actorId?: string,
   databaseSession?: ClientSession
 ): Promise<{ success: true; context: CurrentContext } | Extract<VivaSessionStartResult, { success: false }>> {
   const roundId = asId(vivaSession.roundId);
@@ -453,13 +458,9 @@ async function readCurrentContext(
   ) {
     return { success: false, reason: 'invalid', error: 'The current Viva panel or team can no longer conduct this session.' };
   }
-  if (panelAdminId !== actorId) {
+  if (actorId && panelAdminId !== actorId) {
     return { success: false, reason: 'forbidden', error: 'Only the assigned panel admin can open this Viva session.' };
   }
-  if (projectSupervisorId && panelMemberIds.includes(projectSupervisorId)) {
-    return { success: false, reason: 'invalid', error: 'A team cannot be examined by its own supervisor.' };
-  }
-
   const participantIds = [...new Set([
     ...panelMemberIds,
     ...projectMemberIds,
@@ -692,7 +693,7 @@ export async function saveVivaGrade(
 
     const workspace = workspaceFromSnapshot(updatedSession);
     if (!workspace) throw new Error('Saved Viva grade could not be serialized.');
-    return { success: true, workspace };
+    return { success: true, workspace: { ...workspace, canManage: true } };
   });
 }
 
@@ -769,15 +770,14 @@ export async function completeVivaSession(
   });
 }
 
-export async function getPanelAdminVivaSessions(actorId: string): Promise<VivaSessionWorkspaceDto[]> {
+export async function getVivaPanelSessions(actorId: string): Promise<VivaSessionWorkspaceDto[]> {
   if (!mongoose.Types.ObjectId.isValid(actorId)) return [];
 
-  const panels = await VivaPanel.find({ panelAdminId: actorId }).select('_id').lean<VivaPanelRecord[]>();
+  const panels = await VivaPanel.find({ examinerIds: actorId }).select('_id panelAdminId').lean<VivaPanelRecord[]>();
   if (panels.length === 0) return [];
 
   const sessions = await VivaSession.find({
     panelId: { $in: panels.map((panel) => panel._id) },
-    completedAt: null,
     cancelledAt: null,
   })
     .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel result version roundSnapshot projectSnapshot panelSnapshot')
@@ -786,18 +786,22 @@ export async function getPanelAdminVivaSessions(actorId: string): Promise<VivaSe
 
   const workspaces = await Promise.all(sessions.map(async (vivaSession) => {
     const phase = sessionPhase(vivaSession);
-    if (phase === 'running') {
-      const context = await readCurrentContext(vivaSession, actorId);
-      return context.success ? workspaceFromSnapshot(vivaSession) : null;
+    if (phase === 'running' || phase === 'completed') {
+      const workspace = workspaceFromSnapshot(vivaSession);
+      return workspace ? { ...workspace, canManage: workspace.panel.admin.id === actorId } : null;
     }
     if (phase !== 'scheduled') return null;
 
-    const context = await readCurrentContext(vivaSession, actorId);
-    return context.success ? workspaceFromCurrentContext(vivaSession, context.context) : null;
+    const context = await readCurrentContext(vivaSession);
+    if (!context.success) return null;
+    const workspace = workspaceFromCurrentContext(vivaSession, context.context);
+    return workspace ? { ...workspace, canManage: workspace.panel.admin.id === actorId } : null;
   }));
 
   return workspaces.filter((workspace): workspace is VivaSessionWorkspaceDto => Boolean(workspace));
 }
+
+export const getPanelAdminVivaSessions = getVivaPanelSessions;
 
 export async function startVivaSession(
   sessionId: string,
@@ -829,7 +833,7 @@ export async function startVivaSession(
       if (phase === 'running') {
         const workspace = workspaceFromSnapshot(vivaSession);
         return workspace
-          ? { success: true, workspace, started: false }
+          ? { success: true, workspace: { ...workspace, canManage: true }, started: false }
           : { success: false, reason: 'invalid', error: 'This active Viva session has incomplete assessment context.' };
       }
 
@@ -895,7 +899,7 @@ export async function startVivaSession(
 
       const workspace = workspaceFromSnapshot(startedSession);
       if (!workspace) throw new Error('Started Viva session could not be serialized.');
-      return { success: true, workspace, started: true };
+      return { success: true, workspace: { ...workspace, canManage: true }, started: true };
     });
   } catch (error) {
     if (error instanceof VivaStartAbort) return error.result;

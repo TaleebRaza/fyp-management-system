@@ -48,6 +48,7 @@ async function createScheduledSession({
     roundId: round._id,
     examinerIds: examiners.map((examiner) => examiner._id),
     panelAdminId: panelAdmin._id,
+    locationLabel: 'Viva Lab',
   });
   const scheduled = await scheduleVivaSession(
     {
@@ -130,6 +131,9 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
     const assignedBeforeStart = await getPanelAdminVivaSessions(String(panelAdmin._id));
     assert.equal(assignedBeforeStart.length, 1);
     assert.equal(assignedBeforeStart[0].project.title, 'Membership snapshot team');
+    const memberAgenda = await getPanelAdminVivaSessions(String(panelMember._id));
+    assert.equal(memberAgenda.length, 1);
+    assert.equal(memberAgenda[0].canManage, false);
 
     const nonPanelAdminStart = await startVivaSession(
       membership.sessionId,
@@ -270,7 +274,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 12,
       seededTeams: 5,
-      verified: ['panel-admin-only-workspace', 'changed-panel-membership-snapshot', 'round-freeze', 'repeat-start', 'replaced-panel-admin', 'stale-panel-admin', 'active-participant-conflict', 'cross-session-start-race', 'concurrent-start'],
+      verified: ['panel-admin-only-workspace', 'member-read-only-agenda', 'changed-panel-membership-snapshot', 'round-freeze', 'repeat-start', 'replaced-panel-admin', 'stale-panel-admin', 'active-participant-conflict', 'cross-session-start-race', 'concurrent-start'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

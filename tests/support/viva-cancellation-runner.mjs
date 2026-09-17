@@ -87,6 +87,7 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
       roundId: round._id,
       examinerIds: [panelAdmin._id, panelMember._id],
       panelAdminId: panelAdmin._id,
+      locationLabel: 'Viva Lab',
     });
     const adminActor = actor(systemAdmin);
     const panelAdminActor = actor(panelAdmin);
@@ -197,16 +198,16 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
 
     await VivaSession.updateOne(
       { _id: freshScheduledAttempt.schedule.id },
-      { $set: { completedAt: new Date('2026-10-10T10:30:00.000Z'), publishedAt: new Date('2026-10-10T10:31:00.000Z') } }
+      { $set: { completedAt: new Date('2026-10-10T10:30:00.000Z') } }
     );
-    const publishedCancellation = await cancelVivaSession(
+    const completedCancellation = await cancelVivaSession(
       { sessionId: freshScheduledAttempt.schedule.id, version: freshScheduledAttempt.schedule.version, cancellationReason: 'Too late' },
       adminActor,
       new Date('2026-10-10T10:32:00.000Z')
     );
-    assert.equal(publishedCancellation.success, false);
-    assert.equal(publishedCancellation.reason, 'not-cancellable');
-    assert.match(publishedCancellation.error, /published/);
+    assert.equal(completedCancellation.success, false);
+    assert.equal(completedCancellation.reason, 'not-cancellable');
+    assert.match(completedCancellation.error, /completed/);
 
     const racingSession = await scheduleVivaSession(
       scheduleInput(String(round._id), String(projectThree._id), String(panel._id), '2026-10-10T13:00:00.000Z'),
@@ -257,7 +258,7 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 7,
       seededTeams: 3,
-      verified: ['required-reason', 'scheduled-cancellation', 'active-cancellation', 'audit-history', 'restriction-release', 'fresh-attempt', 'no-inherited-grade', 'cancelled-write-rejection', 'published-result-protection', 'cancellation-grade-race'],
+      verified: ['required-reason', 'scheduled-cancellation', 'active-cancellation', 'audit-history', 'restriction-release', 'fresh-attempt', 'no-inherited-grade', 'cancelled-write-rejection', 'completed-result-protection', 'cancellation-grade-race'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

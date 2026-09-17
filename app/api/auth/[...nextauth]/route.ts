@@ -12,8 +12,8 @@ import {
 } from '../../../../lib/portalActivityLog';
 import { getPortalPause } from '../../../../lib/portalPause';
 import {
-  isVivaPanelMemberAccessRestricted,
-  VIVA_PANEL_MEMBER_ACCESS_ERROR,
+  isVivaSessionAccessRestricted,
+  VIVA_ACTIVE_SESSION_ACCESS_ERROR,
 } from '../../../../lib/vivaAccessRestriction';
 
 const LOGIN_ATTEMPT_LIMIT = 5;
@@ -87,11 +87,8 @@ const handler = NextAuth({
           await denyLogin();
         }
 
-        if (
-          user.role === 'supervisor'
-          && await isVivaPanelMemberAccessRestricted(user._id.toString())
-        ) {
-          throw new Error(VIVA_PANEL_MEMBER_ACCESS_ERROR);
+        if (await isVivaSessionAccessRestricted(user._id.toString())) {
+          throw new Error(VIVA_ACTIVE_SESSION_ACCESS_ERROR);
         }
 
         if (passwordCheck.isLegacy) {

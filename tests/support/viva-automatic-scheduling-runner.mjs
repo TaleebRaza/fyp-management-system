@@ -64,7 +64,6 @@ function assertPreviewHasNoResourceConflicts(draft, panelsById, projectsById) {
     const resourceIds = [
       ...panel.examinerIds.map(String),
       ...project.members.map(String),
-      `room:${schedule.locationLabel.toLocaleLowerCase()}`,
     ];
     for (const resourceId of resourceIds) {
       const reservations = reservationsByResource.get(resourceId) || [];
@@ -224,6 +223,7 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
         roundId: round._id,
         examinerIds: [supervisorTwo._id, supervisorThree._id],
         panelAdminId: supervisorTwo._id,
+        locationLabel: 'Lab 3',
       },
       {
         roundId: round._id,
@@ -243,8 +243,8 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
     );
     assert.equal(limitedPreview.success, true, limitedPreview.success ? '' : limitedPreview.error);
     if (!limitedPreview.success) throw new Error(limitedPreview.error);
-    assert.equal(limitedPreview.draft.scheduled.length, 0);
-    assert.equal(limitedPreview.draft.unplaced.length, 6);
+    assert.equal(limitedPreview.draft.scheduled.length, 1);
+    assert.equal(limitedPreview.draft.unplaced.length, 5);
     assert.ok(limitedPreview.draft.unplaced.some((entry) => entry.projectId === String(existing._id)));
 
     const overlappingWindowPreview = await previewAutomaticVivaSchedule({
@@ -262,13 +262,8 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
         },
       ],
     });
-    assert.equal(overlappingWindowPreview.success, true, overlappingWindowPreview.success ? '' : overlappingWindowPreview.error);
-    if (!overlappingWindowPreview.success) throw new Error(overlappingWindowPreview.error);
-    assertPreviewHasNoResourceConflicts(
-      overlappingWindowPreview.draft,
-      new Map([firstPanel, secondPanel, undersizedPanel].map((panel) => [String(panel._id), panel])),
-      new Map([alpha, beta, gamma, delta, echo, existing].map((project) => [String(project._id), project]))
-    );
+    assert.equal(overlappingWindowPreview.success, false);
+    assert.match(overlappingWindowPreview.error, /same availability window/);
 
     const previewInput = availability(
       String(round._id),
@@ -282,30 +277,44 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
     assert.equal(firstPreview.success, true, firstPreview.success ? '' : firstPreview.error);
     assert.equal(secondPreview.success, true, secondPreview.success ? '' : secondPreview.error);
     if (!firstPreview.success || !secondPreview.success) throw new Error('Automatic Viva preview unexpectedly failed.');
-    assert.deepEqual(firstPreview.draft, secondPreview.draft);
-    assert.equal(firstPreview.draft.scheduled.length, 3);
-    assert.equal(firstPreview.draft.unplaced.length, 3);
+    assert.equal(firstPreview.draft.scheduled.length, 5);
+    assert.equal(firstPreview.draft.unplaced.length, 1);
     assert.ok(firstPreview.draft.unplaced.some((entry) => entry.projectId === String(existing._id)));
     assert.ok(firstPreview.draft.scheduled.every((entry) => entry.panelId !== String(undersizedPanel._id)));
     assert.ok(firstPreview.draft.scheduled.every((entry) => (
       entry.panelId !== String(firstPanel._id) || entry.scheduledAt !== '2026-11-10T10:00:00.000Z'
     )));
 
-    const applied = await applyAutomaticVivaSchedule({
+    const automaticSaveInput = (draft) => ({
       roundId: String(round._id),
-      schedules: firstPreview.draft.scheduled.map((entry) => ({
+      panelRooms: draft.panelRooms,
+      schedules: draft.scheduled.map((entry) => ({
         roundId: String(round._id),
         projectId: entry.projectId,
         panelId: entry.panelId,
         scheduledAt: new Date(entry.scheduledAt),
         locationLabel: entry.locationLabel,
       })),
-    }, actor);
-    assert.equal(applied.success, true, applied.success ? '' : applied.error);
-    if (!applied.success) throw new Error(applied.error);
-    assert.equal(applied.schedules.length, 3);
-    assert.equal(await VivaSession.countDocuments({}), 4);
-    assert.equal(await VivaAuditEvent.countDocuments({ event: 'session-scheduled' }), 4);
+    });
+    const concurrentApplies = await Promise.all([
+      applyAutomaticVivaSchedule(automaticSaveInput(firstPreview.draft), actor),
+      applyAutomaticVivaSchedule(automaticSaveInput(firstPreview.draft), actor),
+    ]);
+    assert.equal(concurrentApplies.filter((result) => result.success).length, 1);
+    const applied = concurrentApplies.find((result) => result.success);
+    assert.ok(applied?.success);
+    if (!applied?.success) throw new Error('Automatic Viva schedule did not save.');
+    assert.equal(applied.schedules.length, 5);
+    assert.equal(await VivaSession.countDocuments({}), 6);
+    assert.equal(await VivaAuditEvent.countDocuments({ event: 'session-scheduled' }), 6);
+    const persistedPanels = await VivaPanel.find({ _id: { $in: [firstPanel._id, secondPanel._id] } }).lean();
+    assert.ok(persistedPanels.every((panel) => panel.locationLabel === 'Lab 3'));
+    assert.ok(applied.schedules.some((first) => applied.schedules.some((second) => (
+      first.id !== second.id
+      && first.panelId !== second.panelId
+      && first.scheduledAt === second.scheduledAt
+      && first.locationLabel === second.locationLabel
+    ))));
 
     const cancelledProjectId = applied.schedules[0].projectId;
     await VivaSession.updateOne(
@@ -321,6 +330,15 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
     assert.equal(stalePreview.draft.scheduled[0].projectId, cancelledProjectId);
 
     const replacement = stalePreview.draft.scheduled[0];
+    const fixedRoomRejection = await scheduleVivaSession({
+      roundId: String(round._id),
+      projectId: replacement.projectId,
+      panelId: replacement.panelId,
+      scheduledAt: new Date(replacement.scheduledAt),
+      locationLabel: 'Lab 4',
+    }, actor);
+    assert.equal(fixedRoomRejection.success, false);
+    assert.match(fixedRoomRejection.error, /requested room/);
     const concurrentManualSchedule = await scheduleVivaSession({
       roundId: String(round._id),
       projectId: replacement.projectId,
@@ -330,20 +348,11 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
     }, actor);
     assert.equal(concurrentManualSchedule.success, true, concurrentManualSchedule.success ? '' : concurrentManualSchedule.error);
 
-    const staleApply = await applyAutomaticVivaSchedule({
-      roundId: String(round._id),
-      schedules: stalePreview.draft.scheduled.map((entry) => ({
-        roundId: String(round._id),
-        projectId: entry.projectId,
-        panelId: entry.panelId,
-        scheduledAt: new Date(entry.scheduledAt),
-        locationLabel: entry.locationLabel,
-      })),
-    }, actor);
+    const staleApply = await applyAutomaticVivaSchedule(automaticSaveInput(stalePreview.draft), actor);
     assert.equal(staleApply.success, false);
     assert.equal(staleApply.reason, 'invalid');
     assert.match(staleApply.error, /already has a Viva attempt/);
-    assert.equal(await VivaSession.countDocuments({}), 5);
+    assert.equal(await VivaSession.countDocuments({}), 7);
 
     await mongoose.connection.dropDatabase();
     await Promise.all([
@@ -361,7 +370,7 @@ export async function runVivaAutomaticSchedulingIntegration(testDatabaseUri) {
       seededUsers: benchmark.seededUsers,
       seededTeams: benchmark.seededTeams,
       previewDurationMilliseconds: Math.round(benchmark.previewDurationMilliseconds),
-      verified: ['deterministic-draft', 'constrained-teams', 'insufficient-capacity', 'panel-eligibility', 'existing-bookings', 'atomic-apply', 'stale-draft-revalidation', 'large-round-preview'],
+      verified: ['balanced-random-draft', 'shared-room-concurrency', 'fixed-panel-rooms', 'constrained-teams', 'insufficient-capacity', 'panel-eligibility', 'existing-bookings', 'atomic-concurrent-apply', 'stale-draft-revalidation', 'large-round-preview'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

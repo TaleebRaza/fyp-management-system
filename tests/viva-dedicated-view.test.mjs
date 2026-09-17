@@ -5,10 +5,11 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Viva has focused admin and student workspaces', async () => {
-  const [adminDashboard, adminViva, panelManagement, studentDashboard, studentOverview, studentViva, workspace] = await Promise.all([
+  const [adminDashboard, adminViva, panelManagement, scheduleManagement, studentDashboard, studentOverview, studentViva, workspace] = await Promise.all([
     read('components/dashboards/AdminDashboard.tsx'),
     read('components/admin/AdminVivaSection.tsx'),
     read('components/admin/VivaPanelManagement.tsx'),
+    read('components/admin/VivaScheduleManagement.tsx'),
     read('components/dashboards/StudentDashboard.tsx'),
     read('components/student/StudentOverviewSection.tsx'),
     read('components/student/StudentVivaWorkspace.tsx'),
@@ -24,21 +25,28 @@ test('Viva has focused admin and student workspaces', async () => {
   assert.doesNotMatch(studentDashboard, /VivaShortcut/);
   assert.match(studentDashboard, /<StudentVivaWorkspace results=\{data\?\.vivaResults \|\| \[\]\} sessions=\{data\?\.vivaSessions \|\| \[\]\} \/>/);
   assert.doesNotMatch(studentOverview, /StudentVivaResults/);
-  assert.match(studentViva, /No Viva result published yet/);
+  assert.match(studentViva, /No Viva session yet/);
+  assert.match(studentViva, /session\.panel\.admin\.name/);
   assert.match(adminViva, /VIVA_WORKSPACE_SECTIONS/);
   assert.match(adminViva, /id="viva-round-selector"/);
   assert.doesNotMatch(adminViva, /window\.confirm/);
   assert.match(adminViva, /<Dialog/);
   assert.match(panelManagement, /hasUnassignedTeachers/);
+  assert.match(panelManagement, /hasScheduledSessions/);
   assert.match(panelManagement, /Panels Saved/);
   assert.match(panelManagement, /pendingAction/);
   assert.match(panelManagement, /<Dialog/);
   assert.match(panelManagement, /MoveRight size=\{20\}/);
   assert.match(panelManagement, /ArrowLeftRight size=\{20\}/);
   assert.match(panelManagement, /UserMinus size=\{20\}/);
-  for (const section of ['setup', 'panels', 'schedule', 'results']) {
+  for (const section of ['setup', 'panels', 'schedule']) {
     assert.match(adminViva, new RegExp(`activeWorkspaceSection === '${section}'`));
   }
+  assert.doesNotMatch(adminViva, /activeWorkspaceSection === 'results'/);
+  assert.doesNotMatch(adminViva, /VivaResultPublication/);
+  assert.match(scheduleManagement, /panelRooms: draft\.panelRooms/);
+  assert.match(scheduleManagement, /View held teams/);
+  assert.match(scheduleManagement, /Confirm schedule/);
 });
 
 test('Viva setup exposes only eligible teams', async () => {

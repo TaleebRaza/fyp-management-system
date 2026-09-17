@@ -5,7 +5,7 @@ import connectToDatabase from '../mongodb';
 import Project from '../../models/Project';
 import User from '../../models/User';
 import { isSameOriginMutation } from './origin';
-import { isVivaPanelMemberAccessRestricted } from '../vivaAccessRestriction';
+import { isVivaSessionAccessRestricted } from '../vivaAccessRestriction';
 
 export type UserRole = 'admin' | 'supervisor' | 'student';
 
@@ -49,10 +49,7 @@ export async function requireCurrentUser(
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return null;
 
-  if (
-    currentUser.role === 'supervisor'
-    && await isVivaPanelMemberAccessRestricted(currentUser.id)
-  ) {
+  if (await isVivaSessionAccessRestricted(currentUser.id)) {
     return null;
   }
 

@@ -37,10 +37,6 @@ export type VivaSessionTimeline = {
   cancelledAt: Date | null;
 };
 
-export type VivaPublication = {
-  publishedAt: Date | null;
-};
-
 export type VivaGradeChangePermission =
   | { permitted: true; result: VivaGradeResult }
   | { permitted: false; reason: 'invalid-grade' | 'outside-grading-period' | 'result-finalized' };
@@ -115,10 +111,6 @@ export function calculateVivaPhase(timeline: VivaSessionTimeline): VivaPhase {
 
 export function isVivaTerminalPhase(phase: VivaPhase): boolean {
   return phase === 'completed' || phase === 'cancelled';
-}
-
-export function isVivaPublished(publication: VivaPublication): boolean {
-  return validDateTimestamp(publication.publishedAt) !== null;
 }
 
 export function isVivaGrade(value: unknown): value is VivaGrade {

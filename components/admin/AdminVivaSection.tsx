@@ -10,11 +10,9 @@ import type {
   VivaTeamOption,
 } from '../../lib/vivaRoundAdmin';
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
-import type { VivaAssessmentDto } from '../../lib/vivaPublication';
 import type { VivaScheduleDto } from '../../lib/vivaScheduling';
 import { Button, DashboardPanel, Dialog, SectionHeader, StyledInput } from '../ui';
 import VivaPanelManagement from './VivaPanelManagement';
-import VivaResultPublication from './VivaResultPublication';
 import VivaScheduleManagement from './VivaScheduleManagement';
 
 type VivaRoundDraft = {
@@ -26,7 +24,7 @@ type VivaRoundDraft = {
   examinerIds: string[];
 };
 
-type VivaWorkspaceSection = 'setup' | 'panels' | 'schedule' | 'results';
+type VivaWorkspaceSection = 'setup' | 'panels' | 'schedule';
 
 const VIVA_WORKSPACE_SECTIONS: Array<{
   id: VivaWorkspaceSection;
@@ -36,7 +34,6 @@ const VIVA_WORKSPACE_SECTIONS: Array<{
   { id: 'setup', label: 'Round setup', requiresRound: false },
   { id: 'panels', label: 'Panels', requiresRound: true },
   { id: 'schedule', label: 'Schedule', requiresRound: true },
-  { id: 'results', label: 'Results', requiresRound: true },
 ];
 
 type VivaConfigurationResponse = {
@@ -45,7 +42,6 @@ type VivaConfigurationResponse = {
   examiners: VivaExaminerOption[];
   panels: VivaPanelDto[];
   schedules: VivaScheduleDto[];
-  assessments: VivaAssessmentDto[];
 };
 
 const EMPTY_DRAFT: VivaRoundDraft = {
@@ -163,6 +159,7 @@ function readPanel(value: unknown): VivaPanelDto | null {
     typeof value.id !== 'string'
     || typeof value.roundId !== 'string'
     || typeof value.panelAdminId !== 'string'
+    || typeof value.locationLabel !== 'string'
     || !value.examinerIds.every((examinerId) => typeof examinerId === 'string')
   ) {
     return null;
@@ -173,6 +170,7 @@ function readPanel(value: unknown): VivaPanelDto | null {
     roundId: value.roundId,
     examinerIds: value.examinerIds,
     panelAdminId: value.panelAdminId,
+    locationLabel: value.locationLabel,
   };
 }
 
@@ -212,70 +210,6 @@ function readSchedule(value: unknown): VivaScheduleDto | null {
   };
 }
 
-function readAssessmentPerson(value: unknown) {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.name === 'string'
-    && typeof value.rollNo === 'string'
-    ? { id: value.id, name: value.name, rollNo: value.rollNo }
-    : null;
-}
-
-function readAssessmentPeople(value: unknown) {
-  if (!Array.isArray(value)) return null;
-
-  const people = value.map(readAssessmentPerson);
-  return people.every((person): person is NonNullable<typeof person> => Boolean(person))
-    ? people
-    : null;
-}
-
-function readAssessment(value: unknown): VivaAssessmentDto | null {
-  if (!isRecord(value)) return null;
-
-  const round = isRecord(value.round) ? value.round : null;
-  const result = isRecord(value.result) ? value.result : null;
-  const project = isRecord(value.project) ? value.project : null;
-  const panel = isRecord(value.panel) ? value.panel : null;
-  const projectMembers = project ? readAssessmentPeople(project.members) : null;
-  const panelMembers = panel ? readAssessmentPeople(panel.members) : null;
-  const panelAdmin = panel ? readAssessmentPerson(panel.admin) : null;
-  if (
-    typeof value.id !== 'string'
-    || typeof value.roundId !== 'string'
-    || typeof value.completedAt !== 'string'
-    || (value.publishedAt !== null && typeof value.publishedAt !== 'string')
-    || !round
-    || typeof round.name !== 'string'
-    || !result
-    || typeof result.grade !== 'string'
-    || typeof result.percentage !== 'number'
-    || !project
-    || typeof project.id !== 'string'
-    || typeof project.title !== 'string'
-    || !projectMembers
-    || projectMembers.length === 0
-    || !panel
-    || typeof panel.id !== 'string'
-    || !panelAdmin
-    || !panelMembers
-    || panelMembers.length === 0
-  ) {
-    return null;
-  }
-
-  return {
-    id: value.id,
-    roundId: value.roundId,
-    completedAt: value.completedAt,
-    publishedAt: value.publishedAt,
-    result: { grade: result.grade, percentage: result.percentage },
-    round: { name: round.name },
-    project: { id: project.id, title: project.title, members: projectMembers },
-    panel: { id: panel.id, admin: panelAdmin, members: panelMembers },
-  };
-}
-
 function readList<T>(value: unknown, readItem: (item: unknown) => T | null): T[] | null {
   if (!Array.isArray(value)) return null;
 
@@ -298,9 +232,8 @@ function readConfiguration(value: unknown): VivaConfigurationResponse | null {
   const examiners = readList(value.examiners, readExaminer);
   const panels = readList(value.panels, readPanel);
   const schedules = readList(value.schedules, readSchedule);
-  const assessments = readList(value.assessments, readAssessment);
-  return rounds && teams && examiners && panels && schedules && assessments
-    ? { rounds, teams, examiners, panels, schedules, assessments }
+  return rounds && teams && examiners && panels && schedules
+    ? { rounds, teams, examiners, panels, schedules }
     : null;
 }
 
@@ -331,7 +264,6 @@ export default function AdminVivaSection() {
   const [examiners, setExaminers] = useState<VivaExaminerOption[]>([]);
   const [panels, setPanels] = useState<VivaPanelDto[]>([]);
   const [schedules, setSchedules] = useState<VivaScheduleDto[]>([]);
-  const [assessments, setAssessments] = useState<VivaAssessmentDto[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null);
   const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<VivaWorkspaceSection>('setup');
   const [draft, setDraft] = useState<VivaRoundDraft>(EMPTY_DRAFT);
@@ -364,7 +296,6 @@ export default function AdminVivaSection() {
       setExaminers(data.examiners);
       setPanels(data.panels);
       setSchedules(data.schedules);
-      setAssessments(data.assessments);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load Viva configuration.');
     } finally {
@@ -449,7 +380,6 @@ export default function AdminVivaSection() {
       setRounds((current) => current.filter((round) => round.id !== selectedRound.id));
       setPanels((current) => current.filter((panel) => panel.roundId !== selectedRound.id));
       setSchedules((current) => current.filter((schedule) => schedule.roundId !== selectedRound.id));
-      setAssessments((current) => current.filter((assessment) => assessment.roundId !== selectedRound.id));
       setSelectedRoundId(null);
       setActiveWorkspaceSection('setup');
       setDraft(EMPTY_DRAFT);
@@ -612,6 +542,7 @@ export default function AdminVivaSection() {
           round={selectedRound}
           examiners={examiners}
           panels={panels.filter((panel) => panel.roundId === selectedRound.id)}
+          hasScheduledSessions={schedules.some((schedule) => schedule.roundId === selectedRound.id)}
           isRoundSaving={isSaving}
           onSaved={(savedPanels, panelRevision) => {
             setPanels((current) => [
@@ -643,16 +574,6 @@ export default function AdminVivaSection() {
           }}
         />
       )}
-      {selectedRound && activeWorkspaceSection === 'results' && (
-        <VivaResultPublication
-          round={selectedRound}
-          assessments={assessments}
-          onPublished={(updatedAssessments) => setAssessments((current) => current.map((assessment) => (
-            updatedAssessments.find((updated) => updated.id === assessment.id) || assessment
-          )))}
-        />
-      )}
-
       <Dialog
         open={isDeleteDialogOpen}
         onClose={() => setIsDeleteDialogOpen(false)}
@@ -671,7 +592,7 @@ export default function AdminVivaSection() {
         )}
       >
         <p className="rounded-xl border border-[var(--color-danger)]/25 bg-[var(--color-danger-soft)] p-4 text-sm leading-6 text-[var(--color-text)]">
-          This removes the round, its panels, scheduled sessions, assessment data, and Viva audit records. This cannot be undone.
+          This removes the round, its panels, scheduled sessions, and Viva audit records. This cannot be undone.
         </p>
       </Dialog>
     </div>

@@ -138,6 +138,12 @@ VivaSessionSchema.index({
   publishedAt: -1,
   cancelledAt: 1,
 });
+VivaSessionSchema.index({
+  'projectSnapshot.members.userId': 1,
+  startedAt: 1,
+  completedAt: 1,
+  cancelledAt: 1,
+});
 
 const VivaSession = mongoose.models.VivaSession || mongoose.model('VivaSession', VivaSessionSchema);
 

@@ -9,6 +9,7 @@ const [
   { default: Project },
   { default: VivaRound },
   { default: VivaPanel },
+  { default: VivaSession },
   { default: VivaAuditEvent },
   {
     getVivaRoundAdminData,
@@ -25,6 +26,7 @@ const [
   importTypeScriptModuleWithDependencies('models/Project.ts'),
   importTypeScriptModuleWithDependencies('models/VivaRound.ts'),
   importTypeScriptModuleWithDependencies('models/VivaPanel.ts'),
+  importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaRoundAdmin.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaPanelAdmin.ts'),
@@ -72,7 +74,7 @@ export async function runVivaPanelAdminIntegration(testDatabaseUri) {
   try {
     await mongoose.connect(testDatabaseUri);
     await mongoose.connection.dropDatabase();
-    await Promise.all([User.init(), Project.init(), VivaRound.init(), VivaPanel.init(), VivaAuditEvent.init()]);
+    await Promise.all([User.init(), Project.init(), VivaRound.init(), VivaPanel.init(), VivaSession.init(), VivaAuditEvent.init()]);
 
     const [supervisorOne, supervisorTwo, supervisorThree, inactiveSupervisor, outsideSupervisor, student] = await User.create([
       {
@@ -231,6 +233,18 @@ export async function runVivaPanelAdminIntegration(testDatabaseUri) {
     assert.equal(savedRandomAllocation.success, true, savedRandomAllocation.success ? '' : savedRandomAllocation.error);
     assert.equal(savedRandomAllocation.panelRevision, 3);
 
+    await VivaSession.create({
+      roundId: round._id,
+      panelId: savedRandomAllocation.panels[0].id,
+      projectId: project._id,
+      scheduledAt: new Date('2026-10-10T09:00:00.000Z'),
+      vivaEndsAt: new Date('2026-10-10T09:30:00.000Z'),
+      locationLabel: 'Viva Lab',
+    });
+    const lockedMembership = await saveVivaPanels(saveInput(String(round._id), 3, savedRandomAllocation.panels), actor);
+    assert.equal(lockedMembership.success, false);
+    assert.equal(lockedMembership.reason, 'frozen');
+
     const staleAllocation = await previewRandomVivaPanels(allocationInput(String(round._id), 2));
     assert.equal(staleAllocation.success, false);
     assert.equal(staleAllocation.reason, 'concurrent-change');
@@ -290,7 +304,7 @@ export async function runVivaPanelAdminIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 506,
       seededTeams: 1,
-      verified: ['panel-admin', 'below-minimum-panel', 'active-teacher', 'random-allocation', 'random-panel-admin', 'remainder-panel', 'preview-without-write', 'large-allocation', 'atomic-save', 'concurrent-save', 'round-update-protection', 'frozen-membership'],
+      verified: ['panel-admin', 'below-minimum-panel', 'active-teacher', 'random-allocation', 'random-panel-admin', 'remainder-panel', 'preview-without-write', 'large-allocation', 'atomic-save', 'concurrent-save', 'scheduled-membership-lock', 'round-update-protection', 'frozen-membership'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

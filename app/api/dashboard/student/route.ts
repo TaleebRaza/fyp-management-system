@@ -62,7 +62,7 @@ import {
   withStorageTransaction,
 } from '../../../../lib/storageProtocol';
 import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
-import { getPublishedVivaResultsForStudent } from '../../../../lib/vivaPublication';
+import { getCompletedVivaResultsForStudent } from '../../../../lib/vivaResults';
 import { getConfirmedVivaSchedulesForStudent } from '../../../../lib/vivaScheduling';
 
 export const dynamic = 'force-dynamic';
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
         .select('_id supervisorId members title description status reviewRemarks stage version domains tools pdfUrl inviteCode maxTeamSize ratings')
         .lean(),
       getOrCreateRegistrationPolicy(),
-      getPublishedVivaResultsForStudent(studentId),
+      getCompletedVivaResultsForStudent(studentId),
       getConfirmedVivaSchedulesForStudent(studentId),
     ]);
     const supervisor = project?.supervisorId

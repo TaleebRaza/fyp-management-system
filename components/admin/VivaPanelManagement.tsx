@@ -21,6 +21,7 @@ type VivaPanelManagementProps = {
   round: VivaRoundDto;
   examiners: VivaExaminerOption[];
   panels: VivaPanelDto[];
+  hasScheduledSessions: boolean;
   isRoundSaving: boolean;
   onSaved: (panels: VivaPanelDto[], panelRevision: number) => void;
   onReload: () => Promise<void>;
@@ -36,6 +37,7 @@ function readPanel(value: unknown): VivaPanelDto | null {
     typeof value.id !== 'string'
     || typeof value.roundId !== 'string'
     || typeof value.panelAdminId !== 'string'
+    || typeof value.locationLabel !== 'string'
     || !value.examinerIds.every((examinerId) => typeof examinerId === 'string')
   ) {
     return null;
@@ -46,6 +48,7 @@ function readPanel(value: unknown): VivaPanelDto | null {
     roundId: value.roundId,
     examinerIds: value.examinerIds,
     panelAdminId: value.panelAdminId,
+    locationLabel: value.locationLabel,
   };
 }
 
@@ -117,6 +120,7 @@ export default function VivaPanelManagement({
   round,
   examiners,
   panels,
+  hasScheduledSessions,
   isRoundSaving,
   onSaved,
   onReload,
@@ -131,7 +135,7 @@ export default function VivaPanelManagement({
   const [actionTargetId, setActionTargetId] = useState('');
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
-  const isFrozen = Boolean(round.frozenAt || round.confirmedAt);
+  const isFrozen = Boolean(round.frozenAt || round.confirmedAt || hasScheduledSessions);
   const controlsDisabled = isFrozen || isSaving || isGenerating || isRoundSaving;
 
   const examinerById = useMemo(
@@ -386,7 +390,7 @@ export default function VivaPanelManagement({
         title="Panel Management"
         description={
           isFrozen
-            ? 'This round has started, so panel membership is locked.'
+            ? 'Panel membership is locked after scheduling or confirmation so every agenda retains its panel and room.'
             : 'Assign each selected teacher once. Every saved panel has one panel admin.'
         }
         action={

@@ -2,6 +2,7 @@ import mongoose, { type ClientSession } from 'mongoose';
 
 import VivaPanel from '../models/VivaPanel';
 import VivaRound from '../models/VivaRound';
+import VivaSession from '../models/VivaSession';
 import User from '../models/User';
 import { isVivaPanelAdmin } from './viva';
 import { recordVivaAuditEvent, withVivaTransaction } from './vivaPersistence';
@@ -11,6 +12,7 @@ export type VivaPanelDto = {
   roundId: string;
   examinerIds: string[];
   panelAdminId: string;
+  locationLabel: string;
 };
 
 export type VivaPanelDraft = Pick<VivaPanelDto, 'examinerIds' | 'panelAdminId'>;
@@ -50,6 +52,7 @@ type VivaPanelRecord = {
   roundId?: unknown;
   examinerIds?: unknown;
   panelAdminId?: unknown;
+  locationLabel?: unknown;
   chairId?: unknown;
 };
 
@@ -98,6 +101,7 @@ function serializeVivaPanel(panel: VivaPanelRecord): VivaPanelDto | null {
     roundId: String(panel.roundId),
     examinerIds,
     panelAdminId,
+    locationLabel: typeof panel.locationLabel === 'string' ? panel.locationLabel.trim() : '',
   };
 }
 
@@ -197,7 +201,7 @@ export function allocateRandomVivaPanels(
 
 export async function getVivaPanels(): Promise<VivaPanelDto[]> {
   const panels = await VivaPanel.find()
-    .select('_id roundId examinerIds panelAdminId chairId createdAt')
+    .select('_id roundId examinerIds panelAdminId locationLabel chairId createdAt')
     .sort({ createdAt: 1, _id: 1 })
     .lean<VivaPanelRecord[]>();
 
@@ -341,6 +345,14 @@ export async function saveVivaPanels(
         success: false,
         reason: 'concurrent-change',
         error: 'Another administrator changed these panels. Reload before saving your changes.',
+      };
+    }
+
+    if (await VivaSession.exists({ roundId: input.roundId })) {
+      return {
+        success: false,
+        reason: 'frozen',
+        error: 'Panels cannot be changed after Viva sessions have been scheduled.',
       };
     }
 

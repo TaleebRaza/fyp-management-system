@@ -67,7 +67,8 @@ function readSession(value: unknown): VivaSessionWorkspaceDto | null {
     : null;
   if (
     typeof value.id !== 'string'
-    || (value.phase !== 'scheduled' && value.phase !== 'running')
+    || (value.phase !== 'scheduled' && value.phase !== 'running' && value.phase !== 'completed')
+    || typeof value.canManage !== 'boolean'
     || typeof value.version !== 'number'
     || !Number.isSafeInteger(value.version)
     || value.version < 0
@@ -96,6 +97,7 @@ function readSession(value: unknown): VivaSessionWorkspaceDto | null {
   return {
     id: value.id,
     phase: value.phase,
+    canManage: value.canManage,
     version: value.version,
     gradeScale,
     result,
@@ -256,13 +258,7 @@ export default function VivaSessionWorkspace() {
       const body: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(body, 'Unable to complete the Viva session.'));
       if (!isRecord(body) || body.completed !== true) throw new Error('Viva completion response was invalid.');
-
-      setSessions((current) => current.filter((currentSession) => currentSession.id !== session.id));
-      setGradeDrafts((current) => {
-        const remaining = { ...current };
-        delete remaining[session.id];
-        return remaining;
-      });
+      await loadSessions();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to complete the Viva session.');
       await loadSessions();
@@ -284,12 +280,12 @@ export default function VivaSessionWorkspace() {
       <DashboardPanel>
         <SectionHeader
           title="Viva Sessions"
-          description="Only your assigned panel-admin sessions appear here. Confirm the team and panel before starting."
+          description="Your assigned Viva agenda. Only panel admins can start, grade, or complete a session."
           action={<Button variant="outline" onClick={() => void loadSessions()} disabled={Boolean(pendingAction)}><RefreshCw size={16} />Reload</Button>}
         />
         {error && <p role="alert" className="rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
         {!error && sessions.length === 0 && (
-          <p className="text-sm leading-6 text-[var(--color-text-muted)]">No Viva sessions are assigned to you as panel admin.</p>
+          <p className="text-sm leading-6 text-[var(--color-text-muted)]">No Viva sessions are assigned to your panel.</p>
         )}
       </DashboardPanel>
 
@@ -304,7 +300,7 @@ export default function VivaSessionWorkspace() {
             <SectionHeader
               title={session.project.title || 'Untitled project'}
               description={`${session.round.name} · ${session.locationLabel || 'Location not specified'}`}
-              action={<Badge variant={session.phase === 'running' ? 'warning' : 'success'}>{session.phase === 'running' ? 'Running' : 'Scheduled'}</Badge>}
+              action={<Badge variant={session.phase === 'running' ? 'warning' : session.phase === 'completed' ? 'accent' : 'success'}>{session.phase}</Badge>}
             />
             <dl className="grid gap-4 text-sm sm:grid-cols-2">
               <div>
@@ -324,7 +320,7 @@ export default function VivaSessionWorkspace() {
                 <dd className="mt-1 text-[var(--color-text)]">{session.panel.members.map((member) => member.name).join(', ')}</dd>
               </div>
             </dl>
-            {session.phase === 'scheduled' && (
+            {session.phase === 'scheduled' && session.canManage && (
               <div className="mt-6 flex justify-end">
                 <Button onClick={() => void startSession(session.id)} disabled={Boolean(pendingAction)}>
                   {isStarting ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
@@ -332,7 +328,7 @@ export default function VivaSessionWorkspace() {
                 </Button>
               </div>
             )}
-            {session.phase === 'running' && (
+            {session.phase === 'running' && session.canManage && (
               <div className="mt-6 grid gap-4 border-t border-[var(--color-border)] pt-6 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
                 <label className="grid gap-2 text-sm font-bold text-[var(--color-text)]">
                   Final grade
@@ -356,6 +352,11 @@ export default function VivaSessionWorkspace() {
                   {isCompleting ? 'Completing...' : 'Complete Viva'}
                 </Button>
               </div>
+            )}
+            {session.phase === 'completed' && (
+              <p className="mt-6 border-t border-[var(--color-border)] pt-4 text-sm font-semibold text-[var(--color-success)]">
+                Completed{session.result ? ` with grade ${session.result.grade} (${session.result.percentage}%).` : '.'}
+              </p>
             )}
           </DashboardPanel>
         );

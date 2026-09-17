@@ -15,7 +15,6 @@ import {
 } from './storageProtocol';
 import { normalizeStorageKey } from './storageValidation';
 import { getVivaPanels, type VivaPanelDto, validateVivaPanelsForRound } from './vivaPanelAdmin';
-import { getVivaAssessments, type VivaAssessmentDto } from './vivaPublication';
 import { getVivaSchedules, type VivaScheduleDto } from './vivaScheduling';
 import {
   type VivaConfiguration,
@@ -57,7 +56,6 @@ export type VivaRoundAdminData = {
   examiners: VivaExaminerOption[];
   panels: VivaPanelDto[];
   schedules: VivaScheduleDto[];
-  assessments: VivaAssessmentDto[];
 };
 
 export type VivaRoundActor = {
@@ -293,7 +291,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
     new Set(projects.flatMap((project) => (project.members || []).map(String)))
   );
 
-  const [students, examiners, rounds, panels, schedules, assessments] = await Promise.all([
+  const [students, examiners, rounds, panels, schedules] = await Promise.all([
     studentIds.length > 0
       ? User.find({ _id: { $in: studentIds }, role: 'student', isActive: true })
           .select('_id name rollNo')
@@ -311,7 +309,6 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       .lean<VivaRoundRecord[]>(),
     getVivaPanels(),
     getVivaSchedules(),
-    getVivaAssessments(),
   ]);
 
   const studentsById = new Map(
@@ -350,7 +347,6 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
     })),
     panels,
     schedules,
-    assessments,
   };
 }
 
@@ -494,10 +490,7 @@ export async function confirmVivaRound(
   });
 }
 
-export async function deleteVivaRound(
-  roundId: string,
-  actor: VivaRoundActor
-): Promise<VivaRoundDeleteResult> {
+export async function deleteVivaRound(roundId: string): Promise<VivaRoundDeleteResult> {
   if (!mongoose.Types.ObjectId.isValid(roundId)) {
     return { success: false, reason: 'invalid', error: 'Invalid Viva round.' };
   }

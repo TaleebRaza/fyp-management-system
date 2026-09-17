@@ -4,7 +4,12 @@ import test from 'node:test';
 
 import { importTypeScriptModuleWithDependencies } from './support/importTypeScript.mjs';
 
-const { parseVivaScheduleInput, parseVivaScheduleUpdateInput } = await importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts');
+const {
+  parseVivaAutomaticScheduleInput,
+  parseVivaAutomaticScheduleSaveInput,
+  parseVivaScheduleInput,
+  parseVivaScheduleUpdateInput,
+} = await importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts');
 
 test('Viva scheduling is automatic-only', async () => {
   const component = await readFile(
@@ -51,4 +56,38 @@ test('parses UTC Viva schedule input and rejects ambiguous timestamps', () => {
     }).success,
     false
   );
+});
+
+test('requires one fixed room for every automatically scheduled panel', () => {
+  const roundId = '507f191e810c19729de860ea';
+  const firstPanelId = '507f191e810c19729de860eb';
+  const secondPanelId = '507f191e810c19729de860ec';
+  const projectId = '507f191e810c19729de860ed';
+
+  assert.equal(parseVivaAutomaticScheduleInput({
+    roundId,
+    availability: [
+      { startsAt: '2026-10-10T09:00:00.000Z', endsAt: '2026-10-10T11:00:00.000Z', locationLabel: 'Lab 3' },
+      { startsAt: '2026-10-10T09:30:00.000Z', endsAt: '2026-10-10T11:00:00.000Z', locationLabel: 'Lab 4' },
+    ],
+  }).success, false);
+
+  const save = parseVivaAutomaticScheduleSaveInput({
+    roundId,
+    panelRooms: [
+      { panelId: firstPanelId, locationLabel: 'Lab 3' },
+      { panelId: secondPanelId, locationLabel: 'Lab 3' },
+    ],
+    schedules: [{
+      panelId: firstPanelId,
+      projectId,
+      scheduledAt: '2026-10-10T09:00:00.000Z',
+      locationLabel: 'Lab 3',
+    }],
+  });
+  assert.equal(save.success, true);
+  assert.deepEqual(save.success && save.input.panelRooms, [
+    { panelId: firstPanelId, locationLabel: 'Lab 3' },
+    { panelId: secondPanelId, locationLabel: 'Lab 3' },
+  ]);
 });

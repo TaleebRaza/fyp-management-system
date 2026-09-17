@@ -77,6 +77,7 @@ export async function runVivaAccessRestrictionIntegration(testDatabaseUri) {
       roundId: round._id,
       examinerIds: [panelAdmin._id, panelMember._id],
       panelAdminId: panelAdmin._id,
+      locationLabel: 'Viva Lab',
     });
     const scheduled = await scheduleVivaSession({
       roundId: String(round._id),
@@ -99,7 +100,7 @@ export async function runVivaAccessRestrictionIntegration(testDatabaseUri) {
     assert.equal(await isVivaPanelMemberAccessRestricted(String(panelMember._id)), true);
     assert.equal(await isVivaPanelMemberAccessRestricted(String(unrelatedSupervisor._id)), false);
     assert.equal(await isVivaPanelMemberAccessRestricted(String(systemAdmin._id)), false);
-    assert.equal(await isVivaPanelMemberAccessRestricted(String(student._id)), false);
+    assert.equal(await isVivaPanelMemberAccessRestricted(String(student._id)), true);
     assert.equal(await isVivaPanelMemberAccessRestricted('not-an-object-id'), false);
 
     await VivaSession.updateOne(
@@ -107,6 +108,7 @@ export async function runVivaAccessRestrictionIntegration(testDatabaseUri) {
       { $set: { completedAt: new Date('2026-10-10T09:30:00.000Z') } }
     );
     assert.equal(await isVivaPanelMemberAccessRestricted(String(panelMember._id)), false);
+    assert.equal(await isVivaPanelMemberAccessRestricted(String(student._id)), false);
 
     await VivaSession.updateOne(
       { _id: scheduled.schedule.id },
@@ -118,7 +120,7 @@ export async function runVivaAccessRestrictionIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 6,
       seededTeams: 1,
-      verified: ['scheduled-access', 'active-panel-member-restriction', 'panel-admin-access', 'unrelated-access', 'snapshot-membership', 'completed-release', 'cancelled-release'],
+      verified: ['scheduled-access', 'active-panel-member-restriction', 'active-student-restriction', 'panel-admin-access', 'unrelated-access', 'snapshot-membership', 'completed-release', 'cancelled-release'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

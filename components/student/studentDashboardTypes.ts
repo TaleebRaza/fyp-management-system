@@ -2,7 +2,7 @@ import type { Session } from 'next-auth';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { FineRestrictionPolicy } from '../../types/registrationPolicy';
 import type { ProjectRatings } from '../../config/projectRatings';
-import type { VivaPublishedResultDto } from '../../lib/vivaPublication';
+import type { VivaStudentResultDto } from '../../lib/vivaResults';
 import type { VivaStudentSessionDto } from '../../lib/vivaScheduling';
 
 export type WordTemplate = {
@@ -96,11 +96,9 @@ export type StudentDashboardData = {
   teamFineRestriction?: FineRestriction | null;
   fineRestrictions?: FineRestrictionPolicy;
   projectSubmissionsOpen?: boolean;
-  vivaResults?: VivaPublishedResultDto[];
+  vivaResults?: VivaStudentResultDto[];
   vivaSessions?: VivaStudentSessionDto[];
 };
-
-export type VivaPublishedResult = VivaPublishedResultDto;
 
 export type AnnouncementItem = {
   id: string;

@@ -71,7 +71,20 @@ function readSchedule(value: unknown): VivaScheduleDto | null {
 }
 
 function readPreview(value: unknown): VivaAutomaticSchedulePreview | null {
-  if (!isRecord(value) || !Array.isArray(value.scheduled) || !Array.isArray(value.unplaced)) return null;
+  if (
+    !isRecord(value)
+    || !Array.isArray(value.panelRooms)
+    || !Array.isArray(value.scheduled)
+    || !Array.isArray(value.unplaced)
+  ) {
+    return null;
+  }
+
+  const panelRooms = value.panelRooms.filter((entry): entry is VivaAutomaticSchedulePreview['panelRooms'][number] => (
+    isRecord(entry)
+    && typeof entry.panelId === 'string'
+    && typeof entry.locationLabel === 'string'
+  ));
 
   const scheduled = value.scheduled.filter((entry): entry is VivaAutomaticSchedulePreview['scheduled'][number] => (
     isRecord(entry)
@@ -87,8 +100,10 @@ function readPreview(value: unknown): VivaAutomaticSchedulePreview | null {
     && typeof entry.reason === 'string'
   ));
 
-  return scheduled.length === value.scheduled.length && unplaced.length === value.unplaced.length
-    ? { scheduled, unplaced }
+  return panelRooms.length === value.panelRooms.length
+    && scheduled.length === value.scheduled.length
+    && unplaced.length === value.unplaced.length
+    ? { panelRooms, scheduled, unplaced }
     : null;
 }
 
@@ -184,6 +199,7 @@ export default function VivaScheduleManagement({
   const [busy, setBusy] = useState<BusyAction>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
+  const [showHeldProjects, setShowHeldProjects] = useState(false);
 
   const roundTeams = useMemo(
     () => teams.filter((team) => round.projectIds.includes(team.id)),
@@ -196,6 +212,10 @@ export default function VivaScheduleManagement({
   const roundSchedules = useMemo(
     () => schedules.filter((schedule) => schedule.roundId === round.id),
     [round.id, schedules]
+  );
+  const panelNumberById = useMemo(
+    () => new Map(panels.map((panel, index) => [panel.id, index + 1])),
+    [panels]
   );
   const disabled = Boolean(round.confirmedAt) || isRoundSaving || busy !== null;
 
@@ -255,6 +275,7 @@ export default function VivaScheduleManagement({
         body: JSON.stringify({
           action: 'apply-automatic-schedule',
           roundId: round.id,
+          panelRooms: draft.panelRooms,
           schedules: draft.scheduled.map(({ projectId, panelId, scheduledAt, locationLabel }) => ({
             projectId,
             panelId,
@@ -343,7 +364,7 @@ export default function VivaScheduleManagement({
           title="Automatic Team Scheduling"
           description={round.confirmedAt
             ? 'This round is confirmed. Sessions are visible to students and scheduling is locked.'
-            : 'Choose a local availability window and rooms for concurrent sessions.'}
+            : 'Choose one time window and the rooms that panels will keep for this schedule.'}
         />
 
         {error && <p role="alert" className="mb-4 rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
@@ -374,6 +395,7 @@ export default function VivaScheduleManagement({
             <div>
               <label htmlFor="viva-availability-rooms" className="mb-2 block text-sm font-bold text-[var(--color-text)]">Rooms, one per line</label>
               <TextArea id="viva-availability-rooms" required value={availability.rooms} placeholder={'Lab 3\nLab 4'} disabled={disabled} onChange={(event) => setAvailability((current) => ({ ...current, rooms: event.target.value }))} />
+              <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">Each panel is randomly assigned one room when this draft is saved. Multiple panels may use the same room at the same time.</p>
             </div>
             <div className="xl:col-span-3 flex justify-end">
               <Button type="submit" disabled={disabled || roundTeams.length === 0 || panels.length === 0}>
@@ -392,6 +414,7 @@ export default function VivaScheduleManagement({
                 <thead className="sticky top-0 bg-[var(--color-surface-muted)]">
                   <tr>
                     <th className="px-4 py-3">Team</th>
+                    <th className="whitespace-nowrap px-4 py-3">Panel</th>
                     <th className="whitespace-nowrap px-4 py-3">Date & Time</th>
                     <th className="whitespace-nowrap px-4 py-3">Room</th>
                   </tr>
@@ -401,6 +424,9 @@ export default function VivaScheduleManagement({
                     <tr key={session.projectId} className="border-t border-[var(--color-border)]">
                       <td className="px-4 py-3 font-semibold">
                         {teamsById.get(session.projectId)?.title || 'Unavailable team'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        Panel {panelNumberById.get(session.panelId) || '—'}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         {formatLocalTime(session.scheduledAt)}
@@ -426,7 +452,7 @@ export default function VivaScheduleManagement({
             <div className="flex justify-end">
               <Button onClick={() => void apply()} disabled={disabled || draft.scheduled.length === 0}>
                 {busy === 'apply' ? <Loader2 className="animate-spin" size={16} /> : <CalendarDays size={16} />}
-                {busy === 'apply' ? 'Saving...' : 'Save automatic sessions'}
+                {busy === 'apply' ? 'Saving...' : 'Save schedule'}
               </Button>
             </div>
           </div>
@@ -436,17 +462,21 @@ export default function VivaScheduleManagement({
           <div className="mt-6 flex justify-end">
             <Button variant="success" onClick={() => void confirm()} disabled={disabled}>
               {busy === 'confirm' ? <Loader2 className="animate-spin" size={16} /> : <CalendarCheck2 size={16} />}
-              {busy === 'confirm' ? 'Confirming...' : 'Confirm round'}
+              {busy === 'confirm' ? 'Confirming...' : 'Confirm schedule'}
             </Button>
           </div>
         )}
 
         {round.confirmedAt && (
           <div className="mt-5 rounded-xl border border-[var(--color-border)] p-4">
-            <p className="font-bold">Held for a later round</p>
-            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-              {round.heldProjectIds.length ? round.heldProjectIds.map((id) => teamsById.get(id)?.title || id).join(', ') : 'No teams are on hold.'}
-            </p>
+            <Button variant="ghost" onClick={() => setShowHeldProjects((current) => !current)}>
+              {showHeldProjects ? 'Hide held teams' : 'View held teams'}
+            </Button>
+            {showHeldProjects && (
+              <p className="mt-3 text-sm text-[var(--color-text-muted)]">
+                {round.heldProjectIds.length ? round.heldProjectIds.map((id) => teamsById.get(id)?.title || id).join(', ') : 'No teams are on hold.'}
+              </p>
+            )}
           </div>
         )}
       </DashboardPanel>
@@ -458,6 +488,7 @@ export default function VivaScheduleManagement({
             <thead className="sticky top-0 bg-[var(--color-surface-muted)]">
               <tr>
                 <th className="px-4 py-3">Team</th>
+                <th className="whitespace-nowrap px-4 py-3">Panel</th>
                 <th className="whitespace-nowrap px-4 py-3">Date & Time</th>
                 <th className="whitespace-nowrap px-4 py-3">Room</th>
                 <th className="whitespace-nowrap px-4 py-3">Status</th>
@@ -470,6 +501,10 @@ export default function VivaScheduleManagement({
                 <tr key={schedule.id} className="border-t border-[var(--color-border)]">
                   <td className="px-4 py-3 font-semibold">
                     {teamsById.get(schedule.projectId)?.title || 'Unavailable team'}
+                  </td>
+
+                  <td className="whitespace-nowrap px-4 py-3">
+                    Panel {panelNumberById.get(schedule.panelId) || '—'}
                   </td>
 
                   <td className="whitespace-nowrap px-4 py-3">

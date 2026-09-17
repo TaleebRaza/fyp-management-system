@@ -39,9 +39,12 @@ import { useStudentFineRefresh } from '../student/hooks/useStudentFineRefresh';
 import { useStudentSupervisorActions } from '../student/hooks/useStudentSupervisorActions';
 import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
 import { updateStudentName } from '../student/api/studentWorkflowApi';
+import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
 const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDashboardProps) => {
   const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
   const [isVivaView, setIsVivaView] = useState(false);
+
+  useVivaAccessRestriction(showDialog);
 
   const currentUserId = String((session.user as { id?: string }).id || '');
   const {
@@ -244,8 +247,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     return (
       <VivaWorkspaceShell
         eyebrow="Your Viva"
-        title="Viva results"
-        description="This is the dedicated place for your team’s published Viva results."
+        title="Viva schedule and results"
+        description="See your panel, room, session time, and final grade after the panel completes your Viva."
         onExit={() => setIsVivaView(false)}
       >
         <StudentVivaWorkspace results={data?.vivaResults || []} sessions={data?.vivaSessions || []} />

@@ -86,9 +86,9 @@ export async function runVivaSchedulingIntegration(testDatabaseUri) {
       examinerIds: [supervisorOne._id, supervisorTwo._id, supervisorThree._id, supervisorFour._id, supervisorFive._id],
     });
     const [primaryPanel, secondaryPanel, undersizedPanel] = await VivaPanel.create([
-      { roundId: round._id, examinerIds: [supervisorTwo._id, supervisorThree._id], panelAdminId: supervisorTwo._id },
-      { roundId: round._id, examinerIds: [supervisorOne._id, supervisorFour._id], panelAdminId: supervisorOne._id },
-      { roundId: round._id, examinerIds: [supervisorFive._id], panelAdminId: supervisorFive._id },
+      { roundId: round._id, examinerIds: [supervisorTwo._id, supervisorThree._id], panelAdminId: supervisorTwo._id, locationLabel: 'Lab 3' },
+      { roundId: round._id, examinerIds: [supervisorOne._id, supervisorFour._id], panelAdminId: supervisorOne._id, locationLabel: 'Lab 3' },
+      { roundId: round._id, examinerIds: [supervisorFive._id], panelAdminId: supervisorFive._id, locationLabel: 'Lab 3' },
     ]);
 
     const firstSchedule = await scheduleVivaSession(
@@ -103,8 +103,7 @@ export async function runVivaSchedulingIntegration(testDatabaseUri) {
       scheduleInput(String(round._id), String(projectTwo._id), String(primaryPanel._id), '2026-10-10T10:00:00.000Z'),
       actor
     );
-    assert.equal(ownSupervisor.success, false);
-    assert.match(ownSupervisor.error, /own supervisor/);
+    assert.equal(ownSupervisor.success, true, ownSupervisor.success ? '' : ownSupervisor.error);
 
     const undersizedPanelResult = await scheduleVivaSession(
       scheduleInput(String(round._id), String(projectFour._id), String(undersizedPanel._id), '2026-10-10T10:00:00.000Z'),
@@ -183,14 +182,14 @@ export async function runVivaSchedulingIntegration(testDatabaseUri) {
     assert.equal(concurrentSchedules.filter((result) => !result.success).length, 1);
 
     const schedules = await getVivaSchedules();
-    assert.equal(schedules.length, 3);
-    assert.equal(await VivaAuditEvent.countDocuments({ event: 'session-scheduled' }), 4);
+    assert.equal(schedules.length, 4);
+    assert.equal(await VivaAuditEvent.countDocuments({ event: 'session-scheduled' }), 5);
 
     console.log(JSON.stringify({
       database: testDatabase.pathname.slice(1),
       seededUsers: 12,
       seededTeams: 6,
-      verified: ['panel-eligibility', 'own-supervisor', 'teacher-overlap', 'student-overlap', 'duplicate-attempt', 'reschedule', 'optimistic-concurrency', 'concurrent-overlap', 'started-session-lock', 'utc-reservation'],
+      verified: ['panel-eligibility', 'own-supervisor-assignment', 'teacher-overlap', 'student-overlap', 'duplicate-attempt', 'reschedule', 'optimistic-concurrency', 'concurrent-overlap', 'started-session-lock', 'utc-reservation'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {
