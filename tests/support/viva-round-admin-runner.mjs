@@ -237,6 +237,24 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     assert.equal(await VivaSession.countDocuments({ roundId: deletable.round.id }), 0);
     assert.equal(await VivaAuditEvent.countDocuments({ roundId: deletable.round.id }), 0);
 
+    const startedPanel = await VivaPanel.create({
+      roundId: createdRound.id,
+      examinerIds: [supervisorOne._id, supervisorTwo._id],
+      panelAdminId: supervisorOne._id,
+    });
+    await VivaSession.create({
+      roundId: createdRound.id,
+      panelId: startedPanel._id,
+      projectId: activeTeam._id,
+      scheduledAt: new Date('2026-10-11T09:00:00.000Z'),
+      startedAt: new Date('2026-10-11T09:00:00.000Z'),
+      vivaEndsAt: new Date('2026-10-11T09:30:00.000Z'),
+    });
+    const startedDelete = await deleteVivaRound(createdRound.id);
+    assert.equal(startedDelete.success, false);
+    assert.equal(startedDelete.reason, 'frozen');
+    assert.ok(await VivaRound.exists({ _id: createdRound.id }));
+
     await VivaRound.updateOne({ _id: createdRound.id }, { $set: { frozenAt: new Date() } });
     const frozenUpdate = await updateVivaRound(
       createdRound.id,
@@ -259,7 +277,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 7,
       seededTeams: 2,
-      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'scheduled-round-deletion', 'frozen-round-rejection'],
+      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'scheduled-round-deletion', 'started-round-rejection', 'legacy-frozen-round-rejection'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

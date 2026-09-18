@@ -110,6 +110,7 @@ type VivaRoundRecord = {
   targetPanelSize?: unknown;
   minimumPanelSize?: unknown;
   vivaDurationMinutes?: unknown;
+  confirmedAt?: Date | null;
   frozenAt?: Date | null;
 };
 
@@ -502,7 +503,7 @@ async function readCurrentContext(
   }
 
   const roundQuery = VivaRound.findById(roundId)
-    .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes frozenAt');
+    .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes confirmedAt frozenAt');
   const panelQuery = VivaPanel.findById(panelId).select('_id roundId examinerIds panelAdminId');
   const projectQuery = Project.findById(projectId)
     .select('_id supervisorId members title description domains tools pdfUrl pdfSize');
@@ -518,6 +519,9 @@ async function readCurrentContext(
   ]);
   if (!round || !panel || !project) {
     return { success: false, reason: 'invalid', error: 'The scheduled Viva round, panel, or team no longer exists.' };
+  }
+  if (!(round.confirmedAt instanceof Date) || !Number.isFinite(round.confirmedAt.getTime())) {
+    return { success: false, reason: 'invalid', error: 'This Viva round must be confirmed before sessions can start.' };
   }
   const panelMemberIds = asIdList(panel.examinerIds) || [];
   const projectMemberIds = asIdList(project.members) || [];
@@ -891,14 +895,6 @@ export async function startVivaSession(
         });
       }
 
-      await VivaRound.findOneAndUpdate(
-        {
-          _id: currentContext.context.round._id,
-          $or: [{ frozenAt: null }, { frozenAt: { $exists: false } }],
-        },
-        { $set: { frozenAt: startedAt } },
-        { session: databaseSession }
-      );
       await recordVivaAuditEvent(
         {
           roundId: String(currentContext.context.round._id),

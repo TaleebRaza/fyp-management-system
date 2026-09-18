@@ -184,10 +184,7 @@ export default function VivaSessionWorkspace() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadSessions();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    queueMicrotask(() => void loadSessions());
   }, [loadSessions]);
 
   const startSession = async (sessionId: string) => {

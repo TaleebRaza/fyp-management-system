@@ -139,6 +139,7 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
       adminActor
     );
     assert.equal(active.success, true, active.success ? '' : active.error);
+    await VivaRound.updateOne({ _id: round._id }, { $set: { confirmedAt: new Date('2026-10-10T11:00:00.000Z') } });
     const started = await startVivaSession(
       active.schedule.id,
       panelAdminActor,
@@ -191,6 +192,8 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
     assert.equal(repeatedCancellation.success, false);
     assert.equal(repeatedCancellation.reason, 'not-cancellable');
 
+    await VivaRound.updateOne({ _id: round._id }, { $set: { confirmedAt: null } });
+
     const freshActiveAttempt = await scheduleVivaSession(
       scheduleInput(String(round._id), String(projectTwo._id), String(panel._id), '2026-10-10T12:00:00.000Z'),
       adminActor
@@ -217,6 +220,7 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
       adminActor
     );
     assert.equal(racingSession.success, true, racingSession.success ? '' : racingSession.error);
+    await VivaRound.updateOne({ _id: round._id }, { $set: { confirmedAt: new Date('2026-10-10T13:00:00.000Z') } });
     const racingStart = await startVivaSession(
       racingSession.schedule.id,
       panelAdminActor,

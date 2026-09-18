@@ -94,6 +94,7 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
       actor(systemAdmin)
     );
     assert.equal(scheduled.success, true, scheduled.success ? '' : scheduled.error);
+    await VivaRound.updateOne({ _id: round._id }, { $set: { confirmedAt: new Date('2026-10-10T09:00:00.000Z') } });
 
     const started = await startVivaSession(
       scheduled.schedule.id,

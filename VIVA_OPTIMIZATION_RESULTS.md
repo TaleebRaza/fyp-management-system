@@ -2,82 +2,104 @@
 
 ## Environment
 
-- Commit before: `e7c2f6b0daf73545004d499cd3a888801a93db56`
-- Commit after: working tree based on the commit above (not committed by Codex)
+- Working tree base: `30d690bcbcb6f36c47e75a76477bb861e6e413ad`
+- Validation date: 2026-09-18
 - Node.js: `v24.18.0`
-- MongoDB: `8.0.16`, local single-node replica set
+- MongoDB: `8.0.16`, temporary local single-node replica set
 - Pool settings: unchanged at `maxPoolSize: 10`, `minPoolSize: 1`
 - Main benchmark: `npm run test:viva:performance`
 
-The baseline implementation was exercised by the benchmark's legacy hydration function, which reproduces the previous panel/session/context query sequence. The optimized implementation was measured in the same process and fixture.
+## Shared-round concurrency
+
+The benchmark contains both the existing 50-independent-round control and a
+50-session scenario in one confirmed round. Every session uses disjoint
+examiner and student participants.
+
+| Run | Independent p50 ms | Independent p95 ms | Independent max ms | Shared-round p50 ms | Shared-round p95 ms | Shared-round max ms |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 361.66 | 370.52 | 370.68 | 305.26 | 314.81 | 315.01 |
+| 2 | 370.17 | 378.37 | 380.21 | 308.18 | 317.49 | 317.78 |
+| 3 | 357.58 | 366.38 | 366.60 | 306.22 | 314.54 | 316.47 |
+| Median | 361.66 | 370.52 | 370.68 | 306.22 | 314.81 | 316.47 |
+
+All three runs produced:
+
+- 50 successful shared-round starts and 0 unexpected failures;
+- 50 started sessions and 200 unique participant locks;
+- one `session-started` audit event per session;
+- 0 stale participant locks after grade and completion cleanup;
+- exactly one winner in the shared-examiner and shared-student race checks.
+
+The shared-round scenario is stable and does not serialize behind the round
+document. Start now requires an already-confirmed round and does not update
+`VivaRound.frozenAt`. Delete safety checks both the legacy `frozenAt` marker
+and existence of any started session. A pre-change shared-round measurement
+was not captured, so no before/after number is claimed.
 
 ## Panel agenda
 
-| Sessions | Before reads | After reads | Before ms | After ms | Response bytes |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 6 | 5 | 14.00 | 9.92 | 1,169 |
-| 10 | 42 | 5 | 29.89 | 7.87 | 11,682 |
-| 50 | 202 | 5 | 115.03 | 9.17 | 58,442 |
+The three final runs retained the bounded five-read agenda path.
 
-The optimized read count stays at five as sessions increase. Timings are local observations, not CI pass/fail thresholds.
+| Sessions | Legacy reads | Current reads | Current response bytes |
+| ---: | ---: | ---: | ---: |
+| 1 | 6 | 5 | 1,169 |
+| 10 | 42 | 5 | 11,682 |
+| 50 | 202 | 5 | 58,442 |
 
-## Fifty concurrent sessions
+## Client mutation behavior
 
-All 50 sessions used disjoint examiners and students. The first team contained students from different batches.
+- Source inspection confirms Start, Save Grade, and Complete set pending state
+  before `fetch`, disable actions while pending, and replace only the returned
+  session on success.
+- The only full agenda reloads after mutations are in the existing error
+  recovery paths. There is no success-path `router.refresh()` or second GET.
+- The panel renders all sessions as a flat card list. There is no selected
+  session or return-to-agenda interaction, so auto-advance was skipped.
+- Browser Network-panel verification and React Profiler measurement could not
+  be performed because no browser session was available. The memoized-card
+  extraction was therefore not implemented; its measurement gate was not met.
+- The initial `setTimeout(..., 0)` macrotask was removed. The existing fetch is
+  queued with `queueMicrotask`, which keeps it in the same event-loop turn and
+  satisfies the repository's `react-hooks/set-state-in-effect` lint rule.
 
-| Operation | Successes | Unexpected failures | p50 ms | p95 ms | Max ms |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Start | 50 | 0 | 403.82 | 411.92 | 412.44 |
-| Save grade | 50 | 0 | 84.04 | 91.80 | 92.13 |
-| Complete | 50 | 0 | 108.53 | 118.31 | 118.50 |
+## Portal-status gate
 
-- Stale participant locks after completion: `0`
-- User `updatedAt` changes caused by start locking: `0`
-- Shared-examiner start race: exactly one session started
-- Shared-student start race: exactly one session started
-- Audit records: start, grade, and completion records were present for all 50 sessions
+The portal-pause cache integration test passed, including concurrent read
+coalescing, expiry, and invalidation. No deployed trace was available to show
+that the internal `/api/portal-status` hop exceeds the plan's latency gate, so
+proxy and route behavior were left unchanged.
 
-## Database behavior
+## Validation
 
-- Active-session global conflict scan removed: yes
-- Unrelated `User.updatedAt` locking writes removed: yes
-- Access restriction uses a unique-user participant-lock lookup: yes
-- Successful grade save avoids an unconditional session pre-read: yes
-- Successful completion avoids an unconditional session pre-read: yes
-- Completion and cancellation remove locks in their state-change transaction: yes
-- Portal pause reads use a five-second cache with concurrent-read coalescing and local invalidation: yes
+Passed:
 
-Local `executionStats` evidence after index creation:
+- `npm run test:viva:persistence`
+- `npm run test:viva:admin`
+- `npm run test:viva:panels`
+- `npm run test:viva:scheduling`
+- `npm run test:viva:session`
+- `npm run test:viva:access`
+- `npm run test:viva:grading`
+- `npm run test:viva:cancellation`
+- `npm run test:viva:workflow`
+- `npm run test:viva:auto-scheduling`
+- `npm run test:viva:performance` three consecutive times
+- `npm run test:portal-pause:cache` with its integration database configured
+- `npm run lint`
+- `npm run build`
 
-| Query | Index | Documents examined |
-| --- | --- | ---: |
-| Panel by examiner | `examinerIds_1` | 1 |
-| Sessions by panel, active schedule order | `panelId_1_cancelledAt_1_scheduledAt_1__id_1` | 50 |
-| Participant lock by user | `userId_1` | 1 |
+`npm run test:unit` passed 62 of 64 files. The two failures are the existing,
+unrelated `project-rating-ui.test.mjs` and
+`storage-workflow-structure.test.mjs` failures already present before this
+iteration; all Viva unit/structural tests passed.
 
-## Validation notes
+`npm run indexes:refactor:audit` ran in read-only report mode and exited 2.
+The configured target is missing expected indexes, including the Viva indexes.
+No indexes were applied by this task.
 
-- `npm run lint`: passed.
-- `npm run build`: passed.
-- All listed Viva integration commands passed against the local replica set, including persistence, round administration, panels, scheduling, session lifecycle, access, grading, cancellation, workflow, automatic scheduling, and the new 50-session performance test.
-- Portal pause structural and cache integration tests: passed. Twenty simultaneous cold reads produced one database read; invalidation and expiry produced fresh reads.
-- The initial full unit run had two pre-existing failures in `project-rating-ui.test.mjs` and `storage-workflow-structure.test.mjs`. These are outside the Viva changes and are recorded rather than hidden.
-- Two stale Viva test fixtures were aligned with existing production validation: round fixtures now include their required project supervisor, and automatic-scheduling input validation is tested through the parser used by the API.
+## Unchanged boundaries
 
-## Rollout
-
-Before deploying:
-
-1. Run `npm run indexes:refactor:audit` against the target database.
-2. Apply the reviewed indexes with the repository's guarded `indexes:refactor:apply` command.
-3. Confirm there are no active Viva sessions (`startedAt` set, `completedAt` and `cancelledAt` null).
-4. Deploy only after the active count is zero. This is the selected migration strategy because existing active sessions do not have participant-lock rows.
-
-Do not switch to the new release while legacy active sessions exist. On rollback, participant locks are harmless derived records, but they must be reconciled or cleared only after confirming there are no active sessions.
-
-## Trade-offs and remaining work
-
-- A pause/unpause performed on one warm application instance may take up to five seconds to be observed by another warm instance. The mutation invalidates its own instance immediately.
-- No API contract was changed.
-- Agenda payload splitting and completed-history pagination were not added. The measured 50-session response was about 58 KB, and the current UI consumes participant details for every card. This remains the next optimization if real production payloads or history growth justify the extra API/UI complexity.
-- Pool sizes were not changed because the optimized workload passed with the existing ceiling of 10 connections.
+- No dependency, pool-size, or infrastructure change was made.
+- No agenda split, history pagination, WebSocket/SSE path, PDF prefetch, or
+  client state library was added.
+- No portal-status routing change was made without deployed latency evidence.

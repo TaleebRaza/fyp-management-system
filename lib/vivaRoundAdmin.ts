@@ -503,7 +503,11 @@ export async function deleteVivaRound(roundId: string): Promise<VivaRoundDeleteR
     if (!existing) {
       return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
     }
-    if (existing.frozenAt) {
+    const hasStartedSession = await VivaSession.exists({
+      roundId,
+      startedAt: { $type: 'date' },
+    }).session(session);
+    if (existing.frozenAt || hasStartedSession) {
       return {
         success: false,
         reason: 'frozen',

@@ -12,7 +12,7 @@ const [
   { default: VivaSession },
   { default: VivaParticipantLock },
   { default: VivaAuditEvent },
-  { createVivaRound },
+  { confirmVivaRound, createVivaRound },
   { previewRandomVivaPanels, saveVivaPanels },
   { scheduleVivaSession },
   { completeVivaSession, getPanelAdminVivaSessions, saveVivaGrade, startVivaSession },
@@ -150,6 +150,8 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
       locationLabel: 'Viva Lab',
     }, actor(systemAdmin));
     assert.equal(scheduled.success, true, scheduled.success ? '' : scheduled.error);
+    const confirmed = await confirmVivaRound(roundResult.round.id, actor(systemAdmin));
+    assert.equal(confirmed.success, true, confirmed.success ? '' : confirmed.error);
     const panelMemberAgenda = await getPanelAdminVivaSessions(String(panelMember._id));
     assert.equal(panelMemberAgenda.length, 1);
     assert.equal(panelMemberAgenda[0].canManage, false);
@@ -194,7 +196,7 @@ export async function runVivaWorkflowIntegration(testDatabaseUri) {
       (await getCompletedVivaResultsForStudent(String(studentOne._id))).map(({ grade, percentage }) => ({ grade, percentage })),
       [{ grade: 'A+', percentage: 100 }]
     );
-    assert.equal(await VivaAuditEvent.countDocuments({ roundId: roundResult.round.id }), 6);
+    assert.equal(await VivaAuditEvent.countDocuments({ roundId: roundResult.round.id }), 7);
 
     console.log(JSON.stringify({
       database: testDatabase.pathname.slice(1),

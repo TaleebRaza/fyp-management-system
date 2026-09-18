@@ -90,6 +90,7 @@ export async function runVivaAccessRestrictionIntegration(testDatabaseUri) {
       locationLabel: 'Viva Lab',
     }, actor(systemAdmin));
     assert.equal(scheduled.success, true, scheduled.success ? '' : scheduled.error);
+    await VivaRound.updateOne({ _id: round._id }, { $set: { confirmedAt: new Date('2026-10-10T09:00:00.000Z') } });
 
     assert.equal(await isVivaPanelMemberAccessRestricted(String(panelMember._id)), false);
     const started = await startVivaSession(scheduled.schedule.id, actor(panelAdmin), new Date('2026-10-10T09:00:00.000Z'));

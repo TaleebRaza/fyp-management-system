@@ -1,337 +1,860 @@
-# Viva Workflow Optimization Plan
+# Viva Performance and Workflow Optimization Plan
 
-> **Repository:** `TaleebRaza/fyp-management-system`  
-> **Primary goal:** optimize the existing Viva workflow so the current deployment/resources can reliably handle approximately **50 simultaneous active Viva sessions** with lower database load, lower request latency, lower compute/memory use, and better concurrency.  
-> **Execution target:** Codex (or another coding agent) should follow this document as an implementation contract, not as a loose suggestion list.
+> Repository: `TaleebRaza/fyp-management-system`
 >
-> **Audit baseline observed before this plan:** main was previously observed at commit `e7c2f6b` (`Allow mixed-batch student teams`). **Before changing code, verify the actual current HEAD.** If HEAD differs, record it in the implementation notes and re-check every assumption in this plan against the current code before editing.
+> Execution target: Codex
+>
+> Primary objective: reliably support at least **50 concurrent Viva sessions**, make **Start Viva** feel immediate, and reduce unnecessary loading/work between Viva actions with the **smallest safe code change possible**.
+>
+> This plan is intentionally smaller than the repository's existing optimization plan because most of the major backend optimizations have already been implemented.
 
 ---
 
-## 1. Mission
+## 1. Rules Codex must follow
 
-Optimize the Viva workflow **without increasing infrastructure as the primary solution**.
+These rules are mandatory for every step in this plan.
 
-The implementation must prioritize:
+1. **Do not add any dependency.**
+   - Do not change `dependencies` or `devDependencies` in `package.json`.
+   - Do not add Redis, queues, WebSockets, SSE libraries, caching packages, load-test packages, or state-management packages.
 
-1. fewer database operations per logical user action;
-2. bounded database work as the number of active/scheduled Vivas grows;
-3. less transaction contention;
-4. fewer unnecessary writes;
-5. less response payload and serialization work where safely possible;
-6. better behavior with many simultaneous sessions;
-7. preserving all existing authorization, correctness, audit, scheduling, and concurrency guarantees.
+2. **Do not increase infrastructure as the solution.**
+   - Do not increase `maxPoolSize`.
+   - Do not change MongoDB tier.
+   - Do not increase Vercel resources.
+   - Do not add workers or another service.
 
-The target is not merely “make benchmarks faster.” The target is to make the architecture behave predictably when approximately 50 Viva sessions are active at the same time.
+3. **Do not rewrite working Viva code.**
+   - Preserve participant locks.
+   - Preserve transactions where state and audit data must remain atomic.
+   - Preserve optimistic concurrency using `version`.
+   - Preserve current authorization rules.
+   - Preserve current snapshots for started/completed sessions.
+   - Preserve cancellation and lock cleanup behavior.
 
----
+4. **Prefer deletion of work over addition of abstractions.**
+   - Fewer queries/writes are preferred to caches or new helper layers.
+   - Reuse existing response data instead of adding another endpoint.
+   - Reuse existing component state instead of introducing new global state.
 
-# 2. Non-negotiable rules for Codex
+5. **No speculative optimization.**
+   - Measure the current path first.
+   - A production change must either:
+     - remove a database/network operation from a hot path;
+     - remove shared write contention;
+     - remove an unnecessary client refetch/re-render; or
+     - remove a user interaction/loading step.
+   - If a change does not produce one of those outcomes, revert it.
 
-Codex **must follow these rules throughout the work**.
+6. **No stale code.**
+   - Remove code made unnecessary by the final implementation.
+   - Remove temporary logging/instrumentation before completion.
+   - Do not leave abandoned helpers, alternate code paths, TODOs, or duplicate state.
 
-## 2.1 Do not solve this by adding resources
-
-Do **not** make any of the following the primary optimization:
-
-- increasing MongoDB Atlas tier;
-- increasing Vercel/server compute;
-- increasing `maxPoolSize`;
-- adding Redis;
-- adding a queue service;
-- adding a new external cache;
-- adding another server;
-- adding a background worker platform.
-
-The desired result must come primarily from reducing work.
-
-Infrastructure tuning may be considered only after query/transaction/request amplification is fixed and benchmarks prove a remaining need.
-
-## 2.2 Preserve existing behavior unless this plan explicitly changes it
-
-The following are invariants:
-
-- only the authorized panel admin may start/manage/grade/finalize a Viva where current behavior requires it;
-- optimistic concurrency through `version` must remain effective;
-- audit events must remain atomic with the state change they describe;
-- cancelled/completed sessions must not become startable again;
-- the project supervisor must not become an examiner for their own project if existing validation forbids it;
-- panel-size validation must remain intact;
-- inactive/invalid participants must continue to be rejected according to existing rules;
-- existing scheduling conflict rules must continue to work;
-- active-session access restrictions must continue to work;
-- a participant must not be able to occupy two active Vivas at once;
-- existing API response semantics should remain compatible unless a coordinated API/UI change is explicitly performed;
-- existing historical snapshots must remain readable;
-- old/legacy Viva records supported by the current code must not be broken casually.
-
-## 2.3 Mixed-batch teams are now valid
-
-Do **not** reintroduce a same-batch assumption.
-
-For Viva logic:
-
-- treat `Project.members` as authoritative for team membership;
-- do not infer project membership from a single batch;
-- do not reject a project because its student members belong to different batches;
-- add/keep a regression test proving a mixed-batch project can proceed through the relevant Viva workflow.
-
-## 2.4 Do not weaken consistency for speed
-
-Do not remove transactions merely to improve latency if doing so makes session state and audit state diverge.
-
-Keep transaction boundaries around operations that require atomicity.
-
-The goal is to make transactions **shorter and less contentious**, not to remove correctness.
-
-## 2.5 Do not perform broad unrelated refactors
-
-Do not:
-
-- rename large parts of the codebase;
-- change styling/UI unrelated to performance;
-- upgrade framework/dependencies as part of this work;
-- reformat unrelated files;
-- rewrite the scheduling algorithm unless a measured Viva concurrency problem requires it;
-- combine unrelated cleanup with optimization commits.
-
-Keep diffs reviewable.
-
-## 2.6 Do not claim an optimization without evidence
-
-For each phase, record:
-
-- tests run;
-- before/after query counts where applicable;
-- before/after timing where applicable;
-- behavior under concurrent execution;
-- any trade-offs introduced.
-
-If a proposed change does not improve a measured hot path or materially simplify resource usage, do not keep it merely because it “looks cleaner.”
+7. **Do not create duplicate planning documents.**
+   - The repository already contains `PLAN.md` describing the earlier optimization work.
+   - If this file is copied into the repository, use it to replace/supersede the old plan rather than permanently keeping both `PLAN.md` and `Plan.md`.
 
 ---
 
-# 3. Current hot-path observations to verify before editing
+# 2. Current verified baseline
 
-Codex must independently verify these observations against the current HEAD.
+Do **not** redo work that is already complete.
 
-Relevant files currently include:
+The current repository already has the following important optimizations:
 
-- `lib/vivaSessionDashboard.ts`
-- `lib/vivaAccessRestriction.ts`
-- `lib/vivaPersistence.ts`
-- `lib/vivaScheduling.ts`
-- `lib/mongodb.ts`
-- `models/VivaSession.ts`
-- `models/VivaPanel.ts`
-- `proxy.ts`
-- `app/api/portal-status/route.ts`
-- `lib/portalPause.ts`
-- Viva API routes/call sites
-- Viva UI call sites
-- `tests/support/viva-workflow-runner.mjs`
-- Viva integration tests under `tests/`
+- dedicated `VivaParticipantLock` records with a unique `userId` constraint;
+- no global scan of every running Viva during Start;
+- no fake writes to `User.updatedAt` for locking;
+- batched Viva agenda hydration instead of per-session N+1 queries;
+- indexed panel/session/participant-lock lookups;
+- grade save using a conditional update instead of an unconditional pre-read on the happy path;
+- completion using a conditional update instead of an unconditional pre-read on the happy path;
+- participant-lock cleanup during completion/cancellation;
+- five-second portal-pause cache with concurrent read coalescing;
+- a 50-concurrent-session local benchmark.
 
-Verify all call sites with `rg` before changing exported types/functions.
+The recorded local benchmark is approximately:
 
-## 3.1 Panel dashboard N+1 behavior
+| Operation | 50/50 success | p50 | p95 |
+| --- | ---: | ---: | ---: |
+| Start | yes | ~404 ms | ~412 ms |
+| Save grade | yes | ~84 ms | ~92 ms |
+| Complete | yes | ~109 ms | ~118 ms |
 
-At the audited version, `getVivaPanelSessions()`:
+The current 50-session benchmark, however, creates **50 different Viva rounds**. It does not prove the more realistic case where many sessions start concurrently under **one shared round**.
 
-1. loads panels for an examiner;
-2. loads the sessions;
-3. for each scheduled session, calls `readCurrentContext()`;
-4. `readCurrentContext()` performs:
-   - round read;
-   - panel read;
-   - project read;
-   - participant/user read.
+The current `startVivaSession()` hot path still performs an idempotent write to the shared `VivaRound.frozenAt` document during every initial Start transaction. That shared document is the main remaining backend contention candidate.
 
-This makes scheduled agenda loading scale approximately with the number of sessions rather than remain bounded.
-
-The optimization must make the normal panel-session list require a small, bounded number of queries.
-
-## 3.2 Active-participant conflict scan
-
-At the audited version, `startVivaSession()` calls logic equivalent to:
-
-- load all other active sessions;
-- load panels used by those sessions;
-- load projects used by those sessions;
-- scan them for participant overlap.
-
-That makes the cost of starting one Viva increase as more Vivas become active.
-
-This must be replaced with constant/bounded conflict detection.
-
-## 3.3 User documents are currently used as locks
-
-At the audited version, starting a Viva performs `User.updateMany(... $currentDate: { updatedAt: true })` for students/examiners to intentionally create transaction conflicts.
-
-This:
-
-- writes unrelated user records;
-- changes `updatedAt` when user data did not change;
-- creates write contention;
-- wastes write capacity;
-- increases transaction conflict/retry risk.
-
-This mechanism must be removed after a dedicated participant-lock mechanism is proven.
-
-## 3.4 Portal pause check amplifies requests
-
-At the audited version, `proxy.ts` fetches `/api/portal-status` with `cache: 'no-store'` for many matched requests, even though pause enforcement only affects a narrower set of requests.
-
-`getPortalPause()` performs a MongoDB read.
-
-This creates internal request and database amplification.
-
-## 3.5 Pool size is not the first problem
-
-At the audited version:
-
-```ts
-maxPoolSize: 10
-minPoolSize: 1
-```
-
-Do **not** increase `maxPoolSize` before reducing query and transaction amplification.
-
-A bigger pool can simply let inefficient code overload MongoDB faster.
+The current Start result already returns a complete `workspace`, so the client should not need to reload the entire Viva agenda after Start.
 
 ---
 
-# 4. Success criteria
+# 3. Changes intentionally NOT included
 
-The work is complete only when these criteria are satisfied.
+Do not implement the following in this pass unless this plan explicitly reaches a measurement gate that requires it.
 
-## 4.1 Correctness
+## 3.1 Do not split the agenda API yet
 
-All existing Viva tests pass.
+The measured 50-session agenda response is about 58 KB and the query count is already bounded at about five reads.
 
-Add tests for the new concurrency architecture.
+A separate list/detail API would add:
 
-No authorization or audit regression is allowed.
+- new DTOs;
+- new route/API behavior;
+- new client fetching state;
+- more failure/loading states;
+- more tests.
 
-## 4.2 Dashboard query behavior
+That is not justified by the current measured payload.
 
-For a panel dashboard containing scheduled sessions, query count must no longer grow as `4N`-style per-session hydration.
+## 3.2 Do not add history pagination yet
 
-Desired steady-state target:
+Only add pagination later if real completed-history growth is measurably slowing the page. Do not add it solely for theoretical scale.
 
-- no sessions: as few queries as practical;
-- scheduled sessions present: approximately **5 bounded reads** for the entire list, not per session:
-  1. actor panels;
-  2. sessions;
-  3. rounds;
-  4. projects;
-  5. users.
+## 3.3 Do not merge Save Grade and Complete Viva
 
-The exact number may differ slightly if the final implementation has a justified reason, but it must remain **O(1) database round trips with respect to the number of sessions displayed**, excluding pagination.
+Both operations are currently fast. Combining them changes API semantics and workflow for a relatively small backend gain.
 
-## 4.3 Start-session behavior
+The better minimal improvement is to avoid unnecessary refetches after both operations.
 
-Starting a Viva must:
+## 3.4 Do not add WebSockets, SSE, or aggressive polling
 
-- not scan all active Viva sessions;
-- not read panels/projects for unrelated active sessions;
-- not update `User.updatedAt` as a locking mechanism;
-- use a bounded number of operations;
-- reject participant collisions atomically;
-- remain safe when two conflicting starts occur simultaneously.
+They are unnecessary for the target workload and add complexity.
 
-## 4.4 Access restriction behavior
+Timers should remain client-side based on server timestamps.
 
-The active-Viva restriction check should become an indexed point lookup against dedicated active-participant state.
+## 3.5 Do not prefetch PDFs as part of this pass
 
-It must still distinguish the panel admin from restricted panel members if current UX allows the panel admin to continue navigating.
+Start must remain independent from remote file operations. PDF prefetching is a secondary UX optimization and should not be mixed into the concurrency/Start-latency change.
 
-## 4.5 Grade/save/finalize behavior
+## 3.6 Do not tune MongoDB pool size
 
-The successful/happy path should avoid unnecessary pre-reads where an atomic conditional update can safely enforce the same rules.
+The current optimized benchmark already passes with `maxPoolSize: 10`.
 
-Failure paths may perform a fallback read to preserve useful error semantics.
-
-## 4.6 50-session concurrency test
-
-A local integration/load-style test must be able to:
-
-- create 50 independent Viva sessions;
-- start them concurrently;
-- save grades concurrently;
-- complete them concurrently;
-- produce no unexpected transaction failures;
-- produce no participant-lock collisions for disjoint participants;
-- produce no Mongo pool exhaustion caused by application query fan-out;
-- leave no stale participant locks after completion.
-
-Do not claim “supports 50 concurrent sessions” unless this test passes consistently on the agreed test environment.
-
-## 4.7 Conflict-race test
-
-When two sessions share a participant and are started concurrently:
-
-- exactly one may acquire that participant;
-- the other must fail with the expected conflict result;
-- there must never be two committed active locks for one participant;
-- there must never be two simultaneously active sessions containing that same participant due to a race.
+Do not hide application-level work by increasing the pool.
 
 ---
 
-# 5. Work order
-
-Do the work in the following order.
-
-Do not jump directly to connection-pool tuning.
-
----
-
-# Phase 0 — Establish a reproducible baseline
+# 4. Step 0 - Re-verify the current HEAD and actual Start path
 
 ## Goal
 
-Measure the existing behavior before changing it.
+Ensure Codex edits the current implementation rather than assumptions from an older commit.
 
-## Tasks
+## Changes
 
-### 0.1 Verify repository state
+No production changes in this step.
 
-Record:
+## Actions
+
+Run:
 
 ```bash
 git rev-parse HEAD
 git status --short
 ```
 
-Do not proceed on an unexpectedly dirty working tree without understanding the changes.
-
-### 0.2 Inspect call sites
-
-At minimum run searches equivalent to:
+Inspect the exact hot-path call sites:
 
 ```bash
-rg "getVivaPanelSessions|getPanelAdminVivaSessions"
-rg "startVivaSession"
-rg "saveVivaGrade"
-rg "completeVivaSession"
-rg "isVivaSessionAccessRestricted"
-rg "getPortalPause|portal-status|portalPaused"
-rg "startedAt|completedAt|cancelledAt" lib app models tests
+rg -n "startVivaSession|saveVivaGrade|completeVivaSession" app components lib tests
+rg -n "Start Viva|Complete Viva|Save Grade" app components
+rg -n "router\.refresh|refresh\(|refetch|load.*Viva|fetch.*viva" app components
+rg -n "frozenAt|confirmedAt" app components lib models tests
+rg -n "portal-status|getPortalPause|shouldEnforcePortalPause" app lib proxy.ts tests
 ```
 
-Purpose:
+Record the actual files containing:
 
-- identify all terminal paths that may need participant-lock cleanup;
-- identify every API/UI consumer before changing DTOs;
-- identify every portal-pause read/write path before adding caching.
+- the Start API route;
+- the Start button/click handler;
+- the grade mutation handler;
+- the completion mutation handler;
+- the panel session state/list;
+- any full agenda reload performed after a mutation.
 
-### 0.3 Run current tests
-
-Run at least:
+Run the existing baseline tests:
 
 ```bash
+npm run test:viva:performance
+npm run test:viva:session
+npm run test:viva:admin
+npm run test:viva:scheduling
+npm run test:viva:grading
+npm run test:viva:cancellation
+npm run test:viva:workflow
 npm run lint
-npm run test:unit
+npm run build
+```
+
+Do not fix unrelated pre-existing failures during this task. Record them separately.
+
+## How to test properly
+
+Use the existing local MongoDB replica-set test environment used by the repository.
+
+For the browser-side delay, open the supervisor/panel page in a staging or development deployment and use the browser Network panel:
+
+1. click **Start Viva** once;
+2. identify the Start mutation request;
+3. check whether another Viva agenda/dashboard request is immediately triggered afterward;
+4. record total Start request duration;
+5. record whether the UI shows feedback immediately or remains visually unchanged until the request finishes.
+
+Do not add permanent logging for this measurement.
+
+## Minimality check
+
+At the end of Step 0:
+
+```bash
+git diff --exit-code
+```
+
+There should be no production diff.
+
+## Completed means
+
+Step 0 is complete when:
+
+- current HEAD is recorded;
+- current tests are known;
+- exact Start/grade/complete client call sites are identified;
+- it is known whether Start causes a second client-side reload/refetch;
+- current local performance numbers are recorded;
+- no production code has changed.
+
+---
+
+# 5. Step 1 - Add the missing realistic 50-session shared-round test
+
+## Goal
+
+Prove the architecture works when 50 independent Viva sessions belong to the **same Viva round**, which is the important case the current benchmark does not exercise.
+
+This is the first change because it determines whether the remaining shared-round write is actually a problem.
+
+## Primary file
+
+Prefer modifying the existing file only:
+
+```text
+tests/support/viva-performance-runner.mjs
+```
+
+Do not create a new performance framework or add a package.
+
+## How to implement
+
+Keep the current independent-round benchmark because it is useful as a control.
+
+Add one additional shared-round scenario using existing seeded users/projects where practical.
+
+The fixture should contain:
+
+```text
+1 confirmed Viva round
+50 Viva sessions
+50 panels
+50 disjoint examiner pairs
+50 disjoint student teams
+all 50 sessions -> same roundId
+```
+
+Requirements:
+
+- all participants must be disjoint across the 50 sessions;
+- each session must have a valid panel admin;
+- the round should be confirmed before Start if the normal workflow requires confirmation;
+- participant locks from the earlier benchmark must be cleaned before this scenario starts;
+- do not introduce sleeps or staggered Start calls;
+- launch the 50 Start operations in the same concurrent batch using the existing timing helper.
+
+Measure at least:
+
+- success count;
+- unexpected failure count;
+- p50;
+- p95;
+- maximum duration;
+- participant-lock count after Start;
+- stale lock count after cleanup/completion.
+
+Also verify that every session has `startedAt` after the batch.
+
+If the existing test helper can count Mongo commands without significant extra code, record the number of round `findAndModify`/update operations. If adding that counter would create substantial instrumentation, skip it; latency and correctness are more important.
+
+## Correctness assertions
+
+The test must assert:
+
+```text
+50 successful starts
+0 unexpected failures
+50 started sessions
+expected participant-lock count
+no duplicated participant locks
+0 stale locks after terminal cleanup
+```
+
+Keep the existing shared-examiner and shared-student race tests. They remain required.
+
+## How to test
+
+Run repeatedly, not once:
+
+```bash
+npm run test:viva:performance
+npm run test:viva:performance
+npm run test:viva:performance
+```
+
+Use the median of the three p95 observations for comparison. This avoids making a design decision from one noisy local run.
+
+## Minimality check
+
+- Modify the existing performance runner instead of creating another test framework.
+- Reuse existing factories/helpers/seeded participants.
+- Do not introduce a dependency.
+- Do not add production instrumentation.
+
+Review:
+
+```bash
+git diff -- tests/support/viva-performance-runner.mjs
+```
+
+The diff should contain only fixture/test logic required for the shared-round case.
+
+## Decision gate
+
+### If the shared-round scenario already performs acceptably
+
+If all 50 starts succeed consistently and shared-round p95 is close to the independent-round p95 with no transaction instability, **do not change the round-freezing implementation merely for theory**.
+
+Proceed to Step 3.
+
+### If the shared-round scenario is materially worse
+
+Treat it as confirmed shared-document contention and perform Step 2.
+
+A reasonable signal is any of:
+
+- transaction failures/retries visible to the test;
+- 50/50 does not complete reliably;
+- shared-round p95 is more than about 20% slower than the independent-round p95;
+- shared-round max latency has a large serialization spike;
+- removing the round write later clearly removes one hot write per Start and materially reduces p95.
+
+## Completed means
+
+Step 1 is complete when:
+
+- the existing performance test includes a 50-session / one-round scenario;
+- the scenario passes three consecutive runs or exposes a reproducible issue;
+- the decision to keep or remove the Start-time round write is based on evidence.
+
+---
+
+# 6. Step 2 - Remove the shared VivaRound write from Start, only if Step 1 proves it is needed
+
+## Goal
+
+Remove the only obvious shared document write from 50 simultaneous Start transactions while preserving existing correctness.
+
+## Why this is the preferred backend change
+
+The current Start path writes this shared state:
+
+```text
+VivaRound.frozenAt
+```
+
+Every session in the same round can therefore touch one MongoDB document.
+
+The application already has a separate `confirmedAt` round state. Confirmation already prevents normal round/panel/schedule edits. Therefore the minimal design is:
+
+1. require a round to be confirmed before it can start;
+2. stop writing the round document during Start;
+3. preserve the existing "a round that has ever started cannot be deleted" rule by checking for a started session in the rare admin delete path instead of writing shared round state on every hot Start path.
+
+This moves work from a high-frequency concurrency path to a rare administrative path.
+
+## Files
+
+Expected files:
+
+```text
+lib/vivaSessionDashboard.ts
+lib/vivaRoundAdmin.ts
+tests/support/viva-performance-runner.mjs
+relevant existing Viva integration test runner(s)
+```
+
+Do not create a new model, collection, or service.
+
+## 6.1 Require confirmation before Start
+
+In `lib/vivaSessionDashboard.ts`:
+
+1. add `confirmedAt?: Date | null` to the local `VivaRoundRecord` type;
+2. include `confirmedAt` in the existing round projection used by `readCurrentContext()`;
+3. after reading the round/panel/project and before doing more work, reject Start when `confirmedAt` is not a valid date.
+
+Use a clear existing-style error such as:
+
+```text
+This Viva round must be confirmed before sessions can start.
+```
+
+Do not add another query. This must use the same existing round read.
+
+Do not change snapshot behavior.
+
+## 6.2 Remove the Start-time round update
+
+Delete the Start hot-path block that performs the idempotent `VivaRound.findOneAndUpdate(... frozenAt ...)`.
+
+Do not replace it with:
+
+- another shared lock document;
+- a cache;
+- a second transaction;
+- a fire-and-forget write;
+- a background job;
+- a larger retry policy.
+
+The point of this change is to remove the shared write entirely.
+
+## 6.3 Preserve delete safety in the rare admin path
+
+The current system uses `frozenAt` to stop deletion after a round has started.
+
+Because new starts will no longer write `frozenAt`, update `deleteVivaRound()` so it also rejects deletion if **any** session in the round has ever started.
+
+Inside the existing delete transaction, use a narrow existence query equivalent to:
+
+```js
+VivaSession.exists({
+  roundId,
+  startedAt: { $type: 'date' },
+})
+```
+
+Keep the existing `frozenAt` check for backward compatibility with previously created data.
+
+The rule becomes:
+
+```text
+legacy frozenAt exists -> reject delete
+OR
+any started session exists -> reject delete
+```
+
+Do not load full session documents. Use `exists()` or an equally narrow indexed/existence query.
+
+Preserve current behavior where a **confirmed but never-started** round may still be deleted, unless current HEAD has intentionally changed that behavior.
+
+## 6.4 Do not remove `frozenAt` blindly
+
+Search all call sites first:
+
+```bash
+rg -n "frozenAt" app components lib models tests
+```
+
+`frozenAt` may be needed for legacy records or user-visible state.
+
+Do not perform a schema migration merely to remove this field during this optimization.
+
+It is acceptable for the field to remain as a backward-compatibility marker. It must simply stop being a write dependency of the Start hot path.
+
+## Required tests
+
+Add or update existing tests to prove:
+
+1. an unconfirmed round cannot Start;
+2. a confirmed round can Start;
+3. a confirmed but never-started round can still be deleted if that is current expected behavior;
+4. a round with any started session cannot be deleted;
+5. 50 sessions in one confirmed round start concurrently;
+6. participant conflicts still allow exactly one winner;
+7. failed Starts leave no participant locks;
+8. audit events remain present for every successful Start;
+9. existing round/panel/schedule immutability after confirmation still works.
+
+## Performance test
+
+Run:
+
+```bash
+npm run test:viva:performance
+npm run test:viva:performance
+npm run test:viva:performance
+```
+
+Compare the shared-round p95 before and after.
+
+Also compare the independent-round control to ensure no regression.
+
+## Minimality check
+
+The production change should be very small:
+
+- one existing projection gains `confirmedAt`;
+- one confirmation guard is added;
+- one shared round update block is deleted;
+- one rare delete-safety existence check is added.
+
+Do not refactor adjacent Viva code.
+
+Review:
+
+```bash
+git diff -- lib/vivaSessionDashboard.ts lib/vivaRoundAdmin.ts
+```
+
+If the diff expands into unrelated helpers/refactors, reduce it.
+
+## Keep/revert gate
+
+Keep Step 2 only if it provides a concrete benefit:
+
+- eliminates the shared round write from every Start; and
+- preserves all correctness tests; and
+- improves or stabilizes the one-round 50-start benchmark.
+
+If it does not provide a measurable/stability benefit, revert the production change and keep the Step 1 test.
+
+## Completed means
+
+Step 2 is complete when:
+
+- Start performs no write to a shared round document;
+- only confirmed rounds can Start;
+- delete safety is preserved;
+- all Start/audit/participant-lock invariants pass;
+- the 50-session shared-round test passes repeatedly;
+- no new dependency/model/service exists.
+
+---
+
+# 7. Step 3 - Make Start/Grade/Complete update the UI from mutation responses instead of reloading the agenda
+
+## Goal
+
+Make the supervisor panel respond immediately and eliminate unnecessary loading after mutations.
+
+This is likely the highest-value fix for the reported "Start Viva takes 1-2 seconds" user experience if the client currently waits for a full refetch after the mutation.
+
+## Important existing capability
+
+The backend functions already return updated workspace state:
+
+```text
+startVivaSession -> workspace
+saveVivaGrade -> workspace
+completeVivaSession -> workspace
+```
+
+The client should consume this returned state directly.
+
+## Files
+
+Use `rg` from Step 0 to locate the existing panel component and API calls.
+
+Do not create a second Viva state store.
+
+## 7.1 Give immediate click feedback
+
+When **Start Viva** is clicked:
+
+1. set the existing loading/pending state immediately, before awaiting `fetch`;
+2. disable the Start button while the request is active;
+3. change the button/status text immediately to `Starting...` or the existing loading indicator;
+4. do **not** optimistically mark the session as truly running before the server confirms it.
+
+Why:
+
+- immediate feedback removes the feeling that the click did nothing;
+- avoiding a fake running state avoids rollback complexity and false timers when Start fails.
+
+Use existing local state if available. Do not add a new global store.
+
+## 7.2 Replace only the changed workspace on success
+
+After a successful Start response:
+
+- take the returned `workspace`;
+- replace the matching session in the existing client session array/state by ID;
+- select/open that returned workspace if the UI has a selected-session concept;
+- clear the pending state.
+
+Conceptually:
+
+```ts
+setSessions((current) =>
+  current.map((session) =>
+    session.id === result.workspace.id ? result.workspace : session
+  )
+);
+```
+
+Adapt this to the existing state shape rather than creating a parallel representation.
+
+## 7.3 Remove redundant post-mutation reloads
+
+If the Start success path currently performs any of the following:
+
+```text
+router.refresh()
+loadVivaSessions()
+fetchAgenda()
+refetch()
+full dashboard reload
+```
+
+remove that call **when the mutation response already contains the authoritative updated workspace**.
+
+Apply the same rule to Save Grade and Complete Viva if those success paths also refetch the full agenda.
+
+Do not remove recovery/error reload behavior if it is genuinely required after a concurrency error.
+
+## 7.4 Preserve server authority
+
+The server remains authoritative.
+
+On error:
+
+- do not modify the session phase;
+- clear the pending state;
+- show the current existing error message;
+- if the server reports `concurrent-change`, use the existing recovery/reload behavior if needed.
+
+Do not build an optimistic rollback system for this task.
+
+## 7.5 Avoid timer-driven network requests
+
+Verify the running Viva timer derives from returned `startedAt`/`vivaEndsAt` and updates locally.
+
+Do not add polling for the timer.
+
+If a timer currently triggers network requests each second, remove that polling and calculate remaining time locally from server timestamps.
+
+Only do this if such polling actually exists.
+
+## How to test
+
+### Browser network test
+
+For each mutation:
+
+1. Start Viva;
+2. Save Grade;
+3. Complete Viva.
+
+The Network panel should show the mutation request, but there should be **no automatic second full Viva agenda/dashboard request** solely to update the changed card/workspace.
+
+### UI behavior test
+
+Verify:
+
+- Start button visibly enters pending state immediately;
+- double clicks cannot send two requests;
+- successful response changes the session to running;
+- server `startedAt` drives the timer;
+- failed Start returns the UI to the scheduled state;
+- grade result changes immediately from the mutation response;
+- completion changes immediately from the mutation response;
+- no stale version is reused after a successful mutation.
+
+### Existing automated tests
+
+Run any existing UI/unit tests covering the component, plus:
+
+```bash
+npm run test:viva:session
+npm run test:viva:grading
+npm run test:viva:workflow
+npm run lint
+npm run build
+```
+
+## Minimality check
+
+This step should mostly **delete** post-mutation reload calls and reuse the returned `workspace`.
+
+Do not:
+
+- introduce React Query/TanStack Query;
+- add Redux/Zustand/context for this;
+- create a new API;
+- create a duplicate workspace DTO;
+- add optimistic rollback machinery.
+
+Review the diff and confirm that the existing state object remains the single client source of truth.
+
+## Completed means
+
+Step 3 is complete when:
+
+- clicking Start gives immediate visible feedback;
+- Start success updates the existing workspace directly;
+- grade success updates the existing workspace directly;
+- complete success updates the existing workspace directly;
+- no unnecessary full agenda/dashboard refetch happens after those successful mutations;
+- duplicate clicks are prevented;
+- no new state library or API exists.
+
+---
+
+# 8. Step 4 - Auto-advance to the next Viva using data already in memory
+
+## Goal
+
+Reduce dead time between one completed Viva and the next without adding backend work.
+
+This is a human-workflow optimization, not a database redesign.
+
+## Gate before implementation
+
+Only implement this if the current panel UI makes the examiner manually return to the agenda and reopen the next scheduled Viva after completion.
+
+If the current UI already advances naturally, skip this step.
+
+## How to implement
+
+After successful `completeVivaSession`:
+
+1. update the completed session from the returned workspace as described in Step 3;
+2. use the **already-loaded session array** to find the next scheduled session for that panel;
+3. update the existing selected-session state to that next session.
+
+Prefer the existing sort order (`scheduledAt`, then ID) rather than writing another scheduling algorithm.
+
+Do not fetch the next Viva again if its workspace is already present in the current state.
+
+Do not automatically Start the next Viva. The panel admin must still intentionally click Start.
+
+## How to test
+
+With at least three sessions in one panel:
+
+1. Start session 1;
+2. save grade;
+3. complete session 1;
+4. verify session 2 becomes the selected/visible next Viva without another agenda fetch;
+5. verify session 2 remains scheduled until the admin explicitly clicks Start;
+6. complete the last session and verify no invalid next selection is produced.
+
+## Minimality check
+
+This step should be a small client-state change only.
+
+Skip it if it requires:
+
+- a new endpoint;
+- a new prefetch system;
+- a new state store;
+- substantial component restructuring.
+
+## Completed means
+
+Step 4 is complete when the next already-loaded scheduled Viva is shown automatically after completion with no extra request and no automatic Start.
+
+---
+
+# 9. Step 5 - Portal-status latency gate; change only if measurement proves it matters
+
+## Goal
+
+Avoid changing portal-maintenance semantics unless the internal `/api/portal-status` hop is a material part of the remaining Start delay.
+
+The current implementation already has a five-second in-process cache and read coalescing. The remaining cost is primarily the middleware's internal HTTP fetch.
+
+## Do not change this by default
+
+After Steps 1-4, measure a warm deployed Start again.
+
+If the Start interaction is now acceptable, **leave portal pause code unchanged**.
+
+That is the most minimal result.
+
+## When a change is justified
+
+Only continue if tracing/logs show the portal-status middleware fetch is consistently material, for example:
+
+- more than roughly 100 ms of the Start request; or
+- more than roughly 20% of the warm Start latency.
+
+Use existing platform/Sentry logs if available. If temporary timing logs are required, add them only in a staging branch and remove them before final completion.
+
+## Preferred no-dependency solution if proven necessary
+
+Do **not** import Mongoose/database code directly into Edge middleware.
+
+Instead, for the exact latency-critical Viva mutation routes only:
+
+1. verify the route handlers already enforce authentication and role/panel authorization independently;
+2. exclude those exact mutation routes from the proxy's portal-pause internal HTTP fetch;
+3. call existing `getPortalPause()` directly inside those Node route handlers before performing the mutation;
+4. fail closed if portal state cannot be read;
+5. reuse the existing five-second cache and invalidation logic;
+6. do not create another cache/helper unless the same three routes would otherwise duplicate more than a few lines.
+
+This replaces:
+
+```text
+middleware -> HTTP /api/portal-status -> cached DB helper -> route
+```
+
+with:
+
+```text
+middleware auth/normal routing -> route -> cached DB helper -> mutation
+```
+
+for only the hot Viva mutation routes.
+
+## Required safety tests
+
+If this optional change is made, prove:
+
+- portal paused -> Start is rejected;
+- portal paused -> grade is rejected;
+- portal paused -> complete is rejected;
+- portal available -> all three work;
+- admin/role/panel authorization remains unchanged;
+- portal-status failures still fail closed;
+- non-Viva routes retain current proxy behavior.
+
+## Minimality check
+
+If moving the pause check requires broad middleware or route refactoring, do not do it in this pass.
+
+No new cache package, edge database library, shared service, or route should be created.
+
+## Completed means
+
+Either:
+
+- measurement shows portal-status is not material and no code changes are made; **or**
+- the internal HTTP hop is removed only from proven hot Viva mutation routes while pause/security behavior remains identical.
+
+---
+
+# 10. Step 6 - Final verification and cleanup
+
+## Goal
+
+Prove the final code is smaller in work performed, safe under concurrency, and free of optimization clutter.
+
+## 10.1 Run the complete relevant test set
+
+Run:
+
+```bash
 npm run test:viva:persistence
 npm run test:viva:admin
 npm run test:viva:panels
@@ -340,1716 +863,195 @@ npm run test:viva:session
 npm run test:viva:access
 npm run test:viva:grading
 npm run test:viva:cancellation
-npm run test:viva:publication
 npm run test:viva:workflow
 npm run test:viva:auto-scheduling
+npm run test:viva:performance
+npm run test:portal-pause:cache
+npm run lint
 npm run build
 ```
 
-If the repository provides a narrower documented aggregate command, it may be used in addition, not as an excuse to skip Viva coverage.
+Run `test:viva:performance` three times for final reported concurrency numbers.
 
-### 0.4 Add baseline instrumentation for tests
+## 10.2 Required final concurrency results
 
-Instrument the test environment only.
-
-Use one of:
-
-- Mongoose debug callback;
-- MongoDB command monitoring;
-- another deterministic local query counter.
-
-Do not add noisy production logging just to count queries.
-
-Capture at least:
-
-- panel-session list with 1 scheduled session;
-- panel-session list with 10 scheduled sessions;
-- panel-session list with 50 scheduled sessions;
-- start with 0 active sessions;
-- start with 10 unrelated active sessions;
-- start with 50 unrelated active sessions.
-
-Record:
-
-- DB command count;
-- elapsed duration;
-- operation types;
-- unexpected transaction retries if observable.
-
-The baseline should demonstrate whether query count grows with `N`.
-
-## Phase 0 gate
-
-Do not begin structural optimization until:
-
-- tests are green or existing failures are documented;
-- baseline query/timing data exists;
-- current HEAD is recorded.
-
----
-
-# Phase 1 — Remove panel-dashboard N+1 hydration
-
-## Goal
-
-Make `getVivaPanelSessions()` perform bounded bulk reads.
-
-## Primary file
-
-`lib/vivaSessionDashboard.ts`
-
-Potential tests:
-
-- `tests/viva-session-dashboard.integration.test.mjs`
-- `tests/support/viva-workflow-runner.mjs`
-- new focused query-count test if appropriate.
-
-## Required design
-
-### 1.1 Keep start-time snapshots semantically distinct
-
-**Important:** do not casually populate the existing:
-
-- `roundSnapshot`
-- `projectSnapshot`
-- `panelSnapshot`
-
-at scheduling time merely to speed up the dashboard.
-
-Those fields currently function as frozen assessment/start-time context for active/completed sessions.
-
-If they are populated early and later treated as authoritative, edits made between scheduling and starting could be hidden.
-
-Preferred approach for this phase:
-
-- scheduled sessions use **batched live hydration**;
-- starting a session still revalidates current authoritative round/panel/project/user state;
-- start-time snapshots remain frozen at start.
-
-### 1.2 Reuse the first panel query
-
-The initial panel query for the actor should fetch enough fields for scheduled-session hydration:
+The final one-round scenario must produce:
 
 ```text
-_id
-roundId
-examinerIds
-panelAdminId
+50 requested starts
+50 successful starts
+0 unexpected failures
+0 duplicate participant occupancy
+0 stale participant locks after completion
 ```
 
-Do not query those same panels again per scheduled session.
+The shared-round p95 should not show severe serialization relative to the independent-round control.
 
-### 1.3 Batch rounds and projects
+If Step 2 was implemented, record before/after shared-round p50/p95/max in the existing `VIVA_OPTIMIZATION_RESULTS.md` instead of creating another benchmark document.
 
-After loading sessions:
+## 10.3 Required final browser behavior
 
-- gather unique `roundId`s for scheduled sessions;
-- gather unique `projectId`s for scheduled sessions;
-- bulk read rounds in one query;
-- bulk read projects in one query;
-- run these two independent reads concurrently.
+In a warm deployment:
 
-Use narrow `.select(...)` projections.
+- click feedback appears immediately;
+- only the necessary mutation request is triggered by Start;
+- there is no success-path full agenda refetch if the returned workspace is sufficient;
+- running UI uses the server-returned Start state;
+- grade/complete update directly from their mutation responses;
+- completing a Viva does not create unnecessary loading before the next already-loaded session.
 
-### 1.4 Batch users
+Do not use a hard absolute production latency pass/fail threshold without considering deployment geography.
 
-From the already loaded panel/project records, gather unique:
+The important acceptance conditions are:
 
-- examiner IDs;
-- project member IDs;
-- project supervisor IDs if required for workspace display/validation.
+1. local backend remains around the established sub-second range;
+2. shared-round performance is stable at 50 concurrent starts;
+3. client-side extra round trips are removed;
+4. UI acknowledges the click immediately.
 
-Fetch all needed users in one query.
+## 10.4 Verify no dependency/infrastructure changes
 
-Build `Map<string, ...>` lookups in memory.
+Run:
 
-### 1.5 Avoid duplicated validation logic
-
-Refactor current context construction so both:
-
-- single-session `readCurrentContext()` used by start;
-- batch dashboard hydration
-
-share a **pure validation/assembly function** where practical.
-
-For example, conceptually:
-
-```ts
-assembleCurrentContext({
-  vivaSession,
-  round,
-  panel,
-  project,
-  peopleById,
-  actorId,
-})
+```bash
+git diff -- package.json package-lock.json lib/mongodb.ts vercel.json
 ```
 
-Do not maintain two diverging copies of Viva business rules.
+Expected:
 
-### 1.6 Preserve failure behavior
+- no dependency changes;
+- no pool-size increase;
+- no deployment-resource workaround.
 
-If a scheduled session references invalid/deleted resources, preserve current safe behavior.
+If these files changed without a direct requirement from this plan, revert those changes.
 
-Do not make one corrupt scheduled record crash the entire panel dashboard unless that is already the intended behavior.
+## 10.5 Remove temporary/debug code
 
-### 1.7 Do not use one aggregation merely for cleverness
+Search for temporary instrumentation introduced during this work:
 
-A large `$lookup` pipeline is not required.
+```bash
+rg -n "TEMP|TODO.*viva|console\.time|console\.timeEnd|performance\.now" app components lib tests proxy.ts
+```
 
-Prefer several simple bounded indexed queries if they are easier to reason about and maintain.
+Remove temporary measurement code unless it was already part of the repository or is a deliberately retained test measurement.
 
-The main requirement is bounded round trips, not “one Mongo query at all costs.”
+## 10.6 Diff-size audit
 
-## Tests for Phase 1
+Run:
 
-Add tests proving:
+```bash
+git diff --stat
+git diff
+```
 
-- 1 scheduled session is returned correctly;
-- 10 scheduled sessions are returned correctly;
-- multiple rounds/projects/panels hydrate correctly;
-- scheduled session validation still rejects invalid state;
-- mixed-batch project members remain valid;
-- panel admin `canManage` behavior remains correct;
-- running/completed snapshot behavior remains unchanged.
-
-Add a query-count assertion or benchmark that demonstrates list hydration is bounded.
-
-### Target
-
-For many scheduled sessions belonging to actor panels:
+For every changed production block, Codex must be able to answer:
 
 ```text
-panel read
-session read
-round bulk read
-project bulk read
-user bulk read
+What measured operation does this remove or shorten?
 ```
 
-Approximately five data reads total.
+If there is no concrete answer, remove the code.
 
-## Phase 1 gate
+## 10.7 Index verification
 
-Do not continue until:
+No new index is expected from this plan.
 
-- functionality tests pass;
-- query count is proven bounded;
-- there is no new N+1 loop hidden inside a helper.
+Before deployment still run the existing production audit:
+
+```bash
+npm run indexes:refactor:audit
+```
+
+Do not add another index unless `explain("executionStats")` proves a new query introduced by this plan actually needs one.
+
+## Completed means
+
+The entire plan is complete only when:
+
+- all relevant Viva tests pass;
+- lint passes;
+- build passes;
+- one-round 50-session Start passes repeatedly;
+- participant race behavior remains correct;
+- no stale locks remain;
+- no unnecessary post-mutation agenda reload remains;
+- Start click feedback is immediate;
+- no package dependency was added;
+- no pool/infrastructure increase was used;
+- no temporary instrumentation remains;
+- no duplicate/unnecessary helper or state path remains;
+- benchmark results are recorded in the existing results document;
+- the final diff is narrowly limited to measured hot-path/test/UI improvements.
 
 ---
 
-# Phase 2 — Introduce dedicated active Viva participant locks
+# 11. Expected final architecture
 
-## Goal
-
-Replace:
-
-- global active-session conflict scans;
-- fake writes to `User.updatedAt`;
-
-with small, indexed, purpose-built lock documents.
-
-## New model
-
-Create a model with a clear name such as:
-
-`models/VivaParticipantLock.ts`
-
-Use the repository's naming conventions.
-
-## Required fields
-
-Recommended shape:
-
-```ts
-{
-  userId: ObjectId,
-  sessionId: ObjectId,
-  participantType: 'student' | 'examiner',
-  restrictPortal: boolean,
-  createdAt: Date
-}
-```
-
-Do not store large snapshots in this collection.
-
-## Required indexes
-
-At minimum:
+The desired Start path is intentionally simple:
 
 ```text
-unique userId
-sessionId
+Panel admin clicks Start
+        |
+        +-- UI immediately shows Starting...
+        |
+        v
+existing Start API
+        |
+        +-- read target session
+        +-- read/revalidate this session's confirmed round/panel/project/users
+        +-- insert unique participant locks
+        +-- mark this session started + write snapshots
+        +-- write audit event
+        |
+        v
+transaction commits
+        |
+        v
+API returns updated workspace
+        |
+        v
+client replaces only that workspace in existing state
+        |
+        +-- no whole-agenda reload
+        +-- no shared VivaRound Start write
+        +-- no global active-session scan
+        +-- no User fake-lock writes
+        +-- no new dependency
 ```
 
-Meaning:
-
-- one user may belong to at most one active Viva;
-- all locks for a session can be deleted efficiently.
-
-If timestamps are enabled, prefer created-at only unless updated-at has a real use.
-
-## Do not add TTL expiry
-
-Do **not** automatically expire active Viva locks after an arbitrary duration.
-
-A Viva may legitimately overrun its scheduled duration.
-
-A TTL could silently allow a participant into a second active Viva.
-
-Cleanup must be tied to the authoritative session lifecycle.
-
-## Lock membership semantics
-
-Preserve the behavior of the current conflict logic.
-
-Lock:
-
-- all project students participating in the Viva;
-- all panel examiners, including panel admin.
-
-Do **not** add the project's supervisor merely because they supervise the project unless they are also an actual panel examiner.
-
-This mirrors the current active-participant conflict behavior.
-
-## `restrictPortal` semantics
-
-Recommended:
-
-- students: `true`;
-- non-admin examiners: `true`;
-- panel admin: `false`.
-
-The panel admin still receives a lock, because they must be prevented from occupying another active Viva.
-
-`restrictPortal: false` means “not portal-restricted,” **not** “not locked.”
-
-## Start-session algorithm
-
-Refactor `startVivaSession()` in `lib/vivaSessionDashboard.ts`.
-
-Desired order inside the transaction:
-
-1. read target session;
-2. reject completed/cancelled;
-3. handle already-running behavior carefully;
-4. read/revalidate current round/panel/project/users for an unstarted session;
-5. build participant lock rows;
-6. insert all participant locks in the transaction;
-7. if unique constraint collides, abort transaction and return the existing user-facing participant-conflict style error;
-8. atomically set `startedAt`, `vivaEndsAt`, and snapshots;
-9. freeze round if required;
-10. write audit event;
-11. commit.
-
-### Duplicate key handling
-
-The unique index is the concurrency control.
-
-Do not implement:
-
-```text
-check lock exists
-then insert
-```
-
-as the only guard, because that is racy.
-
-Attempt the insert and let the unique index arbitrate simultaneous starts.
-
-On duplicate key:
-
-- abort the transaction;
-- return a clear expected conflict result;
-- do not expose raw Mongo errors.
-
-### Remove old locking work
-
-After tests prove the new mechanism:
-
-- delete `reserveStartParticipants()`;
-- remove the `User.updateMany(...updatedAt...)` concurrency trick;
-- delete `findActiveParticipantConflict()` and its global scan;
-- remove imports/types only used by those deleted paths.
-
-This phase should **reduce code**, not leave both implementations permanently.
-
-## Already-running session behavior
-
-Before changing it, inspect tests and current semantics.
-
-At the audited version, current-context revalidation happens before returning an already-running snapshot.
-
-Consider whether an already-running session should instead authorize against its frozen panel snapshot and return that snapshot without re-reading mutable project/panel state.
-
-This would be faster and usually better matches frozen-session semantics.
-
-However:
-
-- do not silently change authorization semantics;
-- write a regression test;
-- if behavior is intentionally changed, document it.
-
-## Lock cleanup
-
-Locks must be removed in the same transaction whenever a session stops being active.
-
-At minimum inspect and update every path that sets:
-
-- `completedAt`;
-- `cancelledAt`.
-
-Search globally; do not assume only two functions exist.
-
-### Completion
-
-On successful `completeVivaSession()`:
-
-```ts
-deleteMany({ sessionId }, { session })
-```
-
-must be part of the same transaction as completion/audit.
-
-### Cancellation
-
-If active sessions can be cancelled, cancellation must delete their locks in the same transaction.
-
-Deleting zero rows for a never-started scheduled session should be harmless.
-
-### Other terminal/admin/repair paths
-
-Search the entire repository for direct writes to `completedAt` and `cancelledAt`.
-
-Any path capable of terminating an active session must clean locks or deliberately invoke shared lifecycle logic.
-
-Do not leave a hidden stale-lock path.
-
-## Deployment/migration safety
-
-This model introduces derived active state.
-
-Before production rollout, choose and document one safe strategy:
-
-### Preferred operational strategy
-
-Deploy when there are no active Viva sessions, then all future starts create locks.
-
-OR:
-
-### Reconciliation strategy
-
-Create a script such as:
-
-`script/reconcile-viva-participant-locks.mjs`
-or use the repo's existing script naming convention.
-
-The script should:
-
-1. read active `VivaSession` records;
-2. use their frozen snapshots;
-3. derive examiner/student locks;
-4. detect duplicate users across already-active sessions;
-5. fail loudly on ambiguous/corrupt data;
-6. create missing locks;
-7. remove stale locks whose session is not active only in an explicit repair/apply mode.
-
-Do **not** silently pick a winner if historical data says one user is in two active sessions.
-
-## Tests for Phase 2
-
-Required tests:
-
-- one Viva starts normally;
-- 50 disjoint Vivas can start concurrently;
-- two simultaneous starts sharing one examiner result in exactly one success;
-- two simultaneous starts sharing one student result in exactly one success;
-- transaction rollback leaves no locks after failed start;
-- `User.updatedAt` does not change merely because Viva started;
-- completing session releases every lock for that session;
-- cancelling an active session releases every lock;
-- cancelling a scheduled/unstarted session is harmless;
-- panel admin is locked against another Viva but is not portal-restricted;
-- non-admin examiner is locked and portal-restricted;
-- student is locked and portal-restricted;
-- mixed-batch students lock normally.
-
-## Phase 2 gate
-
-Do not remove legacy conflict code until all race tests pass.
+For 50 independent sessions in one round, each Start should work primarily on its own session and participant-lock documents rather than all contending on one shared round write.
 
 ---
 
-# Phase 3 — Make access restriction a point lookup
+# 12. Implementation order for Codex
 
-## Goal
+Follow this order exactly:
 
-Use the participant-lock collection for active-session portal restrictions.
+1. **Step 0:** verify HEAD, tests, browser/client request behavior.
+2. **Step 1:** add the one-round 50-session benchmark.
+3. **Decision:** if shared-round Start is already healthy, skip Step 2.
+4. **Step 2:** only if needed, remove the shared round write safely.
+5. **Step 3:** remove successful mutation refetches and add immediate Start pending feedback.
+6. **Step 4:** auto-advance using existing state only if current UX needs it and the change stays tiny.
+7. **Step 5:** touch portal-status routing only if measured deployed latency proves it is still material.
+8. **Step 6:** full regression/performance/cleanup audit.
 
-## File
-
-`lib/vivaAccessRestriction.ts`
-
-## Desired query
-
-Conceptually:
-
-```ts
-VivaParticipantLock.exists({
-  userId,
-  restrictPortal: true,
-})
-```
-
-This should be served by the unique `userId` index.
-
-## Rules
-
-- invalid IDs still return safely;
-- panel admin remains unrestricted if that is current intended behavior;
-- student/non-admin examiner restrictions remain intact;
-- no scan of active `VivaSession` snapshots should be needed in the final steady-state implementation.
-
-## Migration caveat
-
-Do not switch to lock-only reads in production if older active sessions can exist without lock rows.
-
-Use the Phase 2 deployment gate/reconciliation strategy.
-
-## Tests
-
-Update `tests/viva-access-restriction.integration.test.mjs` or equivalent.
-
-Include:
-
-- student active -> restricted;
-- examiner active -> restricted;
-- panel admin active -> not restricted;
-- completion -> unrestricted;
-- cancellation -> unrestricted;
-- unrelated user -> unrestricted.
-
-## Phase 3 gate
-
-Verify query is an indexed point lookup with `explain("executionStats")` or equivalent local evidence.
+Do not implement later steps simply because they are listed. Measurement gates exist specifically to keep the final code minimal.
 
 ---
 
-# Phase 4 — Shorten grade and completion transactions
-
-## Goal
-
-Remove unnecessary successful-path pre-reads while preserving error quality and audit atomicity.
-
-## File
-
-`lib/vivaSessionDashboard.ts`
-
-## 4.1 Grade save
-
-Current pattern is approximately:
-
-```text
-read session
-authorize
-validate
-conditional update
-audit
-serialize
-```
-
-Target successful path:
-
-```text
-validate input/grade in memory
-conditional update containing authorization + active state + version
-audit
-serialize
-```
-
-The atomic update filter should include the required state, for example:
-
-```text
-_id
-version
-startedAt is date
-completedAt null
-cancelledAt null
-panelSnapshot.panelAdmin.userId == actor.id
-```
-
-Do not copy this blindly; verify exact schema/types first.
-
-### Failure semantics
-
-If the update returns `null`, perform a fallback read **only on the failure path** to distinguish where practical:
-
-- not found;
-- forbidden;
-- not running/completed/cancelled;
-- concurrent version change.
-
-This keeps the common successful path fast while retaining useful errors.
-
-## 4.2 Completion
-
-Use the same pattern where safe.
-
-Successful completion should conditionally require:
-
-- correct session;
-- correct version;
-- active state;
-- authorized frozen panel admin;
-- a saved result.
-
-After update:
-
-- validate/canonicalize the returned result;
-- remove participant locks in the same transaction;
-- write audit event;
-- return result.
-
-If legacy malformed data is encountered, abort safely rather than finalizing corrupted data.
-
-## 4.3 Keep transaction atomicity
-
-Do not move the audit write outside the transaction just to reduce latency.
-
-Do not move lock cleanup outside the transaction.
-
-## Tests
-
-Required:
-
-- successful grade update;
-- stale version fails;
-- unauthorized examiner fails;
-- completed/cancelled session fails;
-- invalid grade fails before DB mutation;
-- completion requires saved grade;
-- completion releases locks;
-- audit is still written;
-- transaction rollback leaves state consistent.
-
-## Performance acceptance
-
-On successful grade save, no unconditional initial session read should remain unless Codex can demonstrate it is necessary for correctness.
-
-Same principle for completion.
-
----
-
-# Phase 5 — Reduce portal-status request amplification
-
-## Goal
-
-Stop doing pause-status work on requests where the result cannot affect behavior, then safely coalesce/cache the remaining status reads for a very short period.
-
-## Files
-
-- `proxy.ts`
-- `app/api/portal-status/route.ts`
-- `lib/portalPause.ts`
-- admin portal-pause mutation code discovered via search.
-
-## 5.1 Narrow the proxy check first
-
-At the audited version, pause state only causes a response for API requests that are:
-
-- not required auth routes;
-- not admin requests.
-
-Therefore, do not fetch portal status for requests where it cannot affect the result.
-
-Construct an explicit predicate similar to:
-
-```text
-is API request
-AND not portal-status itself
-AND not required auth exception
-AND actor is not admin
-```
-
-Verify this exactly against current desired behavior.
-
-This change should preserve behavior while avoiding pointless internal fetches for:
-
-- page navigation where pause was not enforced anyway;
-- admin calls;
-- excluded auth paths;
-- the status route itself.
-
-## 5.2 Add short-lived status coalescing/cache
-
-After call-site inventory, implement a conservative cache for the status read.
-
-Recommended characteristics:
-
-- TTL around 3–5 seconds;
-- single-flight/coalescing so simultaneous cache misses on one instance share one Mongo read;
-- explicit invalidation in the admin mutation path on the current instance;
-- no long stale window;
-- preserve fail-closed behavior where currently required.
-
-A module-level server cache is acceptable if it matches the deployment runtime.
-
-If using a Next.js framework cache instead, verify the API is correct for the repository's pinned Next.js version before implementing it.
-
-Do not guess based on another Next.js version.
-
-## 5.3 Cache endpoint carefully
-
-If changing HTTP cache headers:
-
-- understand whether the pause reason is safe to cache publicly;
-- understand same-origin/internal fetch behavior;
-- keep the stale window very small;
-- document maximum delay before a newly paused portal is enforced on another warm instance.
-
-Do not introduce a long CDN cache merely for benchmark numbers.
-
-## Tests
-
-Add tests for:
-
-- admin request does not require portal-status fetch;
-- irrelevant page request does not require portal-status fetch if behavior is unchanged;
-- protected non-admin API still enforces paused state;
-- status failure remains fail-closed where intended;
-- cache expires;
-- concurrent cache miss is coalesced if implemented;
-- explicit invalidation works on mutation path.
-
----
-
-# Phase 6 — Add indexes that match the hot queries
-
-## Goal
-
-Add only indexes justified by actual query shapes.
-
-## Candidate indexes
-
-### `VivaPanel`
-
-The hot panel lookup is:
-
-```ts
-{ examinerIds: actorId }
-```
-
-The existing unique compound index beginning with `roundId` is not an ideal direct match.
-
-Candidate:
-
-```ts
-VivaPanelSchema.index({ examinerIds: 1 });
-```
-
-### `VivaSession`
-
-The panel list hot query is approximately:
-
-```ts
-{
-  panelId: { $in: [...] },
-  cancelledAt: null
-}
-.sort({ scheduledAt: 1, _id: 1 })
-```
-
-Candidate:
-
-```ts
-VivaSessionSchema.index({
-  panelId: 1,
-  cancelledAt: 1,
-  scheduledAt: 1,
-  _id: 1,
-});
-```
-
-### Participant locks
-
-Required:
-
-```text
-unique userId
-sessionId
-```
-
-## Index rules
-
-Do not blindly add indexes.
-
-For each candidate:
-
-1. capture query shape;
-2. run `explain("executionStats")` before;
-3. add/apply index;
-4. run explain after;
-5. confirm reduced docs/keys examined and desired plan;
-6. keep a record in implementation notes.
-
-Do not remove existing indexes in the same optimization pass unless they are conclusively redundant and there is a separate index audit.
-
-Extra indexes also consume RAM and write resources.
-
-## Production index creation
-
-Do not rely blindly on runtime Mongoose auto-index creation in production.
-
-Inspect the repository's existing index migration/audit scripts:
-
-- `indexes:refactor:audit`
-- `indexes:refactor:apply`
-
-Follow that established pattern where possible.
-
-Create/update an explicit apply/audit script if required.
-
----
-
-# Phase 7 — Reduce agenda payload and unbounded history, but only after call-site inspection
-
-## Goal
-
-Reduce Mongo transfer, server serialization, JSON payload, React/server memory, and client work.
-
-This phase is valuable but more invasive than the database concurrency fixes.
-
-Do it only after Phases 1–6 are stable.
-
-## Problem to verify
-
-At the audited version, `getVivaPanelSessions()` returns full workspace detail including fields such as:
-
-- project description;
-- domains;
-- tools;
-- all project members;
-- supervisor;
-- full panel;
-- grade scale;
-- result;
-- other workspace fields.
-
-It may also load all non-cancelled historical sessions for the actor's panels.
-
-Verify the current UI usage.
-
-## Preferred API shape
-
-Separate:
-
-### Agenda/list DTO
-
-Only fields needed to render the list/card, for example:
-
-```text
-session ID
-phase
-version
-scheduledAt
-startedAt
-vivaEndsAt
-location
-round name
-project title
-small participant summary only if displayed
-canManage
-result summary only if displayed
-```
-
-### Workspace/detail DTO
-
-Fetch full:
-
-- description;
-- domains;
-- tools;
-- members;
-- supervisor;
-- panel;
-- grading data;
-
-only when the user opens/selects a specific Viva.
-
-## Rules
-
-- inspect every UI consumer first;
-- do not break current rendering;
-- avoid duplicate client requests if one detail fetch can be cached locally for the selected session;
-- do not fetch all project descriptions for a screen that only shows titles/times;
-- preserve running-session responsiveness.
-
-## Historical sessions
-
-Do not arbitrarily truncate data.
-
-If the current panel page displays unbounded completed history:
-
-- add explicit pagination/cursor or a separate history request;
-- always include active/running and upcoming sessions;
-- expose older completed sessions through intentional pagination.
-
-Do not hide history merely to make benchmarks faster.
-
-## Acceptance
-
-Measure response byte size before/after on a realistic 50-session fixture.
-
-Keep this phase only if the reduction is meaningful and the UI remains simple.
-
----
-
-# Phase 8 — Re-evaluate MongoDB pool configuration only after application work
-
-## Goal
-
-Tune connection settings based on measured behavior, not intuition.
-
-## Current audited values
-
-```ts
-maxPoolSize: 10
-minPoolSize: 1
-```
-
-## Rules
-
-### Do not raise `maxPoolSize` first
-
-The optimized code should create far fewer concurrent DB operations.
-
-Benchmark with the existing `maxPoolSize: 10` before changing it.
-
-### Evaluate `minPoolSize`
-
-For serverless environments, `minPoolSize: 0` may reduce idle socket retention across warm instances.
-
-Do not change it without measuring/understanding the deployment model.
-
-### Candidate test matrix
-
-After all query fixes:
-
-```text
-maxPoolSize 5
-maxPoolSize 10
-```
-
-Optionally another value only if deployment connection limits allow it.
-
-Compare:
-
-- p50/p95 latency;
-- timeout count;
-- connection count;
-- transaction failures;
-- database saturation.
-
-Choose the smallest pool that sustains the target workload comfortably.
-
-Do not optimize for a synthetic single request at the cost of 50-session stability.
-
----
-
-# 6. Dedicated 50-session benchmark/integration harness
-
-Create or extend a test/support runner specifically for runtime Viva concurrency.
-
-The current workflow runner's large supervisor count is useful for panel allocation but is not sufficient evidence for 50 simultaneous active Viva sessions.
-
-## Fixture
-
-Create approximately:
-
-- 1 admin;
-- enough supervisors for 50 disjoint panels;
-- 100+ students for 50 two-student teams;
-- 50 projects;
-- one or more Viva rounds as appropriate;
-- 50 scheduled sessions;
-- 50 disjoint participant sets for the main throughput test.
-
-Use realistic panel sizes matching production defaults.
-
-Avoid accidentally sharing supervisors between the 50 throughput sessions.
-
-## Benchmark stages
-
-### Stage A — Panel agenda
-
-Measure list retrieval with:
-
-- 1 session;
-- 10 sessions;
-- 50 sessions.
-
-Capture:
-
-- DB command count;
-- duration;
-- returned byte size if practical.
-
-### Stage B — Concurrent starts
-
-Use:
-
-```ts
-Promise.allSettled(...)
-```
-
-Start all 50 independent sessions as close together as practical.
-
-Record individual durations.
-
-Calculate:
-
-- minimum;
-- p50;
-- p95;
-- maximum;
-- success count;
-- expected/actual failure count.
-
-### Stage C — Concurrent grades
-
-Save a valid grade to all 50 sessions concurrently.
-
-Record the same metrics.
-
-### Stage D — Concurrent completions
-
-Complete all 50 concurrently.
-
-Record metrics.
-
-### Stage E — Cleanup assertions
-
-Assert:
-
-- all expected sessions completed;
-- no active participant locks remain;
-- audit records exist;
-- no user `updatedAt` was touched solely for locking;
-- no unexpected active session remains.
-
-## Conflict benchmark
-
-Separately create two sessions that deliberately share one participant and race their starts.
-
-The test must prove the unique lock is the arbiter.
-
-Do not use scheduling validation as the only protection in this race test.
-
-## Repeatability
-
-Run the concurrency scenario multiple times in one test execution or provide a repeat option.
-
-One lucky run is not sufficient evidence.
-
-Avoid brittle absolute latency assertions in CI if CI hardware is variable.
-
-Use correctness assertions plus query-count/bounded-work assertions, and print timing as benchmark evidence.
-
----
-
-# 7. Query-count targets
-
-These targets are intended to keep Codex focused on architecture.
-
-## Panel list
-
-Before:
-
-```text
-~2 + per-session hydration queries
-```
-
-After:
-
-```text
-bounded bulk reads, approximately <= 5 for scheduled list hydration
-```
-
-Do not accept a refactor that still calls a DB helper inside `sessions.map(...)`.
-
-## Start
-
-After optimization, start cost must not depend on the number of unrelated active sessions.
-
-There must be no operation equivalent to:
-
-```ts
-VivaSession.find(all active sessions)
-```
-
-for conflict detection.
-
-## Access restriction
-
-Target:
-
-```text
-1 indexed exists lookup
-```
-
-in final steady state.
-
-## Grade
-
-Successful path:
-
-- no unconditional session pre-read;
-- one conditional update;
-- audit write;
-- transaction overhead only.
-
-## Completion
-
-Successful path:
-
-- one conditional update;
-- lock cleanup;
-- audit write;
-- no unconditional pre-read if correctness can be preserved.
-
----
-
-# 8. Transaction design rules
-
-## Keep transactions short
-
-Inside a transaction:
-
-- do only data required for the mutation;
-- avoid scanning large unrelated collections;
-- avoid bulk writes to unrelated users;
-- avoid network/external calls;
-- avoid CPU-heavy transformations that can happen before the transaction.
-
-## Do validation outside transactions where safe
-
-Examples:
-
-- ObjectId syntax;
-- grade enum/input shape;
-- date validity.
-
-Do not move validation outside if it depends on mutable authoritative DB state.
-
-## Use unique indexes as concurrency primitives where appropriate
-
-For active participant occupancy, prefer a unique lock document over broad application-level scans.
-
-## Preserve optimistic concurrency
-
-Keep `version` checks for grade/completion/reschedule behavior.
-
-Do not replace all concurrency handling with participant locks; they solve a different invariant.
-
----
-
-# 9. Data model and lifecycle invariants for participant locks
-
-Treat this section as an implementation contract.
-
-## Invariant A
-
-For every active Viva session:
-
-```text
-startedAt is date
-completedAt is null
-cancelledAt is null
-```
-
-there should be one participant-lock document for every panel examiner and participating student.
-
-## Invariant B
-
-No `userId` can occur in more than one participant lock.
-
-Enforce this in MongoDB with a unique index.
-
-## Invariant C
-
-Every lock's `sessionId` points to the active session it represents.
-
-## Invariant D
-
-Completing/cancelling the active session removes its locks atomically with terminal state.
-
-## Invariant E
-
-No lock is released simply because `vivaEndsAt` passed.
-
-## Invariant F
-
-A panel admin remains locked from participating elsewhere even if `restrictPortal === false`.
-
-## Invariant G
-
-Project supervisor membership alone does not create a lock unless current business rules define them as an active panel examiner.
-
-## Invariant H
-
-Do not derive team membership from batch.
-
-Use `Project.members` / frozen project snapshot members.
-
----
-
-# 10. Tests that must exist before the optimization is considered safe
-
-At minimum, ensure automated coverage for:
-
-## Dashboard
-
-- scheduled session rendering;
-- many scheduled sessions;
-- running session rendering from snapshot;
-- completed session rendering from snapshot;
-- invalid deleted context handling;
-- non-admin panel examiner can view but cannot manage if that is intended;
-- panel admin can manage.
-
-## Start
-
-- valid start;
-- duplicate click/idempotent running response behavior;
-- wrong admin forbidden;
-- inactive examiner invalid;
-- malformed panel invalid;
-- project supervisor/examiner conflict invalid;
-- participant already active conflict;
-- concurrent conflict race;
-- disjoint concurrent starts.
-
-## Grade
-
-- valid grade;
-- invalid grade;
-- wrong actor;
-- stale version;
-- completed state;
-- cancelled state;
-- concurrent update.
-
-## Complete
-
-- requires grade;
-- wrong actor;
-- stale version;
-- finalizes once;
-- creates audit;
-- deletes locks.
-
-## Cancel
-
-- scheduled cancellation;
-- active cancellation;
-- lock cleanup;
-- completed cannot cancel;
-- repeated cancellation.
-
-## Access restriction
-
-- student;
-- examiner;
-- panel admin;
-- after completion;
-- after cancellation;
-- unrelated user.
-
-## Mixed batch
-
-Construct a project with students from at least two batches and verify it can:
-
-- remain a valid project team;
-- be scheduled where appropriate;
-- be hydrated in panel agenda;
-- start;
-- create participant locks;
-- grade;
-- complete.
-
-No test should merely grep source text to prove this workflow behavior.
-
----
-
-# 11. Performance anti-patterns Codex must not introduce
-
-Reject any implementation containing these patterns unless strongly justified.
-
-## 11.1 DB call inside an unbounded list map
-
-Bad:
-
-```ts
-await Promise.all(items.map(item => Model.findById(...)))
-```
-
-for dashboard hydration.
-
-Batch IDs instead.
-
-## 11.2 Check-then-insert lock race
-
-Bad:
-
-```ts
-if (!await Lock.exists({ userId })) {
-  await Lock.create(...)
-}
-```
-
-Use a unique index and atomic insert.
-
-## 11.3 Locking via unrelated entity writes
-
-Do not touch User, Project, Panel, etc. just to force transaction conflicts.
-
-## 11.4 Long cache for portal pause
-
-Do not create a 30–60 second stale pause window to make performance numbers look good.
-
-## 11.5 Giant aggregation without need
-
-Do not replace understandable bounded queries with a fragile aggregation pipeline solely to reduce the query counter from 5 to 1.
-
-## 11.6 Raising pool size to hide N+1
-
-Not acceptable.
-
-## 11.7 Premature snapshots
-
-Do not make scheduled-session data permanently stale just to avoid live hydration.
-
-## 11.8 Swallowing duplicate-key errors
-
-A participant-lock duplicate is an expected business conflict.
-
-Translate it into a known result; do not hide or generically 500 it.
-
-## 11.9 Removing detailed tests because internals changed
-
-Update tests to assert behavior, not implementation text.
-
----
-
-# 12. File-by-file implementation checklist
-
-This list is a guide. Codex must verify actual current files before editing.
-
-## `models/VivaParticipantLock.ts` — new
-
-- [ ] small schema;
-- [ ] `userId`;
-- [ ] `sessionId`;
-- [ ] participant type;
-- [ ] `restrictPortal`;
-- [ ] unique user index;
-- [ ] session index;
-- [ ] no TTL.
-
-## `lib/vivaSessionDashboard.ts`
-
-- [ ] extract reusable pure current-context validation/assembly if needed;
-- [ ] replace scheduled-session N+1 with batch hydration;
-- [ ] preserve start-time snapshot semantics;
-- [ ] integrate participant-lock insert on start;
-- [ ] remove global active-session scan after tests pass;
-- [ ] remove User fake-lock update;
-- [ ] shorten grade successful path;
-- [ ] shorten completion successful path;
-- [ ] delete participant locks on completion;
-- [ ] avoid large unrelated refactor.
-
-## `lib/vivaAccessRestriction.ts`
-
-- [ ] use indexed participant-lock lookup;
-- [ ] preserve invalid-ID safety;
-- [ ] preserve panel-admin exception.
-
-## `lib/vivaScheduling.ts`
-
-- [ ] identify cancellation path(s);
-- [ ] delete active-session locks on cancellation in same transaction;
-- [ ] do not disturb scheduling conflict behavior;
-- [ ] do not reintroduce batch assumptions.
-
-## `models/VivaPanel.ts`
-
-- [ ] add justified examiner lookup index if explain proves useful.
-
-## `models/VivaSession.ts`
-
-- [ ] add justified panel/list index;
-- [ ] do not repurpose start snapshots as schedule snapshots without explicit design;
-- [ ] do not remove legacy schema compatibility casually.
-
-## `proxy.ts`
-
-- [ ] only fetch pause status when pause result can actually affect request;
-- [ ] preserve fail-closed behavior for relevant API requests;
-- [ ] do not expand middleware DB access.
-
-## `lib/portalPause.ts`
-
-- [ ] inspect all call sites;
-- [ ] add short cache/single-flight if appropriate;
-- [ ] provide explicit invalidation;
-- [ ] keep a fresh-read path if admin UI requires it.
-
-## `app/api/portal-status/route.ts`
-
-- [ ] coordinate cache semantics with proxy/cache implementation;
-- [ ] do not leave `no-store` if it defeats the chosen safe cache strategy;
-- [ ] preserve correct error handling.
-
-## Portal-pause admin mutation file(s)
-
-- [ ] invalidate local status cache immediately after successful mutation;
-- [ ] preserve audit/security behavior.
-
-## Integration tests
-
-- [ ] update existing behavior tests;
-- [ ] add lock race tests;
-- [ ] add 50-session concurrency test;
-- [ ] add query-count/bounded-work test;
-- [ ] add mixed-batch Viva workflow test.
-
-## Scripts
-
-- [ ] follow existing index apply/audit pattern;
-- [ ] add participant-lock reconciliation/audit script if deployment can encounter active legacy sessions.
-
----
-
-# 13. Commit strategy
-
-Do not make one giant commit.
-
-Recommended sequence:
-
-## Commit 1 — measurement/tests
-
-- baseline/concurrency harness;
-- query-count helper;
-- no production behavior change.
-
-## Commit 2 — batch panel-session hydration
-
-- remove N+1;
-- relevant tests.
-
-## Commit 3 — participant-lock model and start path
-
-- model/index;
-- start locking;
-- race tests;
-- remove old User-write/global-scan mechanism only when passing.
-
-## Commit 4 — lock lifecycle/access restriction
-
-- completion/cancellation cleanup;
-- access restriction point lookup;
-- reconciliation tooling if required.
-
-## Commit 5 — grade/completion transaction shortening
-
-- happy-path conditional writes;
-- fallback failure reads;
-- tests.
-
-## Commit 6 — portal-status amplification reduction
-
-- narrow proxy predicate;
-- short cache/coalescing;
-- tests.
-
-## Commit 7 — hot-query indexes/migration
-
-- explain evidence;
-- apply/audit script.
-
-## Commit 8 — payload/pagination optimization
-
-Only if measured and needed.
-
-## Commit 9 — pool tuning
-
-Only if benchmarks show a justified change.
-
-Each commit should be independently reviewable and should leave tests green.
-
----
-
-# 14. Benchmark report Codex must produce
-
-At the end, create a concise implementation report, e.g. `VIVA_OPTIMIZATION_RESULTS.md`, or include equivalent detail in the PR description.
-
-Include:
-
-## Environment
-
-```text
-commit before:
-commit after:
-Node version:
-MongoDB test environment:
-test command:
-pool settings:
-```
-
-## Panel list
-
-Table:
-
-```text
-Sessions | Before queries | After queries | Before ms | After ms | Before bytes | After bytes
-1
-10
-50
-```
-
-If payload split is not implemented, bytes may be omitted.
-
-## Concurrent start
-
-```text
-50 sessions:
-successes:
-unexpected failures:
-p50:
-p95:
-max:
-transaction retry/errors:
-```
-
-## Grade
-
-Same metrics.
-
-## Completion
-
-Same metrics.
-
-## Database behavior
-
-State explicitly:
-
-- active-session global scan removed: yes/no;
-- User fake-lock writes removed: yes/no;
-- access restriction point lookup: yes/no;
-- stale locks after benchmark: count;
-- query plan evidence for new indexes.
-
-## Trade-offs
-
-Document:
-
-- portal pause cache maximum staleness;
-- any API changes;
-- any migration/rollout requirement;
-- any remaining known bottleneck.
-
-Do not write “50 sessions supported” if the actual 50-session scenario has not been run successfully.
-
----
-
-# 15. Rollout plan
-
-## Before deployment
-
-- [ ] all tests green;
-- [ ] build green;
-- [ ] new indexes applied/verified;
-- [ ] active participant-lock migration strategy chosen;
-- [ ] if lock-only access reads are enabled, confirm existing active sessions have locks;
-- [ ] verify no duplicate active participants in current production data;
-- [ ] record current Mongo connection usage;
-- [ ] keep previous release available for rollback.
-
-## Deployment gate for participant locks
-
-Before switching fully to lock-based reads/conflicts:
-
-Either:
-
-```text
-active Viva count == 0
-```
-
-or:
-
-```text
-reconciliation completed successfully
-```
-
-Do not assume there are no active sessions.
-
-## After deployment
-
-Monitor:
-
-- API latency;
-- Mongo connections;
-- Mongo operation rate;
-- transaction errors/retries;
-- duplicate-key participant conflicts;
-- portal-status error rate;
-- stale participant locks;
-- start/grade/complete failures.
-
-## Rollback concern
-
-If rolling application code back to a version that does not understand participant locks:
-
-- locks become unused derived records;
-- they must not be allowed to corrupt future redeployment.
-
-Document whether rollback requires clearing/reconciling the lock collection after confirming no active sessions.
-
-Never delete locks blindly while active sessions exist.
-
----
-
-# 16. Definition of done
-
-The optimization is complete only when all of the following are true.
-
-- [ ] Current HEAD/baseline was recorded.
-- [ ] Existing Viva behavior tests pass.
-- [ ] Mixed-batch project behavior is covered by executable workflow tests.
-- [ ] Panel-session scheduled hydration no longer does per-session DB reads.
-- [ ] Dashboard query count is bounded.
-- [ ] Starting a Viva does not scan all unrelated active sessions.
-- [ ] Starting a Viva does not touch `User.updatedAt` for locking.
-- [ ] Dedicated participant locks use a unique user index.
-- [ ] Concurrent conflicting starts are race-safe.
-- [ ] Completion deletes participant locks atomically.
-- [ ] Active cancellation deletes participant locks atomically.
-- [ ] Access restriction uses the lock collection in steady state.
-- [ ] Grade happy path avoids unnecessary read-before-write.
-- [ ] Completion happy path avoids unnecessary read-before-write where safe.
-- [ ] Portal-status fetch is skipped when it cannot affect the request.
-- [ ] Remaining portal-status reads are safely coalesced/cached if implemented.
-- [ ] Hot-query indexes have `explain` evidence.
-- [ ] `maxPoolSize` was not increased to hide inefficient queries.
-- [ ] 50 disjoint sessions can start concurrently in the test scenario.
-- [ ] 50 sessions can grade concurrently.
-- [ ] 50 sessions can complete concurrently.
-- [ ] No stale participant locks remain after the completed benchmark.
-- [ ] No unexpected transaction/pool failures occur.
-- [ ] Final benchmark/report documents actual results and remaining limits.
-- [ ] Production rollout/migration instructions are documented.
-
----
-
-# 17. Stop conditions
-
-Codex must stop and investigate instead of pushing forward if any of these occur:
-
-1. a change causes audit events to be non-atomic with state changes;
-2. two conflicting Vivas can both start;
-3. a panel admin loses required control of their running Viva;
-4. a student/non-admin examiner can bypass an active-session restriction unexpectedly;
-5. mixed-batch teams become invalid;
-6. scheduled-session snapshots become stale in a way that changes start-time truth;
-7. new indexes materially increase write/resource cost without improving the target queries;
-8. 50-session failures are being “fixed” only by increasing the DB pool;
-9. the implementation requires a broad unrelated rewrite;
-10. a migration can strand users behind stale locks;
-11. a production deployment could switch to lock-only reads while active sessions lack locks.
-
-When a stop condition occurs:
-
-- keep the failing regression test;
-- identify the violated invariant;
-- correct the design;
-- do not hide the issue with retries/timeouts/resource increases.
-
----
-
-# 18. Preferred final architecture
-
-The intended steady-state architecture is:
-
-```text
-Panel agenda request
-    |
-    +-- one panel read
-    +-- one session read
-    +-- bounded bulk context reads
-    |
-    --> no per-session DB hydration
-
-Start Viva
-    |
-    +-- read/revalidate only this session's current context
-    +-- insert unique participant locks
-    +-- snapshot start context
-    +-- mark started
-    +-- audit
-    |
-    --> no global active-session scan
-    --> no fake User writes
-
-During active Viva
-    |
-    +-- access restriction = indexed participant-lock lookup
-    +-- grade = conditional update + audit
-    |
-    --> bounded work independent of number of other Vivas
-
-Complete/cancel
-    |
-    +-- terminal state update
-    +-- delete session participant locks
-    +-- audit
-    |
-    --> atomic cleanup
-
-Portal pause
-    |
-    +-- checked only where it matters
-    +-- very short safe caching/coalescing
-    |
-    --> no DB read amplification on irrelevant requests
-```
-
-The key property is:
-
-> **The amount of work required for one Viva must remain approximately constant as the number of unrelated active Vivas grows from 1 to 50.**
-
-That is the architectural condition Codex should optimize for.
-
----
-
-# 19. First actions for Codex
-
-Start with these actions only:
-
-1. verify current HEAD and working tree;
-2. re-read the listed hot-path files;
-3. run all current Viva tests;
-4. add/prepare query-count and 50-session baseline instrumentation;
-5. record baseline behavior;
-6. implement Phase 1 only;
-7. prove Phase 1;
-8. proceed phase-by-phase.
-
-Do **not** begin by editing `lib/mongodb.ts`.
-
-Do **not** begin by increasing connection limits.
-
-Do **not** begin by creating a new infrastructure dependency.
-
-Reduce the work first.
+# 13. Final definition of success
+
+The task is successful when the system can demonstrate all of the following without additional infrastructure or dependencies:
+
+- **50 concurrent Viva sessions under one shared round** can Start safely;
+- session Starts do not depend on the number of unrelated active Vivas;
+- no shared round document becomes a Start-time write hotspot if that hotspot is proven by the benchmark;
+- participant collision protection remains database-enforced;
+- Start click gives immediate visual feedback;
+- the client uses returned mutation workspaces instead of reloading all Viva data;
+- Save Grade and Complete Viva do not cause unnecessary loading/refetching;
+- the next Viva can be reached with minimal examiner interaction using already-loaded data where practical;
+- all existing authorization, audit, snapshot, grading, completion, cancellation, and lock-cleanup rules remain correct;
+- no new package, service, cache layer, pool increase, or architectural subsystem has been introduced;
+- the final production diff contains only code that removes measured work or removes a measured user delay.

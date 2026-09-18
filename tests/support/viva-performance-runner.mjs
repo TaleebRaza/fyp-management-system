@@ -207,6 +207,7 @@ export async function runVivaPerformanceIntegration(testDatabaseUri) {
       vivaDurationMinutes: 30,
       projectIds: [throughputProjects[index]._id],
       examinerIds: [examiners[index * 2]._id, examiners[index * 2 + 1]._id],
+      confirmedAt: new Date('2026-10-12T09:00:00.000Z'),
     })));
     const throughputPanels = await VivaPanel.create(Array.from({ length: SESSION_COUNT }, (_, index) => ({
       roundId: throughputRounds[index]._id,
@@ -261,6 +262,66 @@ export async function runVivaPerformanceIntegration(testDatabaseUri) {
     assert.ok(completions.results.every((result) => result.status === 'fulfilled' && result.value.success));
     assert.equal(await VivaParticipantLock.countDocuments(), 0);
     assert.equal(await VivaAuditEvent.countDocuments({ sessionId: { $in: throughputSessions.map(({ _id }) => _id) } }), SESSION_COUNT * 3);
+
+    const sharedRound = await VivaRound.create({
+      name: 'Shared round concurrency benchmark',
+      targetPanelSize: 2,
+      minimumPanelSize: 2,
+      vivaDurationMinutes: 30,
+      projectIds: throughputProjects.map(({ _id }) => _id),
+      examinerIds: examiners.map(({ _id }) => _id),
+      confirmedAt: new Date('2026-10-12T10:00:00.000Z'),
+    });
+    const sharedRoundPanels = await VivaPanel.create(Array.from({ length: SESSION_COUNT }, (_, index) => ({
+      roundId: sharedRound._id,
+      examinerIds: [examiners[index * 2]._id, examiners[index * 2 + 1]._id],
+      panelAdminId: examiners[index * 2]._id,
+      locationLabel: `Shared Round Lab ${index + 1}`,
+    })));
+    const sharedRoundSessions = await VivaSession.create(Array.from({ length: SESSION_COUNT }, (_, index) => ({
+      roundId: sharedRound._id,
+      panelId: sharedRoundPanels[index]._id,
+      projectId: throughputProjects[index]._id,
+      scheduledAt: new Date('2026-10-12T10:00:00.000Z'),
+      vivaEndsAt: new Date('2026-10-12T10:30:00.000Z'),
+      locationLabel: `Shared Round Lab ${index + 1}`,
+    })));
+
+    const sharedRoundStarts = await timedAll(sharedRoundSessions.map((session, index) => async () => (
+      startVivaSession(String(session._id), actor(examiners[index * 2]), new Date('2026-10-12T10:00:00.000Z'))
+    )));
+    assert.equal(sharedRoundStarts.results.filter((result) => (
+      result.status === 'fulfilled' && result.value.success && result.value.started
+    )).length, SESSION_COUNT);
+    assert.equal(sharedRoundStarts.results.filter((result) => (
+      result.status === 'rejected' || !result.value.success
+    )).length, 0);
+    assert.equal(await VivaSession.countDocuments({
+      _id: { $in: sharedRoundSessions.map(({ _id }) => _id) },
+      startedAt: { $type: 'date' },
+    }), SESSION_COUNT);
+    const sharedRoundLocks = await VivaParticipantLock.find({
+      sessionId: { $in: sharedRoundSessions.map(({ _id }) => _id) },
+    }).select('userId').lean();
+    assert.equal(sharedRoundLocks.length, SESSION_COUNT * 4);
+    assert.equal(new Set(sharedRoundLocks.map(({ userId }) => String(userId))).size, SESSION_COUNT * 4);
+    assert.equal(await VivaAuditEvent.countDocuments({
+      sessionId: { $in: sharedRoundSessions.map(({ _id }) => _id) },
+      event: 'session-started',
+    }), SESSION_COUNT);
+
+    const sharedRoundWorkspaces = sharedRoundStarts.results.map((result) => result.value.workspace);
+    const sharedRoundGrades = await Promise.all(sharedRoundSessions.map((session, index) => (
+      saveVivaGrade(String(session._id), sharedRoundWorkspaces[index].version, 'A', actor(examiners[index * 2]))
+    )));
+    assert.ok(sharedRoundGrades.every((result) => result.success));
+    const sharedRoundCompletions = await Promise.all(sharedRoundSessions.map((session, index) => (
+      completeVivaSession(String(session._id), sharedRoundGrades[index].workspace.version, actor(examiners[index * 2]))
+    )));
+    assert.ok(sharedRoundCompletions.every((result) => result.success));
+    assert.equal(await VivaParticipantLock.countDocuments({
+      sessionId: { $in: sharedRoundSessions.map(({ _id }) => _id) },
+    }), 0);
 
     await VivaPanel.updateOne(
       { _id: throughputPanels[1]._id },
@@ -350,6 +411,7 @@ export async function runVivaPerformanceIntegration(testDatabaseUri) {
       pool: { maxPoolSize: 10, minPoolSize: 1 },
       agenda: agendaMeasurements,
       concurrentStarts: starts.metrics,
+      sharedRoundConcurrentStarts: sharedRoundStarts.metrics,
       concurrentGrades: grades.metrics,
       concurrentCompletions: completions.metrics,
       successes: SESSION_COUNT,

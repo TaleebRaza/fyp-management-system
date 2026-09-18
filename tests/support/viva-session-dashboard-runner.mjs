@@ -44,6 +44,7 @@ async function createScheduledSession({
   panelAdmin,
   admin,
   scheduledAt,
+  confirmed = true,
 }) {
   const round = await VivaRound.create({
     name: `${label} Viva`,
@@ -70,6 +71,9 @@ async function createScheduledSession({
     actor(admin)
   );
   assert.equal(scheduled.success, true, scheduled.success ? '' : scheduled.error);
+  if (confirmed) {
+    await VivaRound.updateOne({ _id: round._id }, { $set: { confirmedAt: new Date(scheduledAt) } });
+  }
   return { round, panel, sessionId: scheduled.schedule.id };
 }
 
@@ -137,6 +141,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       panelAdmin,
       admin: systemAdmin,
       scheduledAt: '2026-10-10T09:00:00.000Z',
+      confirmed: false,
     });
     const assignedBeforeStart = await getPanelAdminVivaSessions(String(panelAdmin._id));
     assert.equal(assignedBeforeStart.length, 1);
@@ -144,6 +149,20 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
     const memberAgenda = await getPanelAdminVivaSessions(String(panelMember._id));
     assert.equal(memberAgenda.length, 1);
     assert.equal(memberAgenda[0].canManage, false);
+
+    const unconfirmedStart = await startVivaSession(
+      membership.sessionId,
+      actor(panelAdmin),
+      new Date('2026-10-10T09:00:00.000Z')
+    );
+    assert.equal(unconfirmedStart.success, false);
+    assert.equal(unconfirmedStart.reason, 'invalid');
+    assert.match(unconfirmedStart.error, /must be confirmed/);
+    assert.equal(await VivaParticipantLock.countDocuments({ sessionId: membership.sessionId }), 0);
+    await VivaRound.updateOne(
+      { _id: membership.round._id },
+      { $set: { confirmedAt: new Date('2026-10-10T09:00:00.000Z') } }
+    );
 
     const nonPanelAdminStart = await startVivaSession(
       membership.sessionId,
@@ -169,7 +188,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       [String(panelAdmin._id), String(panelAlternate._id)]
     );
     assert.equal(membershipStart.workspace.vivaEndsAt, '2026-10-10T09:30:00.000Z');
-    assert.ok((await VivaRound.findById(membership.round._id).lean()).frozenAt);
+    assert.equal((await VivaRound.findById(membership.round._id).lean()).frozenAt, null);
 
     const repeatedStart = await startVivaSession(
       membership.sessionId,
@@ -281,7 +300,7 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 12,
       seededTeams: 5,
-      verified: ['panel-admin-only-workspace', 'member-read-only-agenda', 'changed-panel-membership-snapshot', 'round-freeze', 'repeat-start', 'replaced-panel-admin', 'stale-panel-admin', 'active-participant-conflict', 'cross-session-start-race', 'concurrent-start'],
+      verified: ['panel-admin-only-workspace', 'member-read-only-agenda', 'confirmed-round-required', 'changed-panel-membership-snapshot', 'repeat-start', 'replaced-panel-admin', 'stale-panel-admin', 'active-participant-conflict', 'cross-session-start-race', 'concurrent-start'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {
