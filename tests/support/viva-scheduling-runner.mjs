@@ -11,7 +11,7 @@ const [
   { default: VivaPanel },
   { default: VivaSession },
   { default: VivaAuditEvent },
-  { getVivaSchedules, rescheduleVivaSession, scheduleVivaSession },
+  { getVivaSchedules, rescheduleVivaSession, scheduleVivaSession, swapVivaSessionPanels },
 ] = await Promise.all([
   importTypeScriptModuleWithDependencies('models/User.ts'),
   importTypeScriptModuleWithDependencies('models/Project.ts'),
@@ -158,7 +158,58 @@ export async function runVivaSchedulingIntegration(testDatabaseUri) {
     assert.equal(staleReschedule.success, false);
     assert.equal(staleReschedule.reason, 'concurrent-change');
 
+    await VivaPanel.updateOne({ _id: secondaryPanel._id }, { $set: { locationLabel: 'Lab 4' } });
+    await VivaSession.updateOne({ _id: secondSchedule.schedule.id }, { $set: { locationLabel: 'Lab 4' } });
+    const swapInput = {
+      first: { sessionId: firstSchedule.schedule.id, version: firstSchedule.schedule.version },
+      second: { sessionId: rescheduled.schedule.id, version: rescheduled.schedule.version },
+    };
+    const concurrentSwaps = await Promise.all([
+      swapVivaSessionPanels(swapInput, actor),
+      swapVivaSessionPanels(swapInput, actor),
+    ]);
+    assert.equal(concurrentSwaps.filter((result) => result.success).length, 1);
+    assert.equal(concurrentSwaps.filter((result) => !result.success && result.reason === 'concurrent-change').length, 1);
+    const successfulSwap = concurrentSwaps.find((result) => result.success);
+    const swappedById = new Map(successfulSwap.schedules.map((schedule) => [schedule.id, schedule]));
+    assert.equal(swappedById.get(firstSchedule.schedule.id).panelId, String(secondaryPanel._id));
+    assert.equal(swappedById.get(firstSchedule.schedule.id).locationLabel, 'Lab 4');
+    assert.equal(swappedById.get(secondSchedule.schedule.id).panelId, String(primaryPanel._id));
+    assert.equal(swappedById.get(secondSchedule.schedule.id).locationLabel, 'Lab 3');
+    assert.equal(await VivaAuditEvent.countDocuments({ event: 'session-panel-swapped' }), 2);
+
+    const foreignRound = await VivaRound.create({
+      name: 'Foreign round',
+      targetPanelSize: 2,
+      minimumPanelSize: 2,
+      vivaDurationMinutes: 30,
+      projectIds: [projectFive._id],
+      examinerIds: [supervisorOne._id, supervisorFour._id],
+    });
+    const foreignSession = await VivaSession.create({
+      roundId: foreignRound._id,
+      panelId: secondaryPanel._id,
+      projectId: projectFive._id,
+      scheduledAt: new Date('2026-10-11T09:00:00.000Z'),
+      vivaEndsAt: new Date('2026-10-11T09:30:00.000Z'),
+      locationLabel: 'Foreign Lab',
+    });
+    const crossRoundSwap = await swapVivaSessionPanels({
+      first: { sessionId: firstSchedule.schedule.id, version: swappedById.get(firstSchedule.schedule.id).version },
+      second: { sessionId: String(foreignSession._id), version: 0 },
+    }, actor);
+    assert.equal(crossRoundSwap.success, false);
+    assert.equal(crossRoundSwap.reason, 'invalid');
+    await VivaSession.deleteOne({ _id: foreignSession._id });
+    await VivaRound.deleteOne({ _id: foreignRound._id });
+
     await VivaSession.updateOne({ _id: secondSchedule.schedule.id }, { $set: { startedAt: new Date('2026-10-10T11:30:00.000Z') } });
+    const startedSwap = await swapVivaSessionPanels({
+      first: { sessionId: firstSchedule.schedule.id, version: swappedById.get(firstSchedule.schedule.id).version },
+      second: { sessionId: secondSchedule.schedule.id, version: swappedById.get(secondSchedule.schedule.id).version },
+    }, actor);
+    assert.equal(startedSwap.success, false);
+    assert.equal(startedSwap.reason, 'not-swappable');
     const startedReschedule = await rescheduleVivaSession(
       secondSchedule.schedule.id,
       rescheduled.schedule.version,
@@ -189,7 +240,7 @@ export async function runVivaSchedulingIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 12,
       seededTeams: 6,
-      verified: ['panel-eligibility', 'own-supervisor-assignment', 'teacher-overlap', 'student-overlap', 'duplicate-attempt', 'reschedule', 'optimistic-concurrency', 'concurrent-overlap', 'started-session-lock', 'utc-reservation'],
+      verified: ['panel-eligibility', 'own-supervisor-assignment', 'teacher-overlap', 'student-overlap', 'duplicate-attempt', 'reschedule', 'panel-swap', 'swap-race', 'optimistic-concurrency', 'concurrent-overlap', 'started-session-lock', 'utc-reservation'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

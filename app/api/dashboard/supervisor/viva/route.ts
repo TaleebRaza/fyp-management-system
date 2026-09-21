@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   completeVivaSession,
   getVivaPanelSessions,
+  requeueVivaSession,
   saveVivaGrade,
   startVivaSession,
 } from '../../../../../lib/vivaSessionDashboard';
@@ -87,6 +88,17 @@ export async function POST(req: NextRequest) {
         completedAt: result.completedAt,
         session: result.workspace,
       });
+    }
+
+    if (action === 'requeue-session') {
+      if (!isVersion(body.version)) {
+        return NextResponse.json({ error: 'Invalid Viva requeue request.' }, { status: 400 });
+      }
+      const result = await requeueVivaSession(body.sessionId, body.version, currentUser);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: responseStatus(result.reason) });
+      }
+      return NextResponse.json({ sessions: await getVivaPanelSessions(currentUser.id) });
     }
 
     return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });

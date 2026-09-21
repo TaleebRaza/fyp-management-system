@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 
+import { PROGRAM_MAP } from '../../config/appSettings';
 import type {
   VivaExaminerOption,
   VivaRoundDto,
@@ -11,7 +12,8 @@ import type {
 } from '../../lib/vivaRoundAdmin';
 import type { VivaPanelDto } from '../../lib/vivaPanelAdmin';
 import type { VivaScheduleDto } from '../../lib/vivaScheduling';
-import { Button, DashboardPanel, Dialog, SectionHeader, StyledInput } from '../ui';
+import { selectTeamsByProgramQuota } from '../../lib/vivaTeamSelection';
+import { Button, DashboardPanel, Dialog, SectionHeader, Select, StyledInput } from '../ui';
 import VivaPanelManagement from './VivaPanelManagement';
 import VivaScheduleManagement from './VivaScheduleManagement';
 
@@ -52,6 +54,9 @@ const EMPTY_DRAFT: VivaRoundDraft = {
   projectIds: [],
   examinerIds: [],
 };
+
+const PROGRAM_CODES = Object.keys(PROGRAM_MAP);
+const EMPTY_PROGRAM_QUOTAS = Object.fromEntries(PROGRAM_CODES.map((program) => [program, 0]));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -121,6 +126,7 @@ function readTeam(value: unknown): VivaTeamOption | null {
     !isRecord(value)
     || typeof value.id !== 'string'
     || typeof value.title !== 'string'
+    || typeof value.program !== 'string'
     || !Array.isArray(value.members)
   ) {
     return null;
@@ -139,7 +145,7 @@ function readTeam(value: unknown): VivaTeamOption | null {
   });
 
   return members.length === value.members.length
-    ? { id: value.id, title: value.title, members }
+    ? { id: value.id, title: value.title, program: value.program, members }
     : null;
 }
 
@@ -272,12 +278,21 @@ export default function AdminVivaSection() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
+  const [teamProgramFilter, setTeamProgramFilter] = useState('all');
+  const [programQuotas, setProgramQuotas] = useState<Record<string, number>>(EMPTY_PROGRAM_QUOTAS);
+  const [quotaShortages, setQuotaShortages] = useState<Array<{ program: string; requested: number; selected: number; missing: number }>>([]);
 
   const selectedRound = useMemo(
     () => rounds.find((round) => round.id === selectedRoundId) || null,
     [rounds, selectedRoundId]
   );
   const isFrozen = Boolean(selectedRound?.frozenAt || selectedRound?.confirmedAt);
+  const filteredTeams = useMemo(
+    () => teamProgramFilter === 'all'
+      ? teams
+      : teams.filter((team) => team.program === (teamProgramFilter === 'unknown' ? '' : teamProgramFilter)),
+    [teamProgramFilter, teams]
+  );
 
   const loadConfiguration = useCallback(async () => {
     setIsLoading(true);
@@ -317,6 +332,7 @@ export default function AdminVivaSection() {
     setIsDeleteDialogOpen(false);
     setError('');
     setSavedMessage('');
+    setQuotaShortages([]);
   };
 
   const openRound = (round: VivaRoundDto) => {
@@ -326,6 +342,13 @@ export default function AdminVivaSection() {
     setIsDeleteDialogOpen(false);
     setError('');
     setSavedMessage('');
+    setQuotaShortages([]);
+  };
+
+  const applyProgramQuotas = () => {
+    const result = selectTeamsByProgramQuota(teams, programQuotas);
+    setDraft((current) => ({ ...current, projectIds: result.selectedIds }));
+    setQuotaShortages(result.shortages);
   };
 
   const saveRound = async (event: FormEvent<HTMLFormElement>) => {
@@ -498,16 +521,62 @@ export default function AdminVivaSection() {
           <SelectionPanel
             title="Participating Teams"
             description="Choose the project teams included in this Viva round."
-            items={teams}
+            items={filteredTeams}
             selectedIds={draft.projectIds}
             disabled={isFrozen || isSaving}
             onToggle={(id) => setDraft((current) => ({ ...current, projectIds: toggleSelection(current.projectIds, id) }))}
-            onSelectAll={() => setDraft((current) => ({ ...current, projectIds: teams.map((team) => team.id) }))}
-            onClear={() => setDraft((current) => ({ ...current, projectIds: [] }))}
+            onSelectAll={() => setDraft((current) => ({
+              ...current,
+              projectIds: [...new Set([...current.projectIds, ...filteredTeams.map((team) => team.id)])],
+            }))}
+            onClear={() => setDraft((current) => ({
+              ...current,
+              projectIds: current.projectIds.filter((id) => !filteredTeams.some((team) => team.id === id)),
+            }))}
+            controls={(
+              <div className="mb-4 space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                <label className="grid gap-2 text-sm font-bold text-[var(--color-text)]">
+                  Filter teams by program
+                  <Select value={teamProgramFilter} onChange={(event) => setTeamProgramFilter(event.target.value)} disabled={isFrozen || isSaving}>
+                    <option value="all">All programs</option>
+                    {PROGRAM_CODES.map((program) => <option key={program} value={program}>{program}</option>)}
+                    <option value="unknown">Unknown program</option>
+                  </Select>
+                </label>
+                <fieldset disabled={isFrozen || isSaving}>
+                  <legend className="text-sm font-bold text-[var(--color-text)]">Random team requirements</legend>
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {PROGRAM_CODES.map((program) => (
+                      <label key={program} className="grid gap-1 text-xs font-semibold text-[var(--color-text-muted)]">
+                        {program}
+                        <StyledInput
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={programQuotas[program] || 0}
+                          onChange={(event) => setProgramQuotas((current) => ({
+                            ...current,
+                            [program]: Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                          }))}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <Button className="mt-3" variant="outline" onClick={applyProgramQuotas}>Apply requirements</Button>
+                </fieldset>
+                {quotaShortages.length > 0 && (
+                  <div role="status" className="rounded-lg bg-[var(--color-warning-soft)] p-3 text-xs font-semibold text-[var(--color-text)]">
+                    {quotaShortages.map((shortage) => (
+                      <p key={shortage.program}>{shortage.program}: requested {shortage.requested}, selected {shortage.selected}, missing {shortage.missing}.</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             renderItem={(team) => (
               <>
                 <span className="block font-bold text-[var(--color-text)]">{team.title}</span>
-                <span className="mt-1 block text-xs leading-5 text-[var(--color-text-muted)]">{team.members.map((member) => `${member.name}${member.rollNo ? ` (${member.rollNo})` : ''}`).join(', ')}</span>
+                <span className="mt-1 block text-xs leading-5 text-[var(--color-text-muted)]">{team.program || 'Unknown'} · {team.members.map((member) => `${member.name}${member.rollNo ? ` (${member.rollNo})` : ''}`).join(', ')}</span>
               </>
             )}
           />
@@ -609,6 +678,7 @@ function SelectionPanel<T extends { id: string }>({
   onSelectAll,
   onClear,
   additionalAction,
+  controls,
   renderItem,
 }: {
   title: string;
@@ -620,6 +690,7 @@ function SelectionPanel<T extends { id: string }>({
   onSelectAll: () => void;
   onClear: () => void;
   additionalAction?: ReactNode;
+  controls?: ReactNode;
   renderItem: (item: T) => ReactNode;
 }) {
   return (
@@ -635,6 +706,7 @@ function SelectionPanel<T extends { id: string }>({
           </span>
         }
       />
+      {controls}
       {items.length === 0 ? (
         <p className="text-sm leading-6 text-[var(--color-text-muted)]">No eligible {title.toLowerCase()} are available.</p>
       ) : (

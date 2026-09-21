@@ -9,6 +9,7 @@ const {
   parseVivaAutomaticScheduleSaveInput,
   parseVivaScheduleInput,
   parseVivaScheduleUpdateInput,
+  parseVivaPanelSwapInput,
 } = await importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts');
 
 test('Viva scheduling is automatic-only', async () => {
@@ -22,6 +23,27 @@ test('Viva scheduling is automatic-only', async () => {
   assert.match(component, /type="date"/);
   assert.match(component, /type="time"/);
   assert.doesNotMatch(component, /datetime-local/);
+});
+
+test('panel swap input rejects duplicate, malformed, and stale-looking identifiers', () => {
+  const first = '507f191e810c19729de860ea';
+  const second = '507f191e810c19729de860eb';
+  assert.equal(parseVivaPanelSwapInput({
+    first: { sessionId: first, version: 0 },
+    second: { sessionId: second, version: 3 },
+  }).success, true);
+  assert.equal(parseVivaPanelSwapInput({
+    first: { sessionId: first, version: 0 },
+    second: { sessionId: first, version: 1 },
+  }).success, false);
+  assert.equal(parseVivaPanelSwapInput({
+    first: { sessionId: { $ne: null }, version: 0 },
+    second: { sessionId: second, version: 1 },
+  }).success, false);
+  assert.equal(parseVivaPanelSwapInput({
+    first: { sessionId: first, version: -1 },
+    second: { sessionId: second, version: 1 },
+  }).success, false);
 });
 
 test('parses UTC Viva schedule input and rejects ambiguous timestamps', () => {

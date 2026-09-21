@@ -13,7 +13,7 @@ const [
   { default: VivaParticipantLock },
   { default: VivaAuditEvent },
   { cancelVivaSession, getVivaSchedules, parseVivaSessionCancellationInput, scheduleVivaSession },
-  { completeVivaSession, saveVivaGrade, startVivaSession },
+  { completeVivaSession, requeueVivaSession, saveVivaGrade, startVivaSession },
   { isVivaPanelMemberAccessRestricted },
 ] = await Promise.all([
   importTypeScriptModuleWithDependencies('models/User.ts'),
@@ -94,6 +94,7 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
     });
     const adminActor = actor(systemAdmin);
     const panelAdminActor = actor(panelAdmin);
+    const panelMemberActor = actor(panelMember);
 
     assert.equal(
       parseVivaSessionCancellationInput({ sessionId: String(panel._id), version: 0, cancellationReason: ' ' }).success,
@@ -257,6 +258,76 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
     assert.ok(raceRecord.cancelledAt);
     assert.equal(await VivaAuditEvent.countDocuments({ sessionId: racingSession.schedule.id, event: 'session-cancelled' }), 1);
 
+    await VivaSession.updateOne(
+      { _id: freshActiveAttempt.schedule.id },
+      { $set: { scheduledAt: new Date('2026-10-10T15:00:00.000Z'), vivaEndsAt: new Date('2026-10-10T15:30:00.000Z') } }
+    );
+    const requeueTarget = await scheduleVivaSession(
+      scheduleInput(String(round._id), String(projectThree._id), String(panel._id), '2026-10-10T14:00:00.000Z'),
+      adminActor
+    );
+    assert.equal(requeueTarget.success, true, requeueTarget.success ? '' : requeueTarget.error);
+    const requeueStart = await startVivaSession(
+      requeueTarget.schedule.id,
+      panelAdminActor,
+      new Date('2026-10-10T14:00:00.000Z')
+    );
+    assert.equal(requeueStart.success, true, requeueStart.success ? '' : requeueStart.error);
+    const unauthorizedRequeue = await requeueVivaSession(
+      requeueTarget.schedule.id,
+      requeueStart.workspace.version,
+      panelMemberActor,
+      new Date('2026-10-10T14:01:00.000Z')
+    );
+    assert.equal(unauthorizedRequeue.success, false);
+    assert.equal(unauthorizedRequeue.reason, 'forbidden');
+
+    const requeueRace = await Promise.all([
+      requeueVivaSession(requeueTarget.schedule.id, requeueStart.workspace.version, panelAdminActor, new Date('2026-10-10T14:02:00.000Z')),
+      requeueVivaSession(requeueTarget.schedule.id, requeueStart.workspace.version, panelAdminActor, new Date('2026-10-10T14:02:00.000Z')),
+    ]);
+    assert.equal(requeueRace.filter((result) => result.success).length, 1);
+    const [requeuedRecord, shiftedRecord] = await Promise.all([
+      VivaSession.findById(requeueTarget.schedule.id).lean(),
+      VivaSession.findById(freshActiveAttempt.schedule.id).lean(),
+    ]);
+    assert.equal(requeuedRecord.startedAt, null);
+    assert.equal(requeuedRecord.roundSnapshot, undefined);
+    assert.equal(requeuedRecord.projectSnapshot, undefined);
+    assert.equal(requeuedRecord.panelSnapshot, undefined);
+    assert.equal(requeuedRecord.scheduledAt.toISOString(), '2026-10-10T15:00:00.000Z');
+    assert.equal(shiftedRecord.scheduledAt.toISOString(), '2026-10-10T14:00:00.000Z');
+    assert.equal(await VivaParticipantLock.countDocuments({ sessionId: requeueTarget.schedule.id }), 0);
+    assert.equal(await VivaAuditEvent.countDocuments({ sessionId: requeueTarget.schedule.id, event: 'session-requeued' }), 1);
+
+    const restarted = await startVivaSession(
+      requeueTarget.schedule.id,
+      panelAdminActor,
+      new Date('2026-10-10T15:00:00.000Z')
+    );
+    assert.equal(restarted.success, true, restarted.success ? '' : restarted.error);
+    const requeueGrade = await saveVivaGrade(
+      requeueTarget.schedule.id,
+      restarted.workspace.version,
+      'B',
+      panelAdminActor,
+      new Date('2026-10-10T15:01:00.000Z')
+    );
+    assert.equal(requeueGrade.success, true, requeueGrade.success ? '' : requeueGrade.error);
+    const gradedRequeue = await requeueVivaSession(
+      requeueTarget.schedule.id,
+      requeueGrade.workspace.version,
+      panelAdminActor,
+      new Date('2026-10-10T15:02:00.000Z')
+    );
+    assert.equal(gradedRequeue.success, false);
+    assert.equal(gradedRequeue.reason, 'not-startable');
+    await cancelVivaSession(
+      { sessionId: requeueTarget.schedule.id, version: requeueGrade.workspace.version, cancellationReason: 'Test cleanup' },
+      adminActor,
+      new Date('2026-10-10T15:03:00.000Z')
+    );
+
     const schedules = await getVivaSchedules();
     assert.equal(schedules.find((schedule) => schedule.id === active.schedule.id)?.phase, 'cancelled');
     assert.equal(schedules.find((schedule) => schedule.id === freshActiveAttempt.schedule.id)?.phase, 'scheduled');
@@ -265,7 +336,7 @@ export async function runVivaCancellationIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 7,
       seededTeams: 3,
-      verified: ['required-reason', 'scheduled-cancellation', 'active-cancellation', 'audit-history', 'restriction-release', 'fresh-attempt', 'no-inherited-grade', 'cancelled-write-rejection', 'completed-result-protection', 'cancellation-grade-race'],
+      verified: ['required-reason', 'scheduled-cancellation', 'active-cancellation', 'audit-history', 'restriction-release', 'fresh-attempt', 'no-inherited-grade', 'cancelled-write-rejection', 'completed-result-protection', 'cancellation-grade-race', 'panel-admin-requeue', 'requeue-rotation', 'requeue-race', 'saved-grade-protection'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

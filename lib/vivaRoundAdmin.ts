@@ -41,6 +41,7 @@ export type VivaRoundDto = VivaRoundInput & {
 export type VivaTeamOption = {
   id: string;
   title: string;
+  program: string;
   members: Array<{ id: string; name: string; rollNo: string }>;
 };
 
@@ -92,6 +93,7 @@ type UserRecord = {
   _id: unknown;
   name?: unknown;
   rollNo?: unknown;
+  program?: unknown;
 };
 
 type ParsedVivaRoundInput =
@@ -294,7 +296,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
   const [students, examiners, rounds, panels, schedules] = await Promise.all([
     studentIds.length > 0
       ? User.find({ _id: { $in: studentIds }, role: 'student', isActive: true })
-          .select('_id name rollNo')
+          .select('_id name rollNo program')
           .lean<UserRecord[]>()
       : Promise.resolve([]),
     User.find({ role: 'supervisor', isActive: true })
@@ -318,6 +320,7 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
         id: String(student._id),
         name: typeof student.name === 'string' ? student.name : 'Unnamed student',
         rollNo: typeof student.rollNo === 'string' ? student.rollNo : '',
+        program: typeof student.program === 'string' ? student.program : '',
       },
     ])
   );
@@ -337,6 +340,9 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
       return [{
         id: String(project._id),
         title,
+        program: members.every((member) => member.program === members[0].program)
+          ? members[0].program
+          : '',
         members,
       }];
     }),

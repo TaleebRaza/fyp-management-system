@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, Play, RefreshCw, Save } from 'lucide-react';
+import { CheckCircle2, Loader2, Play, RefreshCw, Save, XCircle } from 'lucide-react';
 
 import type { VivaPersonDto, VivaSessionWorkspaceDto } from '../../lib/vivaSessionDashboard';
-import { Badge, Button, DashboardPanel, SectionHeader, Select } from '../ui';
+import { Badge, Button, DashboardPanel, Dialog, SectionHeader, Select } from '../ui';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -160,9 +160,10 @@ function formatDateTime(value: string) {
 export default function VivaSessionWorkspace() {
   const [sessions, setSessions] = useState<VivaSessionWorkspaceDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingAction, setPendingAction] = useState<{ sessionId: string; type: 'start' | 'save' | 'complete' } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ sessionId: string; type: 'start' | 'save' | 'complete' | 'requeue' } | null>(null);
   const [gradeDrafts, setGradeDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
+  const [requeueSessionId, setRequeueSessionId] = useState<string | null>(null);
 
   const loadSessions = useCallback(async () => {
     setIsLoading(true);
@@ -276,6 +277,34 @@ export default function VivaSessionWorkspace() {
     }
   };
 
+  const requeueSession = async () => {
+    if (pendingAction || !requeueSessionId) return;
+    const session = sessions.find((candidate) => candidate.id === requeueSessionId);
+    if (!session || session.phase !== 'running' || session.result) return;
+
+    setPendingAction({ sessionId: session.id, type: 'requeue' });
+    setError('');
+    try {
+      const response = await fetch('/api/dashboard/supervisor/viva', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'requeue-session', sessionId: session.id, version: session.version }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to requeue the Viva session.'));
+      const nextSessions = readSessions(body);
+      if (!nextSessions) throw new Error('Viva requeue response was invalid.');
+      setSessions(orderSessions(nextSessions));
+      setGradeDrafts(Object.fromEntries(nextSessions.map((candidate) => [candidate.id, candidate.result?.grade || ''])));
+      setRequeueSessionId(null);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to requeue the Viva session.');
+      await loadSessions();
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-[24rem] items-center justify-center text-sm font-bold text-[var(--color-text-muted)]">
@@ -302,6 +331,7 @@ export default function VivaSessionWorkspace() {
         const isStarting = pendingAction?.sessionId === session.id && pendingAction.type === 'start';
         const isSaving = pendingAction?.sessionId === session.id && pendingAction.type === 'save';
         const isCompleting = pendingAction?.sessionId === session.id && pendingAction.type === 'complete';
+        const isRequeueing = pendingAction?.sessionId === session.id && pendingAction.type === 'requeue';
         const selectedGrade = gradeDrafts[session.id] ?? session.result?.grade ?? '';
         const hasUnsavedGrade = selectedGrade !== (session.result?.grade || '');
         return (
@@ -338,7 +368,7 @@ export default function VivaSessionWorkspace() {
               </div>
             )}
             {session.phase === 'running' && session.canManage && (
-              <div className="mt-6 grid gap-4 border-t border-[var(--color-border)] pt-6 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+              <div className="mt-6 grid gap-4 border-t border-[var(--color-border)] pt-6 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-end">
                 <label className="grid gap-2 text-sm font-bold text-[var(--color-text)]">
                   Final grade
                   <Select
@@ -360,6 +390,12 @@ export default function VivaSessionWorkspace() {
                   {isCompleting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
                   {isCompleting ? 'Completing...' : 'Complete Viva'}
                 </Button>
+                {!session.result && (
+                  <Button variant="danger" onClick={() => setRequeueSessionId(session.id)} disabled={Boolean(pendingAction)}>
+                    {isRequeueing ? <Loader2 className="animate-spin" size={16} /> : <XCircle size={16} />}
+                    Cancel start and move last
+                  </Button>
+                )}
               </div>
             )}
             {session.phase === 'completed' && (
@@ -370,6 +406,25 @@ export default function VivaSessionWorkspace() {
           </DashboardPanel>
         );
       })}
+      <Dialog
+        open={Boolean(requeueSessionId)}
+        onClose={() => setRequeueSessionId(null)}
+        closeDisabled={Boolean(pendingAction)}
+        title="Cancel this start and move the team last?"
+        description="The running session will return to scheduled and later teams on this panel will move forward one slot."
+        size="sm"
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setRequeueSessionId(null)} disabled={Boolean(pendingAction)}>Keep running</Button>
+            <Button variant="danger" onClick={() => void requeueSession()} disabled={Boolean(pendingAction)}>
+              {pendingAction?.type === 'requeue' ? <Loader2 className="animate-spin" size={16} /> : <XCircle size={16} />}
+              Confirm requeue
+            </Button>
+          </>
+        )}
+      >
+        <p className="text-sm leading-6 text-[var(--color-text-muted)]">Saved grades cannot be requeued. This action keeps the same team and panel but changes the queue times.</p>
+      </Dialog>
     </div>
   );
 }

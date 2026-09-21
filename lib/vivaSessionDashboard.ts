@@ -92,10 +92,20 @@ export type VivaSessionCompletionResult =
     }
   | VivaSessionMutationFailure;
 
+export type VivaSessionRequeueResult =
+  | { success: true }
+  | VivaSessionMutationFailure;
+
 type VivaSessionStartFailure = Extract<VivaSessionStartResult, { success: false }>;
 
 class VivaStartAbort extends Error {
   constructor(readonly result: VivaSessionStartFailure) {
+    super(result.error);
+  }
+}
+
+class VivaRequeueAbort extends Error {
+  constructor(readonly result: Extract<VivaSessionRequeueResult, { success: false }>) {
     super(result.error);
   }
 }
@@ -112,6 +122,7 @@ type VivaRoundRecord = {
   vivaDurationMinutes?: unknown;
   confirmedAt?: Date | null;
   frozenAt?: Date | null;
+  scheduleRevision?: unknown;
 };
 
 type VivaPanelRecord = {
@@ -759,6 +770,202 @@ export async function completeVivaSession(
       workspace: { ...workspace, canManage: true },
     };
   });
+}
+
+function idsOverlap(first: readonly string[], second: readonly string[]): boolean {
+  const firstIds = new Set(first);
+  return second.some((id) => firstIds.has(id));
+}
+
+export async function requeueVivaSession(
+  sessionId: string,
+  version: number,
+  actor: VivaSessionActor,
+  occurredAt = new Date()
+): Promise<VivaSessionRequeueResult> {
+  if (!mongoose.Types.ObjectId.isValid(sessionId) || !mongoose.Types.ObjectId.isValid(actor.id)) {
+    return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+  }
+  if (asVersion(version) === null || !(occurredAt instanceof Date) || !Number.isFinite(occurredAt.getTime())) {
+    return { success: false, reason: 'invalid', error: 'The Viva requeue request is invalid.' };
+  }
+
+  try {
+    return await withVivaTransaction(async (databaseSession) => {
+      const active = await readSession(sessionId, databaseSession);
+      if (!active) return { success: false, reason: 'not-found', error: 'This Viva session no longer exists.' };
+      if (snapshotPanelAdminId(active) !== actor.id) {
+        return { success: false, reason: 'forbidden', error: 'Only the assigned panel admin can requeue this Viva session.' };
+      }
+      if (sessionPhase(active) !== 'running') {
+        return { success: false, reason: 'not-startable', error: 'Only a running Viva session can be requeued.' };
+      }
+      if (isRecord(active.result)) {
+        return { success: false, reason: 'not-startable', error: 'A session with a saved grade cannot be requeued.' };
+      }
+      if (asVersion(active.version) !== version) {
+        return { success: false, reason: 'concurrent-change', error: 'Another tab changed this Viva session. Reload before requeueing it.' };
+      }
+
+      const activeId = String(active._id);
+      const roundId = asId(active.roundId);
+      const panelId = asId(active.panelId);
+      const scheduledAt = asDate(active.scheduledAt);
+      if (!roundId || !panelId || !asId(active.projectId) || !scheduledAt) {
+        return { success: false, reason: 'invalid', error: 'This active Viva session has incomplete scheduling data.' };
+      }
+      const round = await VivaRound.findById(roundId)
+        .select('_id vivaDurationMinutes scheduleRevision')
+        .session(databaseSession)
+        .lean<VivaRoundRecord | null>();
+      const panel = await VivaPanel.findById(panelId)
+        .select('_id examinerIds')
+        .session(databaseSession)
+        .lean<VivaPanelRecord | null>();
+      const durationMinutes = Number(round?.vivaDurationMinutes);
+      const panelExaminerIds = panel ? asIdList(panel.examinerIds) : null;
+      if (!round || !panelExaminerIds || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+        return { success: false, reason: 'invalid', error: 'This Viva round or panel can no longer be requeued safely.' };
+      }
+
+      const laterSessions = await VivaSession.find({
+        _id: { $ne: active._id },
+        roundId,
+        panelId,
+        scheduledAt: { $gt: scheduledAt },
+        startedAt: null,
+        completedAt: null,
+        cancelledAt: null,
+      })
+        .select('_id roundId panelId projectId scheduledAt vivaEndsAt startedAt completedAt cancelledAt version')
+        .sort({ scheduledAt: 1, _id: 1 })
+        .session(databaseSession)
+        .lean<VivaSessionRecord[]>();
+      if (laterSessions.some((candidate) => !(candidate.scheduledAt instanceof Date) || asVersion(candidate.version) === null)) {
+        return { success: false, reason: 'invalid', error: 'A later Viva session has incomplete scheduling data.' };
+      }
+
+      const affected = [active, ...laterSessions];
+      const slotStarts = affected.map((candidate) => asDate(candidate.scheduledAt));
+      if (!slotStarts.every((value): value is Date => Boolean(value))) {
+        return { success: false, reason: 'invalid', error: 'The Viva queue has incomplete scheduling data.' };
+      }
+      const durationMs = durationMinutes * 60_000;
+      const proposed = affected.map((record, index) => {
+        const targetStart = index === 0 ? slotStarts[slotStarts.length - 1] : slotStarts[index - 1];
+        return { record, scheduledAt: targetStart, vivaEndsAt: new Date(targetStart.getTime() + durationMs) };
+      });
+
+      const projects = await Project.find({ _id: { $in: affected.map((candidate) => candidate.projectId) } })
+        .select('_id members')
+        .session(databaseSession)
+        .lean<VivaProjectRecord[]>();
+      const projectMembersById = new Map(projects.map((project) => [String(project._id), asIdList(project.members) || []]));
+      if (affected.some((candidate) => !projectMembersById.has(String(candidate.projectId)))) {
+        return { success: false, reason: 'invalid', error: 'A queued Viva team no longer exists.' };
+      }
+
+      const rangeStart = new Date(Math.min(...proposed.map((candidate) => candidate.scheduledAt.getTime())));
+      const rangeEnd = new Date(Math.max(...proposed.map((candidate) => candidate.vivaEndsAt.getTime())));
+      const externalSessions = await VivaSession.find({
+        _id: { $nin: affected.map((candidate) => candidate._id) },
+        cancelledAt: null,
+        completedAt: null,
+        scheduledAt: { $lt: rangeEnd },
+        vivaEndsAt: { $gt: rangeStart },
+      })
+        .select('_id panelId projectId scheduledAt vivaEndsAt')
+        .session(databaseSession)
+        .lean<VivaSessionRecord[]>();
+      const externalPanels = await VivaPanel.find({ _id: { $in: externalSessions.map((candidate) => candidate.panelId) } })
+        .select('_id examinerIds')
+        .session(databaseSession)
+        .lean<VivaPanelRecord[]>();
+      const externalProjects = await Project.find({ _id: { $in: externalSessions.map((candidate) => candidate.projectId) } })
+        .select('_id members')
+        .session(databaseSession)
+        .lean<VivaProjectRecord[]>();
+      const externalPanelMembers = new Map(externalPanels.map((candidate) => [String(candidate._id), asIdList(candidate.examinerIds) || []]));
+      const externalProjectMembers = new Map(externalProjects.map((candidate) => [String(candidate._id), asIdList(candidate.members) || []]));
+
+      for (const candidate of proposed) {
+        const memberIds = projectMembersById.get(String(candidate.record.projectId)) || [];
+        for (const external of externalSessions) {
+          const externalStart = asDate(external.scheduledAt);
+          const externalEnd = asDate(external.vivaEndsAt);
+          const externalExaminerIds = externalPanelMembers.get(String(external.panelId));
+          const externalMemberIds = externalProjectMembers.get(String(external.projectId));
+          if (!externalStart || !externalEnd || !externalExaminerIds || !externalMemberIds) {
+            return { success: false, reason: 'invalid', error: 'An existing Viva schedule has incomplete resources.' };
+          }
+          if (externalStart >= candidate.vivaEndsAt || externalEnd <= candidate.scheduledAt) continue;
+          if (idsOverlap(panelExaminerIds, externalExaminerIds) || idsOverlap(memberIds, externalMemberIds)) {
+            return { success: false, reason: 'invalid', error: 'Requeueing would conflict with another Viva session.' };
+          }
+        }
+      }
+
+      const scheduleRevision = asVersion(round.scheduleRevision) || 0;
+      const revisionFilter = scheduleRevision === 0
+        ? { $or: [{ scheduleRevision: 0 }, { scheduleRevision: { $exists: false } }] }
+        : { scheduleRevision };
+      const reservedRound = await VivaRound.updateOne(
+        { _id: roundId, ...revisionFilter },
+        { $inc: { scheduleRevision: 1 } },
+        { session: databaseSession }
+      );
+      if (reservedRound.modifiedCount !== 1) {
+        return { success: false, reason: 'concurrent-change', error: 'Another administrator changed this schedule. Reload before requeueing.' };
+      }
+
+      const write = await VivaSession.bulkWrite(proposed.map((candidate) => {
+        const isActive = String(candidate.record._id) === activeId;
+        return {
+          updateOne: {
+            filter: {
+              _id: candidate.record._id,
+              version: isActive ? version : candidate.record.version,
+              ...(isActive
+                ? { startedAt: { $type: 'date' }, completedAt: null, cancelledAt: null, result: { $exists: false } }
+                : { startedAt: null, completedAt: null, cancelledAt: null }),
+            },
+            update: {
+              $set: {
+                scheduledAt: candidate.scheduledAt,
+                vivaEndsAt: candidate.vivaEndsAt,
+                ...(isActive ? { startedAt: null } : {}),
+              },
+              ...(isActive ? { $unset: { roundSnapshot: 1, projectSnapshot: 1, panelSnapshot: 1 } } : {}),
+              $inc: { version: 1 },
+            },
+          },
+        };
+      }), { session: databaseSession, ordered: true });
+      if (write.modifiedCount !== affected.length) {
+        throw new VivaRequeueAbort({
+          success: false,
+          reason: 'concurrent-change',
+          error: 'Another user changed this Viva queue. Reload before requeueing.',
+        });
+      }
+
+      await VivaParticipantLock.deleteMany({ sessionId }, { session: databaseSession });
+      await recordVivaAuditEvent({
+        roundId,
+        sessionId,
+        event: 'session-requeued',
+        actorId: actor.id,
+        actorRole: 'supervisor',
+        actorName: actor.name,
+        actorRollNo: actor.rollNo,
+        occurredAt,
+      }, databaseSession);
+      return { success: true };
+    });
+  } catch (error) {
+    if (error instanceof VivaRequeueAbort) return error.result;
+    throw error;
+  }
 }
 
 export async function getVivaPanelSessions(actorId: string): Promise<VivaSessionWorkspaceDto[]> {

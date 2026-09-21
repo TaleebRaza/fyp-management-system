@@ -20,8 +20,10 @@ import {
   cancelVivaSession,
   parseVivaAutomaticScheduleInput,
   parseVivaAutomaticScheduleSaveInput,
+  parseVivaPanelSwapInput,
   parseVivaSessionCancellationInput,
   previewAutomaticVivaSchedule,
+  swapVivaSessionPanels,
 } from '../../../../lib/vivaScheduling';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isRecord } from '../../../../lib/security/input';
@@ -212,6 +214,23 @@ export async function PATCH(req: NextRequest) {
     } catch (error) {
       console.error('Admin Viva automatic schedule save error:', error);
       return NextResponse.json({ error: 'Failed to save the Viva schedule draft.' }, { status: 500 });
+    }
+  }
+
+  if (isRecord(body) && body.action === 'swap-session-panels') {
+    const parsed = parseVivaPanelSwapInput(body);
+    if (!parsed.success) return NextResponse.json({ error: parsed.error }, { status: 400 });
+
+    try {
+      const result = await swapVivaSessionPanels(parsed.input, adminActor(currentUser));
+      if (!result.success) {
+        const status = result.reason === 'not-found' ? 404 : result.reason === 'concurrent-change' ? 409 : 400;
+        return NextResponse.json({ error: result.error }, { status });
+      }
+      return NextResponse.json({ schedules: result.schedules });
+    } catch (error) {
+      console.error('Admin Viva panel swap error:', error);
+      return NextResponse.json({ error: 'Failed to swap Viva panels.' }, { status: 500 });
     }
   }
 

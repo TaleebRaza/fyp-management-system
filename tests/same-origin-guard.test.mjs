@@ -24,4 +24,22 @@ test('cookie-authenticated mutations require the request origin to match the por
     isSameOriginMutation(new Request('https://portal.example/api/action', { method: 'GET' })),
     true
   );
+  assert.equal(
+    isSameOriginMutation(new Request('https://portal.example/api/action', {
+      method: 'PATCH',
+      headers: {
+        origin: 'https://evil.example',
+        'x-forwarded-host': 'evil.example',
+        'x-forwarded-proto': 'https',
+      },
+    })),
+    false
+  );
+  assert.equal(
+    isSameOriginMutation(new Request('https://portal.example/api/action', {
+      method: 'DELETE',
+      headers: { origin: 'not a url' },
+    })),
+    false
+  );
 });

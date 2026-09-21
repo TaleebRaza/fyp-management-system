@@ -309,19 +309,31 @@ export async function runVivaPerformanceIntegration(testDatabaseUri) {
       sessionId: { $in: sharedRoundSessions.map(({ _id }) => _id) },
       event: 'session-started',
     }), SESSION_COUNT);
+    assert.ok(sharedRoundStarts.metrics.p95 <= 5_000, `Shared-round start p95 was ${sharedRoundStarts.metrics.p95}ms`);
 
     const sharedRoundWorkspaces = sharedRoundStarts.results.map((result) => result.value.workspace);
-    const sharedRoundGrades = await Promise.all(sharedRoundSessions.map((session, index) => (
+    const sharedRoundGrades = await timedAll(sharedRoundSessions.map((session, index) => async () => (
       saveVivaGrade(String(session._id), sharedRoundWorkspaces[index].version, 'A', actor(examiners[index * 2]))
     )));
-    assert.ok(sharedRoundGrades.every((result) => result.success));
-    const sharedRoundCompletions = await Promise.all(sharedRoundSessions.map((session, index) => (
-      completeVivaSession(String(session._id), sharedRoundGrades[index].workspace.version, actor(examiners[index * 2]))
+    assert.ok(sharedRoundGrades.results.every((result) => result.status === 'fulfilled' && result.value.success));
+    assert.ok(sharedRoundGrades.metrics.p95 <= 5_000, `Shared-round grade p95 was ${sharedRoundGrades.metrics.p95}ms`);
+    const sharedRoundGradedWorkspaces = sharedRoundGrades.results.map((result) => result.value.workspace);
+    const sharedRoundCompletions = await timedAll(sharedRoundSessions.map((session, index) => async () => (
+      completeVivaSession(String(session._id), sharedRoundGradedWorkspaces[index].version, actor(examiners[index * 2]))
     )));
-    assert.ok(sharedRoundCompletions.every((result) => result.success));
+    assert.ok(sharedRoundCompletions.results.every((result) => result.status === 'fulfilled' && result.value.success));
+    assert.ok(sharedRoundCompletions.metrics.p95 <= 5_000, `Shared-round completion p95 was ${sharedRoundCompletions.metrics.p95}ms`);
     assert.equal(await VivaParticipantLock.countDocuments({
       sessionId: { $in: sharedRoundSessions.map(({ _id }) => _id) },
     }), 0);
+    assert.equal(await VivaAuditEvent.countDocuments({
+      sessionId: { $in: sharedRoundSessions.map(({ _id }) => _id) },
+    }), SESSION_COUNT * 3);
+    assert.equal(await VivaSession.countDocuments({
+      _id: { $in: sharedRoundSessions.map(({ _id }) => _id) },
+      completedAt: { $type: 'date' },
+      version: 2,
+    }), SESSION_COUNT);
 
     await VivaPanel.updateOne(
       { _id: throughputPanels[1]._id },
@@ -412,6 +424,8 @@ export async function runVivaPerformanceIntegration(testDatabaseUri) {
       agenda: agendaMeasurements,
       concurrentStarts: starts.metrics,
       sharedRoundConcurrentStarts: sharedRoundStarts.metrics,
+      sharedRoundConcurrentGrades: sharedRoundGrades.metrics,
+      sharedRoundConcurrentCompletions: sharedRoundCompletions.metrics,
       concurrentGrades: grades.metrics,
       concurrentCompletions: completions.metrics,
       successes: SESSION_COUNT,

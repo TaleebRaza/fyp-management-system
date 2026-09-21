@@ -17,7 +17,7 @@ type AvailabilityDraft = {
   rooms: string;
 };
 
-type BusyAction = 'preview' | 'apply' | 'confirm' | 'cancel' | null;
+type BusyAction = 'preview' | 'apply' | 'confirm' | 'cancel' | 'swap' | null;
 
 type VivaScheduleManagementProps = {
   round: VivaRoundDto;
@@ -200,6 +200,7 @@ export default function VivaScheduleManagement({
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
   const [showHeldProjects, setShowHeldProjects] = useState(false);
+  const [swapSourceId, setSwapSourceId] = useState<string | null>(null);
 
   const roundTeams = useMemo(
     () => teams.filter((team) => round.projectIds.includes(team.id)),
@@ -357,13 +358,54 @@ export default function VivaScheduleManagement({
     }
   };
 
+  const swapPanels = async (sourceId: string, targetId: string) => {
+    if (sourceId === targetId || busy) return;
+    const source = roundSchedules.find((schedule) => schedule.id === sourceId);
+    const target = roundSchedules.find((schedule) => schedule.id === targetId);
+    if (!source || !target || source.phase !== 'scheduled' || target.phase !== 'scheduled') {
+      setError('Only two unstarted scheduled sessions can swap panels.');
+      setSwapSourceId(null);
+      return;
+    }
+
+    setBusy('swap');
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/admin/viva', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'swap-session-panels',
+          first: { sessionId: source.id, version: source.version },
+          second: { sessionId: target.id, version: target.version },
+        }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to swap the Viva panels.'));
+      const swapped = isRecord(body) && Array.isArray(body.schedules)
+        ? body.schedules.map(readSchedule)
+        : [];
+      if (swapped.length !== 2 || !swapped.every((schedule): schedule is VivaScheduleDto => Boolean(schedule))) {
+        throw new Error('Viva panel swap response was invalid.');
+      }
+      swapped.forEach(onSaved);
+      setMessage('Panel assignments swapped.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to swap the Viva panels.');
+    } finally {
+      setSwapSourceId(null);
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <DashboardPanel>
         <SectionHeader
           title="Automatic Team Scheduling"
           description={round.confirmedAt
-            ? 'This round is confirmed. Sessions are visible to students and scheduling is locked.'
+            ? 'This round is confirmed. Sessions are visible to students; unstarted panel assignments can still be swapped below.'
             : 'Choose one time window and the rooms that panels will keep for this schedule.'}
         />
 
@@ -482,7 +524,7 @@ export default function VivaScheduleManagement({
       </DashboardPanel>
 
       <DashboardPanel>
-        <SectionHeader title="Scheduled sessions" description="Only cancellation remains available after confirmation." />
+        <SectionHeader title="Scheduled sessions" description="Drag one scheduled panel onto another team, or select it and use Swap here." />
         <div className="max-h-[38rem] overflow-auto rounded-xl border border-[var(--color-border)]">
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-[var(--color-surface-muted)]">
@@ -498,13 +540,42 @@ export default function VivaScheduleManagement({
 
             <tbody>
               {roundSchedules.map((schedule) => (
-                <tr key={schedule.id} className="border-t border-[var(--color-border)]">
+                <tr
+                  key={schedule.id}
+                  className={`border-t border-[var(--color-border)] ${swapSourceId === schedule.id ? 'bg-[var(--color-accent-soft)]' : ''}`}
+                  onDragOver={(event) => {
+                    if (schedule.phase === 'scheduled' && swapSourceId && swapSourceId !== schedule.id) event.preventDefault();
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const sourceId = event.dataTransfer.getData('text/plain') || swapSourceId;
+                    if (sourceId) void swapPanels(sourceId, schedule.id);
+                  }}
+                >
                   <td className="px-4 py-3 font-semibold">
                     {teamsById.get(schedule.projectId)?.title || 'Unavailable team'}
                   </td>
 
                   <td className="whitespace-nowrap px-4 py-3">
-                    Panel {panelNumberById.get(schedule.panelId) || '—'}
+                    {schedule.phase === 'scheduled' ? (
+                      <button
+                        type="button"
+                        draggable={busy === null}
+                        aria-pressed={swapSourceId === schedule.id}
+                        title="Drag this panel assignment to another team, or select it to reveal Swap here buttons."
+                        className="cursor-grab rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 font-semibold active:cursor-grabbing"
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', schedule.id);
+                          setSwapSourceId(schedule.id);
+                        }}
+                        onDragEnd={() => setSwapSourceId(null)}
+                        onClick={() => setSwapSourceId((current) => current === schedule.id ? null : schedule.id)}
+                        disabled={busy !== null}
+                      >
+                        Panel {panelNumberById.get(schedule.panelId) || '—'}
+                      </button>
+                    ) : `Panel ${panelNumberById.get(schedule.panelId) || '—'}`}
                   </td>
 
                   <td className="whitespace-nowrap px-4 py-3">
@@ -524,7 +595,12 @@ export default function VivaScheduleManagement({
 
                   <td className="px-4 py-3">
                     {schedule.phase === 'scheduled' && (
-                      <>
+                      <div className="flex flex-wrap items-start gap-2">
+                        {swapSourceId && swapSourceId !== schedule.id && (
+                          <Button variant="outline" onClick={() => void swapPanels(swapSourceId, schedule.id)} disabled={busy !== null}>
+                            Swap here
+                          </Button>
+                        )}
                         <Button
                           variant="danger"
                           onClick={() => setCancellingId(schedule.id)}
@@ -535,7 +611,7 @@ export default function VivaScheduleManagement({
                         </Button>
 
                         {cancellingId === schedule.id && (
-                          <div className="mt-3 min-w-72">
+                          <div className="basis-full pt-1 min-w-72">
                             <TextArea
                               value={cancellationReason}
                               maxLength={1000}
@@ -556,7 +632,7 @@ export default function VivaScheduleManagement({
                             </div>
                           </div>
                         )}
-                      </>
+                      </div>
                     )}
                   </td>
                 </tr>

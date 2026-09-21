@@ -52,6 +52,19 @@ export type VivaSessionCancellationInput = {
   cancellationReason: string;
 };
 
+export type VivaPanelSwapInput = {
+  first: { sessionId: string; version: number };
+  second: { sessionId: string; version: number };
+};
+
+export type VivaPanelSwapResult =
+  | { success: true; schedules: [VivaScheduleDto, VivaScheduleDto] }
+  | {
+      success: false;
+      reason: 'invalid' | 'not-found' | 'not-swappable' | 'concurrent-change';
+      error: string;
+    };
+
 export type VivaScheduleAvailabilityInput = {
   startsAt: Date;
   endsAt: Date;
@@ -422,6 +435,36 @@ export function parseVivaSessionCancellationInput(value: unknown):
   return { success: true, input: { sessionId, version, cancellationReason } };
 }
 
+export function parseVivaPanelSwapInput(value: unknown):
+  | { success: true; input: VivaPanelSwapInput }
+  | { success: false; error: string } {
+  if (!isRecord(value) || !isRecord(value.first) || !isRecord(value.second)) {
+    return { success: false, error: 'Choose two valid Viva sessions to swap.' };
+  }
+
+  const firstSessionId = asObjectId(value.first.sessionId);
+  const secondSessionId = asObjectId(value.second.sessionId);
+  const firstVersion = asVersion(value.first.version);
+  const secondVersion = asVersion(value.second.version);
+  if (
+    !firstSessionId
+    || !secondSessionId
+    || firstSessionId === secondSessionId
+    || firstVersion === null
+    || secondVersion === null
+  ) {
+    return { success: false, error: 'Choose two different valid Viva sessions to swap.' };
+  }
+
+  return {
+    success: true,
+    input: {
+      first: { sessionId: firstSessionId, version: firstVersion },
+      second: { sessionId: secondSessionId, version: secondVersion },
+    },
+  };
+}
+
 function buildScheduleContext(
   input: VivaScheduleInput,
   round: VivaRoundRecord,
@@ -585,10 +628,13 @@ async function findScheduleConflict(
   input: VivaScheduleInput,
   context: ScheduleContext,
   session: ClientSession,
-  excludedSessionId?: string
+  excludedSessionId?: string | readonly string[]
 ): Promise<string | null> {
+  const excludedSessionIds = typeof excludedSessionId === 'string'
+    ? [excludedSessionId]
+    : excludedSessionId;
   const candidates = await VivaSession.find({
-    ...(excludedSessionId ? { _id: { $ne: excludedSessionId } } : {}),
+    ...(excludedSessionIds?.length ? { _id: { $nin: excludedSessionIds } } : {}),
     cancelledAt: null,
     completedAt: null,
     scheduledAt: { $lt: context.vivaEndsAt },
@@ -623,20 +669,23 @@ async function findScheduleConflict(
 async function hasExistingAttempt(
   input: VivaScheduleInput,
   session: ClientSession,
-  excludedSessionId?: string
+  excludedSessionId?: string | readonly string[]
 ): Promise<boolean> {
+  const excludedSessionIds = typeof excludedSessionId === 'string'
+    ? [excludedSessionId]
+    : excludedSessionId;
   return Boolean(await VivaSession.exists({
     roundId: input.roundId,
     projectId: input.projectId,
     cancelledAt: null,
-    ...(excludedSessionId ? { _id: { $ne: excludedSessionId } } : {}),
+    ...(excludedSessionIds?.length ? { _id: { $nin: excludedSessionIds } } : {}),
   }).session(session));
 }
 
 async function validateSchedule(
   input: VivaScheduleInput,
   session: ClientSession,
-  excludedSessionId?: string
+  excludedSessionId?: string | readonly string[]
 ): Promise<{ success: true; context: ScheduleContext } | { success: false; error: string }> {
   const existingAttempt = await hasExistingAttempt(input, session, excludedSessionId);
   const context = await readScheduleContext(input, session);
@@ -647,6 +696,150 @@ async function validateSchedule(
 
   const conflictError = await findScheduleConflict(input, context.context, session, excludedSessionId);
   return conflictError ? { success: false, error: conflictError } : context;
+}
+
+class VivaPanelSwapAbort extends Error {
+  constructor(readonly result: Extract<VivaPanelSwapResult, { success: false }>) {
+    super(result.error);
+  }
+}
+
+export async function swapVivaSessionPanels(
+  input: VivaPanelSwapInput,
+  actor: VivaScheduleActor
+): Promise<VivaPanelSwapResult> {
+  if (!mongoose.Types.ObjectId.isValid(actor.id)) {
+    return { success: false, reason: 'not-found', error: 'The selected Viva sessions no longer exist.' };
+  }
+
+  try {
+    return await withVivaTransaction(async (session) => {
+      const sessionIds = [input.first.sessionId, input.second.sessionId];
+      const records = await VivaSession.find({ _id: { $in: sessionIds } })
+        .select('_id roundId panelId projectId scheduledAt vivaEndsAt startedAt completedAt cancelledAt locationLabel version')
+        .session(session)
+        .lean<VivaSessionRecord[]>();
+      if (records.length !== 2) {
+        return { success: false, reason: 'not-found', error: 'The selected Viva sessions no longer exist.' };
+      }
+
+      const recordsById = new Map(records.map((record) => [String(record._id), record]));
+      const first = recordsById.get(input.first.sessionId);
+      const second = recordsById.get(input.second.sessionId);
+      if (!first || !second) {
+        return { success: false, reason: 'not-found', error: 'The selected Viva sessions no longer exist.' };
+      }
+      if (String(first.roundId) !== String(second.roundId)) {
+        return { success: false, reason: 'invalid', error: 'Panels can only be swapped within the same Viva round.' };
+      }
+      if (String(first.panelId) === String(second.panelId)) {
+        return { success: false, reason: 'invalid', error: 'These teams already have the same panel.' };
+      }
+      if (
+        first.startedAt instanceof Date
+        || second.startedAt instanceof Date
+        || first.completedAt instanceof Date
+        || second.completedAt instanceof Date
+        || first.cancelledAt instanceof Date
+        || second.cancelledAt instanceof Date
+        || !(first.scheduledAt instanceof Date)
+        || !(second.scheduledAt instanceof Date)
+      ) {
+        return { success: false, reason: 'not-swappable', error: 'Only two unstarted scheduled sessions can swap panels.' };
+      }
+      if (asVersion(first.version) !== input.first.version || asVersion(second.version) !== input.second.version) {
+        return { success: false, reason: 'concurrent-change', error: 'Another user changed this schedule. Reload before swapping panels.' };
+      }
+
+      const panels = await VivaPanel.find({ _id: { $in: [first.panelId, second.panelId] } })
+        .select('_id locationLabel')
+        .session(session)
+        .lean<VivaPanelRecord[]>();
+      const panelsById = new Map(panels.map((panel) => [String(panel._id), panel]));
+      const firstTargetPanel = panelsById.get(String(second.panelId));
+      const secondTargetPanel = panelsById.get(String(first.panelId));
+      const firstLocation = firstTargetPanel && asLocationLabel(firstTargetPanel.locationLabel);
+      const secondLocation = secondTargetPanel && asLocationLabel(secondTargetPanel.locationLabel);
+      if (!firstTargetPanel || !secondTargetPanel || !firstLocation || !secondLocation) {
+        return { success: false, reason: 'invalid', error: 'Both panels need valid fixed rooms before they can be swapped.' };
+      }
+
+      const firstInput: VivaScheduleInput = {
+        roundId: String(first.roundId),
+        panelId: String(second.panelId),
+        projectId: String(first.projectId),
+        scheduledAt: first.scheduledAt,
+        locationLabel: firstLocation,
+      };
+      const secondInput: VivaScheduleInput = {
+        roundId: String(second.roundId),
+        panelId: String(first.panelId),
+        projectId: String(second.projectId),
+        scheduledAt: second.scheduledAt,
+        locationLabel: secondLocation,
+      };
+      const firstValidation = await validateSchedule(firstInput, session, sessionIds);
+      const secondValidation = await validateSchedule(secondInput, session, sessionIds);
+      if (!firstValidation.success) return { success: false, reason: 'invalid', error: firstValidation.error };
+      if (!secondValidation.success) return { success: false, reason: 'invalid', error: secondValidation.error };
+
+      const pairConflict = findReservationConflict(
+        reservationFromScheduleContext(firstInput, firstValidation.context),
+        [reservationFromScheduleContext(secondInput, secondValidation.context)]
+      );
+      if (pairConflict) return { success: false, reason: 'invalid', error: pairConflict };
+      if (!await reserveScheduleChange(firstValidation.context, session)) {
+        return { success: false, reason: 'concurrent-change', error: 'Another administrator changed this schedule. Reload before swapping panels.' };
+      }
+
+      const write = await VivaSession.bulkWrite([
+        {
+          updateOne: {
+            filter: { _id: first._id, version: input.first.version, startedAt: null, completedAt: null, cancelledAt: null },
+            update: { $set: { panelId: second.panelId, locationLabel: firstLocation }, $inc: { version: 1 } },
+          },
+        },
+        {
+          updateOne: {
+            filter: { _id: second._id, version: input.second.version, startedAt: null, completedAt: null, cancelledAt: null },
+            update: { $set: { panelId: first.panelId, locationLabel: secondLocation }, $inc: { version: 1 } },
+          },
+        },
+      ], { session, ordered: true });
+      if (write.modifiedCount !== 2) {
+        throw new VivaPanelSwapAbort({
+          success: false,
+          reason: 'concurrent-change',
+          error: 'Another user changed this schedule. Reload before swapping panels.',
+        });
+      }
+
+      await VivaAuditEvent.insertMany(sessionIds.map((sessionId) => ({
+        roundId: first.roundId,
+        sessionId,
+        event: 'session-panel-swapped',
+        actorId: actor.id,
+        actorRole: 'admin',
+        actorName: actor.name,
+        actorRollNo: actor.rollNo,
+      })), { session, ordered: true });
+
+      const updated = await VivaSession.find({ _id: { $in: sessionIds } })
+        .select('_id roundId panelId projectId scheduledAt vivaEndsAt startedAt completedAt cancelledAt cancellationReason locationLabel version')
+        .session(session)
+        .lean<VivaSessionRecord[]>();
+      const updatedById = new Map(updated.map((record) => [String(record._id), record]));
+      const firstRecord = updatedById.get(input.first.sessionId);
+      const secondRecord = updatedById.get(input.second.sessionId);
+      const firstSchedule = firstRecord ? toScheduleDto(firstRecord) : null;
+      const secondSchedule = secondRecord ? toScheduleDto(secondRecord) : null;
+      if (!firstSchedule || !secondSchedule) throw new Error('Swapped Viva sessions could not be serialized.');
+      return { success: true, schedules: [firstSchedule, secondSchedule] };
+    });
+  } catch (error) {
+    if (error instanceof VivaPanelSwapAbort) return error.result;
+    throw error;
+  }
 }
 
 async function reserveScheduleChange(context: ScheduleContext, session: ClientSession): Promise<boolean> {

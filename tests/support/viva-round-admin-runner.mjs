@@ -110,6 +110,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
         rollNo: 'F26-0001',
         password: 'not-a-real-password',
         role: 'student',
+        program: 'BSAI',
       },
       {
         name: 'Student Two',
@@ -117,6 +118,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
         rollNo: 'F26-0002',
         password: 'not-a-real-password',
         role: 'student',
+        program: 'BSAI',
       },
       {
         name: 'Inactive Student',
@@ -171,6 +173,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
 
     const selection = await getVivaRoundAdminData();
     assert.deepEqual(selection.teams.map((team) => team.id), [String(activeTeam._id)]);
+    assert.equal(selection.teams[0].program, 'BSAI');
     assert.deepEqual(
       selection.examiners.map((examiner) => examiner.id),
       [String(supervisorOne._id), String(supervisorTwo._id), String(projectSupervisor._id)]
