@@ -7,6 +7,7 @@ import Project from '../../models/Project';
 import User from '../../models/User';
 import { buildRollNoRegex, normalizeRollNo } from '../rollNo';
 import { consumeRateLimit } from '../rateLimit';
+import { hashPassword } from '../security/password';
 import { isPortalActivityActorRole, recordPortalActivity } from '../portalActivityLog';
 import { matchesPasswordResetKnowledge } from '../security/passwordResetKnowledge';
 import {
@@ -151,11 +152,12 @@ export async function completePasswordReset(input: unknown): Promise<PasswordRes
     },
     {
       $set: {
-        password: await bcrypt.hash(newPassword, 10),
+        password: await hashPassword(newPassword),
         resetCode: null,
         resetCodeExpiry: null,
         lastPasswordChange: new Date(),
       },
+      $inc: { sessionVersion: 1 },
     }
   );
 

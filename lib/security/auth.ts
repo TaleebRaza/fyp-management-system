@@ -6,6 +6,7 @@ import Project from '../../models/Project';
 import User from '../../models/User';
 import { isSameOriginMutation } from './origin';
 import { isVivaSessionAccessRestricted } from '../vivaAccessRestriction';
+import { getPortalPause } from '../portalPause';
 
 export type UserRole = 'admin' | 'supervisor' | 'student';
 
@@ -28,10 +29,11 @@ export async function getCurrentUser(req: NextRequest): Promise<CurrentUser | nu
 
   await connectToDatabase();
   const user = await User.findOne({ _id: token.id, isActive: true })
-    .select('_id role name rollNo')
+    .select('_id role name rollNo sessionVersion')
     .lean();
 
   if (!user || !USER_ROLES.includes(user.role as UserRole)) return null;
+  if (Number(token.sessionVersion ?? 0) !== Number(user.sessionVersion ?? 0)) return null;
 
   const currentUser = {
     id: user._id.toString(),
@@ -48,6 +50,8 @@ export async function requireCurrentUser(
 ): Promise<CurrentUser | null> {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return null;
+
+  if (currentUser.role !== 'admin' && (await getPortalPause()).paused) return null;
 
   if (await isVivaSessionAccessRestricted(currentUser.id)) {
     return null;

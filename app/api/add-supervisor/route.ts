@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { normalizeRollNo } from '../../../lib/rollNo';
@@ -9,7 +8,7 @@ import {
   normalizeEmailAddress,
   normalizeText,
 } from '../../../lib/security/input';
-import { validatePassword } from '../../../lib/security/password';
+import { hashPassword, validatePassword } from '../../../lib/security/password';
 import {
   invalidatePublicContent,
   PUBLIC_SUPERVISORS_TAG,
@@ -47,7 +46,7 @@ export async function POST(req: NextRequest) {
       name,
       email,
       rollNo,
-      password: await bcrypt.hash(password, 10),
+      password: await hashPassword(password),
       role: 'supervisor',
       migrationCode,
       notificationsEnabled: true,

@@ -49,7 +49,7 @@ test('supervisor and student views reuse the same rating display', () => {
   assert.match(studentOverviewSource, /<ProjectRatingsDisplay/);
 });
 
-test('admin reports expose the rating round, three bounded minimums, and Excel action', () => {
+test('admin reports expose the rating round, three bounded minimums, and PDF action', () => {
   assert.match(exportFormSource, /<details/);
   assert.match(exportFormSource, /<summary/);
   assert.doesNotMatch(exportFormSource, /<details[^>]*\sopen/);
@@ -59,5 +59,5 @@ test('admin reports expose the rating round, three bounded minimums, and Excel a
   assert.match(exportFormSource, /PROJECT_RATING_CATEGORIES\.map/);
   assert.match(exportFormSource, /min=\{0\}/);
   assert.match(exportFormSource, /max=\{10\}/);
-  assert.match(exportFormSource, /Download Excel/);
+  assert.match(exportFormSource, /Download PDF/);
 });

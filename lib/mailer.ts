@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { isValidEmailAddress, normalizeEmailAddress } from './security/input';
 
 type SendMailOptions = {
   replyTo?: string;
@@ -49,25 +50,32 @@ export const sendNotificationEmail = async (
     return false;
   }
 
-  const cleanTo = String(to || '').trim().toLowerCase();
+  const cleanTo = normalizeEmailAddress(to);
   const cleanSubject = String(subject || '').trim();
   const plainText = String(textContent || '').trim() || stripHtml(htmlContent);
   const fromName = options.fromName || EMAIL_FROM_NAME;
-  const replyTo = options.replyTo || EMAIL_REPLY_TO;
+  const fromAddress = normalizeEmailAddress(process.env.EMAIL_USER);
+  const replyTo = normalizeEmailAddress(options.replyTo || EMAIL_REPLY_TO);
 
-  if (!cleanTo || !cleanSubject || !plainText) {
+  if (
+    !isValidEmailAddress(cleanTo)
+    || !isValidEmailAddress(fromAddress)
+    || (replyTo && !isValidEmailAddress(replyTo))
+    || !cleanSubject
+    || !plainText
+  ) {
     console.warn('Email dispatch aborted because recipient, subject, or content is missing.');
     return false;
   }
 
   try {
     const info = await transporter.sendMail({
-      from: `"${fromName}" <${process.env.EMAIL_USER}>`,
+      from: { name: fromName, address: fromAddress },
       to: cleanTo,
       subject: cleanSubject,
       text: plainText,
       html: htmlContent,
-      replyTo,
+      ...(replyTo ? { replyTo } : {}),
       headers: {
         'X-Portal-Email-Type': 'transactional',
         'X-Portal-Source': 'fyp-portal',

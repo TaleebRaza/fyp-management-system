@@ -22,7 +22,10 @@ export async function POST(req: NextRequest) {
 
     const updatedUser = await User.updateOne(
       { _id: studentId, role: 'student' },
-      { $set: { isActive: nextIsActive } },
+      {
+        $set: { isActive: nextIsActive },
+        ...(!nextIsActive ? { $inc: { sessionVersion: 1 } } : {}),
+      },
       { runValidators: true }
     );
     if (updatedUser.matchedCount !== 1) {

@@ -15,6 +15,16 @@ if (!uri) {
 await mongoose.connect(uri);
 
 try {
+  const duplicateMigrationCode = await mongoose.connection.collection('users').aggregate([
+    { $match: { role: 'supervisor', migrationCode: { $type: 'string', $gt: '' } } },
+    { $group: { _id: '$migrationCode', count: { $sum: 1 } } },
+    { $match: { count: { $gt: 1 } } },
+    { $limit: 1 },
+  ]).next();
+  if (duplicateMigrationCode) {
+    throw new Error('Duplicate supervisor migration codes must be resolved before index creation.');
+  }
+
   const created = [];
   for (const [collectionName, indexes] of Object.entries(refactorIndexes)) {
     const collection = mongoose.connection.collection(collectionName);

@@ -271,7 +271,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid reply audio upload.' }, { status: 400 });
     }
 
-    const replyMessageId = createStaffReplyId(staffUser.role, staffUser.id, audioMessageId(audioKey));
     const finalized = await finalizeUploadReservation({
       key: audioKey,
       ownerId: staffUser.id,
@@ -281,9 +280,13 @@ export async function POST(req: NextRequest) {
         studentId,
         messageId,
         {
-          messageId: replyMessageId,
+          messageId: createStaffReplyId(
+            staffUser.role,
+            staffUser.id,
+            audioMessageId(uploadedObject.key)
+          ),
           type: 'audio',
-          content: audioKey,
+          content: uploadedObject.key,
           size: uploadedObject.actualBytes,
         },
         session
@@ -293,8 +296,12 @@ export async function POST(req: NextRequest) {
       const reply = await User.exists({
         _id: studentId,
         role: 'student',
-        studentMessageId: replyMessageId,
-        studentMessageContent: audioKey,
+        studentMessageId: createStaffReplyId(
+          staffUser.role,
+          staffUser.id,
+          audioMessageId(finalized.finalKey)
+        ),
+        studentMessageContent: finalized.finalKey,
       });
       if (!reply) {
         return NextResponse.json({ error: 'The current message changed. Refresh and try again.' }, { status: 409 });

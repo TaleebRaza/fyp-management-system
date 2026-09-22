@@ -65,7 +65,7 @@ test('student API gates roles, recipient assignment, stale IDs, rates, and faile
   assert.match(route, /cancelUploadReservation\(audioKey/);
   assert.doesNotMatch(route, /DeleteObjectCommand/);
   assert.match(upload, /purpose === 'student-message'/);
-  assert.match(upload, /\(messageId\) => buildStorageKey\('student-message'/);
+  assert.match(upload, /\(messageId\) => buildStorageStagingKey\('student-message'/);
   assert.match(upload, /currentUser\.role !== 'supervisor'/);
   assert.match(route, /isStaffReply\(student\.studentMessageId\)/);
   assert.match(direction, /createStaffReplyId/);

@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
 
           await enqueueCurrentBroadcastDeletion(supervisor, session);
           supervisor.broadcastType = 'audio';
-          supervisor.broadcastContent = key;
+          supervisor.broadcastContent = uploadedObject.key;
           supervisor.broadcastSize = uploadedObject.actualBytes;
           supervisor.broadcastCreatedAt = new Date();
           await supervisor.save({ session });

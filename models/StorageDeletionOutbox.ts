@@ -4,6 +4,7 @@ const StorageDeletionOutboxSchema = new Schema({
   key: { type: String, required: true, unique: true, trim: true, maxlength: 500 },
   bytes: { type: Number, required: true, min: 0 },
   reservedBytes: { type: Number, default: 0, min: 0 },
+  adjustUsedBytes: { type: Boolean, default: true },
   verifiedBytes: { type: Number, default: null, min: 0 },
   reason: { type: String, required: true, trim: true, maxlength: 100 },
   state: { type: String, enum: ['pending', 'processing', 'dead-letter'], default: 'pending' },

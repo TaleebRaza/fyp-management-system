@@ -11,7 +11,7 @@ import {
   reserveUpload,
   StorageProtocolError,
 } from '../../../../lib/storageProtocol';
-import { buildStorageKey } from '../../../../lib/storageValidation';
+import { buildStorageStagingKey } from '../../../../lib/storageValidation';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { isRecord } from '../../../../lib/security/input';
 
@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
     const kind = isStudentMessage ? 'student-message' : 'broadcast';
     const reservation = await reserveUpload({
       key: isStudentMessage
-        ? (messageId) => buildStorageKey('student-message', currentUser.id, messageId)
-        : buildStorageKey(kind, currentUser.id, idempotencyKey),
+        ? (messageId) => buildStorageStagingKey('student-message', currentUser.id, messageId)
+        : buildStorageStagingKey(kind, currentUser.id, idempotencyKey),
       ownerId: currentUser.id,
       kind,
       expectedBytes: Number(fileSize),
@@ -80,9 +80,9 @@ export async function POST(req: NextRequest) {
       Bucket: BUCKET_NAME,
       Key: reservation.key,
       ContentType: APP_SETTINGS.STUDENT_MESSAGE.AUDIO_CONTENT_TYPE,
+      ContentLength: Number(fileSize),
     });
 
-    // Generate a URL that self-destructs in 60 seconds
     let uploadUrl: string;
     try {
       uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });

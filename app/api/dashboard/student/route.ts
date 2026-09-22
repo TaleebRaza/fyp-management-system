@@ -947,7 +947,7 @@ await session.commitTransaction();
             409
           );
         }
-        if (!canEditProjectDetails && oldPdfKey === uploadedKey) {
+        if (!canEditProjectDetails && oldPdfKey === uploadedObject.key) {
           throw new StorageProtocolError(
             'Select a new project document PDF before submitting.',
             400
@@ -974,7 +974,7 @@ await session.commitTransaction();
                     tools,
                   }
                 : {}),
-              pdfUrl: uploadedKey,
+              pdfUrl: uploadedObject.key,
               pdfSize: uploadedObject.actualBytes,
               status: 'Submitted For Review',
             },
@@ -985,7 +985,7 @@ await session.commitTransaction();
         if (updatedProject.modifiedCount !== 1) {
           throw new StorageProtocolError('Project changed while submitting. Refresh and try again.', 409);
         }
-if (oldPdfKey && oldPdfKey !== uploadedKey) {
+if (oldPdfKey && oldPdfKey !== uploadedObject.key) {
           const sharedKeys = await findSharedStorageKeys({
             keys: [oldPdfKey],
             excludedProjectIds: [project._id],
@@ -1009,7 +1009,7 @@ if (oldPdfKey && oldPdfKey !== uploadedKey) {
           : null;
         if (supervisor?.email && supervisor.notificationsEnabled !== false) {
           await enqueueNotificationEmail({
-            dedupeKey: `project-submission:${project._id}:${uploadedKey}`,
+            dedupeKey: `project-submission:${project._id}:${uploadedObject.key}`,
             to: supervisor.email,
             subject: `New FYP Project Submitted: ${studentInTransaction.name}`,
             html: `

@@ -18,10 +18,13 @@ export function hashRateLimitIdentifier(identifier: string) {
   return createHash('sha256').update(normalizeRateLimitIdentifier(identifier)).digest('hex');
 }
 
-function getTrustedClientIp(headers: HeaderSource) {
-  return headers.get('x-vercel-forwarded-for')
-    || headers.get('x-real-ip')
-    || 'unknown';
+export function getTrustedClientIp(headers: HeaderSource) {
+  const vercelAddress = headers.get('x-vercel-forwarded-for')?.split(',', 1)[0]?.trim();
+  if (vercelAddress) return vercelAddress;
+  if (process.env.NODE_ENV !== 'production') {
+    return headers.get('x-real-ip')?.trim() || 'local';
+  }
+  return null;
 }
 
 export async function consumeRateLimit(identifier: string, maxRequests: number): Promise<RateLimitResult> {
@@ -91,6 +94,12 @@ export async function refundRateLimit(identifier: string) {
   );
 }
 
+export async function clearRateLimit(identifier: string) {
+  const normalizedIdentifier = normalizeRateLimitIdentifier(identifier);
+  if (!normalizedIdentifier) return;
+  await RateLimit.deleteOne({ identifier: normalizedIdentifier });
+}
+
 export async function consumeRateLimitDimensions(
   scope: string,
   accountIdentifier: string,
@@ -98,14 +107,16 @@ export async function consumeRateLimitDimensions(
   maxRequests: number
 ) {
   const accountKey = `${scope}:account:${hashRateLimitIdentifier(accountIdentifier)}`;
-  const ipKey = `${scope}:ip:${hashRateLimitIdentifier(getTrustedClientIp(headers))}`;
+  const clientIp = getTrustedClientIp(headers);
   const [account, ip] = await Promise.all([
     consumeRateLimit(accountKey, maxRequests),
-    consumeRateLimit(ipKey, maxRequests),
+    clientIp
+      ? consumeRateLimit(`${scope}:ip:${hashRateLimitIdentifier(clientIp)}`, maxRequests)
+      : Promise.resolve(null),
   ]);
 
   return {
-    allowed: account.allowed && ip.allowed,
+    allowed: account.allowed && (ip?.allowed ?? true),
     account,
     ip,
   };

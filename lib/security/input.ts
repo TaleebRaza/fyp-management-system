@@ -16,12 +16,16 @@ export function parseBoolean(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;
+const UNSUPPORTED_EMAIL_SYNTAX = /[()"<>,\r\n]/;
 
 export function normalizeEmailAddress(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
 export function isValidEmailAddress(value: unknown) {
-  return EMAIL_PATTERN.test(normalizeEmailAddress(value));
+  const email = normalizeEmailAddress(value);
+  return email.length <= 254
+    && !UNSUPPORTED_EMAIL_SYNTAX.test(email)
+    && EMAIL_PATTERN.test(email);
 }

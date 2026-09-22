@@ -33,7 +33,7 @@ import {
   reserveUpload,
   StorageProtocolError,
 } from '../../../lib/storageProtocol';
-import { buildStorageKey } from '../../../lib/storageValidation';
+import { buildStorageStagingKey } from '../../../lib/storageValidation';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
     if (String(filename || '').length > 120) {
       return NextResponse.json({ error: 'Filename is too long.' }, { status: 400 });
     }
-    const key = buildStorageKey('pdf', currentUser.id, idempotencyKey);
+    const key = buildStorageStagingKey('pdf', currentUser.id, idempotencyKey);
     const reservation = await reserveUpload({
       key,
       ownerId: currentUser.id,
@@ -156,10 +156,11 @@ export async function POST(req: NextRequest) {
       Bucket: BUCKET_NAME,
       Key: key,
       ContentType: contentType,
+      ContentLength: Number(fileSize),
     });
     let uploadUrl: string;
     try {
-      uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 120 });
+      uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
     } catch (error) {
       await cancelUploadReservation(key, currentUser.id, 'signing-failed');
       throw error;

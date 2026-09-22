@@ -9,6 +9,7 @@ const UploadReservationSchema = new Schema({
   expectedContentType: { type: String, required: true, trim: true, maxlength: 100 },
   actualBytes: { type: Number, default: 0, min: 0 },
   actualContentType: { type: String, default: '', maxlength: 100 },
+  finalKey: { type: String, default: null, trim: true, maxlength: 500 },
   state: { type: String, enum: ['pending', 'finalized', 'cancelled'], default: 'pending' },
   idempotencyKey: { type: String, required: true, trim: true, maxlength: 128 },
   expiresAt: { type: Date, required: true },

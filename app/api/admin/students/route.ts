@@ -89,50 +89,6 @@ export async function GET(req: NextRequest) {
       filters.push({ batch });
     }
 
-    if (status && status !== 'All') {
-
-      const statusProjects = await Project.find(
-
-        status === 'Unassigned'
-
-          ? { supervisorId: { $type: 'objectId' } }
-
-          : { supervisorId: { $type: 'objectId' }, status }
-
-      )
-
-        .select('members')
-
-        .lean();
-
-
-      const statusProjectMemberIds = Array.from(new Set(
-
-        statusProjects.flatMap((project) =>
-
-          (project.members || []).map((memberId: unknown) => String(memberId))
-
-        )
-
-      ))
-
-        .filter((memberId) => mongoose.Types.ObjectId.isValid(memberId))
-
-        .map((memberId) => new mongoose.Types.ObjectId(memberId));
-
-
-      filters.push(
-
-        status === 'Unassigned'
-
-          ? { _id: { $nin: statusProjectMemberIds } }
-
-          : { _id: { $in: statusProjectMemberIds } }
-
-      );
-
-    }
-
     if (search) {
       const clauses: Record<string, unknown>[] = [
         { rollNo: normalizeRollNo(search) },
@@ -179,16 +135,89 @@ export async function GET(req: NextRequest) {
       batch: { $nin: [null, ''] },
     });
 
-    const [students, total, activeTotal, batches] = await Promise.all([
-      User.find(query)
-        .select(selectedFields)
-        .sort({ createdAt: -1, _id: -1 })
-        .limit(limit)
-        .lean(),
-      User.countDocuments(baseQuery),
-      User.countDocuments({ role: 'student', isActive: { $ne: false } }),
-      filterMetaPromise,
-    ]);
+    const activeTotalPromise = User.countDocuments({ role: 'student', isActive: { $ne: false } });
+
+    let students: Array<Record<string, unknown>>;
+    let total: number;
+
+    if (status && status !== 'All') {
+      const projectStatusMatch = status === 'Unassigned'
+        ? { 'project.supervisorId': { $not: { $type: 'objectId' } } }
+        : { 'project.supervisorId': { $type: 'objectId' }, 'project.status': status };
+      const cursorMatch = cursor
+        ? {
+            $or: [
+              { createdAt: { $lt: new Date(cursor.createdAt) } },
+              {
+                createdAt: new Date(cursor.createdAt),
+                _id: { $lt: new mongoose.Types.ObjectId(cursor.id) },
+              },
+            ],
+          }
+        : {};
+      const [result] = await User.aggregate<{
+        rows: Array<Record<string, unknown>>;
+        metadata: Array<{ total: number }>;
+      }>([
+        { $match: baseQuery },
+        {
+          $lookup: {
+            from: Project.collection.name,
+            localField: '_id',
+            foreignField: 'members',
+            pipeline: [{ $project: { supervisorId: 1, status: 1 } }, { $limit: 1 }],
+            as: 'projectRows',
+          },
+        },
+        { $set: { project: { $arrayElemAt: ['$projectRows', 0] } } },
+        { $match: projectStatusMatch },
+        {
+          $facet: {
+            rows: [
+              { $match: cursorMatch },
+              { $sort: { createdAt: -1, _id: -1 } },
+              { $limit: limit },
+              {
+                $project: {
+                  name: 1,
+                  rollNo: 1,
+                  email: 1,
+                  program: 1,
+                  batch: 1,
+                  semester: 1,
+                  isActive: 1,
+                  monthlyLoginCount: 1,
+                  createdAt: 1,
+                  status: {
+                    $cond: [
+                      { $eq: [{ $type: '$project.supervisorId' }, 'objectId'] },
+                      { $ifNull: ['$project.status', 'Pending'] },
+                      'Unassigned',
+                    ],
+                  },
+                },
+              },
+            ],
+            metadata: [{ $count: 'total' }],
+          },
+        },
+      ]);
+      students = result?.rows || [];
+      total = result?.metadata[0]?.total || 0;
+    } else {
+      const [studentRows, studentTotal] = await Promise.all([
+        User.find(query)
+          .select(selectedFields)
+          .sort({ createdAt: -1, _id: -1 })
+          .limit(limit)
+          .lean(),
+        User.countDocuments(baseQuery),
+      ]);
+      students = studentRows as unknown as Array<Record<string, unknown>>;
+      total = studentTotal;
+    }
+
+    const [activeTotal, batches] = await Promise.all([activeTotalPromise, filterMetaPromise]);
 
     type StudentProjectStatusRow = {
       members?: unknown[];
@@ -216,7 +245,7 @@ export async function GET(req: NextRequest) {
 
     const studentsWithStatus = students.map((student) => ({
       ...student,
-      status: statusByStudent.get(String(student._id)) || 'Unassigned',
+      status: student.status || statusByStudent.get(String(student._id)) || 'Unassigned',
     }));
 
     const totalPages = Math.ceil(total / limit);
@@ -234,7 +263,9 @@ export async function GET(req: NextRequest) {
         filterMeta: {
           batches: batches.sort(),
         },
-        nextCursor: students.length === limit ? createCursor(students.at(-1)) : null,
+        nextCursor: students.length === limit
+          ? createCursor(students.at(-1) as { createdAt?: Date; _id?: unknown })
+          : null,
       },
       { status: 200 }
     );

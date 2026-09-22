@@ -67,6 +67,16 @@ export function buildStorageKey(
   throw new Error('Unsupported storage upload kind.');
 }
 
+export function buildStorageStagingKey(
+  kind: StorageUploadKind,
+  ownerId: string,
+  objectId: string
+) {
+  const key = buildStorageKey(kind, ownerId, objectId);
+  const separator = key.lastIndexOf('/');
+  return `${key.slice(0, separator)}/staging/${key.slice(separator + 1)}`;
+}
+
 export function hasExpectedStorageMagic(kind: StorageUploadKind, bytes: Uint8Array) {
   if (kind === 'pdf') {
     return bytes.length >= 5

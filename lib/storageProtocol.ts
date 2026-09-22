@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -12,6 +13,7 @@ import UploadReservation from '../models/UploadReservation';
 import { APP_SETTINGS } from '../config/appSettings';
 import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from './s3-client';
 import {
+  buildStorageKey,
   getStorageObjectKind,
   hasExpectedStorageMagic,
   normalizeStorageKey,
@@ -47,13 +49,13 @@ type FinalizeUploadInput<T> = {
   projectId?: string;
   commit: (
     session: ClientSession,
-    uploadedObject: { actualBytes: number; actualContentType: string }
+    uploadedObject: { key: string; actualBytes: number; actualContentType: string }
   ) => Promise<T>;
 };
 
 type FinalizedUpload<T> =
-  | { finalizedNow: false }
-  | { finalizedNow: true; result: T };
+  | { finalizedNow: false; finalKey: string }
+  | { finalizedNow: true; finalKey: string; result: T };
 
 export async function withStorageTransaction<T>(operation: (session: ClientSession) => Promise<T>) {
   const session = await mongoose.startSession();
@@ -234,7 +236,13 @@ export async function reserveUpload(input: ReserveUploadInput) {
 }
 
 export async function enqueueStorageDeletion(
-  target: { key: string; bytes: number; reservedBytes?: number; reason: string },
+  target: {
+    key: string;
+    bytes: number;
+    reservedBytes?: number;
+    adjustUsedBytes?: boolean;
+    reason: string;
+  },
   session: ClientSession
 ) {
   const reservedBytes = target.reservedBytes ?? 0;
@@ -253,6 +261,7 @@ export async function enqueueStorageDeletion(
     { key: target.key },
     {
       $max: { bytes: target.bytes, reservedBytes },
+      $set: { adjustUsedBytes: target.adjustUsedBytes ?? true },
       $setOnInsert: {
         reason: target.reason.slice(0, 100),
         verifiedBytes: null,
@@ -279,6 +288,7 @@ async function cancelUploadReservationInSession(
       key: reservation.key,
       bytes: 0,
       reservedBytes: reservation.expectedBytes,
+      adjustUsedBytes: false,
       reason,
     },
     session
@@ -316,7 +326,7 @@ async function verifyUploadObject(reservation: {
   const actualContentType = String(object.ContentType || '').split(';', 1)[0];
   if (
     actualBytes <= 0
-    || actualBytes > reservation.expectedBytes
+    || actualBytes !== reservation.expectedBytes
     || actualContentType !== reservation.expectedContentType
   ) {
     throw new StorageProtocolError('Uploaded object does not match its reservation.', 400);
@@ -330,7 +340,11 @@ async function verifyUploadObject(reservation: {
     throw new StorageProtocolError('Uploaded object has an invalid file signature.', 400);
   }
 
-  return { actualBytes, actualContentType };
+  if (!object.ETag) {
+    throw new StorageProtocolError('Storage did not return an object identity.', 503);
+  }
+
+  return { actualBytes, actualContentType, etag: object.ETag };
 }
 
 export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>) {
@@ -339,16 +353,18 @@ export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>
     ownerId: input.ownerId,
     kind: input.kind,
     ...(input.projectId ? { projectId: input.projectId } : {}),
-  }).select('key ownerId kind expectedBytes expectedContentType state expiresAt');
+  }).select('key finalKey ownerId kind expectedBytes expectedContentType state expiresAt');
   if (!reservation) throw new StorageProtocolError('Upload reservation not found.', 404);
-  if (reservation.state === 'finalized') return { finalizedNow: false } satisfies FinalizedUpload<T>;
+  if (reservation.state === 'finalized' && reservation.finalKey) {
+    return { finalizedNow: false, finalKey: reservation.finalKey } satisfies FinalizedUpload<T>;
+  }
   if (reservation.state !== 'pending') throw new StorageProtocolError('Upload reservation is no longer active.', 409);
   if (reservation.expiresAt.getTime() <= Date.now()) {
     await cancelUploadReservation(input.key, input.ownerId, 'expired-upload');
     throw new StorageProtocolError('Upload reservation has expired. Upload the file again.', 409);
   }
 
-  let verified: { actualBytes: number; actualContentType: string };
+  let verified: { actualBytes: number; actualContentType: string; etag: string };
   try {
     verified = await verifyUploadObject({
       key: reservation.key,
@@ -361,35 +377,67 @@ export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>
     throw error;
   }
 
-  return await withStorageTransaction(async (session) => {
-    await assertStorageLedgerReady(session);
-    const activeReservation = await UploadReservation.findOne({
-      _id: reservation._id,
-      state: 'pending',
-      expiresAt: { $gt: new Date() },
-    }).session(session);
-    if (!activeReservation) return { finalizedNow: false } satisfies FinalizedUpload<T>;
+  const finalKey = buildStorageKey(reservation.kind, input.ownerId, randomUUID());
+  try {
+    await getS3Client().send(new CopyObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: finalKey,
+      CopySource: `${BUCKET_NAME}/${reservation.key.split('/').map(encodeURIComponent).join('/')}`,
+      CopySourceIfMatch: verified.etag,
+      ContentType: verified.actualContentType,
+      MetadataDirective: 'REPLACE',
+    }));
+  } catch (error) {
+    if (isStoragePreconditionFailure(error)) {
+      throw new StorageProtocolError('Upload changed during finalization. Upload the file again.', 409);
+    }
+    throw new StorageProtocolError('Storage promotion failed. Try again.', 503);
+  }
 
-    const result = await input.commit(session, verified);
-    const converted = await SystemConfig.updateOne(
-      { configKey: 'storage', reservedBytes: { $gte: activeReservation.expectedBytes } },
-      {
-        $inc: {
-          reservedBytes: -activeReservation.expectedBytes,
-          usedBytes: verified.actualBytes,
+  try {
+    return await withStorageTransaction(async (session) => {
+      await assertStorageLedgerReady(session);
+      const activeReservation = await UploadReservation.findOne({
+        _id: reservation._id,
+        state: 'pending',
+        expiresAt: { $gt: new Date() },
+      }).session(session);
+      if (!activeReservation) {
+        throw new StorageProtocolError('Upload finalization was already completed.', 409);
+      }
+
+      const uploadedObject = { ...verified, key: finalKey };
+      const result = await input.commit(session, uploadedObject);
+      const converted = await SystemConfig.updateOne(
+        { configKey: 'storage', reservedBytes: { $gte: activeReservation.expectedBytes } },
+        {
+          $inc: {
+            reservedBytes: -activeReservation.expectedBytes,
+            usedBytes: verified.actualBytes,
+          },
         },
-      },
-      { session }
-    );
-    if (converted.modifiedCount !== 1) throw new Error('Storage reservation ledger is inconsistent.');
+        { session }
+      );
+      if (converted.modifiedCount !== 1) throw new Error('Storage reservation ledger is inconsistent.');
 
-    activeReservation.actualBytes = verified.actualBytes;
-    activeReservation.actualContentType = verified.actualContentType;
-    activeReservation.state = 'finalized';
-    await activeReservation.save({ session });
+      await enqueueStorageDeletion({
+        key: activeReservation.key,
+        bytes: 0,
+        adjustUsedBytes: false,
+        reason: 'upload-promoted',
+      }, session);
+      activeReservation.actualBytes = verified.actualBytes;
+      activeReservation.actualContentType = verified.actualContentType;
+      activeReservation.finalKey = finalKey;
+      activeReservation.state = 'finalized';
+      await activeReservation.save({ session });
 
-    return { finalizedNow: true, result };
-  });
+      return { finalizedNow: true, finalKey, result };
+    });
+  } catch (error) {
+    await getS3Client().send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: finalKey })).catch(() => undefined);
+    throw error;
+  }
 }
 
 function retryDelay(attempts: number) {
@@ -404,17 +452,24 @@ function isMissingStorageObject(error: unknown) {
     || storageError.$metadata?.httpStatusCode === 404;
 }
 
+function isStoragePreconditionFailure(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  return (error as { $metadata?: { httpStatusCode?: unknown } }).$metadata?.httpStatusCode === 412;
+}
+
 async function getDeletionBytes(target: {
   _id: unknown;
   key: string;
   bytes: number;
   reservedBytes?: number | null;
+  adjustUsedBytes?: boolean | null;
   verifiedBytes?: number | null;
   lockToken?: string | null;
 }) {
   if (normalizeStorageKey(target.key) !== target.key) {
     throw new Error('Storage deletion target has an invalid object key.');
   }
+  if (target.adjustUsedBytes === false) return 0;
   // Reservation cancellations were never added to usedBytes. Their quota is
   // released separately after deletion, so subtracting object bytes here would
   // undercount live data. The reservation lookup also protects legacy outbox

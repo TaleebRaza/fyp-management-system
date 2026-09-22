@@ -20,6 +20,12 @@ A centralized academic workflow system for managing students, supervisors, proje
 
 </div>
 
+## Release checks
+
+Run `npm run deploy:preflight` against the target database before deployment. Missing required indexes, the wrong rate-limit TTL, or plaintext/unknown password formats block the release. Review `npm run indexes:refactor:audit` before applying indexes with `npm run indexes:refactor:apply`. Apply the 15-minute rate-limit TTL with `CONFIRM_RATE_LIMIT_TTL=15-minutes npm run rate-limit:ttl:apply`. Migrate eligible legacy plaintext passwords with `CONFIRM_PASSWORD_MIGRATION=scrypt-v1 npm run passwords:migrate`, then rerun the audit.
+
+Production trusts only Vercel's overwritten `x-vercel-forwarded-for` header for client-IP rate-limit dimensions. Sessions expire after eight hours and are revoked when credentials change or an account is deactivated. Storage cleanup runs daily from `vercel.json`; monitor dead-lettered cleanup records between runs.
+
 ---
 
 ## 📌 Overview

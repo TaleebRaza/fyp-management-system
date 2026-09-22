@@ -78,7 +78,7 @@ test('records actor identity with the requested authentication and project revie
   assert.match(passwordResetService, /action: 'password-changed'/);
   assert.match(adminReviews, /projectReviewActivityAction\(body\.status\)/);
   assert.match(supervisorDashboard, /recordCurrentUserActivity\(projectReviewActivityAction\(status\), currentUser\)/);
-  assert.match(authHelper, /select\('_id role name rollNo'\)/);
+  assert.match(authHelper, /select\('_id role name rollNo sessionVersion'\)/);
   assert.match(logPanel, /entry\.actorName/);
   assert.match(logPanel, /entry\.actorRollNo/);
   assert.match(logPanel, /'student-project-reset': \{ label: 'Reset their project'/);

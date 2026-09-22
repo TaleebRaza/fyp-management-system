@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import RollNumberClaim from '../../../models/RollNumberClaim';
@@ -18,7 +17,7 @@ import {
   getOrCreateRegistrationPolicy,
   serializeRegistrationPolicy,
 } from '../../../lib/registrationPolicy';
-import { validatePassword } from '../../../lib/security/password';
+import { hashPassword, validatePassword } from '../../../lib/security/password';
 import {
   isValidEmailAddress,
   normalizeEmailAddress,
@@ -31,9 +30,18 @@ import {
   reserveSupervisorProjectSlot,
 } from '../../../lib/supervisorCapacity';
 import { recordPortalActivity } from '../../../lib/portalActivityLog';
+import { isContentLengthTooLarge } from '../../../lib/security/request';
+import { getPortalPause } from '../../../lib/portalPause';
 
 export async function POST(req: NextRequest) {
   try {
+    const portal = await getPortalPause();
+    if (portal.paused) {
+      return NextResponse.json({ code: 'PORTAL_PAUSED', error: portal.reason }, { status: 503 });
+    }
+    if (isContentLengthTooLarge(req, 16 * 1024)) {
+      return NextResponse.json({ error: 'Registration request is too large.' }, { status: 413 });
+    }
     const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
     const normalizedName = normalizeText(name, 100);
     const normalizedEmail = normalizeEmailAddress(email);
@@ -129,7 +137,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid supervisor selected.' }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
+    const hashedPassword = await hashPassword(normalizedPassword);
     const session = await mongoose.startSession();
 
     try {

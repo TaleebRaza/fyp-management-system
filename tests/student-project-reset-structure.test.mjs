@@ -62,7 +62,7 @@ test('post-proposal submissions keep project details locked and require a new PD
 
   assert.match(route, /const canEditProjectDetails = project\.stage === 'PROPOSAL'/);
   assert.match(route, /\.\.\.\(canEditProjectDetails\s*\? \{[\s\S]*title,[\s\S]*description,[\s\S]*domains: selectedDomainIds,[\s\S]*tools,/);
-  assert.match(route, /!canEditProjectDetails && oldPdfKey === uploadedKey/);
+  assert.match(route, /!canEditProjectDetails && oldPdfKey === uploadedObject\.key/);
   assert.match(dashboard, /useStudentDashboardNavigation\(Boolean\(fineRestriction\)/);
   assert.match(submissionSection, /disabled=\{!canSubmit \|\| !canEditProjectDetails\}/);
   assert.match(submissionSection, /type="file"[\s\S]*disabled=\{!canSubmit\}/);

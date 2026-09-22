@@ -278,11 +278,11 @@ export async function POST(req: NextRequest) {
         {
           messageId: createStudentMessageId(
             recipient.recipient,
-            audioMessageId(audioKey),
+            audioMessageId(uploadedObject.key),
             recipient.supervisorId
           ),
           type: 'audio',
-          content: audioKey,
+          content: uploadedObject.key,
           size: uploadedObject.actualBytes,
           recipient: recipient.recipient,
           supervisorId: recipient.supervisorId,
@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
           _id: currentUser.id,
           role: 'student',
           studentMessageType: 'audio',
-          studentMessageContent: audioKey,
+          studentMessageContent: finalized.finalKey,
         })
           .select('studentMessageId studentMessageType studentMessageContent studentMessageSize studentMessageCreatedAt studentMessageAcknowledgedAt')
           .lean();

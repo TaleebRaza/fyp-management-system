@@ -27,6 +27,7 @@ const UserSchema = new Schema({
   // Written only after the explicit capacity reconciliation/backfill has verified it.
   occupiedSlots: { type: Number, default: 0, min: 0 },
   isActive: { type: Boolean, default: true },
+  sessionVersion: { type: Number, default: 0, min: 0 },
 
   monthlyLoginCount: { type: Number, default: 0 },
   lastLoginMonth: { type: String, default: '' },

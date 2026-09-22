@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run test:unit
+      - run: npm run build
+      - run: npm audit --omit=dev
+
+  mongodb-integration:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        env:
+          MONGO_INITDB_DATABASE: fyp_ci
+    env:
+      VIVA_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/fyp_ci?replicaSet=rs0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Initialize MongoDB replica set
+        run: |
+          docker exec "${{ job.services.mongodb.id }}" mongosh --quiet --eval \
+            'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+          for attempt in {1..30}; do
+            docker exec "${{ job.services.mongodb.id }}" mongosh --quiet --eval \
+              'if (db.hello().isWritablePrimary) quit(0); quit(1)' && exit 0
+            sleep 2
+          done
+          exit 1
+      - run: npm run test:viva:persistence
+      - run: npm run test:viva:admin
+      - run: npm run test:viva:panels
+      - run: npm run test:viva:scheduling
+      - run: npm run test:viva:session
+      - run: npm run test:viva:access
+      - run: npm run test:viva:grading
+      - run: npm run test:viva:cancellation
+      - run: npm run test:viva:workflow
+      - run: npm run test:viva:auto-scheduling
+      - run: npm run test:viva:performance

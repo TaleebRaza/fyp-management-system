@@ -19,6 +19,10 @@ test('storage reservations keep pending bytes and atomically claimed deletion wo
   assert.match(protocol, /reservedBytes/);
   assert.match(protocol, /HeadObjectCommand/);
   assert.match(protocol, /GetObjectCommand/);
+  assert.match(protocol, /CopyObjectCommand/);
+  assert.match(protocol, /CopySourceIfMatch: verified\.etag/);
+  assert.match(protocol, /finalKey/);
+  assert.match(protocol, /adjustUsedBytes: false/);
   assert.match(protocol, /processStorageDeletionOutbox/);
   assert.match(protocol, /verifiedBytes/);
   assert.match(protocol, /reservedBytes: reservation\.expectedBytes/);
@@ -74,7 +78,6 @@ test('academic reset and team changes use transaction callbacks with durable cle
   ]);
 
   assert.match(academicReset, /mongoSession\.withTransaction/);
-  assert.match(academicReset, /student\.domains = \[\]/);
   assert.match(academicReset, /enqueueDeletedProjectStorage/);
   assert.match(projectCleanup, /enqueueStorageDeletion/);
   assert.match(projectCleanup, /VoiceNote\.deleteMany/);

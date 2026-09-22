@@ -142,11 +142,11 @@ try {
     ).toArray(),
     database.collection('uploadreservations').find(
       {},
-      { projection: { key: 1, state: 1, expectedBytes: 1, expiresAt: 1 } }
+      { projection: { key: 1, finalKey: 1, state: 1, expectedBytes: 1, expiresAt: 1 } }
     ).toArray(),
     database.collection('storagedeletionoutboxes').find(
       {},
-      { projection: { key: 1, bytes: 1, reservedBytes: 1, verifiedBytes: 1, state: 1 } }
+      { projection: { key: 1, bytes: 1, reservedBytes: 1, adjustUsedBytes: 1, verifiedBytes: 1, state: 1 } }
     ).toArray(),
     database.collection('systemconfigs').find({ configKey: 'storage' }).toArray(),
   ]);
@@ -194,8 +194,17 @@ try {
   const deletionKeys = new Set(
     deletionTargets.map((target) => normalizeStorageKey(target.key)).filter(Boolean)
   );
+  const deletionByKey = new Map(
+    deletionTargets.flatMap((target) => {
+      const key = normalizeStorageKey(target.key);
+      return key ? [[key, target]] : [];
+    })
+  );
   const invalidReservationIds = reservations
-    .filter((reservation) => !normalizeStorageKey(reservation.key))
+    .filter((reservation) =>
+      !normalizeStorageKey(reservation.key)
+      || (reservation.state === 'finalized' && !normalizeStorageKey(reservation.finalKey))
+    )
     .map((reservation) => String(reservation._id));
   const invalidDeletionTargetIds = deletionTargets
     .filter((target) => !normalizeStorageKey(target.key))
@@ -225,13 +234,15 @@ try {
     bucketBytes += bytes;
     const reservation = reservationByKey.get(key);
     const isUnfinalizedObject = reservation?.state === 'pending'
-      || (reservation?.state === 'cancelled' && deletionKeys.has(key));
+      || (reservation?.state === 'cancelled' && deletionKeys.has(key))
+      || deletionByKey.get(key)?.adjustUsedBytes === false;
     if (!isUnfinalizedObject) usedBytes += bytes;
   }
   for (const target of deletionTargets) {
     const key = normalizeStorageKey(target.key);
     const reservation = key ? reservationByKey.get(key) : null;
     const releasesUsedBytes = safeBytes(target.reservedBytes) === 0
+      && target.adjustUsedBytes !== false
       && reservation?.state !== 'pending'
       && reservation?.state !== 'cancelled';
     if (key && !bucketObjects.has(key) && releasesUsedBytes) {

@@ -65,11 +65,24 @@ async function auditCollection(collectionName, expected) {
 await mongoose.connect(uri);
 
 try {
-  const audits = await Promise.all(
-    Object.entries(expectedIndexes).map(([collectionName, expected]) => auditCollection(collectionName, expected))
-  );
-  console.log(JSON.stringify({ mode: 'report', audits }, null, 2));
-  if (audits.some((audit) => audit.missing.length > 0)) process.exitCode = 2;
+  const [audits, duplicateMigrationCodes] = await Promise.all([
+    Promise.all(
+      Object.entries(expectedIndexes).map(([collectionName, expected]) =>
+        auditCollection(collectionName, expected)
+      )
+    ),
+    mongoose.connection.collection('users').aggregate([
+      { $match: { role: 'supervisor', migrationCode: { $type: 'string', $gt: '' } } },
+      { $group: { _id: '$migrationCode', userIds: { $push: '$_id' }, count: { $sum: 1 } } },
+      { $match: { count: { $gt: 1 } } },
+      { $limit: 20 },
+      { $project: { _id: 0, userIds: 1, count: 1 } },
+    ]).toArray(),
+  ]);
+  console.log(JSON.stringify({ mode: 'report', audits, duplicateMigrationCodes }, null, 2));
+  if (audits.some((audit) => audit.missing.length > 0) || duplicateMigrationCodes.length > 0) {
+    process.exitCode = 2;
+  }
 } finally {
   await mongoose.disconnect();
 }

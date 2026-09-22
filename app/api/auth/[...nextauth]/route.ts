@@ -3,9 +3,14 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import connectToDatabase from "../../../../lib/mongodb";
 import User from "../../../../models/User";
 import { buildRollNoRegex, normalizeRollNo } from "../../../../lib/rollNo";
-import bcrypt from "bcryptjs"; // NEW: Secure cryptographic hashing library
-import { isBcryptHash } from "../../../../lib/security/password";
-import { consumeRateLimit, hashRateLimitIdentifier, isRateLimitExceeded } from "../../../../lib/rateLimit";
+import { hashPassword, verifyPassword } from "../../../../lib/security/password";
+import {
+  clearRateLimit,
+  consumeRateLimit,
+  getTrustedClientIp,
+  hashRateLimitIdentifier,
+  isRateLimitExceeded,
+} from "../../../../lib/rateLimit";
 import {
   isPortalActivityActorRole,
   recordPortalActivity,
@@ -17,15 +22,7 @@ import {
 } from '../../../../lib/vivaAccessRestriction';
 
 const LOGIN_ATTEMPT_LIMIT = 5;
-
-// --- HELPER: Backward-Compatible Verification ---
-async function verifyPassword(inputPassword: string, storedPassword: string) {
-  if (isBcryptHash(storedPassword)) {
-    return { matches: await bcrypt.compare(inputPassword, storedPassword), isLegacy: false };
-  }
-
-  return { matches: inputPassword === storedPassword, isLegacy: true };
-}
+const LOGIN_IP_ATTEMPT_LIMIT = 25;
 
 const handler = NextAuth({
   providers: [
@@ -35,7 +32,7 @@ const handler = NextAuth({
         rollNo: { label: "Roll No", type: "text" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const portal = await getPortalPause();
         await connectToDatabase();
 
@@ -46,17 +43,29 @@ const handler = NextAuth({
           throw new Error("Invalid roll number or password.");
         }
         const loginRateLimitIdentifier = `login:account:${hashRateLimitIdentifier(normalizedRollNo)}`;
+        const clientIp = getTrustedClientIp(new Headers(request.headers as HeadersInit));
+        const loginIpRateLimitIdentifier = clientIp
+          ? `login:ip:${hashRateLimitIdentifier(clientIp)}`
+          : null;
 
-        if (await isRateLimitExceeded(loginRateLimitIdentifier, LOGIN_ATTEMPT_LIMIT)) {
-          throw new Error('Too many login attempts. Please try again in two hours.');
+        if (
+          await isRateLimitExceeded(loginRateLimitIdentifier, LOGIN_ATTEMPT_LIMIT)
+          || (loginIpRateLimitIdentifier
+            && await isRateLimitExceeded(loginIpRateLimitIdentifier, LOGIN_IP_ATTEMPT_LIMIT))
+        ) {
+          throw new Error('Too many login attempts. Please try again in 15 minutes.');
         }
 
         const denyLogin = async () => {
-          const rateLimit = await consumeRateLimit(
-            loginRateLimitIdentifier,
-            LOGIN_ATTEMPT_LIMIT,
-          );
-          if (!rateLimit.allowed) throw new Error('Too many login attempts. Please try again in two hours.');
+          const [accountRateLimit, ipRateLimit] = await Promise.all([
+            consumeRateLimit(loginRateLimitIdentifier, LOGIN_ATTEMPT_LIMIT),
+            loginIpRateLimitIdentifier
+              ? consumeRateLimit(loginIpRateLimitIdentifier, LOGIN_IP_ATTEMPT_LIMIT)
+              : Promise.resolve(null),
+          ]);
+          if (!accountRateLimit.allowed || ipRateLimit?.allowed === false) {
+            throw new Error('Too many login attempts. Please try again in 15 minutes.');
+          }
           throw new Error('Invalid roll number or password.');
         };
 
@@ -75,12 +84,10 @@ const handler = NextAuth({
           throw new Error(portal.reason);
         }
         
-        // Security Lockout Check
         if (user.isActive === false) {
           await denyLogin();
         }
         
-        // NEW: Utilize our smart verifier instead of direct string comparison
         const passwordCheck = await verifyPassword(password, user.password);
 
         if (!passwordCheck.matches) {
@@ -91,23 +98,20 @@ const handler = NextAuth({
           throw new Error(VIVA_ACTIVE_SESSION_ACCESS_ERROR);
         }
 
-        if (passwordCheck.isLegacy) {
-          user.password = await bcrypt.hash(password, 10);
+        if (passwordCheck.needsRehash) {
+          user.password = await hashPassword(password);
           await user.save();
         }
+
+        await clearRateLimit(loginRateLimitIdentifier);
         
-        // --- OPTIMIZATION: Lazy Login Counter ---
-        // Generates a strict "YYYY-MM" string (e.g., "2026-05")
-        const currentMonth = new Date().toISOString().slice(0, 7); 
-        
+        const currentMonth = new Date().toISOString().slice(0, 7);
+
         if (user.lastLoginMonth === currentMonth) {
-          // It is the same month: Increment the tally
           await User.findByIdAndUpdate(user._id, { $inc: { monthlyLoginCount: 1 } });
         } else {
-          // It is a new month (or their first login): Reset to 1 and stamp the new month
           await User.findByIdAndUpdate(user._id, { $set: { monthlyLoginCount: 1, lastLoginMonth: currentMonth } });
         }
-        // ----------------------------------------
 
         if (isPortalActivityActorRole(user.role)) {
           await recordPortalActivity({
@@ -122,7 +126,8 @@ const handler = NextAuth({
           id: user._id.toString(),
           name: user.name,
           rollNo: user.rollNo,
-          role: user.role
+          role: user.role,
+          sessionVersion: Number(user.sessionVersion || 0),
         };
       }
     })
@@ -134,6 +139,7 @@ const handler = NextAuth({
         token.role = user.role;
         token.rollNo = user.rollNo;
         token.name = user.name;
+        token.sessionVersion = user.sessionVersion;
       }
       return token;
     },
@@ -148,7 +154,7 @@ const handler = NextAuth({
   },
   session: {
     strategy: "jwt",
-    // We can remove the hardcoded 2-hour maxAge, as the browser closure will now handle termination
+    maxAge: 8 * 60 * 60,
   },
   events: {
     async signOut(message) {
@@ -167,41 +173,4 @@ const handler = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
 });
 
-// --- ARCHITECT-AI: TRUE BROWSER SESSION OVERRIDE ---
-// Intercept the NextAuth response and strip the explicit expiration dates.
-// This forces the browser to treat the token as a RAM-only session cookie.
-function enforceBrowserSession(response: Response) {
-  // Create a mutable copy of the response
-  const modifiedResponse = new Response(response.body, response);
-  
-  // Extract all cookies NextAuth is trying to set
-  const cookies = modifiedResponse.headers.getSetCookie();
-  modifiedResponse.headers.delete('set-cookie');
-  
-  // Re-apply the cookies, but surgically remove the Max-Age and Expires attributes
-  cookies.forEach(cookie => {
-    const sessionOnlyCookie = cookie
-      .replace(/;\s*Max-Age=[0-9]+/i, '')
-      .replace(/;\s*Expires=[^;]+/i, '');
-    modifiedResponse.headers.append('set-cookie', sessionOnlyCookie);
-  });
-  
-  return modifiedResponse;
-}
-
-// We must pass the "context" object so NextAuth knows the exact route parameters
-export async function GET(
-  req: Parameters<typeof handler>[0],
-  context: Parameters<typeof handler>[1]
-) {
-  const response = await handler(req, context);
-  return enforceBrowserSession(response);
-}
-
-export async function POST(
-  req: Parameters<typeof handler>[0],
-  context: Parameters<typeof handler>[1]
-) {
-  const response = await handler(req, context);
-  return enforceBrowserSession(response);
-}
+export { handler as GET, handler as POST };

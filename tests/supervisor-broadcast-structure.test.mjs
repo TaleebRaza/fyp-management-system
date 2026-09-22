@@ -25,7 +25,7 @@ test('supervisor broadcasts replace the active record and retain publish errors'
   );
   assert.match(
     route,
-    /await enqueueCurrentBroadcastDeletion\(supervisor, session\);\s+supervisor\.broadcastType = 'audio';\s+supervisor\.broadcastContent = key;\s+supervisor\.broadcastSize = uploadedObject\.actualBytes;\s+supervisor\.broadcastCreatedAt = new Date\(\);\s+await supervisor\.save\(\{ session \}\);/
+    /await enqueueCurrentBroadcastDeletion\(supervisor, session\);\s+supervisor\.broadcastType = 'audio';\s+supervisor\.broadcastContent = uploadedObject\.key;\s+supervisor\.broadcastSize = uploadedObject\.actualBytes;\s+supervisor\.broadcastCreatedAt = new Date\(\);\s+await supervisor\.save\(\{ session \}\);/
   );
   assert.match(submit, /throw new Error\(data\.error \|\| 'Failed to save broadcast\.'\);/);
 });

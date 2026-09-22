@@ -1,10 +1,11 @@
 import mongoose from 'mongoose';
 
 const uri = process.env.MONGODB_URI;
-const ttlSeconds = 7200;
+const ttlSeconds = 900;
+const apply = process.argv.includes('--apply');
 
-if (!process.argv.includes('--apply') || process.env.CONFIRM_RATE_LIMIT_TTL !== 'two-hours') {
-  console.error('Refusing to update the rate-limit TTL. Use --apply with CONFIRM_RATE_LIMIT_TTL=two-hours.');
+if (apply && process.env.CONFIRM_RATE_LIMIT_TTL !== '15-minutes') {
+  console.error('Refusing to update the rate-limit TTL. Use --apply with CONFIRM_RATE_LIMIT_TTL=15-minutes.');
   process.exit(1);
 }
 if (!uri) {
@@ -24,16 +25,25 @@ try {
   }
   const ttlIndex = indexes.find((index) => index.expireAfterSeconds !== undefined && index.key.createdAt === 1);
 
-  if (!ttlIndex) {
-    await collection.createIndex({ createdAt: 1 }, { expireAfterSeconds: ttlSeconds });
-  } else if (ttlIndex.expireAfterSeconds !== ttlSeconds) {
-    await mongoose.connection.db.command({
-      collMod: 'ratelimits',
-      index: { name: ttlIndex.name, expireAfterSeconds: ttlSeconds },
-    });
+  if (apply) {
+    if (!ttlIndex) {
+      await collection.createIndex({ createdAt: 1 }, { expireAfterSeconds: ttlSeconds });
+    } else if (ttlIndex.expireAfterSeconds !== ttlSeconds) {
+      await mongoose.connection.db.command({
+        collMod: 'ratelimits',
+        index: { name: ttlIndex.name, expireAfterSeconds: ttlSeconds },
+      });
+    }
   }
 
-  console.log(JSON.stringify({ collection: 'ratelimits', expireAfterSeconds: ttlSeconds }, null, 2));
+  const actualSeconds = ttlIndex?.expireAfterSeconds ?? null;
+  console.log(JSON.stringify({
+    mode: apply ? 'apply' : 'report',
+    collection: 'ratelimits',
+    expectedSeconds: ttlSeconds,
+    actualSeconds: apply ? ttlSeconds : actualSeconds,
+  }, null, 2));
+  if (!apply && actualSeconds !== ttlSeconds) process.exitCode = 2;
 } finally {
   await mongoose.disconnect();
 }

@@ -151,6 +151,7 @@ export async function runVivaPerformanceIntegration(testDatabaseUri) {
       targetPanelSize: 2,
       minimumPanelSize: 2,
       vivaDurationMinutes: 30,
+      confirmedAt: new Date('2026-10-11T07:00:00.000Z'),
       examinerIds: [agendaAdmin._id, agendaMember._id],
     });
     const agendaPanel = await VivaPanel.create({
