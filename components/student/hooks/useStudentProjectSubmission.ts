@@ -22,6 +22,7 @@ type UseStudentProjectSubmissionOptions = {
   existingPdfUrl?: string;
   hasAssignedSupervisor: boolean;
   projectSubmissionComplete: boolean;
+  canEditProjectDetails: boolean;
   projectSubmissionsOpen: boolean;
   isFineRestricted: boolean;
   isOwnFineRestricted: boolean;
@@ -46,6 +47,7 @@ export function useStudentProjectSubmission({
   existingPdfUrl,
   hasAssignedSupervisor,
   projectSubmissionComplete,
+  canEditProjectDetails,
   projectSubmissionsOpen,
   isFineRestricted,
   isOwnFineRestricted,
@@ -103,10 +105,12 @@ export function useStudentProjectSubmission({
         });
         return;
       }
-      if (!file && !existingPdfUrl) {
+      if (!file && (!existingPdfUrl || !canEditProjectDetails)) {
         showDialog({
           title: 'PDF required',
-          message: 'Attach your project document as a PDF before submitting.',
+          message: canEditProjectDetails
+            ? 'Attach your project document as a PDF before submitting.'
+            : 'Select a new project document PDF before submitting.',
         });
         return;
       }
@@ -144,6 +148,7 @@ export function useStudentProjectSubmission({
     },
     [
       clearStoredProjectDraft,
+      canEditProjectDetails,
       description,
       existingPdfUrl,
       file,

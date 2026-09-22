@@ -89,6 +89,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     canLeaveTeam,
     currentStage,
     currentProgramName,
+    savedDomainIds,
     pdfUrl,
     isUnassigned,
     hasAssignedSupervisor,
@@ -96,10 +97,15 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     projectSubmissionPendingReview,
     canSubmit,
     projectSubmissionsOpen,
+    canEditProjectDetails,
     isSupervisorChangeLocked,
     announcementItems,
   } = buildStudentDashboardViewModel(data, headline, tools);
   const { activeTab, setActiveTab, navItems } = useStudentDashboardNavigation(Boolean(fineRestriction), () => setIsVivaView(true));
+  const submissionTitle = canEditProjectDetails ? title : me?.projectTitle || '';
+  const submissionDescription = canEditProjectDetails ? desc : me?.projectDesc || '';
+  const submissionDomains = canEditProjectDetails ? selectedDomains : savedDomainIds;
+  const submissionTools = canEditProjectDetails ? tools : me?.tools || '';
   const {
     visibleTemplates,
     isFetchingTemplates,
@@ -183,14 +189,15 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     handleSubmitProject,
   } = useStudentProjectSubmission({
     userId: currentUserId,
-    title,
-    description: desc,
-    selectedDomains,
-    tools,
+    title: submissionTitle,
+    description: submissionDescription,
+    selectedDomains: submissionDomains,
+    tools: submissionTools,
     file,
     existingPdfUrl: pdfUrl,
     hasAssignedSupervisor,
     projectSubmissionComplete,
+    canEditProjectDetails,
     projectSubmissionsOpen,
     isFineRestricted,
     isOwnFineRestricted,
@@ -323,15 +330,16 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             projectSubmissionComplete={projectSubmissionComplete}
             projectSubmissionPendingReview={projectSubmissionPendingReview}
             onSubmit={handleSubmitProject}
-            title={title}
+            title={submissionTitle}
             onTitleChange={setTitle}
-            selectedDomains={selectedDomains}
+            selectedDomains={submissionDomains}
             legacyDomain={legacyDomain}
             onDomainsChange={handleDomainsChange}
-            tools={tools}
+            tools={submissionTools}
             onToolsChange={setTools}
-            description={desc}
+            description={submissionDescription}
             onDescriptionChange={setDesc}
+            canEditProjectDetails={canEditProjectDetails}
             canSubmit={canSubmit}
             file={file}
             onFileChange={(nextFile) => void handleProjectFileChange(nextFile)}

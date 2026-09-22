@@ -149,7 +149,7 @@ test('approved final deliverables close project submissions', () => {
   assert.equal(result.canSubmit, false);
 });
 
-test('project status pill prioritizes review decisions over stage approval', () => {
+test('project status pill remains approved after the proposal stage', () => {
   assert.equal(selectors.getStudentProjectStatusPill('Pending', 'PROPOSAL'), null);
   assert.equal(selectors.getStudentProjectStatusPill('Pending'), null);
   assert.equal(
@@ -158,10 +158,45 @@ test('project status pill prioritizes review decisions over stage approval', () 
   );
   assert.equal(
     selectors.getStudentProjectStatusPill('Changes Requested', 'THESIS_DRAFT'),
-    'Changes Requested'
+    'Project Approved'
   );
   assert.equal(
     selectors.getStudentProjectStatusPill('Rejected', 'FINAL_DELIVERABLES'),
-    'Rejected'
+    'Project Approved'
   );
+});
+
+test('document status reflects review remarks after proposal approval', () => {
+  assert.equal(
+    selectors.getStudentDocumentStatusLabel('Approved', 'THESIS_DRAFT'),
+    'Upload Your Documents For Review'
+  );
+  assert.equal(
+    selectors.getStudentDocumentStatusLabel('Rejected', 'THESIS_DRAFT'),
+    'Document Rejected'
+  );
+  assert.equal(
+    selectors.getStudentDocumentStatusLabel('Changes Requested', 'FINAL_DELIVERABLES'),
+    'Changes Requested'
+  );
+  assert.equal(
+    selectors.getStudentDocumentStatusLabel('Submitted For Review', 'THESIS_DRAFT'),
+    'Submitted For Review'
+  );
+});
+
+test('project details stay locked after proposal approval until proposal reset', () => {
+  const approved = selectors.buildStudentDashboardViewModel(
+    { project: { stage: 'THESIS_DRAFT', status: 'Rejected' } },
+    '',
+    ''
+  );
+  const proposal = selectors.buildStudentDashboardViewModel(
+    { project: { stage: 'PROPOSAL', status: 'Pending' } },
+    '',
+    ''
+  );
+
+  assert.equal(approved.canEditProjectDetails, false);
+  assert.equal(proposal.canEditProjectDetails, true);
 });

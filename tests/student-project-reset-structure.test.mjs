@@ -52,3 +52,18 @@ test('proposal reset keeps the team while clearing proposal workflow state and s
   assert.match(teamSection, /Change Proposal/);
   assert.match(teamActions, /This returns the whole team to the proposal stage/);
 });
+
+test('post-proposal submissions keep project details locked and require a new PDF', async () => {
+  const [route, dashboard, submissionSection] = await Promise.all([
+    read('app/api/dashboard/student/route.ts'),
+    read('components/dashboards/StudentDashboard.tsx'),
+    read('components/student/StudentProjectSubmissionSection.tsx'),
+  ]);
+
+  assert.match(route, /const canEditProjectDetails = project\.stage === 'PROPOSAL'/);
+  assert.match(route, /\.\.\.\(canEditProjectDetails\s*\? \{[\s\S]*title,[\s\S]*description,[\s\S]*domains: selectedDomainIds,[\s\S]*tools,/);
+  assert.match(route, /!canEditProjectDetails && oldPdfKey === uploadedKey/);
+  assert.match(dashboard, /useStudentDashboardNavigation\(Boolean\(fineRestriction\)/);
+  assert.match(submissionSection, /disabled=\{!canSubmit \|\| !canEditProjectDetails\}/);
+  assert.match(submissionSection, /type="file"[\s\S]*disabled=\{!canSubmit\}/);
+});

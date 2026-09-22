@@ -27,6 +27,7 @@ import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
 import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
 import type { ProjectRatings } from '../../config/projectRatings';
 import {
+  getStudentDocumentStatusLabel,
   getStudentProjectStatusPill,
   type StudentProjectStatusPill,
 } from './selectors/studentDashboardViewModel';
@@ -90,6 +91,7 @@ export default function StudentOverviewSection({
   onOpenTeam: () => void;
 }) {
   const projectStatusPill = getStudentProjectStatusPill(projectStatus, currentStage);
+  const documentStatus = getStudentDocumentStatusLabel(me?.status, currentStage);
 
   return (
     <div className="space-y-7 sm:space-y-6">
@@ -193,11 +195,19 @@ export default function StudentOverviewSection({
 
       <DashboardGrid>
         <StatCard
-          label="Project Status"
+          label="Document Status"
           value={
-            me?.status === 'Pending'
-              ? 'Upload Your Files For Review'
-              : me?.status || 'Pending'
+            <span
+              className={
+                documentStatus === 'Document Rejected'
+                  ? 'text-red-600 dark:text-red-400'
+                  : documentStatus === 'Changes Requested'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : undefined
+              }
+            >
+              {documentStatus}
+            </span>
           }
           icon={<ClipboardCheck size={18} />}
         />

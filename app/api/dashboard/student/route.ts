@@ -878,23 +878,7 @@ await session.commitTransaction();
       legacyDomainText
     );
 
-    // --- NEW: Dynamic Title Deduplication Engine ---
     const fingerprint = generateFingerprint(title);
-
-        const duplicateProject = await Project.findOne({
-      titleFingerprint: fingerprint,
-      _id: { $ne: triggeringProject._id }, // Ignore our own current team
-      $or: [
-        { status: 'Approved' }, // Fully finished projects
-        { stage: { $in: ['THESIS_DRAFT', 'FINAL_DELIVERABLES'] } } // Projects that have already passed the Proposal stage
-      ]
-    });
-    if (duplicateProject) {
-      return NextResponse.json(
-        { error: 'A project utilizing these core concepts has already been approved for another team. Please select a unique topic.' },
-        { status: 409 }
-      );
-    }
 
     const uploadedKey = normalizeStorageKey(pdfUrl);
     if (!uploadedKey || !uploadedKey.startsWith(`proposals/${submissionStudentId}/`)) {
@@ -924,6 +908,24 @@ await session.commitTransaction();
           throw new StorageProtocolError(PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE, 409);
         }
 
+        const canEditProjectDetails = project.stage === 'PROPOSAL';
+        if (canEditProjectDetails) {
+          const duplicateProject = await Project.findOne({
+            titleFingerprint: fingerprint,
+            _id: { $ne: project._id },
+            $or: [
+              { status: 'Approved' },
+              { stage: { $in: ['THESIS_DRAFT', 'FINAL_DELIVERABLES'] } },
+            ],
+          }).session(session);
+          if (duplicateProject) {
+            throw new StorageProtocolError(
+              'A project utilizing these core concepts has already been approved for another team. Please select a unique topic.',
+              409
+            );
+          }
+        }
+
         const acceptedSubmissionPolicy = await RegistrationPolicy.findOneAndUpdate(
           hasPreviousProjectSubmission(project)
             ? { policyKey: REGISTRATION_POLICY_KEY }
@@ -945,6 +947,16 @@ await session.commitTransaction();
             409
           );
         }
+        if (!canEditProjectDetails && oldPdfKey === uploadedKey) {
+          throw new StorageProtocolError(
+            'Select a new project document PDF before submitting.',
+            400
+          );
+        }
+        const submittedTitle = canEditProjectDetails ? title : String(project.title || '');
+        const submittedDomainText = canEditProjectDetails
+          ? normalizedDomainText
+          : formatProjectDomainLabels(normalizeProjectDomainIds(project.domains));
         const updatedProject = await Project.updateOne(
           {
             _id: project._id,
@@ -952,12 +964,16 @@ await session.commitTransaction();
             $or: [{ version: Number(project.version || 0) }, { version: { $exists: false } }],
           },
           {
-                        $set: {
-              title,
-              description,
-              titleFingerprint: fingerprint,
-              domains: selectedDomainIds,
-              tools,
+            $set: {
+              ...(canEditProjectDetails
+                ? {
+                    title,
+                    description,
+                    titleFingerprint: fingerprint,
+                    domains: selectedDomainIds,
+                    tools,
+                  }
+                : {}),
               pdfUrl: uploadedKey,
               pdfSize: uploadedObject.actualBytes,
               status: 'Submitted For Review',
@@ -1007,8 +1023,8 @@ if (oldPdfKey && oldPdfKey !== uploadedKey) {
                     <p style="color: #71717a; margin-bottom: 24px;">A new Final Year Project proposal has been submitted.</p>
                     <div style="background-color: #f4f4f5; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
                       <p style="margin: 0 0 12px 0;"><strong>Submitted By:</strong> ${escapeHtml(studentInTransaction.name)}</p>
-                      <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${escapeHtml(normalizedDomainText)}</p>
-                      <p style="margin: 0;"><strong>Title:</strong> ${escapeHtml(title)}</p>
+                      <p style="margin: 0 0 12px 0;"><strong>Domains:</strong> ${escapeHtml(submittedDomainText)}</p>
+                      <p style="margin: 0;"><strong>Title:</strong> ${escapeHtml(submittedTitle)}</p>
                     </div>
                   </div>
                 </div>

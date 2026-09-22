@@ -35,6 +35,7 @@ export default function StudentProjectSubmissionSection({
   onToolsChange,
   description,
   onDescriptionChange,
+  canEditProjectDetails,
   canSubmit,
   file,
   onFileChange,
@@ -60,6 +61,7 @@ export default function StudentProjectSubmissionSection({
   onToolsChange: (value: string) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
+  canEditProjectDetails: boolean;
   canSubmit: boolean;
   file: File | null;
   onFileChange: (file: File | null) => void;
@@ -142,13 +144,18 @@ export default function StudentProjectSubmissionSection({
       )}
 
       <form onSubmit={onSubmit} className="space-y-5">
+        {!canEditProjectDetails && (
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-[var(--color-text-muted)]">
+            Project details are locked after proposal approval. Use Change Proposal or Reset Project to edit them.
+          </div>
+        )}
         <div>
           <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">
             Project Title
           </label>
           <StyledInput
             value={title}
-            disabled={!canSubmit}
+            disabled={!canSubmit || !canEditProjectDetails}
             onChange={(event) => onTitleChange(event.target.value)}
             required
             placeholder="Enter project title"
@@ -158,7 +165,7 @@ export default function StudentProjectSubmissionSection({
         <ProjectDomainSelector
           selectedDomains={selectedDomains}
           legacyDomain={legacyDomain}
-          disabled={!canSubmit}
+          disabled={!canSubmit || !canEditProjectDetails}
           onChange={onDomainsChange}
         />
 
@@ -169,7 +176,7 @@ export default function StudentProjectSubmissionSection({
           <StyledInput
             icon={Wrench}
             value={tools}
-            disabled={!canSubmit}
+            disabled={!canSubmit || !canEditProjectDetails}
             onChange={(event) => onToolsChange(event.target.value)}
             required
             placeholder="e.g. React, Python, TensorFlow"
@@ -182,7 +189,7 @@ export default function StudentProjectSubmissionSection({
           </label>
           <TextArea
             value={description}
-            disabled={!canSubmit}
+            disabled={!canSubmit || !canEditProjectDetails}
             onChange={(event) => onDescriptionChange(event.target.value)}
             required
             placeholder="Describe your project scope, goals, and expected outcome..."
@@ -205,7 +212,9 @@ export default function StudentProjectSubmissionSection({
             {file
               ? `Selected: ${file.name}`
               : pdfUrl
-                ? 'Existing PDF will be reused if you do not select a new file.'
+                ? canEditProjectDetails
+                  ? 'Existing PDF will be reused if you do not select a new file.'
+                  : 'Select a new PDF for the next document review.'
                 : 'A PDF is required for first submission.'}
           </p>
         </div>

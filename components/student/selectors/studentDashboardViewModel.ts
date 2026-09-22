@@ -24,11 +24,23 @@ export function getStudentProjectStatusPill(
   status?: string,
   stage?: string
 ): StudentProjectStatusPill | null {
+  if (stage === 'THESIS_DRAFT' || stage === 'FINAL_DELIVERABLES') {
+    return 'Project Approved';
+  }
   if (status === 'Rejected') return 'Rejected';
   if (status === 'Changes Requested') return 'Changes Requested';
-  return stage === 'THESIS_DRAFT' || stage === 'FINAL_DELIVERABLES'
-    ? 'Project Approved'
-    : null;
+  return null;
+}
+
+export function getStudentDocumentStatusLabel(status?: string, stage?: string): string {
+  if (stage === 'THESIS_DRAFT' || stage === 'FINAL_DELIVERABLES') {
+    if (status === 'Rejected') return 'Document Rejected';
+    if (status === 'Changes Requested') return 'Changes Requested';
+    if (status === 'Submitted For Review') return status;
+    return 'Upload Your Documents For Review';
+  }
+
+  return status === 'Pending' ? 'Upload Your Files For Review' : status || 'Pending';
 }
 
 export function getStudentProgramName(program?: string): string {
@@ -123,6 +135,7 @@ export function buildStudentDashboardViewModel(
     currentStage,
     currentProgramName: getStudentProgramName(me?.program),
     toolsList: splitStudentTools(me?.tools || draftTools),
+    savedDomainIds,
     savedDomainLabels: getProjectDomainLabels(savedDomainIds),
     savedDomainText: formatProjectDomainLabels(
       savedDomainIds,
@@ -134,6 +147,7 @@ export function buildStudentDashboardViewModel(
     projectSubmissionComplete,
     projectSubmissionPendingReview,
     projectSubmissionsOpen,
+    canEditProjectDetails: currentStage === 'PROPOSAL',
     canSubmit:
       hasAssignedSupervisor &&
       !projectSubmissionComplete &&
