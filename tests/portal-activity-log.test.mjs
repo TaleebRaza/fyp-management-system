@@ -35,6 +35,7 @@ test('maps every project review result to a readable activity action', () => {
 });
 
 test('allows the student project reset activity event', () => {
+  assert.ok(activityLog.PORTAL_ACTIVITY_ACTIONS.includes('student-proposal-reset'));
   assert.ok(activityLog.PORTAL_ACTIVITY_ACTIONS.includes('student-project-reset'));
 });
 

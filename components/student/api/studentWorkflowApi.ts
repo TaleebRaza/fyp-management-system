@@ -84,6 +84,19 @@ export async function resetStudentProject(): Promise<StudentWorkflowResponse> {
   return data;
 }
 
+export async function resetStudentProposal(): Promise<StudentWorkflowResponse> {
+  const response = await fetch('/api/dashboard/student', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'resetProposal' }),
+  });
+  const data = await readJson<StudentWorkflowResponse>(response);
+  if (!response.ok) {
+    throw new Error(readError(data, 'Failed to change proposal.'));
+  }
+  return data;
+}
+
 export async function updateStudentAcademicInfo(
   input: StudentAcademicUpdateRequest
 ): Promise<StudentWorkflowResponse> {

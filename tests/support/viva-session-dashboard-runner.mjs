@@ -144,11 +144,9 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       confirmed: false,
     });
     const assignedBeforeStart = await getPanelAdminVivaSessions(String(panelAdmin._id));
-    assert.equal(assignedBeforeStart.length, 1);
-    assert.equal(assignedBeforeStart[0].project.title, 'Membership snapshot team');
+    assert.equal(assignedBeforeStart.length, 0);
     const memberAgenda = await getPanelAdminVivaSessions(String(panelMember._id));
-    assert.equal(memberAgenda.length, 1);
-    assert.equal(memberAgenda[0].canManage, false);
+    assert.equal(memberAgenda.length, 0);
 
     const unconfirmedStart = await startVivaSession(
       membership.sessionId,
@@ -163,6 +161,12 @@ export async function runVivaSessionDashboardIntegration(testDatabaseUri) {
       { _id: membership.round._id },
       { $set: { confirmedAt: new Date('2026-10-10T09:00:00.000Z') } }
     );
+    const confirmedPanelAgenda = await getPanelAdminVivaSessions(String(panelAdmin._id));
+    assert.equal(confirmedPanelAgenda.length, 1);
+    assert.equal(confirmedPanelAgenda[0].project.title, 'Membership snapshot team');
+    const confirmedMemberAgenda = await getPanelAdminVivaSessions(String(panelMember._id));
+    assert.equal(confirmedMemberAgenda.length, 1);
+    assert.equal(confirmedMemberAgenda[0].canManage, false);
 
     const nonPanelAdminStart = await startVivaSession(
       membership.sessionId,

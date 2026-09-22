@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid student action.' }, { status: 400 });
     }
     const action = body.action;
-    if (!['updateName', 'updateProgramBatch', 'resetProject', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
+    if (!['updateName', 'updateProgramBatch', 'resetProposal', 'resetProject', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown student action.' }, { status: 400 });
     }
 
@@ -291,6 +291,73 @@ export async function POST(req: NextRequest) {
         }
         console.error('student_academic_reset_failed');
         return NextResponse.json({ error: 'Failed to update Program/Batch.' }, { status: 500 });
+      }
+    }
+
+    if (action === 'resetProposal') {
+      if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
+        return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
+      }
+
+      try {
+        const queuedDeletionBytes = await withStorageTransaction(async (session) => {
+          const project = await Project.findOne({ members: currentUser.id }).session(session);
+          if (!project) {
+            throw new StorageProtocolError('Your current project record could not be found.', 404);
+          }
+
+          const pdfKey = project.pdfUrl ? normalizeStorageKey(project.pdfUrl) : null;
+          if (project.pdfUrl && !pdfKey) {
+            throw new StorageProtocolError(
+              'The stored project file key is invalid. Run the storage integrity audit before changing your proposal.',
+              409
+            );
+          }
+
+          let deletedBytes = 0;
+          if (pdfKey) {
+            await assertStorageLedgerReady(session);
+            const sharedKeys = await findSharedStorageKeys({
+              keys: [pdfKey],
+              excludedProjectIds: [project._id],
+              session,
+            });
+            if (!sharedKeys.has(pdfKey)) {
+              deletedBytes = Math.max(Number(project.pdfSize || 0), 0);
+              await enqueueStorageDeletion({
+                key: pdfKey,
+                bytes: deletedBytes,
+                reason: 'student-proposal-reset',
+              }, session);
+            }
+          }
+
+          project.stage = 'PROPOSAL';
+          project.status = 'Pending';
+          project.reviewRemarks = '';
+          project.pdfUrl = '';
+          project.pdfSize = 0;
+          project.ratings = undefined;
+          project.version = Number(project.version || 0) + 1;
+          await project.save({ session });
+
+          return deletedBytes;
+        });
+
+        await recordCurrentUserActivity('student-proposal-reset', currentUser);
+        return NextResponse.json(
+          {
+            message: 'Your project is back at the proposal stage. Your team and supervisor were kept.',
+            queuedDeletionBytes,
+          },
+          { status: 200 }
+        );
+      } catch (error) {
+        if (error instanceof StorageProtocolError) {
+          return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        }
+        console.error('student_proposal_reset_failed');
+        return NextResponse.json({ error: 'Failed to change proposal.' }, { status: 500 });
       }
     }
 

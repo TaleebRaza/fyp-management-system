@@ -1,5 +1,5 @@
 import type { FormEventHandler } from 'react';
-import { ArrowRight, Copy, Loader2, Lock, LogOut, RotateCcw, UserCheck, Users } from 'lucide-react';
+import { ArrowRight, Copy, FilePenLine, Loader2, Lock, LogOut, RotateCcw, UserCheck, Users } from 'lucide-react';
 import {
   AvatarBadge,
   Button,
@@ -26,6 +26,7 @@ export default function StudentTeamSection({
   onJoinTeam,
   canLeaveTeam,
   onLeaveTeam,
+  onResetProposal,
   onResetProject,
   onCopyInviteCode,
   onOpenSupervisorChange,
@@ -47,6 +48,7 @@ export default function StudentTeamSection({
   onJoinTeam: FormEventHandler<HTMLFormElement>;
   canLeaveTeam: boolean;
   onLeaveTeam: () => void;
+  onResetProposal: () => void;
   onResetProject: () => void;
   onCopyInviteCode: () => void;
   onOpenSupervisorChange: () => void;
@@ -198,19 +200,17 @@ export default function StudentTeamSection({
               : 'You cannot leave while you are the only member of this team.'}
           </p>
         </div>
-        <div className="mt-6 border-t border-[var(--color-border)] pt-6">
-          <Button
-            type="button"
-            variant="danger"
-            className="w-full"
-            onClick={onResetProject}
-            disabled={isSubmitting}
-          >
+        <div className="mt-6 grid gap-3 border-t border-[var(--color-border)] pt-6 sm:grid-cols-2">
+          <Button type="button" variant="accent" onClick={onResetProposal} disabled={isSubmitting}>
+            {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <FilePenLine size={16} />}
+            Change Proposal
+          </Button>
+          <Button type="button" variant="danger" onClick={onResetProject} disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <RotateCcw size={16} />}
             Reset Project
           </Button>
-          <p className="mt-3 text-sm leading-6 text-[var(--color-text-muted)]">
-            Start again from proposal and remove your supervisor, messages, and personal project files.
+          <p className="text-sm leading-6 text-[var(--color-text-muted)] sm:col-span-2">
+            Change Proposal keeps your team and supervisor. Reset Project removes your supervisor, messages, and personal project files.
           </p>
         </div>
         {!isUnassigned && (

@@ -4,6 +4,7 @@ import { useCallback, useState, type FormEvent } from 'react';
 import {
   joinStudentTeam,
   leaveStudentTeam,
+  resetStudentProposal,
   resetStudentProject,
 } from '../api/studentWorkflowApi';
 import type { StudentDashboardProps } from '../studentDashboardTypes';
@@ -147,6 +148,37 @@ export function useStudentTeamActions({
     });
   }, [performProjectReset, showDialog]);
 
+  const performProposalReset = useCallback(async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await resetStudentProposal();
+      await resetProjectDraft();
+      resetTemplates();
+      await refreshDashboard();
+      showDialog({
+        title: 'Proposal ready to change',
+        message: response.message || 'Your project is back at the proposal stage.',
+      });
+    } catch (error) {
+      showDialog({
+        title: 'Proposal change failed',
+        message: getErrorMessage(error, 'Unable to change your proposal right now.'),
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [refreshDashboard, resetProjectDraft, resetTemplates, showDialog]);
+
+  const handleResetProposal = useCallback(() => {
+    showDialog({
+      type: 'confirm',
+      title: 'Change your proposal?',
+      message:
+        'This returns the whole team to the proposal stage and deletes the current PDF. Your team, supervisor, and project details will be kept.',
+      onConfirm: performProposalReset,
+    });
+  }, [performProposalReset, showDialog]);
+
   const handleCopyInviteCode = useCallback(async () => {
     if (!inviteCode) return;
     await navigator.clipboard.writeText(inviteCode);
@@ -162,6 +194,7 @@ export function useStudentTeamActions({
     isSubmitting,
     handleJoinTeam,
     handleLeaveTeam,
+    handleResetProposal,
     handleResetProject,
     handleCopyInviteCode,
   };

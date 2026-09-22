@@ -992,7 +992,7 @@ export async function getVivaPanelSessions(actorId: string): Promise<VivaSession
   const [rounds, projects] = await Promise.all([
     roundIds.length === 0
       ? []
-      : VivaRound.find({ _id: { $in: roundIds } })
+      : VivaRound.find({ _id: { $in: roundIds }, confirmedAt: { $type: 'date' } })
         .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes frozenAt')
         .lean<VivaRoundRecord[]>(),
     projectIds.length === 0

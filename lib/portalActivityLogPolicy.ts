@@ -17,6 +17,7 @@ export const PORTAL_ACTIVITY_ACTIONS = [
   'student-name-updated',
   'student-academic-details-updated',
   'student-supervisor-updated',
+  'student-proposal-reset',
   'student-project-reset',
   'student-team-joined',
   'student-team-left',

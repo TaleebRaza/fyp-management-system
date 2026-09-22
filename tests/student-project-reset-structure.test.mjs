@@ -30,3 +30,25 @@ test('project reset safely creates a fresh unassigned proposal project', async (
   assert.match(teamActions, /type: 'confirm'/);
   assert.match(teamActions, /This permanently removes your supervisor/);
 });
+
+test('proposal reset keeps the team while clearing proposal workflow state and storage', async () => {
+  const [route, teamSection, teamActions] = await Promise.all([
+    read('app/api/dashboard/student/route.ts'),
+    read('components/student/StudentTeamSection.tsx'),
+    read('components/student/hooks/useStudentTeamActions.ts'),
+  ]);
+  const actionStart = route.indexOf("if (action === 'resetProposal')");
+  const actionEnd = route.indexOf("if (action === 'resetProject')", actionStart);
+  const resetAction = route.slice(actionStart, actionEnd);
+
+  assert.ok(actionStart >= 0);
+  assert.match(resetAction, /withStorageTransaction/);
+  assert.match(resetAction, /reason: 'student-proposal-reset'/);
+  assert.match(resetAction, /project\.stage = 'PROPOSAL'/);
+  assert.match(resetAction, /project\.pdfUrl = ''/);
+  assert.match(resetAction, /project\.ratings = undefined/);
+  assert.doesNotMatch(resetAction, /deleteOne|\$pull|releaseSupervisorProjectSlot/);
+  assert.match(teamSection, /variant="accent"[^>]*onClick=\{onResetProposal\}/);
+  assert.match(teamSection, /Change Proposal/);
+  assert.match(teamActions, /This returns the whole team to the proposal stage/);
+});

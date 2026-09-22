@@ -102,6 +102,18 @@ test('project reset uses the authenticated student action', async () => {
   });
 });
 
+test('proposal reset uses the authenticated student action', async () => {
+  await withMockFetch(async (url, init) => {
+    assert.equal(url, '/api/dashboard/student');
+    assert.equal(init.method, 'POST');
+    assert.deepEqual(JSON.parse(init.body), { action: 'resetProposal' });
+    return jsonResponse({ message: 'Proposal reset' });
+  }, async () => {
+    const result = await api.resetStudentProposal();
+    assert.equal(result.message, 'Proposal reset');
+  });
+});
+
 test('academic update preserves action and field names', async () => {
   await withMockFetch(async (url, init) => {
     assert.equal(url, '/api/dashboard/student');

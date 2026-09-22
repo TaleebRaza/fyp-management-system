@@ -145,6 +145,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
     isSubmitting: isTeamSubmitting,
     handleJoinTeam,
     handleLeaveTeam,
+    handleResetProposal,
     handleResetProject,
     handleCopyInviteCode,
   } = useStudentTeamActions({
@@ -357,6 +358,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             onJoinTeam={handleJoinTeam}
             canLeaveTeam={canLeaveTeam}
             onLeaveTeam={handleLeaveTeam}
+            onResetProposal={handleResetProposal}
             onResetProject={handleResetProject}
             onCopyInviteCode={handleCopyInviteCode}
             onOpenSupervisorChange={openSupervisorChangeDialog}
