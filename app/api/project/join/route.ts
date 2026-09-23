@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
             $addToSet: { members: studentId },
             $set: { domains: inheritedDomainIds },
           },
-          { new: true, session }
+          { returnDocument: 'after', session }
         );
 
         if (!joinedProject) {

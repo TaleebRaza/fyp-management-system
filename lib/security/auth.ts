@@ -51,11 +51,11 @@ export async function requireCurrentUser(
   const currentUser = await getCurrentUser(req);
   if (!currentUser) return null;
 
-  if (currentUser.role !== 'admin' && (await getPortalPause()).paused) return null;
-
-  if (await isVivaSessionAccessRestricted(currentUser.id)) {
-    return null;
-  }
+  const [portal, vivaAccessRestricted] = await Promise.all([
+    currentUser.role === 'admin' ? Promise.resolve(null) : getPortalPause(),
+    isVivaSessionAccessRestricted(currentUser.id),
+  ]);
+  if (portal?.paused || vivaAccessRestricted) return null;
 
   return !allowedRoles || allowedRoles.includes(currentUser.role) ? currentUser : null;
 }

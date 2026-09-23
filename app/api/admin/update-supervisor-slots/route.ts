@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const supervisor = await User.findOneAndUpdate(
       { _id: supervisorId, role: 'supervisor' },
       { $set: { extraSlots: safeExtraSlots } },
-      { new: true }
+      { returnDocument: 'after' }
     )
       .select('_id name rollNo extraSlots')
       .lean();

@@ -103,17 +103,18 @@ export async function GET(req: NextRequest) {
       getCompletedVivaResultsForStudent(studentId),
       getConfirmedVivaSchedulesForStudent(studentId),
     ]);
-    const supervisor = project?.supervisorId
-      ? await User.findById(project.supervisorId)
-          .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
-          .lean()
-      : null;
-
-    const projectMembers = project?.members?.length
-      ? await User.find({ _id: { $in: project.members }, role: 'student' })
-          .select('_id name rollNo email lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment')
-          .lean()
-      : [];
+    const [supervisor, projectMembers] = await Promise.all([
+      project?.supervisorId
+        ? User.findById(project.supervisorId)
+            .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
+            .lean()
+        : Promise.resolve(null),
+      project?.members?.length
+        ? User.find({ _id: { $in: project.members }, role: 'student' })
+            .select('_id name rollNo email lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment')
+            .lean()
+        : Promise.resolve([]),
+    ]);
     const teamFineRestriction = getTeamFineRestrictionFromMembers(projectMembers, student._id);
     const policy = serializeRegistrationPolicy(policyDocument);
     const fineRestrictionResponse = fineRestriction
@@ -247,7 +248,7 @@ export async function POST(req: NextRequest) {
           ],
         },
         { $set: { name: normalizedName, lastNameChangeAt: now } },
-        { new: true }
+        { returnDocument: 'after' }
       )
         .select('name')
         .lean();
@@ -496,7 +497,7 @@ export async function POST(req: NextRequest) {
                 'members.1': { $exists: true },
               },
               { $pull: { members: student._id } },
-              { new: true, session }
+              { returnDocument: 'after', session }
             );
             if (!remainingProject) {
               throw new StorageProtocolError('The team changed while your reset was being processed. Refresh and try again.', 409);
@@ -934,7 +935,7 @@ await session.commitTransaction();
                 projectSubmissionsOpen: { $ne: false },
               },
           { $inc: { projectSubmissionsAccepted: 1 } },
-          { new: true, session }
+          { returnDocument: 'after', session }
         );
         if (!acceptedSubmissionPolicy) {
           throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);

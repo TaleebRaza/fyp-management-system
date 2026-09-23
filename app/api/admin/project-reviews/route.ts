@@ -187,7 +187,7 @@ export async function PATCH(req: NextRequest) {
         $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
         $inc: { version: 1 },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     );
     const policy = serializeRegistrationPolicy(updated);
     invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);

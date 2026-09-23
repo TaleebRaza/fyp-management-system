@@ -346,7 +346,7 @@ export async function PATCH(req: NextRequest) {
       studentMessageAcknowledgedAt: null,
     },
     { $set: { studentMessageAcknowledgedAt: acknowledgedAt } },
-    { new: true }
+    { returnDocument: 'after' }
   )
     .select('_id studentMessageId studentMessageAcknowledgedAt')
     .lean();

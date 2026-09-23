@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const updatedUser = await User.findByIdAndUpdate(
       { _id: targetUserId, role: { $in: ['student', 'supervisor'] } },
       { $set: { email: cleanedEmail } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     )
       .select('_id name email role')
       .lean();

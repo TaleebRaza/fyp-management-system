@@ -23,7 +23,7 @@ export async function getOrCreateRegistrationPolicy() {
         version: DEFAULT_REGISTRATION_POLICY.version,
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
   );
 }
 

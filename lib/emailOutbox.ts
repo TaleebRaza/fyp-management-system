@@ -84,7 +84,7 @@ export async function processEmailOutbox(limit = 25) {
         },
         $inc: { attempts: 1 },
       },
-      { new: true, sort: { nextAttemptAt: 1, _id: 1 } }
+      { returnDocument: 'after', sort: { nextAttemptAt: 1, _id: 1 } }
     ).lean();
     if (!target) break;
 

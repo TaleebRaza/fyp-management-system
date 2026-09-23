@@ -196,7 +196,7 @@ export async function PATCH(req: NextRequest) {
           $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
           $inc: { version: 1 },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
       );
       const updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument);
       invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
@@ -233,7 +233,7 @@ export async function PATCH(req: NextRequest) {
             },
             $inc: { version: 1 },
           },
-          { new: true }
+          { returnDocument: 'after' }
         );
         updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument || policyDocument);
       }
@@ -270,7 +270,7 @@ export async function PATCH(req: NextRequest) {
             },
             $inc: { version: 1 },
           },
-          { new: true }
+          { returnDocument: 'after' }
         );
         updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument || policyDocument);
       }
@@ -310,7 +310,7 @@ export async function PATCH(req: NextRequest) {
           $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
           $inc: { version: 1 },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
       );
       const updatedPolicy = serializeRegistrationPolicy(updatedPolicyDocument);
       invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
@@ -355,7 +355,7 @@ export async function PATCH(req: NextRequest) {
         const savedStudent = await User.findOneAndUpdate(
           { _id: student._id, role: 'student' },
           { $set: resolvedFields },
-          { new: true }
+          { returnDocument: 'after' }
         ).select(
           'lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus lateRegistrationFineResolvedAt registrationPunishment'
         );

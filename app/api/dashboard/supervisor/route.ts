@@ -372,7 +372,7 @@ await session.commitTransaction();
       const expandedProject = await Project.findOneAndUpdate(
         { _id: requestedProjectId, supervisorId: currentUser.id },
         { $set: { maxTeamSize: EXPANDED_TEAM_SIZE } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!expandedProject) {

@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
       const transactionPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
         { policyKey: REGISTRATION_POLICY_KEY, isOpen: true },
         { $inc: { registrationsAccepted: 1 } },
-        { new: true, session }
+        { returnDocument: 'after', session }
       );
 
       if (!transactionPolicyDocument) {

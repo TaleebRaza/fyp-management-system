@@ -13,7 +13,8 @@ test('portal pause is server-enforced and keeps only admin access', async () => 
   ]);
 
   assert.doesNotMatch(proxy, /fetch\(new URL\('\/api\/portal-status'/);
-  assert.match(authGuard, /currentUser\.role !== 'admin' && \(await getPortalPause\(\)\)\.paused/);
+  assert.match(authGuard, /currentUser\.role === 'admin' \? Promise\.resolve\(null\) : getPortalPause\(\)/);
+  assert.match(authGuard, /if \(portal\?\.paused \|\| vivaAccessRestricted\) return null/);
   assert.match(registerRoute, /code: 'PORTAL_PAUSED'/);
   assert.match(auth, /portal\.paused && user\.role !== 'admin'/);
   assert.match(adminRoute, /requireCurrentUser\(req, \['admin'\]\)/);

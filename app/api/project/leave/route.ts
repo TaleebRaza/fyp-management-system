@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
             'members.1': { $exists: true },
           },
           { $pull: { members: student._id } },
-          { new: true, session }
+          { returnDocument: 'after', session }
         );
 
         if (!remainingProject) {

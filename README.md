@@ -306,6 +306,39 @@ VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m12_test?replicaSet=rs
 
 The workflow check exercises round creation, random panel allocation and explicit panel-admin replacement, scheduling, panel-admin-only start, temporary member restriction and release, grade completion, publication, and equal results for every team member. It also reports the observed local preview and transactional panel-save durations for 500 fake supervisors. These timings are diagnostic measurements, not performance guarantees.
 
+### Local Viva HTTP stress check
+
+The guarded HTTP runner uses only loopback services, synthetic `example.test` accounts, and the dedicated `fyp_viva_http_stress_test` database. Build and start the production server with the same local `MONGODB_URI`, `NEXTAUTH_SECRET`, and `NEXTAUTH_URL` values, then run:
+
+```bash
+VIVA_STRESS_BASE_URL='http://localhost:3100' \
+VIVA_STRESS_MONGODB_URI='mongodb://127.0.0.1:27019/fyp_viva_http_stress_test?replicaSet=rs0&directConnection=true' \
+npm run test:viva:stress:preflight
+
+VIVA_STRESS_BASE_URL='http://localhost:3100' \
+VIVA_STRESS_MONGODB_URI='mongodb://127.0.0.1:27019/fyp_viva_http_stress_test?replicaSet=rs0&directConnection=true' \
+npm run test:viva:stress:login
+
+VIVA_STRESS_BASE_URL='http://localhost:3100' \
+VIVA_STRESS_MONGODB_URI='mongodb://127.0.0.1:27019/fyp_viva_http_stress_test?replicaSet=rs0&directConnection=true' \
+npm run test:viva:stress
+
+VIVA_STRESS_TRAFFIC_SECONDS=300 \
+VIVA_STRESS_BASE_URL='http://localhost:3100' \
+VIVA_STRESS_MONGODB_URI='mongodb://127.0.0.1:27019/fyp_viva_http_stress_test?replicaSet=rs0&directConnection=true' \
+npm run test:viva:stress:traffic
+```
+
+The login command uses fresh cookie jars and separates callback, CSRF-plus-callback, session, and dashboard timings for successful 1/10/25/50-login waves and focused rejection/legacy-hash scenarios. Set `VIVA_STRESS_PROCESS_STATE=cold` only for the first run against a freshly started server; later runs default to `warm`. Set `VIVA_STRESS_SERVER_UV_THREADPOOL_SIZE` on the runner to record the worker count used to start that separate server process. Start the local server with `LOGIN_PHASE_TIMINGS=1` to emit sanitized `login_phase_timing` JSON logs for connection/status, limit reads, user lookup, password verification (including worker queuing), Viva restriction, and successful-login writes. If those logs are captured to a task-owned file, pass its path as `VIVA_STRESS_SERVER_LOG` to include a phase summary in the report. Diagnostics are disabled by default and contain no account identifiers or secrets.
+
+The short command runs synchronized 1, 10, 25, and 50-session stages, real NextAuth cookie authentication, Viva start/grade/complete requests, stale-version conflicts, active-session restrictions, unrelated student access, and administrator reads. It writes sanitized JSON and Markdown reports under `/tmp/fyp-viva-http-stress`, including runtime/source/index metadata, and cleans the test database in a `finally` path. Set `VIVA_STRESS_BASELINE_REPORT` to an earlier JSON report to include a matched p95 comparison. The runner refuses non-loopback URLs, non-dedicated databases, production service names, and more than 50 sessions. It does not target Vercel Hobby, real storage, or real email.
+
+The traffic command keeps all 50 sessions active for at least 300 seconds while the 100-student and 50-panel-member rejection waves overlap panel grade traffic and authenticated dashboard reads. Set `VIVA_STRESS_TRAFFIC_SECONDS` only within the guarded 300–1800 second range.
+
+Password verification uses Node's asynchronous scrypt implementation and must not be made cheaper to improve latency. On the local 50-session stress workload, starting the server with `UV_THREADPOOL_SIZE=8` reduced credential-callback p95 from 1.774 seconds to 1.174 seconds. For a self-hosted process, the equivalent is `UV_THREADPOOL_SIZE=8 npm start`. Set this environment variable before the Node process starts, then repeat the stress test on the deployment's actual CPU allocation. More workers are not automatically faster on smaller instances.
+
+The optional soak entrypoint is deliberately gated with `VIVA_STRESS_ALLOW_SOAK=1` and currently refuses to substitute the short staged run for a true soak. Pause for an explicit model and user checkpoint before implementing and running it. Password-reset, object-storage, and SMTP scenarios remain separate until disposable local adapters are configured.
+
 ---
 
 ## 🏗️ High-Level Architecture
