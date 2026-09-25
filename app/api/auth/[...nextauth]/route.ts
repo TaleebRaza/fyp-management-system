@@ -148,7 +148,7 @@ const handler = NextAuth({
 
           await measureLoginPhase(phases, 'successfulLoginWrites', async () => {
             if (passwordCheck.needsRehash) {
-              const rehashedPassword = await hashPassword(password);
+              const rehashedPassword = await hashPassword(password, { enforceLengthPolicy: false });
               await User.updateOne(
                 {
                   _id: user._id,

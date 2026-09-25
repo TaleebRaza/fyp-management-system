@@ -33,8 +33,14 @@ export function validatePassword(value: string) {
   return value.length >= 10 && value.length <= 128;
 }
 
-export async function hashPassword(password: string) {
-  if (!validatePassword(password)) throw new Error('Password does not meet the length policy.');
+type HashPasswordOptions = {
+  enforceLengthPolicy?: boolean;
+};
+
+export async function hashPassword(password: string, options: HashPasswordOptions = {}) {
+  if (options.enforceLengthPolicy !== false && !validatePassword(password)) {
+    throw new Error('Password does not meet the length policy.');
+  }
 
   const salt = randomBytes(16);
   const derivedKey = await deriveKey(password, salt, SCRYPT_KEY_BYTES);

@@ -30,3 +30,13 @@ test('bcrypt compatibility rejects inputs that bcrypt would truncate', async () 
   assert.equal((await password.verifyPassword(collision, truncatedHash)).matches, false);
   assert.equal((await password.verifyPassword('plaintext', 'plaintext')).matches, false);
 });
+
+test('verified legacy passwords can be rehashed without reapplying the length policy', async () => {
+  const shortLegacyPassword = 'oldpw1';
+  const legacyHash = await bcrypt.hash(shortLegacyPassword, 4);
+  const verified = await password.verifyPassword(shortLegacyPassword, legacyHash);
+
+  assert.equal(verified.matches, true);
+  assert.equal(verified.needsRehash, true);
+  await assert.doesNotReject(() => password.hashPassword(shortLegacyPassword, { enforceLengthPolicy: false }));
+});
