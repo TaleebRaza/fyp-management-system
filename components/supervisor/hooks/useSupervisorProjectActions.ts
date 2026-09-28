@@ -3,6 +3,7 @@ import {
   expandSupervisorTeam,
   migrateSupervisorStudent,
   removeSupervisorTeam,
+  updateSupervisorProjectRating,
   updateSupervisorProjectStatus,
 } from '../api/supervisorDashboardApi';
 import { getMemberNames } from '../SupervisorProjectCard';
@@ -60,11 +61,29 @@ export function useSupervisorProjectActions({
     (
       project: SupervisorProject,
       newStatus: string,
-      approval?: { ratings: ProjectRatingValues; remarks: string }
+      approval?: {
+        ratings: ProjectRatingValues;
+        remarks: string;
+        reviewRatingRound?: 'proposal' | 'thesis';
+        isReviewEdit?: boolean;
+      }
     ) => {
       const submitReview = async (remarks: string, ratings?: ProjectRatingValues) => {
         setIsProcessingAction(true);
         try {
+          if (approval?.isReviewEdit && approval.reviewRatingRound) {
+            await updateSupervisorProjectRating({
+              studentId: project.triggerStudentId,
+              ratingRound: approval.reviewRatingRound,
+              remarks: String(remarks || '').trim() || 'No remarks provided.',
+              ratings: ratings || approval.ratings,
+            });
+            closeProject();
+            await refreshProjects();
+            notify('Rating updated', 'The saved rating was revised successfully.');
+            return;
+          }
+
           await updateSupervisorProjectStatus({
             studentId: project.triggerStudentId,
             status: newStatus,

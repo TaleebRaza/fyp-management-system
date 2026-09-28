@@ -23,9 +23,11 @@ function formatRatingDate(value: string | Date) {
 export function ProjectRatingsDisplay({
   ratings,
   stage,
+  onReviewRating,
 }: {
   ratings?: ProjectRatings;
   stage: string;
+  onReviewRating?: (round: ProjectRatingRound) => void;
 }) {
   const completedRounds = getCompletedProjectRatingRounds(stage);
   if (completedRounds.length === 0) return null;
@@ -45,11 +47,22 @@ export function ProjectRatingsDisplay({
               <h3 id={`${round}-ratings-title`} className="text-sm font-bold text-[var(--color-text)]">
                 {ROUND_LABELS[round]}
               </h3>
-              {snapshot ? (
-                <p className="text-xs font-semibold text-[var(--color-text-muted)]">
-                  {formatRatingDate(snapshot.ratedAt)}
-                </p>
-              ) : null}
+              <div className="flex items-center gap-2">
+                {snapshot && onReviewRating ? (
+                  <button
+                    type="button"
+                    onClick={() => onReviewRating(round)}
+                    className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-accent)] transition hover:bg-[var(--color-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                  >
+                    Review rating
+                  </button>
+                ) : null}
+                {snapshot ? (
+                  <p className="text-xs font-semibold text-[var(--color-text-muted)]">
+                    {formatRatingDate(snapshot.ratedAt)}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             {snapshot ? (

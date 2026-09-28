@@ -5,6 +5,7 @@ import {
   getProjectRatingRound,
   parseProjectRatingValues,
   type ProjectRatingCategoryKey,
+  type ProjectRatingRound,
   type ProjectRatingValues,
 } from '../../config/projectRatings';
 import { ApprovalRatingForm, type PendingProjectRatings } from '../project-ratings/ApprovalRatingForm';
@@ -46,13 +47,20 @@ export default function SupervisorProjectDialog({
   onAction: (
     project: SupervisorProject,
     status: string,
-    approval?: { ratings: ProjectRatingValues; remarks: string }
+    approval?: {
+      ratings: ProjectRatingValues;
+      remarks: string;
+      reviewRatingRound?: ProjectRatingRound;
+      isReviewEdit?: boolean;
+    }
   ) => void;
   management?: ProjectManagement;
 }) {
   const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
   const [approvalRatings, setApprovalRatings] = useState<PendingProjectRatings>({});
   const [approvalRemarks, setApprovalRemarks] = useState('');
+  const [reviewRatingRound, setReviewRatingRound] = useState<ProjectRatingRound | null>(null);
+  const [isOpeningDocument, setIsOpeningDocument] = useState(false);
   const projectId = project?._id ?? null;
   const isApprovalFormOpen = projectId !== null && approvalProjectId === projectId;
   const selectedPdfKey = getSafePdfKey(project?.pdfUrl);
@@ -79,14 +87,37 @@ export default function SupervisorProjectDialog({
     setApprovalProjectId(null);
     setApprovalRatings({});
     setApprovalRemarks('');
+    setReviewRatingRound(null);
+    setIsOpeningDocument(false);
     onClose();
+  };
+
+  const handleReviewRating = (round: ProjectRatingRound) => {
+    if (!project) return;
+    const snapshot = project.ratings?.[round];
+    const reviewRemarks = project.reviewRemarks ?? project.remarks ?? '';
+    setApprovalProjectId(project._id);
+    setReviewRatingRound(round);
+    setApprovalRatings(snapshot ? {
+      projectIdea: snapshot.projectIdea,
+      technicalMerit: snapshot.technicalMerit,
+      documentationQuality: snapshot.documentationQuality,
+    } : {});
+    setApprovalRemarks(reviewRemarks);
+  };
+
+  const handleOpenDocument = () => {
+    if (!project || !selectedPdfKey) return;
+    setIsOpeningDocument(true);
+    window.open(`/api/read-pdf?url=${encodeURIComponent(selectedPdfKey)}`, '_blank', 'noopener,noreferrer');
+    setTimeout(() => setIsOpeningDocument(false), 250);
   };
 
   return (
     <Dialog
       open={!!project}
       onClose={isProcessingAction ? () => undefined : handleClose}
-      title={isApprovalFormOpen ? 'Approve project and save ratings' : getMemberNames(project)}
+      title={isApprovalFormOpen ? (reviewRatingRound ? 'Review rating' : 'Approve project and save ratings') : getMemberNames(project)}
       description={project ? `${getMemberRollNumbers(project)} · ${getProgramName(getProjectProgram(project))} · ${project.batch || 'No batch'} · ${project.semester || 'No semester'}${project.supervisorName ? ` · Supervisor: ${project.supervisorName}` : ''}` : ''}
       size="xl"
       footer={
@@ -103,7 +134,7 @@ export default function SupervisorProjectDialog({
                 disabled={!completeRatings || isProcessingAction}
               >
                 {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                {isProcessingAction ? 'Approving...' : 'Approve and save ratings'}
+                {isProcessingAction ? (reviewRatingRound ? 'Updating rating...' : 'Approving...') : (reviewRatingRound ? 'Update rating' : 'Approve and save ratings')}
               </Button>
             </>
           ) : (
@@ -132,10 +163,24 @@ export default function SupervisorProjectDialog({
               onAction(project, 'Approved', {
                 ratings: completeRatings,
                 remarks: approvalRemarks,
+                reviewRatingRound: reviewRatingRound || undefined,
+                isReviewEdit: !!reviewRatingRound,
               });
             }
           }}
         >
+          <div className="mb-4 flex items-center justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleOpenDocument}
+              disabled={!selectedPdfKey || isOpeningDocument || isProcessingAction}
+              title={selectedPdfKey ? 'Open the document this rating was written about.' : 'No saved document is available for this rating.'}
+            >
+              {isOpeningDocument ? <Loader2 className="animate-spin" size={15} /> : <ExternalLink size={15} />}
+              Open document
+            </Button>
+          </div>
           <ApprovalRatingForm
             ratings={approvalRatings}
             remarks={approvalRemarks}
@@ -188,7 +233,11 @@ export default function SupervisorProjectDialog({
 
           <DashboardPanel>
             <SectionHeader title="Project Ratings" description="Permanent ratings recorded when earlier stages were approved." />
-            <ProjectRatingsDisplay ratings={project.ratings} stage={project.stage || 'PROPOSAL'} />
+            <ProjectRatingsDisplay
+              ratings={project.ratings}
+              stage={project.stage || 'PROPOSAL'}
+              onReviewRating={handleReviewRating}
+            />
             {project.stage === 'PROPOSAL' ? (
               <p className="text-sm text-[var(--color-text-muted)]">Ratings appear after a stage is approved.</p>
             ) : null}

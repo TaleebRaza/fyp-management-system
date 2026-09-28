@@ -26,6 +26,8 @@ export type ProjectReviewProject = {
   status?: string;
   stage?: string;
   version?: number;
+  remarks?: string;
+  reviewRemarks?: string;
   ratings?: ProjectRatings;
   pdfUrl?: string;
   maxTeamSize?: number;

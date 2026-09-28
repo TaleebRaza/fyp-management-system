@@ -49,6 +49,14 @@ test('supervisor and student views reuse the same rating display', () => {
   assert.match(studentOverviewSource, /<ProjectRatingsDisplay/);
 });
 
+test('saved ratings can be reviewed and updated without mutating project stage metadata', () => {
+  assert.match(dialogSource, /Review rating/);
+  assert.match(dialogSource, /Update rating/);
+  assert.match(dialogSource, /ProjectRatingsDisplay[\s\S]*onReviewRating/);
+  assert.match(dialogSource, /reviewRatingRound/);
+  assert.match(dialogSource, /window\.open\(/);
+});
+
 test('admin reports expose the rating round, three bounded minimums, and PDF action', () => {
   assert.match(exportFormSource, /<details/);
   assert.match(exportFormSource, /<summary/);

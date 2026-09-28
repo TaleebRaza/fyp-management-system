@@ -8,7 +8,7 @@ import {
   normalizeProjectDomainIds,
 } from '../../../../config/projectDomains';
 import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../config/appSettings';
-import { getSafeProjectRatings } from '../../../../config/projectRatings';
+import { getSafeProjectRatings, parseProjectRatingValues } from '../../../../config/projectRatings';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
@@ -145,9 +145,61 @@ export async function POST(req: NextRequest) {
     // Read the body once only. Reading req.json() twice breaks migration.
     const body: unknown = await req.json();
     if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor action.' }, { status: 400 });
-    const { action, studentId, status, remarks, expectedStage, expectedVersion, ratings, migrationCode, projectId } = body;
-    if (!['updateStatus', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
+    const { action, studentId, status, remarks, expectedStage, expectedVersion, ratings, migrationCode, projectId, ratingRound } = body;
+    if (!['updateStatus', 'updateRating', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown supervisor action.' }, { status: 400 });
+    }
+
+    if (action === 'updateRating') {
+      const requestedStudentId = normalizeText(studentId, 64);
+      const requestedRound = String(ratingRound || '').trim();
+      const parsedRatings = parseProjectRatingValues(ratings);
+
+      if (!mongoose.Types.ObjectId.isValid(requestedStudentId) || !['proposal', 'thesis'].includes(requestedRound) || !parsedRatings) {
+        return NextResponse.json({ error: 'Invalid rating update.' }, { status: 400 });
+      }
+
+      const targetProject = await Project.findOne({
+        members: requestedStudentId,
+        supervisorId: currentUser.id,
+      }).select('_id stage version ratings reviewRemarks pdfUrl').lean();
+
+      if (!targetProject || !targetProject.ratings || !targetProject.ratings[requestedRound]) {
+        return NextResponse.json({ error: 'Saved rating not found.' }, { status: 404 });
+      }
+
+      const snapshot = targetProject.ratings[requestedRound] as Record<string, unknown>;
+      const updateResult = await Project.updateOne(
+        {
+          _id: targetProject._id,
+          supervisorId: currentUser.id,
+          members: requestedStudentId,
+        },
+        {
+          $set: {
+            [`ratings.${requestedRound}`]: {
+              ...parsedRatings,
+              ratedAt: snapshot.ratedAt || new Date(),
+              ratedBy: snapshot.ratedBy || currentUser.id,
+            },
+            reviewRemarks: normalizeText(remarks, 2000) || 'No remarks provided.',
+          },
+        },
+        { runValidators: true }
+      );
+
+      if (updateResult.matchedCount !== 1) {
+        return NextResponse.json({ error: 'Saved rating not found.' }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        message: 'Rating updated successfully.',
+        rating: {
+          ...parsedRatings,
+          ratedAt: snapshot.ratedAt || new Date().toISOString(),
+          ratedBy: snapshot.ratedBy || currentUser.id,
+        },
+      }, { status: 200 });
     }
 
     if (action === 'updateStatus') {

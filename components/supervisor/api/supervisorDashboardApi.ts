@@ -68,6 +68,28 @@ export async function loadSupervisorDashboard(
   };
 }
 
+export function updateSupervisorProjectRating(
+  input: {
+    studentId: string;
+    ratingRound: 'proposal' | 'thesis';
+    remarks: string;
+    ratings: ProjectRatingValues;
+  },
+  fetchImpl: SupervisorFetch = fetch
+) {
+  return postSupervisorAction(
+    {
+      action: 'updateRating',
+      studentId: input.studentId,
+      ratingRound: input.ratingRound,
+      remarks: input.remarks,
+      ratings: input.ratings,
+    },
+    'Server failed to update the saved rating.',
+    fetchImpl
+  );
+}
+
 export function updateSupervisorProjectStatus(
   input: {
     studentId: string;
