@@ -1,4 +1,3 @@
-import { ChevronRight } from 'lucide-react';
 import { PROGRAM_MAP } from '../../config/appSettings';
 import {
   formatProjectDomainLabels,
@@ -80,9 +79,7 @@ export default function SupervisorProjectCard({
 }) {
   const memberNames = getMemberNames(project);
   const memberRollNumbers = getMemberRollNumbers(project);
-  const pdfKey = getSafePdfKey(project.pdfUrl);
   const isReviewable = isProjectReviewable(project);
-  const domainLabels = getProjectDomainDisplayLabels(project);
 
   if (readOnly) {
     return (
@@ -149,43 +146,17 @@ export default function SupervisorProjectCard({
           : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'
       } ${highlighted ? 'ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg)]' : ''}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <AvatarBadge name={memberNames} className="h-11 w-11" />
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-bold text-[var(--color-text)]">{memberNames}</h3>
-            <p className="mt-1 truncate text-xs font-semibold text-[var(--color-text-muted)]">{memberRollNumbers}</p>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <Badge variant={getStatusVariant(project.status)}>{getStatusLabel(project.status)}</Badge>
-          {isReviewable && <span className="inline-flex items-center rounded-full border border-pink-500/40 bg-white/90 px-2.5 py-1 text-xs font-extrabold text-pink-700 shadow-sm dark:border-pink-300/30 dark:bg-pink-500/20 dark:text-pink-100">Waiting for review</span>}
+      <div className="flex min-w-0 items-start gap-3">
+        <AvatarBadge name={memberNames} className="h-11 w-11" />
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 text-sm font-bold leading-5 text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet.'}</h3>
+          <p className="mt-1 truncate text-xs font-semibold text-[var(--color-text-muted)]">{memberNames}</p>
+          <p className="mt-1 truncate text-xs text-[var(--color-text-muted)]">{memberRollNumbers}</p>
         </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Badge variant="muted">{getProgramName(getProjectProgram(project))}</Badge>
-        {project.batch && <Badge variant="muted">{project.batch}</Badge>}
-        {project.semester && <Badge variant="muted">{project.semester}</Badge>}
-        {project.supervisorName && <Badge variant="muted">Supervisor: {project.supervisorName}</Badge>}
-        {domainLabels.map((domainLabel) => <Badge key={domainLabel} variant="accent">{domainLabel}</Badge>)}
-      </div>
-
-      <div className={`mt-4 flex-1 rounded-xl border p-4 ${isReviewable ? 'border-pink-500/30 bg-white/70 dark:bg-pink-950/20' : 'border-[var(--color-border)] bg-[var(--color-surface-muted)]'}`}>
-        <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Project</p>
-        {project.projectTitle ? (
-          <>
-            <p className="mt-2 line-clamp-2 text-sm font-bold leading-6 text-[var(--color-text)]">{project.projectTitle}</p>
-            {project.tools && <p className="mt-2 line-clamp-1 text-xs font-semibold text-[var(--color-text-muted)]">{project.tools}</p>}
-          </>
-        ) : (
-          <p className="mt-2 text-sm font-semibold text-[var(--color-text-muted)]">Project details not submitted yet.</p>
-        )}
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
-        <span className={`text-xs font-bold ${isReviewable ? 'text-pink-700 dark:text-pink-200' : 'text-[var(--color-text-muted)]'}`}>{pdfKey ? 'PDF attached' : 'No PDF attached'}</span>
-        <span className="inline-flex items-center gap-1 text-xs font-bold text-[var(--color-accent)]">Review<ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" /></span>
       </div>
     </button>
   );
