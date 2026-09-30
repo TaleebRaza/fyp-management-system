@@ -1,18 +1,14 @@
 import {
   ArrowRight,
   Bell,
-  CheckCircle,
   FileText,
   Megaphone,
   Mic,
-  UserCheck,
   Users,
 } from 'lucide-react';
 import { Badge, Button, LinkifiedText } from '../ui';
 import { getProjectStageLabel, getProjectStageProgress } from '../ui/Timeline';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
-import type { ProjectRatings } from '../../config/projectRatings';
-import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
 import {
   getStudentDocumentStatusLabel,
   getStudentProjectStatusPill,
@@ -31,16 +27,6 @@ const formatAnnouncementTime = (value?: string | Date | null) => {
   return new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
 };
 
-const getRatingAverage = (ratings?: ProjectRatings) => {
-  const round = ratings?.thesis ? 'Thesis' : ratings?.proposal ? 'Proposal' : null;
-  const snapshot = ratings?.thesis || ratings?.proposal;
-  if (!round || !snapshot) return null;
-  return {
-    round,
-    average: ((snapshot.projectIdea + snapshot.technicalMerit + snapshot.documentationQuality) / 3).toFixed(1),
-  };
-};
-
 export default function StudentOverviewSection({
   me,
   supervisor,
@@ -50,7 +36,6 @@ export default function StudentOverviewSection({
   onToggleAnnouncements,
   currentStage,
   projectStatus,
-  projectRatings,
   projectMembers,
   getSecureMediaUrl,
   onOpenProject,
@@ -64,7 +49,6 @@ export default function StudentOverviewSection({
   onToggleAnnouncements: () => void;
   currentStage: string;
   projectStatus?: string;
-  projectRatings?: ProjectRatings;
   projectMembers: ProjectMember[];
   getSecureMediaUrl: (url?: string) => string;
   onOpenProject: () => void;
@@ -72,7 +56,6 @@ export default function StudentOverviewSection({
 }) {
   const projectStatusPill = getStudentProjectStatusPill(projectStatus, currentStage);
   const documentStatus = getStudentDocumentStatusLabel(me?.status, currentStage);
-  const rating = getRatingAverage(projectRatings);
   const stageProgress = getProjectStageProgress(currentStage);
 
   const nextStep = !supervisor
@@ -112,11 +95,11 @@ export default function StudentOverviewSection({
           </div>
         </section>
 
-        <section className="portal-bento-tile p-5 md:col-span-6">
+        <section className="portal-bento-tile portal-bento-accent p-5 md:col-span-12">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="portal-eyebrow">Announcements</p>
-              <h2 className="mt-1 text-lg font-black text-[var(--color-text)]">{announcementItems.length ? `${announcementItems.length} update${announcementItems.length === 1 ? '' : 's'}` : 'No new updates'}</h2>
+              <h2 className="mt-1 text-xl font-black text-[var(--color-text)]">{announcementItems.length ? `${announcementItems.length} update${announcementItems.length === 1 ? '' : 's'}` : 'No new updates'}</h2>
             </div>
             {announcementItems.length > 0 && <Button variant="ghost" onClick={onToggleAnnouncements}><Bell size={15} />{isAnnouncementPanelOpen ? 'Hide' : 'Show'}</Button>}
           </div>
@@ -147,24 +130,6 @@ export default function StudentOverviewSection({
           )}
         </section>
 
-        <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-6">
-          <p className="portal-eyebrow">Supervisor</p>
-          {supervisor ? (
-            <>
-              <div className="mt-3 flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white"><UserCheck size={18} /></span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-[var(--color-text)]">{supervisor.name}</p>
-                  <p className="mt-0.5 truncate text-xs text-[var(--color-text-muted)]">{supervisor.email || 'Project supervisor'}</p>
-                </div>
-              </div>
-              <Button className="mt-4" variant="outline" onClick={onOpenTeam}>Team & supervisor</Button>
-            </>
-          ) : (
-            <div className="mt-3"><p className="text-sm font-extrabold text-[var(--color-text)]">No supervisor assigned</p><Button className="mt-3" onClick={onOpenTeam}>Manage assignment</Button></div>
-          )}
-        </section>
-
         <section className="portal-bento-tile p-5 md:col-span-7">
           <p className="portal-eyebrow">Project</p>
           <div className="mt-2 flex items-start justify-between gap-4">
@@ -191,23 +156,6 @@ export default function StudentOverviewSection({
           <Button className="mt-4" variant="ghost" onClick={onOpenTeam}>Manage team <ArrowRight size={14} /></Button>
         </section>
 
-        <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-12">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="portal-eyebrow">Latest rating</p>
-              {rating ? <p className="mt-1 text-lg font-black text-[var(--color-text)]">{rating.round} · {rating.average} / 10</p> : <p className="mt-1 text-sm font-extrabold text-[var(--color-text)]">No rating recorded yet</p>}
-            </div>
-            <CheckCircle size={20} className={rating ? 'text-[var(--color-success)]' : 'text-[var(--color-text-soft)]'} />
-          </div>
-          {projectRatings && (
-            <details className="portal-disclosure mt-4">
-              <summary>View rating breakdown</summary>
-              <div>
-                <ProjectRatingsDisplay ratings={projectRatings} stage={currentStage} />
-              </div>
-            </details>
-          )}
-        </section>
       </div>
     </div>
   );

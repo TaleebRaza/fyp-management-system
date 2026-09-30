@@ -300,7 +300,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             onToggleAnnouncements={() => setIsAnnouncementPanelOpen((previous) => !previous)}
             currentStage={currentStage}
             projectStatus={project?.status}
-            projectRatings={project?.ratings}
             projectMembers={projectMembers}
             getSecureMediaUrl={getSecureMediaUrl}
             onOpenProject={() => setActiveTab('project')}
@@ -334,6 +333,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             file={file}
             onFileChange={(nextFile) => void handleProjectFileChange(nextFile)}
             isSubmitting={isSubmitting}
+            projectRatings={project?.ratings}
+            currentStage={currentStage}
           />
         )}
         {activeTab === 'fine' && fineRestriction && (

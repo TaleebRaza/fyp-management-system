@@ -1,12 +1,24 @@
 import type { FormEventHandler } from 'react';
-import { CircleDollarSign, ExternalLink, FileText, Loader2, Lock, Upload, Wrench } from 'lucide-react';
+import { CheckCircle, CircleDollarSign, ExternalLink, FileText, Loader2, Lock, Upload, Wrench } from 'lucide-react';
 import { Button, StyledInput, TextArea } from '../ui';
+import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
+import type { ProjectRatings } from '../../config/projectRatings';
 import ProjectDomainSelector from './ProjectDomainSelector';
 import {
   PROJECT_COMPLETE_MESSAGE,
   PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE,
   PROJECT_SUBMISSIONS_CLOSED_MESSAGE,
 } from '../../lib/projectSubmissionPolicy';
+
+const getRatingAverage = (ratings?: ProjectRatings) => {
+  const round = ratings?.thesis ? 'Thesis' : ratings?.proposal ? 'Proposal' : null;
+  const snapshot = ratings?.thesis || ratings?.proposal;
+  if (!round || !snapshot) return null;
+  return {
+    round,
+    average: ((snapshot.projectIdea + snapshot.technicalMerit + snapshot.documentationQuality) / 3).toFixed(1),
+  };
+};
 
 export default function StudentProjectSubmissionSection({
   pdfUrl,
@@ -34,6 +46,8 @@ export default function StudentProjectSubmissionSection({
   file,
   onFileChange,
   isSubmitting,
+  projectRatings,
+  currentStage,
 }: {
   pdfUrl?: string;
   pdfHref: string;
@@ -60,7 +74,10 @@ export default function StudentProjectSubmissionSection({
   file: File | null;
   onFileChange: (file: File | null) => void;
   isSubmitting: boolean;
+  projectRatings?: ProjectRatings;
+  currentStage: string;
 }) {
+  const rating = getRatingAverage(projectRatings);
   const stateMessage = !projectSubmissionsOpen
     ? PROJECT_SUBMISSIONS_CLOSED_MESSAGE
     : isFineRestricted
@@ -100,6 +117,24 @@ export default function StudentProjectSubmissionSection({
           <div className="rounded-xl bg-[var(--color-surface)] p-3"><p className="text-[10px] font-extrabold uppercase tracking-wide text-[var(--color-text-soft)]">Portal</p><p className="mt-1 text-xs font-extrabold text-[var(--color-text)]">{projectSubmissionsOpen ? 'Open' : 'Closed'}</p></div>
           <div className="rounded-xl bg-[var(--color-surface)] p-3"><p className="text-[10px] font-extrabold uppercase tracking-wide text-[var(--color-text-soft)]">PDF</p><p className="mt-1 text-xs font-extrabold text-[var(--color-text)]">{pdfUrl ? 'On file' : 'Not uploaded'}</p></div>
         </div>
+      </section>
+
+      <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-12">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="portal-eyebrow">Latest rating</p>
+            {rating ? <p className="mt-1 text-lg font-black text-[var(--color-text)]">{rating.round} · {rating.average} / 10</p> : <p className="mt-1 text-sm font-extrabold text-[var(--color-text)]">No rating recorded yet</p>}
+          </div>
+          <CheckCircle size={20} className={rating ? 'text-[var(--color-success)]' : 'text-[var(--color-text-soft)]'} />
+        </div>
+        {projectRatings && (
+          <details className="portal-disclosure mt-4">
+            <summary>View rating breakdown</summary>
+            <div>
+              <ProjectRatingsDisplay ratings={projectRatings} stage={currentStage} />
+            </div>
+          </details>
+        )}
       </section>
 
       <section className="portal-bento-tile p-5 md:col-span-12">
