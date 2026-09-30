@@ -1,35 +1,21 @@
 import {
-  ClipboardCheck,
+  ArrowRight,
+  Bell,
+  CheckCircle,
   FileText,
-  GraduationCap,
   Megaphone,
   Mic,
   UserCheck,
   Users,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
-import {
-  AvatarBadge,
-  Button,
-  DashboardGrid,
-  DashboardPanel,
-  LinkifiedText,
-  SectionHeader,
-  StatCard,
-} from '../ui';
-import {
-  Timeline,
-  getProjectStageLabel,
-  getProjectStageProgress,
-} from '../ui/Timeline';
+import { Badge, Button, LinkifiedText } from '../ui';
+import { getProjectStageLabel, getProjectStageProgress } from '../ui/Timeline';
 import { LateRegistrationFineBanner } from '../ui/LateRegistrationFineBanner';
-import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
 import type { ProjectRatings } from '../../config/projectRatings';
+import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
 import {
   getStudentDocumentStatusLabel,
   getStudentProjectStatusPill,
-  type StudentProjectStatusPill,
 } from './selectors/studentDashboardViewModel';
 import type {
   AnnouncementItem,
@@ -40,25 +26,19 @@ import type {
 
 const formatAnnouncementTime = (value?: string | Date | null) => {
   if (!value) return '';
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-
-  return new Intl.DateTimeFormat(undefined, {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
+  return new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
 };
 
-const projectStatusPillClasses: Record<StudentProjectStatusPill, string> = {
-  'Project Approved':
-    'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-200',
-  'Changes Requested':
-    'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200',
-  Rejected:
-    'border-red-300 bg-red-100 text-red-800 dark:border-red-700 dark:bg-red-950/70 dark:text-red-200',
+const getRatingAverage = (ratings?: ProjectRatings) => {
+  const round = ratings?.thesis ? 'Thesis' : ratings?.proposal ? 'Proposal' : null;
+  const snapshot = ratings?.thesis || ratings?.proposal;
+  if (!round || !snapshot) return null;
+  return {
+    round,
+    average: ((snapshot.projectIdea + snapshot.technicalMerit + snapshot.documentationQuality) / 3).toFixed(1),
+  };
 };
 
 export default function StudentOverviewSection({
@@ -92,275 +72,142 @@ export default function StudentOverviewSection({
 }) {
   const projectStatusPill = getStudentProjectStatusPill(projectStatus, currentStage);
   const documentStatus = getStudentDocumentStatusLabel(me?.status, currentStage);
+  const rating = getRatingAverage(projectRatings);
+  const stageProgress = getProjectStageProgress(currentStage);
+
+  const nextStep = !supervisor
+    ? { title: 'Choose a supervisor', body: 'Assign a supervisor or join an existing team before submitting your project.', action: 'Manage team', onClick: onOpenTeam }
+    : !me?.projectTitle
+      ? { title: 'Start your project', body: 'Add the project title, domain, tools, description, and first PDF.', action: 'Open project', onClick: onOpenProject }
+      : projectStatus === 'Submitted For Review'
+        ? { title: 'Waiting for supervisor review', body: 'Your latest document is submitted. No action is required until a decision arrives.', action: 'View submission', onClick: onOpenProject }
+        : projectStatus === 'Changes Requested'
+          ? { title: 'Changes requested', body: 'Review the supervisor remarks and submit the updated document when ready.', action: 'Update project', onClick: onOpenProject }
+          : { title: 'Prepare the next document', body: `${getProjectStageLabel(currentStage)} is your current stage. Keep the workspace ready for the next submission.`, action: 'Open project', onClick: onOpenProject };
 
   return (
-    <div className="space-y-7 sm:space-y-6">
-      <LateRegistrationFineBanner
-        daysLate={Number(me?.lateRegistrationDays || 0)}
-        amount={Number(me?.lateRegistrationFine || 0)}
-      />
+    <div className="space-y-4">
+      <LateRegistrationFineBanner daysLate={Number(me?.lateRegistrationDays || 0)} amount={Number(me?.lateRegistrationFine || 0)} />
 
-      {announcementItems.length > 0 && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
-                <Mic size={19} />
+      <div className="portal-bento">
+        <section className="portal-bento-tile portal-bento-accent p-5 md:col-span-7">
+          <p className="portal-eyebrow">Next step</p>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--color-text)]">{nextStep.title}</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--color-text-muted)]">{nextStep.body}</p>
+          <Button className="mt-4" onClick={nextStep.onClick}>{nextStep.action}<ArrowRight size={15} /></Button>
+        </section>
 
-                <span className="absolute -right-1 -top-1 flex h-3 w-3">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-                </span>
-              </div>
-
-              <div>
-                <p className="text-sm font-extrabold text-[var(--color-text)]">
-                  Announcements
-                </p>
-                <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
-                  {announcementItems.length} active update{announcementItems.length === 1 ? '' : 's'}
-                </p>
-              </div>
+        <section className="portal-bento-tile p-5 md:col-span-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="portal-eyebrow">Project stage</p>
+              <h2 className="mt-2 text-xl font-black text-[var(--color-text)]">{getProjectStageLabel(currentStage)}</h2>
             </div>
-
-            <button
-              type="button"
-              onClick={onToggleAnnouncements}
-              aria-label={isAnnouncementPanelOpen ? 'Collapse announcements' : 'Show announcements'}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
-            >
-              {isAnnouncementPanelOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-            </button>
+            <span className="text-sm font-black text-[var(--color-text-muted)]">{stageProgress}%</span>
           </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--color-bg-soft)]"><div className="h-full rounded-full bg-[var(--color-accent)]" style={{ width: `${stageProgress}%` }} /></div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Badge variant="muted">{documentStatus}</Badge>
+            {projectStatusPill && <Badge variant={projectStatusPill === 'Project Approved' ? 'success' : projectStatusPill === 'Rejected' ? 'danger' : 'warning'}>{projectStatusPill}</Badge>}
+          </div>
+        </section>
 
-          {isAnnouncementPanelOpen && (
-            <div className="portal-scrollbar mt-4 max-h-52 space-y-3 overflow-y-auto pr-1">
-              {announcementItems.map((item) => {
-                const isSupervisor = item.tone === 'supervisor';
-                const cardClass = isSupervisor
-                  ? 'border-purple-500 bg-purple-600 dark:border-purple-400/40 dark:bg-purple-600/80'
-                  : 'border-emerald-300 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/70';
-                const iconClass = isSupervisor
-                  ? 'bg-white/20 text-white ring-1 ring-white/30'
-                  : 'bg-emerald-200 text-emerald-950 ring-1 ring-emerald-300 dark:bg-emerald-800 dark:text-emerald-50 dark:ring-emerald-700';
-                const badgeClass = isSupervisor
-                  ? 'bg-white/20 text-white ring-1 ring-white/30'
-                  : 'bg-emerald-200 text-emerald-950 ring-1 ring-emerald-300 dark:bg-emerald-800 dark:text-emerald-50 dark:ring-emerald-700';
-                const titleClass = isSupervisor ? 'text-white' : 'text-emerald-950 dark:text-emerald-50';
-                const metaClass = isSupervisor ? 'text-white/80' : 'text-emerald-800 dark:text-emerald-200';
-                const contentClass = isSupervisor ? 'text-white' : 'text-emerald-950 dark:text-emerald-50';
-
-                return (
-                  <div key={item.id} className={`rounded-xl border p-4 ${cardClass}`}>
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconClass}`}>
-                        {item.type === 'audio' ? <Mic size={18} /> : <Megaphone size={18} />}
+        <section className="portal-bento-tile p-5 md:col-span-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="portal-eyebrow">Announcements</p>
+              <h2 className="mt-1 text-lg font-black text-[var(--color-text)]">{announcementItems.length ? `${announcementItems.length} update${announcementItems.length === 1 ? '' : 's'}` : 'No new updates'}</h2>
+            </div>
+            {announcementItems.length > 0 && <Button variant="ghost" onClick={onToggleAnnouncements}><Bell size={15} />{isAnnouncementPanelOpen ? 'Hide' : 'Show'}</Button>}
+          </div>
+          {!isAnnouncementPanelOpen && announcementItems[0] && (
+            <div className="mt-4 rounded-xl bg-[var(--color-surface-muted)] p-3">
+              <p className="text-xs font-extrabold text-[var(--color-text)]">{announcementItems[0].title}</p>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-text-muted)]">{announcementItems[0].type === 'audio' ? 'Voice announcement' : announcementItems[0].content}</p>
+            </div>
+          )}
+          {isAnnouncementPanelOpen && announcementItems.length > 0 && (
+            <div className="portal-scrollbar mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
+              {announcementItems.map((item) => (
+                <div key={item.id} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-soft)] text-[var(--color-accent)]">{item.type === 'audio' ? <Mic size={15} /> : <Megaphone size={15} />}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-extrabold text-[var(--color-text)]">{item.title}</p>
+                        <span className="text-[10px] font-bold text-[var(--color-text-soft)]">{item.source}</span>
+                        {item.createdAt && <span className="text-[10px] text-[var(--color-text-soft)]">{formatAnnouncementTime(item.createdAt)}</span>}
                       </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className={`text-sm font-extrabold ${titleClass}`}>
-                            {item.title}
-                          </p>
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${badgeClass}`}>
-                            {item.source}
-                          </span>
-                          {item.createdAt ? (
-                            <span className={`text-xs font-semibold ${metaClass}`}>
-                              {formatAnnouncementTime(item.createdAt)}
-                            </span>
-                          ) : null}
-                        </div>
-
-                        {item.type === 'audio' ? (
-                          <audio
-                            controls
-                            src={getSecureMediaUrl(item.content)}
-                            className="mt-3 h-10 w-full max-w-md"
-                          />
-                        ) : (
-                          <p className={`mt-2 text-sm leading-6 ${contentClass}`}>
-                            <LinkifiedText text={item.content} />
-                          </p>
-                        )}
-                      </div>
+                      {item.type === 'audio' ? <audio controls src={getSecureMediaUrl(item.content)} className="mt-2 h-9 w-full" /> : <p className="mt-1.5 text-xs leading-5 text-[var(--color-text-muted)]"><LinkifiedText text={item.content} /></p>}
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
-        </div>
-      )}
+        </section>
 
-      <DashboardGrid>
-        <StatCard
-          label="Document Status"
-          value={
-            <span
-              className={
-                documentStatus === 'Document Rejected'
-                  ? 'text-red-600 dark:text-red-400'
-                  : documentStatus === 'Changes Requested'
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : undefined
-              }
-            >
-              {documentStatus}
-            </span>
-          }
-          icon={<ClipboardCheck size={18} />}
-        />
-        <StatCard
-          label="Current Stage"
-          value={getProjectStageLabel(currentStage)}
-          hint={`${getProjectStageProgress(currentStage)}% complete`}
-          icon={<GraduationCap size={18} />}
-        />
-        <StatCard
-          label="Supervisor"
-          value={supervisor?.name || 'Unassigned'}
-          icon={<UserCheck size={18} />}
-        />
-        <StatCard
-          label="Team Members"
-          value={`${projectMembers.length || 1} Student${(projectMembers.length || 1) === 1 ? '' : 's'}`}
-          icon={<Users size={18} />}
-        />
-      </DashboardGrid>
-
-      <Timeline currentStage={currentStage} descriptionSuffix="based on the current stage." />
-
-      <div className="grid gap-7 sm:gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-        <DashboardPanel>
-          <SectionHeader
-            title="Project Information"
-            description="Your project review progress and team details."
-            action={
-              <Button variant="outline" onClick={onOpenProject}>
-                Edit Project
-              </Button>
-            }
-          />
-
-          {me?.projectTitle ? (
-            <div className="space-y-5">
-              {projectStatusPill && (
-                <div className="text-center">
-                  <span
-                    className={`inline-flex rounded-full border px-6 py-3 text-lg font-extrabold shadow-sm ${projectStatusPillClasses[projectStatusPill]}`}
-                  >
-                    {projectStatusPill}
-                  </span>
-                </div>
-              )}
-
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Project Title
-                </p>
-                <h3 className="mt-2 text-xl font-bold tracking-tight text-[var(--color-text)]">
-                  {me.projectTitle}
-                </h3>
-              </div>
-
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Supervisor Remarks
-                </p>
-                <p className="mt-2 text-sm leading-6 text-[var(--color-text)]">
-                  {me.remarks || 'No remarks from your supervisor yet.'}
-                </p>
-              </div>
-
-              <section>
-                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Ratings
-                </p>
-                <div className="mt-2">
-                  <ProjectRatingsDisplay ratings={projectRatings} stage={currentStage} />
-                  {currentStage === 'PROPOSAL' && (
-                    <p className="text-sm text-[var(--color-text-muted)]">
-                      Ratings appear after proposal approval.
-                    </p>
-                  )}
-                </div>
-              </section>
-
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Team Members
-                </p>
-                {projectMembers.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-sm font-semibold text-[var(--color-text)]">
-                    {projectMembers.map((member) => (
-                      <li key={member._id}>{member.name}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-                    No team members available.
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
-              <FileText className="mx-auto mb-3 text-[var(--color-text-muted)]" size={32} />
-              <p className="text-sm font-bold text-[var(--color-text)]">No project submitted yet</p>
-              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                Add project details and upload your PDF proposal.
-              </p>
-              <Button className="mt-5" onClick={onOpenProject}>
-                Start Submission
-              </Button>
-            </div>
-          )}
-        </DashboardPanel>
-
-        <DashboardPanel>
-          <SectionHeader title="Supervisor" description="Your assigned project supervisor." />
-
+        <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-6">
+          <p className="portal-eyebrow">Supervisor</p>
           {supervisor ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <AvatarBadge name={supervisor.name} />
+            <>
+              <div className="mt-3 flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white"><UserCheck size={18} /></span>
                 <div className="min-w-0">
-                  <p className="truncate text-base font-bold text-[var(--color-text)]">
-                    {supervisor.name}
-                  </p>
-                  <p className="text-sm text-[var(--color-text-muted)]">Project Supervisor</p>
+                  <p className="truncate text-sm font-black text-[var(--color-text)]">{supervisor.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-[var(--color-text-muted)]">{supervisor.email || 'Project supervisor'}</p>
                 </div>
               </div>
-
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Email
-                </p>
-                <p className="mt-2 break-all text-sm font-semibold text-[var(--color-text)]">
-                  {supervisor.email || 'No email available'}
-                </p>
-              </div>
-
-              {projectId && (
-                <Button variant="outline" className="w-full" onClick={onOpenTeam}>
-                  Open Team Workspace
-                </Button>
-              )}
-            </div>
+              <Button className="mt-4" variant="outline" onClick={onOpenTeam}>Team & supervisor</Button>
+            </>
           ) : (
-            <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-6 text-center">
-              <Users className="mx-auto mb-3 text-[var(--color-text-muted)]" size={30} />
-              <p className="text-sm font-bold text-[var(--color-text)]">No supervisor assigned</p>
-              <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
-                Choose an available supervisor or join an existing team.
-              </p>
-              <Button className="mt-5 w-full" onClick={onOpenTeam}>
-                Manage Assignment
-              </Button>
-            </div>
+            <div className="mt-3"><p className="text-sm font-extrabold text-[var(--color-text)]">No supervisor assigned</p><Button className="mt-3" onClick={onOpenTeam}>Manage assignment</Button></div>
           )}
-        </DashboardPanel>
+        </section>
+
+        <section className="portal-bento-tile p-5 md:col-span-7">
+          <p className="portal-eyebrow">Project</p>
+          <div className="mt-2 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="line-clamp-2 text-lg font-black text-[var(--color-text)]">{me?.projectTitle || 'Project not started'}</h2>
+              <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--color-text-muted)]">{me?.projectDesc || 'Your submitted project summary will appear here.'}</p>
+            </div>
+            <FileText size={20} className="shrink-0 text-[var(--color-text-soft)]" />
+          </div>
+          <Button className="mt-4" variant="outline" onClick={onOpenProject}>Open project</Button>
+        </section>
+
+        <section className="portal-bento-tile p-5 md:col-span-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="portal-eyebrow">Team</p>
+              <h2 className="mt-2 text-lg font-black text-[var(--color-text)]">{projectMembers.length || (projectId ? 1 : 0)} member{projectMembers.length === 1 ? '' : 's'}</h2>
+            </div>
+            <Users size={19} className="text-[var(--color-text-soft)]" />
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {projectMembers.slice(0, 3).map((member) => <p key={member._id} className="truncate text-xs text-[var(--color-text-muted)]"><strong className="text-[var(--color-text)]">{member.name}</strong> · {member.rollNo || member.email}</p>)}
+          </div>
+          <Button className="mt-4" variant="ghost" onClick={onOpenTeam}>Manage team <ArrowRight size={14} /></Button>
+        </section>
+
+        <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-12">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="portal-eyebrow">Latest rating</p>
+              {rating ? <p className="mt-1 text-lg font-black text-[var(--color-text)]">{rating.round} · {rating.average} / 10</p> : <p className="mt-1 text-sm font-extrabold text-[var(--color-text)]">No rating recorded yet</p>}
+            </div>
+            <CheckCircle size={20} className={rating ? 'text-[var(--color-success)]' : 'text-[var(--color-text-soft)]'} />
+          </div>
+          {projectRatings && (
+            <details className="portal-disclosure mt-4">
+              <summary>View rating breakdown</summary>
+              <div>
+                <ProjectRatingsDisplay ratings={projectRatings} stage={currentStage} />
+              </div>
+            </details>
+          )}
+        </section>
       </div>
     </div>
   );

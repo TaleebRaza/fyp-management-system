@@ -1,10 +1,11 @@
+import { ChevronRight } from 'lucide-react';
 import { PROGRAM_MAP } from '../../config/appSettings';
 import {
   formatProjectDomainLabels,
   getProjectDomainLabels,
   normalizeProjectDomainIds,
 } from '../../config/projectDomains';
-import { AvatarBadge, Badge } from '../ui';
+import { Badge } from '../ui';
 import { isProjectAwaitingReview } from '../../lib/projectReviewPolicy';
 import type { SupervisorProject } from './supervisorDashboardTypes';
 
@@ -60,14 +61,11 @@ export const getSafePdfKey = (url?: string) => {
 };
 
 export const hasProjectSubmission = (project: SupervisorProject) => Boolean(project.pdfUrl);
-
-export const isProjectReviewable = (project: SupervisorProject) =>
-  isProjectAwaitingReview(project);
+export const isProjectReviewable = (project: SupervisorProject) => isProjectAwaitingReview(project);
 
 export default function SupervisorProjectCard({
   project,
   onOpen,
-  compact = false,
   readOnly = false,
   highlighted = false,
 }: {
@@ -77,86 +75,54 @@ export default function SupervisorProjectCard({
   readOnly?: boolean;
   highlighted?: boolean;
 }) {
-  const memberNames = getMemberNames(project);
-  const memberRollNumbers = getMemberRollNumbers(project);
   const isReviewable = isProjectReviewable(project);
-
-  if (readOnly) {
-    return (
-      <article className="flex min-h-full flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <AvatarBadge name={memberNames} className="h-11 w-11" />
-            <div className="min-w-0">
-              <h3 className="truncate text-sm font-bold text-[var(--color-text)]">{memberNames}</h3>
-              <p className="mt-1 truncate text-xs font-semibold text-[var(--color-text-muted)]">{memberRollNumbers}</p>
-            </div>
-          </div>
-          <Badge variant="success">Project Approved</Badge>
-        </div>
-
-        <div className="mt-4 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Project</p>
-          <p className="mt-2 line-clamp-2 text-sm font-bold leading-6 text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet.'}</p>
-        </div>
-      </article>
-    );
-  }
-
-  if (compact) {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpen(project)}
-        className="group flex min-h-full flex-col rounded-xl border border-pink-500/70 bg-pink-50/80 p-3 text-left shadow-sm ring-1 ring-pink-500/20 transition-colors hover:bg-pink-50 dark:bg-pink-500/10 dark:hover:bg-pink-500/15"
-        aria-label={`Open project review for ${memberNames}`}
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <AvatarBadge name={memberNames} className="h-9 w-9 rounded-lg text-xs" />
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-bold text-[var(--color-text)]">{memberNames}</h3>
-            <p className="mt-0.5 truncate text-xs font-semibold text-[var(--color-text-muted)]">{memberRollNumbers}</p>
-          </div>
-        </div>
-
-        <div className="mt-3 flex gap-2">
-          <Badge variant="muted" className="min-w-0 flex-1 justify-center truncate">{getProgramName(getProjectProgram(project))}</Badge>
-          <Badge variant="muted" className="min-w-0 flex-1 justify-center truncate">{project.batch || 'Not assigned'}</Badge>
-        </div>
-        <div className="mt-2.5 flex">
-          <Badge variant="muted" className="max-w-full truncate">Supervisor: {project.supervisorName || 'Not assigned'}</Badge>
-        </div>
-
-        <div className="mt-3 border-t border-pink-500/20 pt-2.5">
-          <p className="text-xs text-[var(--color-text-muted)]">Project title</p>
-          <p className="mt-0.5 line-clamp-2 text-sm font-bold leading-5 text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet.'}</p>
-        </div>
-      </button>
-    );
-  }
+  const members = project.members || [];
 
   return (
     <button
       id={`project-${project._id}`}
       type="button"
       onClick={() => onOpen(project)}
-      className={`group flex min-h-full flex-col rounded-xl border p-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
-        isReviewable
-          ? 'border-pink-500/70 bg-pink-50/80 shadow-sm ring-1 ring-pink-500/20 hover:bg-pink-50 dark:bg-pink-500/10 dark:hover:bg-pink-500/15'
-          : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'
+      className={`group flex min-h-[11rem] w-full flex-col rounded-[1.15rem] border p-4 text-left shadow-[var(--shadow-card)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/50 ${
+        isReviewable && !readOnly
+          ? 'border-amber-300/80 bg-amber-50/70 dark:border-amber-400/25 dark:bg-amber-500/5'
+          : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-strong)]'
       } ${highlighted ? 'ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg)]' : ''}`}
+      aria-label={`Open ${project.projectTitle || 'assigned project'}`}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <AvatarBadge name={memberNames} className="h-11 w-11" />
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-sm font-bold leading-5 text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet.'}</h3>
-          <p className="mt-1 truncate text-xs font-semibold text-[var(--color-text-muted)]">{memberNames}</p>
-          <p className="mt-1 truncate text-xs text-[var(--color-text-muted)]">{memberRollNumbers}</p>
+          <p className="portal-eyebrow">Project</p>
+          <h3 className="mt-1 line-clamp-2 text-sm font-extrabold leading-5 text-[var(--color-text)]">
+            {project.projectTitle || 'Project details not submitted yet'}
+          </h3>
         </div>
+        {isReviewable && !readOnly ? (
+          <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" title="Waiting for review" />
+        ) : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Badge variant="muted">{getProgramName(getProjectProgram(project))}</Badge>
+      <div className="mt-4 space-y-2">
+        {members.length > 0 ? members.map((member) => (
+          <div key={member._id || member.rollNo || member.email || member.name} className="flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-muted)] px-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-extrabold text-[var(--color-text)]">{member.name || 'Student'}</p>
+              <p className="mt-0.5 truncate text-[11px] text-[var(--color-text-muted)]">{member.rollNo || member.email || 'No identifier'}</p>
+            </div>
+            <Badge variant="muted" className="shrink-0">{getProgramName(member.program || getProjectProgram(project))}</Badge>
+          </div>
+        )) : (
+          <p className="text-xs text-[var(--color-text-muted)]">No student information available.</p>
+        )}
+      </div>
+
+      <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+        <span className="text-[11px] font-bold text-[var(--color-text-muted)]">
+          {readOnly ? 'Approved project' : isReviewable ? 'Decision needed' : getStatusLabel(project.status)}
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs font-extrabold text-[var(--color-text)]">
+          Open <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
       </div>
     </button>
   );

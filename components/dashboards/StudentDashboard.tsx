@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { Loader2, LogIn, Pencil, Settings } from 'lucide-react';
+import { Loader2, LogIn } from 'lucide-react';
 
 import {
   Button,
@@ -41,7 +41,7 @@ import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
 import { updateStudentName } from '../student/api/studentWorkflowApi';
 import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
 const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDashboardProps) => {
-  const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
+  const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(false);
   const [isVivaView, setIsVivaView] = useState(false);
 
   useVivaAccessRestriction(showDialog);
@@ -275,17 +275,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
           role: `${me?.program || 'Student'} · ${me?.batch || 'No batch'}`,
         }}
         actions={
-          <div className="grid gap-2 sm:flex">
-            <Button variant="outline" onClick={openNameEditor}>
-              <Pencil size={16} />
-              Edit Name
-            </Button>
-
-            <Button variant="outline" onClick={openAcademicEditor}>
-              <Settings size={16} />
-              Academic Info
-            </Button>
-
+          <div className="flex">
             <Button
               variant="danger"
               onClick={() => {
@@ -384,6 +374,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             currentProgramName={currentProgramName}
             batch={me?.batch}
             onOpenAcademicEditor={openAcademicEditor}
+            onOpenNameEditor={openNameEditor}
           />
         )}
       </DashboardShell>

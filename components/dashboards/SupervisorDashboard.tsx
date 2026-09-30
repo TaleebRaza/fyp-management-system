@@ -3,12 +3,10 @@
 import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
-  ChevronDown,
   ClipboardList,
-  Download,
   FileText,
   LayoutDashboard,
-  Loader2,  
+  Loader2,
   LogIn,
   MessagesSquare,
 } from 'lucide-react';
@@ -18,7 +16,6 @@ import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import StudentMessagesPanel from '../messages/StudentMessagesPanel';
 import VivaSessionWorkspace from '../supervisor/VivaSessionWorkspace';
-import { getProgramName } from '../supervisor/SupervisorProjectCard';
 import {
   useSupervisorExport,
   useSupervisorFeedback,
@@ -44,19 +41,9 @@ const SupervisorDashboard = ({
 
   useVivaAccessRestriction(showDialog);
 
-  const { notify, requestConfirmation, requestRemarks } =
-    useSupervisorFeedback(showDialog);
-  const {
-    projects,
-    migrationCode: myMigrationCode,
-    isLoading,
-    refreshProjects,
-  } = useSupervisorProjects({ supervisorId, notify });
-  const filters = useSupervisorProjectFilters({
-    projects,
-    activeTab,
-    setActiveTab,
-  });
+  const { notify, requestConfirmation, requestRemarks } = useSupervisorFeedback(showDialog);
+  const { projects, migrationCode: myMigrationCode, isLoading, refreshProjects } = useSupervisorProjects({ supervisorId, notify });
+  const filters = useSupervisorProjectFilters({ projects, activeTab, setActiveTab });
   const { isExporting, exportProjects } = useSupervisorExport({
     projects,
     supervisorName,
@@ -64,12 +51,7 @@ const SupervisorDashboard = ({
     programFilter: filters.programFilter,
     notify,
   });
-  const actions = useSupervisorProjectActions({
-    notify,
-    requestConfirmation,
-    requestRemarks,
-    refreshProjects,
-  });
+  const actions = useSupervisorProjectActions({ notify, requestConfirmation, requestRemarks, refreshProjects });
 
   const openMessageProject = (projectId: string) => {
     if (!projects.some((project) => project._id === projectId)) return;
@@ -78,11 +60,7 @@ const SupervisorDashboard = ({
   };
 
   useEffect(() => {
-    if (
-      activeTab !== 'projects'
-      || !messageProjectId
-      || !filters.filteredProjects.some((project) => project._id === messageProjectId)
-    ) return;
+    if (activeTab !== 'projects' || !messageProjectId || !filters.filteredProjects.some((project) => project._id === messageProjectId)) return;
 
     const frame = window.requestAnimationFrame(() => {
       const projectCard = document.getElementById(`project-${messageProjectId}`);
@@ -96,13 +74,8 @@ const SupervisorDashboard = ({
   if (isLoading) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center">
-        <Loader2
-          className="mb-4 animate-spin text-[var(--color-accent)]"
-          size={36}
-        />
-        <p className="text-sm font-bold text-[var(--color-text-muted)]">
-          Loading supervisor workspace...
-        </p>
+        <Loader2 className="mb-4 animate-spin text-[var(--color-accent)]" size={36} />
+        <p className="text-sm font-bold text-[var(--color-text-muted)]">Loading supervisor workspace...</p>
       </div>
     );
   }
@@ -111,18 +84,16 @@ const SupervisorDashboard = ({
     {
       id: 'overview',
       label: 'Overview',
-      icon: <LayoutDashboard size={18} />,
+      section: 'Workspace',
+      icon: <LayoutDashboard size={16} />,
       active: activeTab === 'overview',
       onClick: () => setActiveTab('overview'),
     },
     {
       id: 'projects',
       label: 'Assigned Projects',
-      icon: filters.isProjectMenuExpanded ? (
-        <ChevronDown size={18} />
-      ) : (
-        <FileText size={18} />
-      ),
+      section: 'Workspace',
+      icon: <FileText size={16} />,
       active: activeTab === 'projects',
       badge: projects.length,
       onClick: filters.openProjectsFromSidebar,
@@ -130,83 +101,34 @@ const SupervisorDashboard = ({
     {
       id: 'messages',
       label: 'Student Messages',
-      icon: <MessagesSquare size={18} />,
+      section: 'Communication',
+      icon: <MessagesSquare size={16} />,
       active: activeTab === 'messages',
       onClick: () => setActiveTab('messages'),
     },
     {
       id: 'viva',
       label: 'Viva Sessions',
-      icon: <ClipboardList size={18} />,
+      section: 'Assessment',
+      icon: <ClipboardList size={16} />,
       active: activeTab === 'viva',
       onClick: () => setActiveTab('viva'),
     },
-    ...(filters.isProjectMenuExpanded
-      ? [
-          {
-            id: 'program-all',
-            label: 'All Programs',
-            icon: (
-              <span className="ml-5 h-1.5 w-1.5 rounded-full bg-current" />
-            ),
-            active: activeTab === 'projects' && !filters.programFilter,
-            badge: projects.length,
-            onClick: filters.showAllPrograms,
-          },
-          ...filters.uniquePrograms.map((program) => ({
-            id: `program-${program}`,
-            label: getProgramName(program),
-            icon: (
-              <span className="ml-5 h-1.5 w-1.5 rounded-full bg-current" />
-            ),
-            active:
-              activeTab === 'projects' && filters.programFilter === program,
-            badge: filters.programProjectCounts[program],
-            onClick: () => filters.showProgram(program),
-          })),
-        ]
-      : []),
   ];
 
   return (
     <>
       <DashboardShell
         title="Supervisor Dashboard"
-        description={`Manage FYP teams, reviews, broadcasts, and project decisions for ${supervisorName}.`}
+        description="Review projects, manage teams, and run Viva sessions."
         navItems={navItems}
-        className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${
-          activeTab === 'projects'
-            ? '[&>div>div>main]:lg:overflow-hidden'
-            : ''
-        }`}
-        user={{
-          name: supervisorName,
-          role: `Supervisor · Code ${myMigrationCode}`,
-        }}
+        className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${activeTab === 'projects' ? '[&>div>div>main]:lg:overflow-hidden' : ''}`}
+        user={{ name: supervisorName, role: `Supervisor · Code ${myMigrationCode}` }}
         actions={
-          <div className="grid gap-2 sm:flex">
-            <BroadcastWidget
-              isDarkMode={isDarkMode}
-              theme={theme}
-            />
-            <Button
-              variant="outline"
-              onClick={exportProjects}
-              disabled={isExporting}
-            >
-              {isExporting ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <Download size={16} />
-              )}
-              {isExporting ? 'Exporting...' : 'Download PDF'}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => signOut({ redirect: false })}
-            >
-              <LogIn size={16} className="rotate-180" />
-              Logout
+          <div className="flex gap-2">
+            <BroadcastWidget isDarkMode={isDarkMode} theme={theme} />
+            <Button variant="danger" onClick={() => signOut({ redirect: false })}>
+              <LogIn size={16} className="rotate-180" />Logout
             </Button>
           </div>
         }
@@ -224,6 +146,7 @@ const SupervisorDashboard = ({
             onOpenProject={actions.openProject}
           />
         )}
+
         {activeTab === 'projects' && (
           <div className="min-h-0 lg:h-full">
             <SupervisorProjectsSection
@@ -239,6 +162,10 @@ const SupervisorDashboard = ({
               onFilterChange={filters.setBatchFilter}
               filterOptions={filters.uniqueBatches}
               filterLabel="Batch"
+              secondaryFilterValue={filters.programFilter}
+              onSecondaryFilterChange={filters.setProgramFilter}
+              secondaryFilterOptions={filters.uniquePrograms}
+              secondaryFilterLabel="Program"
               projects={filters.filteredProjects}
               emptyState={filters.emptyProjectState}
               onOpenProject={actions.openProject}
@@ -247,6 +174,7 @@ const SupervisorDashboard = ({
             />
           </div>
         )}
+
         {activeTab === 'messages' && (
           <StudentMessagesPanel
             isDarkMode={isDarkMode}
@@ -256,6 +184,7 @@ const SupervisorDashboard = ({
         )}
         {activeTab === 'viva' && <VivaSessionWorkspace />}
       </DashboardShell>
+
       <SupervisorProjectDialog
         project={actions.selectedProject}
         onClose={actions.closeProject}

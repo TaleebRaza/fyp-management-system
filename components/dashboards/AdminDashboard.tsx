@@ -274,7 +274,7 @@ const AdminDashboard = ({
     <>
       <DashboardShell
         title="Admin Dashboard"
-        description="Manage the complete FYP portal ecosystem."
+        description="Monitor portal health, then open the management area that needs attention."
         navItems={navItems}
         className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${
           activeTab === 'supervisors' || activeTab === 'students'
@@ -286,7 +286,7 @@ const AdminDashboard = ({
           role: 'Admin',
         }}
         actions={
-          <div className="grid gap-2 sm:flex">
+          <div className="flex gap-2">
             <Button
               variant={portalPaused ? 'success' : 'danger'}
               disabled={isUpdatingPortal}
@@ -294,10 +294,6 @@ const AdminDashboard = ({
             >
               <PauseCircle size={16} />
               {portalPaused ? 'Reopen Portal' : 'Pause Portal'}
-            </Button>
-            <Button variant="outline" onClick={reports.openReports}>
-              <BarChart3 size={16} />
-              Reports
             </Button>
             <Button
               variant="danger"
@@ -313,8 +309,14 @@ const AdminDashboard = ({
           <div className="space-y-7 sm:space-y-6">
             <AdminOverviewSection
               stats={stats}
+              portalPaused={portalPaused}
+              registrationPolicy={registrationPolicy}
               onOpenSupervisors={() => setActiveTab('supervisors')}
               onOpenStudents={() => setActiveTab('students')}
+              onOpenReviews={() => setActiveTab('reviews')}
+              onOpenMessages={() => setActiveTab('messages')}
+              onOpenRegistration={() => setActiveTab('registration')}
+              onOpenFines={() => setActiveTab('fines')}
               onOpenReports={reports.openReports}
             />
             <AdminHeadlineSection

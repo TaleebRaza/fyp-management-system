@@ -8,27 +8,11 @@ export type SectionHeaderProps = {
   className?: string;
 };
 
-export const SectionHeader = ({
-  title,
-  description,
-  action,
-  className = "",
-}: SectionHeaderProps) => (
-  <div
-    className={cn(
-      "mb-5 flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-end sm:justify-between",
-      className
-    )}
-  >
-    <div>
-      <h2 className="text-lg font-bold tracking-tight text-[var(--color-text)]">
-        {title}
-      </h2>
-      {description && (
-        <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
-          {description}
-        </p>
-      )}
+export const SectionHeader = ({ title, description, action, className = "" }: SectionHeaderProps) => (
+  <div className={cn("mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between", className)}>
+    <div className="min-w-0">
+      <h2 className="text-base font-extrabold tracking-tight text-[var(--color-text)] sm:text-lg">{title}</h2>
+      {description && <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--color-text-muted)] sm:text-sm">{description}</p>}
     </div>
     {action && <div className="shrink-0">{action}</div>}
   </div>

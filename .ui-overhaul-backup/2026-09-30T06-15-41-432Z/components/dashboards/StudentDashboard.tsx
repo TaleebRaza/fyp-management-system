@@ -1,0 +1,433 @@
+'use client';
+
+import { useState } from 'react';
+import { signOut } from 'next-auth/react';
+import { Loader2, LogIn, Pencil, Settings } from 'lucide-react';
+
+import {
+  Button,
+  DashboardShell,
+  VivaWorkspaceShell,
+} from '../ui';
+import FinePaymentPanel from '../student/FinePaymentPanel';
+import StudentOverviewSection from '../student/StudentOverviewSection';
+import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';
+import StudentResourcesSection from '../student/StudentResourcesSection';
+import StudentTeamSection from '../student/StudentTeamSection';
+import StudentMessageWidget from '../student/StudentMessageWidget';
+import StudentVivaWorkspace from '../student/StudentVivaWorkspace';
+import {
+  AcademicUpdateDialog,
+  SupervisorChangeDialog,
+  TemplatePreviewDialog,
+} from '../student/StudentDashboardDialogs';
+import type {
+  StudentDashboardProps,
+  WordTemplate,
+} from '../student/studentDashboardTypes';
+import { useStudentProjectDraft } from '../student/hooks/useStudentProjectDraft';
+import { useStudentTemplates } from '../student/hooks/useStudentTemplates';
+import { useStudentDashboardData } from '../student/hooks/useStudentDashboardData';
+import { useStudentDashboardNavigation } from '../student/hooks/useStudentDashboardNavigation';
+import { useStudentProjectSubmission } from '../student/hooks/useStudentProjectSubmission';
+import {
+  buildStudentDashboardViewModel,
+  getStudentSecureMediaUrl as getSecureMediaUrl,
+} from '../student/selectors/studentDashboardViewModel';
+import { useStudentAcademicUpdate } from '../student/hooks/useStudentAcademicUpdate';
+import { useStudentFineRefresh } from '../student/hooks/useStudentFineRefresh';
+import { useStudentSupervisorActions } from '../student/hooks/useStudentSupervisorActions';
+import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
+import { updateStudentName } from '../student/api/studentWorkflowApi';
+import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
+const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDashboardProps) => {
+  const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(true);
+  const [isVivaView, setIsVivaView] = useState(false);
+
+  useVivaAccessRestriction(showDialog);
+
+  const currentUserId = String((session.user as { id?: string }).id || '');
+  const {
+    title,
+    setTitle,
+    desc,
+    setDesc,
+    selectedDomains,
+    legacyDomain,
+    tools,
+    setTools,
+    file,
+    restoreProjectDraft,
+    handleDomainsChange,
+    handleProjectFileChange,
+    clearStoredProjectDraft,
+    resetProjectDraft,
+  } = useStudentProjectDraft(currentUserId);
+  const {
+    data,
+    supervisors: localSups,
+    headline,
+    isLoading,
+    refreshDashboard: fetchData,
+    refreshSupervisors: fetchSupervisors,
+  } = useStudentDashboardData({
+    userId: currentUserId,
+    restoreProjectDraft,
+    showDialog,
+  });
+  const {
+    me,
+    supervisor,
+    project,
+    fineRestriction,
+    isOwnFineRestricted,
+    isFineRestricted,
+    teamFineMessage,
+    projectMembers,
+    maxTeamSize,
+    canShareInviteCode,
+    canLeaveTeam,
+    currentStage,
+    currentProgramName,
+    savedDomainIds,
+    pdfUrl,
+    isUnassigned,
+    hasAssignedSupervisor,
+    projectSubmissionComplete,
+    projectSubmissionPendingReview,
+    canSubmit,
+    projectSubmissionsOpen,
+    canEditProjectDetails,
+    isSupervisorChangeLocked,
+    announcementItems,
+  } = buildStudentDashboardViewModel(data, headline, tools);
+  const { activeTab, setActiveTab, navItems } = useStudentDashboardNavigation(Boolean(fineRestriction), () => setIsVivaView(true));
+  const submissionTitle = canEditProjectDetails ? title : me?.projectTitle || '';
+  const submissionDescription = canEditProjectDetails ? desc : me?.projectDesc || '';
+  const submissionDomains = canEditProjectDetails ? selectedDomains : savedDomainIds;
+  const submissionTools = canEditProjectDetails ? tools : me?.tools || '';
+  const {
+    visibleTemplates,
+    isFetchingTemplates,
+    selectedTemplate,
+    isCopyingTemplate,
+    isCopied,
+    loadTemplates,
+    openTemplate,
+    closeTemplateDialog,
+    handleCopyTemplate,
+    resetTemplates,
+  } = useStudentTemplates({ currentStage, showDialog });
+  useStudentFineRefresh({
+    isFineRestricted,
+    refreshDashboard: fetchData,
+  });
+  const {
+    selectedSupervisorId,
+    setSelectedSupervisorId,
+    isSupervisorWarningOpen,
+    isSubmitting: isSupervisorSubmitting,
+    supervisorOptions,
+    supervisorChangeOptions,
+    selectedSupervisorName,
+    handleAssignSupervisor,
+    openSupervisorChangeDialog,
+    closeSupervisorChangeDialog,
+    handleConfirmSupervisorChange,
+  } = useStudentSupervisorActions({
+    userId: currentUserId,
+    supervisors: localSups,
+    currentSupervisorId: me?.supervisorId,
+    isChangeLocked: isSupervisorChangeLocked,
+    refreshDashboard: fetchData,
+    refreshSupervisors: fetchSupervisors,
+    resetProjectDraft,
+    resetTemplates,
+    showDialog,
+  });
+  const {
+    inviteCodeInput,
+    setInviteCodeInput,
+    isSubmitting: isTeamSubmitting,
+    handleJoinTeam,
+    handleLeaveTeam,
+    handleResetProposal,
+    handleResetProject,
+    handleCopyInviteCode,
+  } = useStudentTeamActions({
+    inviteCode: project?.inviteCode,
+    canLeaveTeam,
+    refreshDashboard: fetchData,
+    refreshSupervisors: fetchSupervisors,
+    resetProjectDraft,
+    resetTemplates,
+    showDialog,
+  });
+  const {
+    isAcademicDialogOpen,
+    isAcademicWarningStep,
+    setIsAcademicWarningStep,
+    isAcademicUpdating,
+    academicForm,
+    setAcademicForm,
+    batchOptions,
+    openAcademicEditor,
+    closeAcademicEditor,
+    handleAcademicUpdate,
+  } = useStudentAcademicUpdate({
+    userId: currentUserId,
+    currentProgram: me?.program,
+    currentBatch: me?.batch,
+    refreshDashboard: fetchData,
+    refreshSupervisors: fetchSupervisors,
+    resetProjectDraft,
+    resetTemplates,
+    showDialog,
+  });
+  const {
+    isSubmitting: isProjectSubmitting,
+    handleSubmitProject,
+  } = useStudentProjectSubmission({
+    userId: currentUserId,
+    title: submissionTitle,
+    description: submissionDescription,
+    selectedDomains: submissionDomains,
+    tools: submissionTools,
+    file,
+    existingPdfUrl: pdfUrl,
+    hasAssignedSupervisor,
+    projectSubmissionComplete,
+    canEditProjectDetails,
+    projectSubmissionsOpen,
+    isFineRestricted,
+    isOwnFineRestricted,
+    teamFineMessage,
+    clearStoredProjectDraft,
+    refreshDashboard: fetchData,
+    openFineTab: () => setActiveTab('fine'),
+    showDialog,
+  });
+  const isSubmitting =
+    isProjectSubmitting || isSupervisorSubmitting || isTeamSubmitting;
+
+  const openNameEditor = () => {
+    showDialog({
+      type: 'prompt',
+      title: 'Update name',
+      message: 'You can change your name once per day. This will not affect your academic information or project.',
+      defaultValue: me?.name || '',
+      placeholder: 'Enter your full name',
+      onConfirm: async (name = '') => {
+        try {
+          const response = await updateStudentName(name.trim());
+          await fetchData();
+          showDialog({ title: 'Name updated', message: response.message || 'Your name was updated.' });
+        } catch (error) {
+          showDialog({
+            title: 'Name update blocked',
+            message: error instanceof Error ? error.message : 'Could not update your name.',
+          });
+        }
+      },
+    });
+  };
+
+  const handleOpenTemplate = async (template?: WordTemplate) => {
+    if (!template) {
+      await loadTemplates();
+      setActiveTab('resources');
+      return;
+    }
+    openTemplate(template);
+  };
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center">
+        <Loader2 className="mb-4 animate-spin text-[var(--color-accent)]" size={36} />
+        <p className="text-sm font-bold text-[var(--color-text-muted)]">
+          Loading student workspace...
+        </p>
+      </div>
+    );
+  }
+
+  if (isVivaView) {
+    return (
+      <VivaWorkspaceShell
+        eyebrow="Your Viva"
+        title="Viva schedule and results"
+        description="See your panel, room, session time, and final grade after the panel completes your Viva."
+        onExit={() => setIsVivaView(false)}
+      >
+        <StudentVivaWorkspace results={data?.vivaResults || []} sessions={data?.vivaSessions || []} />
+      </VivaWorkspaceShell>
+    );
+  }
+
+  return (
+    <>
+      <DashboardShell
+        title={`Good day, ${me?.name || session?.user?.name || 'Student'}`}
+        description={`Final Year Project · ${currentProgramName} · ${me?.batch || 'Batch not set'}`}
+        navItems={navItems}
+        user={{
+          name: me?.name || session?.user?.name || 'Student',
+          role: `${me?.program || 'Student'} · ${me?.batch || 'No batch'}`,
+        }}
+        actions={
+          <div className="grid gap-2 sm:flex">
+            <Button variant="outline" onClick={openNameEditor}>
+              <Pencil size={16} />
+              Edit Name
+            </Button>
+
+            <Button variant="outline" onClick={openAcademicEditor}>
+              <Settings size={16} />
+              Academic Info
+            </Button>
+
+            <Button
+              variant="danger"
+              onClick={() => {
+                void clearStoredProjectDraft().finally(() => {
+                  void signOut({ redirect: false });
+                });
+              }}
+            >
+              <LogIn size={16} className="rotate-180" />
+              Logout
+            </Button>
+          </div>
+        }
+      >
+        {activeTab === 'overview' && (
+          <StudentOverviewSection
+            me={me}
+            supervisor={supervisor}
+            projectId={project?._id}
+            announcementItems={announcementItems}
+            isAnnouncementPanelOpen={isAnnouncementPanelOpen}
+            onToggleAnnouncements={() => setIsAnnouncementPanelOpen((previous) => !previous)}
+            currentStage={currentStage}
+            projectStatus={project?.status}
+            projectRatings={project?.ratings}
+            projectMembers={projectMembers}
+            getSecureMediaUrl={getSecureMediaUrl}
+            onOpenProject={() => setActiveTab('project')}
+            onOpenTeam={() => setActiveTab('team')}
+          />
+        )}
+        {activeTab === 'project' && (
+          <StudentProjectSubmissionSection
+            pdfUrl={pdfUrl}
+            pdfHref={getSecureMediaUrl(pdfUrl)}
+            isFineRestricted={isFineRestricted}
+            teamFineMessage={teamFineMessage}
+            isOwnFineRestricted={isOwnFineRestricted}
+            onOpenFine={() => setActiveTab('fine')}
+            projectSubmissionsOpen={projectSubmissionsOpen}
+            hasAssignedSupervisor={hasAssignedSupervisor}
+            projectSubmissionComplete={projectSubmissionComplete}
+            projectSubmissionPendingReview={projectSubmissionPendingReview}
+            onSubmit={handleSubmitProject}
+            title={submissionTitle}
+            onTitleChange={setTitle}
+            selectedDomains={submissionDomains}
+            legacyDomain={legacyDomain}
+            onDomainsChange={handleDomainsChange}
+            tools={submissionTools}
+            onToolsChange={setTools}
+            description={submissionDescription}
+            onDescriptionChange={setDesc}
+            canEditProjectDetails={canEditProjectDetails}
+            canSubmit={canSubmit}
+            file={file}
+            onFileChange={(nextFile) => void handleProjectFileChange(nextFile)}
+            isSubmitting={isSubmitting}
+          />
+        )}
+        {activeTab === 'fine' && fineRestriction && (
+          <FinePaymentPanel restriction={fineRestriction} onRefresh={fetchData} />
+        )}
+        {activeTab === 'team' && (
+          <StudentTeamSection
+            projectMembers={projectMembers}
+            maxTeamSize={maxTeamSize}
+            canShareInviteCode={canShareInviteCode}
+            inviteCode={project?.inviteCode}
+            isUnassigned={isUnassigned}
+            supervisorOptions={supervisorOptions}
+            selectedSupervisorId={selectedSupervisorId}
+            onSupervisorChange={setSelectedSupervisorId}
+            isSubmitting={isSubmitting}
+            onAssignSupervisor={handleAssignSupervisor}
+            inviteCodeInput={inviteCodeInput}
+            onInviteCodeChange={setInviteCodeInput}
+            onJoinTeam={handleJoinTeam}
+            canLeaveTeam={canLeaveTeam}
+            onLeaveTeam={handleLeaveTeam}
+            onResetProposal={handleResetProposal}
+            onResetProject={handleResetProject}
+            onCopyInviteCode={handleCopyInviteCode}
+            onOpenSupervisorChange={openSupervisorChangeDialog}
+            isSupervisorChangeLocked={isSupervisorChangeLocked}
+            supervisorChangeOptions={supervisorChangeOptions}
+          />
+        )}
+        {activeTab === 'resources' && (
+          <StudentResourcesSection
+            currentStage={currentStage}
+            isFetchingTemplates={isFetchingTemplates}
+            onFetchTemplates={loadTemplates}
+            visibleTemplates={visibleTemplates}
+            onOpenTemplate={handleOpenTemplate}
+            currentProgramName={currentProgramName}
+            batch={me?.batch}
+            onOpenAcademicEditor={openAcademicEditor}
+          />
+        )}
+      </DashboardShell>
+
+      <StudentMessageWidget
+        isDarkMode={Boolean(isDarkMode)}
+        hasAssignedSupervisor={hasAssignedSupervisor}
+        supervisorName={supervisor?.name}
+      />
+
+      <SupervisorChangeDialog
+        open={isSupervisorWarningOpen}
+        onClose={closeSupervisorChangeDialog}
+        isSubmitting={isSubmitting}
+        onConfirm={handleConfirmSupervisorChange}
+        selectedSupervisorId={selectedSupervisorId}
+        onSelectedSupervisorIdChange={setSelectedSupervisorId}
+        options={supervisorChangeOptions}
+        selectedSupervisorName={selectedSupervisorName}
+        isDarkMode={Boolean(isDarkMode)}
+      />
+
+      <AcademicUpdateDialog
+        open={isAcademicDialogOpen}
+        onClose={closeAcademicEditor}
+        isWarningStep={isAcademicWarningStep}
+        onBack={() => setIsAcademicWarningStep(false)}
+        onContinue={() => setIsAcademicWarningStep(true)}
+        isUpdating={isAcademicUpdating}
+        onConfirm={handleAcademicUpdate}
+        academicForm={academicForm}
+        onAcademicFormChange={setAcademicForm}
+        batchOptions={batchOptions}
+      />
+
+      <TemplatePreviewDialog
+        selectedTemplate={selectedTemplate}
+        onClose={closeTemplateDialog}
+        isCopyingTemplate={isCopyingTemplate}
+        isCopied={isCopied}
+        onCopy={handleCopyTemplate}
+      />
+    </>
+  );
+};
+
+export default StudentDashboard;

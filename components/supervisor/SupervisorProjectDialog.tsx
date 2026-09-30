@@ -1,5 +1,15 @@
-import { useState } from 'react';
-import { ArrowRightLeft, CheckCircle, ExternalLink, FileText, Globe, Loader2, UserMinus, Users, Wrench } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  ArrowRightLeft,
+  CheckCircle,
+  ExternalLink,
+  FileText,
+  Globe,
+  Loader2,
+  UserMinus,
+  Users,
+  Wrench,
+} from 'lucide-react';
 import { EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../config/appSettings';
 import {
   getProjectRatingRound,
@@ -10,7 +20,7 @@ import {
 } from '../../config/projectRatings';
 import { ApprovalRatingForm, type PendingProjectRatings } from '../project-ratings/ApprovalRatingForm';
 import { ProjectRatingsDisplay } from '../project-ratings/ProjectRatingsDisplay';
-import { AvatarBadge, Badge, Button, DashboardPanel, Dialog, EmptyState, SectionHeader, StyledInput } from '../ui';
+import { AvatarBadge, Badge, Button, Dialog, EmptyState, StyledInput } from '../ui';
 import { Timeline, getProjectStageLabel } from '../ui/Timeline';
 import {
   getMemberNames,
@@ -24,8 +34,6 @@ import {
 } from './SupervisorProjectCard';
 import type { SupervisorProject } from './supervisorDashboardTypes';
 
-type ProjectDialogView = 'actions' | 'details' | 'team';
-
 type ProjectManagement = {
   migrationStudentId: string;
   onMigrationStudentChange: (studentId: string) => void;
@@ -35,6 +43,8 @@ type ProjectManagement = {
   onExpandTeam: () => void;
   onRemoveTeam: () => void;
 };
+
+type ProjectView = 'actions' | 'details' | 'team';
 
 export default function SupervisorProjectDialog({
   project,
@@ -58,37 +68,32 @@ export default function SupervisorProjectDialog({
   ) => void;
   management?: ProjectManagement;
 }) {
+  const [view, setView] = useState<ProjectView>('actions');
   const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
   const [approvalRatings, setApprovalRatings] = useState<PendingProjectRatings>({});
   const [approvalRemarks, setApprovalRemarks] = useState('');
   const [reviewRatingRound, setReviewRatingRound] = useState<ProjectRatingRound | null>(null);
   const [isOpeningDocument, setIsOpeningDocument] = useState(false);
-  const [projectViewState, setProjectViewState] = useState<{ projectId: string | null; view: ProjectDialogView }>({
-    projectId: null,
-    view: 'actions',
-  });
   const projectId = project?._id ?? null;
   const isApprovalFormOpen = projectId !== null && approvalProjectId === projectId;
   const selectedPdfKey = getSafePdfKey(project?.pdfUrl);
   const domainLabels = getProjectDomainDisplayLabels(project);
   const completeRatings = parseProjectRatingValues(approvalRatings);
   const isSubmittedForReview = project?.status === 'Submitted For Review';
-  const hasManagement = Boolean(management);
-  const activeView: ProjectDialogView = projectId && projectViewState.projectId !== projectId
-    ? 'actions'
-    : hasManagement
-      ? projectViewState.view
-      : projectViewState.view === 'team'
-        ? 'actions'
-        : projectViewState.view;
-  const viewTabs: ProjectDialogView[] = hasManagement ? ['actions', 'details', 'team'] : ['actions', 'details'];
+
+  useEffect(() => {
+    setView('actions');
+    setApprovalProjectId(null);
+    setApprovalRatings({});
+    setApprovalRemarks('');
+    setReviewRatingRound(null);
+  }, [projectId]);
 
   const handleApprove = () => {
     if (!project) return;
-    setReviewRatingRound(null);
-    setApprovalRatings({});
-    setApprovalRemarks('');
     if (getProjectRatingRound(project.stage)) {
+      setApprovalRatings({});
+      setApprovalRemarks('');
       setApprovalProjectId(project._id);
       return;
     }
@@ -100,11 +105,11 @@ export default function SupervisorProjectDialog({
   };
 
   const handleClose = () => {
+    setView('actions');
     setApprovalProjectId(null);
     setApprovalRatings({});
     setApprovalRemarks('');
     setReviewRatingRound(null);
-    setProjectViewState({ projectId: null, view: 'actions' });
     setIsOpeningDocument(false);
     onClose();
   };
@@ -130,46 +135,23 @@ export default function SupervisorProjectDialog({
     setTimeout(() => setIsOpeningDocument(false), 250);
   };
 
-  const setDialogView = (view: ProjectDialogView) => {
-    if (!projectId) return;
-    setProjectViewState({ projectId, view });
-  };
+  const actionDisabled = !project?.projectTitle || !project?.pdfUrl || !isSubmittedForReview || isProcessingAction;
 
   return (
     <Dialog
       open={!!project}
       onClose={isProcessingAction ? () => undefined : handleClose}
-      title={isApprovalFormOpen ? (reviewRatingRound ? 'Review rating' : 'Approve project and save ratings') : project?.projectTitle || 'Project details not submitted yet'}
-      description={project ? `${getMemberNames(project)} · ${getMemberRollNumbers(project)}` : ''}
+      title={isApprovalFormOpen ? (reviewRatingRound ? 'Review rating' : 'Approve project and save ratings') : (project?.projectTitle || getMemberNames(project))}
+      description={isApprovalFormOpen ? getMemberNames(project) : (project ? `${getMemberNames(project)} · ${getMemberRollNumbers(project)}` : '')}
       size="xl"
       footer={
         project ? (
           isApprovalFormOpen ? (
             <>
-              <Button variant="outline" disabled={isProcessingAction} onClick={() => setApprovalProjectId(null)}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                form="project-approval-rating-form"
-                variant="success"
-                disabled={!completeRatings || isProcessingAction}
-              >
+              <Button variant="outline" disabled={isProcessingAction} onClick={() => setApprovalProjectId(null)}>Cancel</Button>
+              <Button type="submit" form="project-approval-rating-form" variant="success" disabled={!completeRatings || isProcessingAction}>
                 {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                 {isProcessingAction ? (reviewRatingRound ? 'Updating rating...' : 'Approving...') : (reviewRatingRound ? 'Update rating' : 'Approve and save ratings')}
-              </Button>
-            </>
-          ) : activeView === 'actions' ? (
-            <>
-              <Button variant="outline" onClick={handleClose}>Close</Button>
-              <Button variant="success" disabled={!project.projectTitle || !project.pdfUrl || !isSubmittedForReview || isProcessingAction} onClick={handleApprove}>
-                {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}Approve
-              </Button>
-              <Button variant="accent" disabled={!project.projectTitle || !project.pdfUrl || !isSubmittedForReview || isProcessingAction} onClick={() => onAction(project, 'Changes Requested')}>
-                {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}Request Changes
-              </Button>
-              <Button variant="danger" disabled={!project.projectTitle || !project.pdfUrl || !isSubmittedForReview || isProcessingAction} onClick={() => onAction(project, 'Rejected')}>
-                {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <UserMinus size={16} />}Reject
               </Button>
             </>
           ) : (
@@ -193,14 +175,12 @@ export default function SupervisorProjectDialog({
             }
           }}
         >
-          <div className="mb-4 flex items-center justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleOpenDocument}
-              disabled={!selectedPdfKey || isOpeningDocument || isProcessingAction}
-              title={selectedPdfKey ? 'Open the document this rating was written about.' : 'No saved document is available for this rating.'}
-            >
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-muted)] p-3">
+            <div>
+              <p className="text-xs font-extrabold text-[var(--color-text)]">{getProjectStageLabel(project.stage || 'PROPOSAL')}</p>
+              <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">Rate the document you are approving.</p>
+            </div>
+            <Button type="button" variant="outline" onClick={handleOpenDocument} disabled={!selectedPdfKey || isOpeningDocument || isProcessingAction}>
               {isOpeningDocument ? <Loader2 className="animate-spin" size={15} /> : <ExternalLink size={15} />}
               Open document
             </Button>
@@ -216,162 +196,162 @@ export default function SupervisorProjectDialog({
           />
         </form>
       ) : project ? (
-        <div className="space-y-6">
-          <div className="mb-2">
-            <div
-              aria-label="Project workspace view"
-              className={`grid gap-2 ${hasManagement ? 'grid-cols-3' : 'grid-cols-2'}`}
-            >
-              {viewTabs.map((view) => {
-                const isSelected = activeView === view;
-                const label = view.charAt(0).toUpperCase() + view.slice(1);
-
-                return (
-                  <button
-                    key={view}
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => setDialogView(view)}
-                    disabled={!hasManagement && view === 'team'}
-                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
-                      isSelected
-                        ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
-                        : 'border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface)]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+        <div>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="portal-segmented" aria-label="Project workspace views">
+              {(['actions', 'details', ...(management ? ['team'] : [])] as ProjectView[]).map((item) => (
+                <button key={item} type="button" data-active={view === item} onClick={() => setView(item)}>
+                  {item === 'actions' ? 'Actions' : item === 'details' ? 'Details' : 'Team'}
+                </button>
+              ))}
             </div>
+            <Badge variant={getStatusVariant(project.status)}>{getStatusLabel(project.status)}</Badge>
           </div>
 
-          {activeView === 'actions' && (
-            <div className="grid gap-4">
-              <DashboardPanel>
-                <SectionHeader title="Project identity" description="The team and submission details for this project." />
-                <div className="flex items-start gap-3">
-                  <AvatarBadge name={getMemberNames(project)} className="h-12 w-12" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Project</p>
-                    <h3 className="mt-2 text-lg font-bold leading-7 text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet.'}</h3>
-                    <p className="mt-2 text-sm font-semibold text-[var(--color-text-muted)]">{getMemberNames(project)}</p>
-                    <p className="mt-1 text-sm text-[var(--color-text-muted)]">{getMemberRollNumbers(project)}</p>
-                    <p className="mt-3 inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-bold text-[var(--color-text)]">
-                      {getProgramName(getProjectProgram(project))}
-                    </p>
-                  </div>
-                </div>
-              </DashboardPanel>
-            </div>
-          )}
-
-          {activeView === 'details' && (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Status</p>
-                  <div className="mt-2"><Badge variant={getStatusVariant(project.status)}>{getStatusLabel(project.status)}</Badge></div>
-                </div>
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Batch</p>
-                  <p className="mt-2 text-sm font-bold text-[var(--color-text)]">{project.batch || 'Not assigned'}</p>
-                </div>
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Semester</p>
-                  <p className="mt-2 text-sm font-bold text-[var(--color-text)]">{project.semester || 'Not assigned'}</p>
-                </div>
-              </div>
-
-              <Timeline currentStage={project.stage || 'PROPOSAL'} descriptionSuffix="based on the current project stage." />
-
-              <DashboardPanel>
-                <SectionHeader
-                  title="Project Details"
-                  description="Submitted project information from the team."
-                  action={selectedPdfKey ? <a href={`/api/read-pdf?url=${encodeURIComponent(selectedPdfKey)}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]"><ExternalLink size={16} />View PDF</a> : null}
-                />
-                {project.projectTitle ? (
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Title</p>
-                      <h3 className="mt-2 text-lg font-bold leading-7 text-[var(--color-text)]">{project.projectTitle}</h3>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {domainLabels.map((domainLabel) => <Badge key={domainLabel} variant="accent"><Globe size={13} />{domainLabel}</Badge>)}
-                      {project.tools && <Badge variant="muted"><Wrench size={13} />{project.tools}</Badge>}
-                    </div>
-                    <p className="text-sm leading-6 text-[var(--color-text-muted)]">{project.projectDesc || 'No project description provided.'}</p>
-                  </div>
-                ) : (
-                  <EmptyState title="Project details not submitted" description="This team has not submitted its title, description, tools, and PDF yet." icon={<FileText size={28} />} />
-                )}
-              </DashboardPanel>
-
-              <DashboardPanel>
-                <SectionHeader title="Project Ratings" description="Permanent ratings recorded when earlier stages were approved." />
-                <ProjectRatingsDisplay
-                  ratings={project.ratings}
-                  stage={project.stage || 'PROPOSAL'}
-                  onReviewRating={handleReviewRating}
-                />
-                {project.stage === 'PROPOSAL' ? (
-                  <p className="text-sm text-[var(--color-text-muted)]">Ratings appear after a stage is approved.</p>
-                ) : null}
-              </DashboardPanel>
-            </div>
-          )}
-
-          {activeView === 'team' && management && (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Members</p>
-                  <p className="mt-2 text-sm font-bold text-[var(--color-text)]">{project.members?.length || 0} students</p>
-                </div>
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Capacity</p>
-                  <p className="mt-2 text-sm font-bold text-[var(--color-text)]">{getTeamCapacity(project.maxTeamSize)} students</p>
-                </div>
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Status</p>
-                  <p className="mt-2 text-sm font-bold text-[var(--color-text)]">
-                    {getTeamCapacity(project.maxTeamSize) === EXPANDED_TEAM_SIZE ? 'Three-member team approved' : 'Standard team size'}
-                  </p>
-                </div>
-              </div>
-
-              <DashboardPanel>
-                <SectionHeader title="Team Members" description="Students currently attached to this project." />
-                <div className="grid gap-3 md:grid-cols-2">
+          {view === 'actions' && (
+            <div className="portal-bento">
+              <section className="portal-bento-tile portal-bento-soft p-4 sm:p-5 md:col-span-7">
+                <p className="portal-eyebrow">Decision workspace</p>
+                <h3 className="mt-1 text-xl font-black tracking-tight text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet'}</h3>
+                <div className="mt-4 space-y-2">
                   {(project.members || []).map((member) => (
-                    <div key={member._id || member.rollNo || member.email} className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                      <AvatarBadge name={member.name} />
-                      <div className="min-w-0"><p className="truncate text-sm font-bold text-[var(--color-text)]">{member.name || 'Student'}</p><p className="truncate text-xs text-[var(--color-text-muted)]">{member.rollNo || member.email || 'No identifier'}</p></div>
+                    <div key={member._id || member.rollNo || member.email} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-[var(--color-text)]">{member.name || 'Student'}</p>
+                        <p className="mt-0.5 truncate text-xs text-[var(--color-text-muted)]">{member.rollNo || member.email || 'No identifier'}</p>
+                      </div>
+                      <Badge variant="muted">{getProgramName(member.program || getProjectProgram(project))}</Badge>
                     </div>
                   ))}
                 </div>
-              </DashboardPanel>
+              </section>
 
-              <DashboardPanel>
-                <SectionHeader title="Supervisor Management" description="Select a student from the team and migrate them individually." />
-                <div className="grid gap-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Select Student to Migrate</label>
-                    <select value={management.migrationStudentId} onChange={(event) => management.onMigrationStudentChange(event.target.value)} className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]">
-                      {(project.members || []).map((member) => <option key={member._id} value={member._id}>{member.name} ({member.rollNo || member.email})</option>)}
-                    </select>
-                  </div>
-                  <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-                    <StyledInput value={management.migrationCode} onChange={(event) => management.onMigrationCodeChange(event.target.value.toUpperCase())} placeholder="Enter target migration code" />
-                    <Button variant="outline" disabled={isProcessingAction || !management.migrationStudentId} onClick={management.onMigrate}>
-                      {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <ArrowRightLeft size={16} />}Migrate Student
-                    </Button>
-                    {getTeamCapacity(project.maxTeamSize) < EXPANDED_TEAM_SIZE && <Button variant="outline" disabled={isProcessingAction} onClick={management.onExpandTeam}><Users size={16} />Allow 3 Members</Button>}
-                    <Button variant="danger" disabled={isProcessingAction} onClick={management.onRemoveTeam}><UserMinus size={16} />Remove Team</Button>
-                  </div>
+              <section className="portal-bento-tile portal-bento-accent p-4 sm:p-5 md:col-span-5">
+                <p className="portal-eyebrow">Current state</p>
+                <h3 className="mt-2 text-lg font-black text-[var(--color-text)]">{getStatusLabel(project.status)}</h3>
+                <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
+                  {isSubmittedForReview ? 'A new document is ready for your decision.' : 'No new document is waiting for a decision.'}
+                </p>
+                <div className="mt-4 text-xs font-bold text-[var(--color-text-muted)]">
+                  {getProjectStageLabel(project.stage || 'PROPOSAL')} · Version {Number(project.version || 0)}
                 </div>
-              </DashboardPanel>
+              </section>
+
+              <section className="portal-bento-tile p-4 sm:p-5 md:col-span-12">
+                <p className="portal-eyebrow">Decision</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="success" disabled={actionDisabled} onClick={handleApprove}>
+                    {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}Approve
+                  </Button>
+                  <Button variant="accent" disabled={actionDisabled} onClick={() => onAction(project, 'Changes Requested')}>
+                    {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}Request changes
+                  </Button>
+                  <Button variant="danger" disabled={actionDisabled} onClick={() => onAction(project, 'Rejected')}>
+                    {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <UserMinus size={16} />}Reject
+                  </Button>
+                </div>
+                {!isSubmittedForReview && <p className="mt-3 text-xs text-[var(--color-text-muted)]">Decision controls activate when a submitted document is waiting for review.</p>}
+              </section>
+            </div>
+          )}
+
+          {view === 'details' && (
+            <div className="portal-bento">
+              <section className="portal-bento-tile p-4 sm:p-5 md:col-span-8">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="portal-eyebrow">Project details</p>
+                    <h3 className="mt-1 text-lg font-black text-[var(--color-text)]">{project.projectTitle || 'Project details not submitted yet'}</h3>
+                  </div>
+                  {selectedPdfKey ? (
+                    <Button variant="outline" onClick={handleOpenDocument} disabled={isOpeningDocument}>
+                      {isOpeningDocument ? <Loader2 className="animate-spin" size={15} /> : <ExternalLink size={15} />}View PDF
+                    </Button>
+                  ) : null}
+                </div>
+                {project.projectTitle ? (
+                  <>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {domainLabels.map((domainLabel) => <Badge key={domainLabel} variant="accent"><Globe size={13} />{domainLabel}</Badge>)}
+                      {project.tools && <Badge variant="muted"><Wrench size={13} />{project.tools}</Badge>}
+                    </div>
+                    <p className="mt-4 text-sm leading-6 text-[var(--color-text-muted)]">{project.projectDesc || 'No project description provided.'}</p>
+                  </>
+                ) : (
+                  <div className="mt-4"><EmptyState title="Project details not submitted" description="This team has not submitted its title, description, tools, and PDF yet." icon={<FileText size={28} />} /></div>
+                )}
+              </section>
+
+              <section className="portal-bento-tile portal-bento-soft p-4 sm:p-5 md:col-span-4">
+                <p className="portal-eyebrow">Snapshot</p>
+                <div className="mt-3 space-y-3 text-sm">
+                  <div className="flex justify-between gap-3"><span className="text-[var(--color-text-muted)]">Program</span><strong>{getProgramName(getProjectProgram(project))}</strong></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--color-text-muted)]">Batch</span><strong>{project.batch || 'Not assigned'}</strong></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--color-text-muted)]">Team</span><strong>{project.members?.length || 0} / {getTeamCapacity(project.maxTeamSize)}</strong></div>
+                </div>
+              </section>
+
+              <section className="portal-bento-tile p-4 sm:p-5 md:col-span-7">
+                <p className="portal-eyebrow">Stage</p>
+                <div className="mt-3"><Timeline currentStage={project.stage || 'PROPOSAL'} descriptionSuffix="based on the current project stage." /></div>
+              </section>
+
+              <section className="portal-bento-tile p-4 sm:p-5 md:col-span-5">
+                <p className="portal-eyebrow">Ratings</p>
+                <div className="mt-3">
+                  <ProjectRatingsDisplay ratings={project.ratings} stage={project.stage || 'PROPOSAL'} onReviewRating={handleReviewRating} />
+                  {project.stage === 'PROPOSAL' ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Ratings appear after a stage is approved.</p> : null}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {view === 'team' && management && (
+            <div className="portal-bento">
+              <section className="portal-bento-tile p-4 sm:p-5 md:col-span-7">
+                <p className="portal-eyebrow">Team members</p>
+                <div className="mt-3 space-y-2">
+                  {(project.members || []).map((member) => (
+                    <div key={member._id || member.rollNo || member.email} className="flex items-center gap-3 rounded-xl bg-[var(--color-surface-muted)] p-3">
+                      <AvatarBadge name={member.name} className="h-9 w-9 rounded-lg text-xs" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-[var(--color-text)]">{member.name || 'Student'}</p>
+                        <p className="truncate text-xs text-[var(--color-text-muted)]">{member.rollNo || member.email || 'No identifier'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="portal-bento-tile portal-bento-soft p-4 sm:p-5 md:col-span-5">
+                <p className="portal-eyebrow">Capacity</p>
+                <h3 className="mt-2 text-xl font-black text-[var(--color-text)]">{project.members?.length || 0} of {getTeamCapacity(project.maxTeamSize)} students</h3>
+                <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">A third member must be explicitly allowed by the supervisor.</p>
+                {getTeamCapacity(project.maxTeamSize) < EXPANDED_TEAM_SIZE && (
+                  <Button className="mt-4" variant="outline" disabled={isProcessingAction} onClick={management.onExpandTeam}><Users size={16} />Allow 3 members</Button>
+                )}
+              </section>
+
+              <section className="portal-bento-tile p-4 sm:p-5 md:col-span-12">
+                <p className="portal-eyebrow">Migrate student</p>
+                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <select value={management.migrationStudentId} onChange={(event) => management.onMigrationStudentChange(event.target.value)} className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]">
+                    {(project.members || []).map((member) => <option key={member._id} value={member._id}>{member.name} ({member.rollNo || member.email})</option>)}
+                  </select>
+                  <StyledInput value={management.migrationCode} onChange={(event) => management.onMigrationCodeChange(event.target.value.toUpperCase())} placeholder="Target migration code" />
+                  <Button variant="primary" disabled={isProcessingAction || !management.migrationStudentId} onClick={management.onMigrate}>
+                    {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <ArrowRightLeft size={16} />}Migrate
+                  </Button>
+                </div>
+
+                <details className="portal-disclosure mt-5">
+                  <summary>Danger zone</summary>
+                  <div>
+                    <p className="mb-3 text-xs leading-5 text-[var(--color-text-muted)]">Removing the team is a destructive project-management action. Use it only when the complete team association must be cleared.</p>
+                    <Button variant="danger" disabled={isProcessingAction} onClick={management.onRemoveTeam}><UserMinus size={16} />Remove team</Button>
+                  </div>
+                </details>
+              </section>
             </div>
           )}
         </div>
