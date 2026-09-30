@@ -196,6 +196,7 @@ export function useSupervisorProjectFilters({
     batchFilter,
     setBatchFilter,
     programFilter,
+    setProgramFilter,
     projectSearch,
     setProjectSearch,
     projectQueueFilter,
