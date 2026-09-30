@@ -10,6 +10,7 @@ export default function StudentTeamSection({
   canShareInviteCode,
   inviteCode,
   isUnassigned,
+  supervisorName,
   supervisorOptions,
   selectedSupervisorId,
   onSupervisorChange,
@@ -31,6 +32,7 @@ export default function StudentTeamSection({
   canShareInviteCode: boolean;
   inviteCode?: string;
   isUnassigned: boolean;
+  supervisorName?: string;
   supervisorOptions: SupervisorOption[];
   selectedSupervisorId: string;
   onSupervisorChange: (value: string) => void;
@@ -101,7 +103,7 @@ export default function StudentTeamSection({
           </form>
         ) : (
           <>
-            <p className="mt-2 text-sm font-extrabold text-[var(--color-text)]">Supervisor assigned</p>
+            <p className="mt-2 text-sm font-extrabold text-[var(--color-text)]">{supervisorName || 'Supervisor assigned'}</p>
             <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">Changing supervisor is available only while the project policy permits it.</p>
             <Button type="button" variant="outline" className="mt-4 w-full" onClick={onOpenSupervisorChange} disabled={isSubmitting || isSupervisorChangeLocked || supervisorChangeOptions.length === 0}>
               {isSupervisorChangeLocked ? <Lock size={16} /> : <UserCheck size={16} />}Change supervisor

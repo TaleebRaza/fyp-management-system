@@ -346,6 +346,7 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             canShareInviteCode={canShareInviteCode}
             inviteCode={project?.inviteCode}
             isUnassigned={isUnassigned}
+            supervisorName={supervisor?.name}
             supervisorOptions={supervisorOptions}
             selectedSupervisorId={selectedSupervisorId}
             onSupervisorChange={setSelectedSupervisorId}
