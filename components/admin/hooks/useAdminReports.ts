@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
 import type { AdminReportsData } from '../adminDashboardTypes';
 import type {
@@ -25,7 +25,8 @@ const DEFAULT_RATING_EXPORT_FILTERS: ProjectRatingsExportFilters = {
 export function useAdminReports(showDialog: ShowDialog) {
   const [isOpen, setIsOpen] = useState(false);
   const [data, setData] = useState<AdminReportsData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState(false);
   const [selectedReportId, setSelectedReportId] =
     useState<ReportOption['id']>('studentsPerSupervisor');
   const [ratingExportFilters, setRatingExportFilters] = useState(DEFAULT_RATING_EXPORT_FILTERS);
@@ -43,13 +44,15 @@ export function useAdminReports(showDialog: ShowDialog) {
     [data, selectedReportId]
   );
 
-  const refreshReports = useCallback(async () => {
+  const loadReports = useCallback(async (silent: boolean) => {
     setIsLoading(true);
+    setSummaryError(false);
     try {
       setData(await getAdminReports());
     } catch (error) {
+      setSummaryError(true);
       console.error('Reports error:', error);
-      showDialog({
+      if (!silent) showDialog({
         title: 'Reports unavailable',
         message:
           'Unable to load report data right now. Please refresh and try again.',
@@ -59,10 +62,17 @@ export function useAdminReports(showDialog: ShowDialog) {
     }
   }, [showDialog]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadReports(true), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadReports]);
+
+  const refreshReports = useCallback(() => loadReports(false), [loadReports]);
+
   const openReports = useCallback(async () => {
     setIsOpen(true);
-    await refreshReports();
-  }, [refreshReports]);
+    if (!data && !isLoading) await refreshReports();
+  }, [data, isLoading, refreshReports]);
 
   const closeReports = useCallback(() => setIsOpen(false), []);
 
@@ -141,6 +151,7 @@ export function useAdminReports(showDialog: ShowDialog) {
     isOpen,
     data,
     isLoading,
+    summaryError,
     selectedReportId,
     setSelectedReportId,
     selectedReport,

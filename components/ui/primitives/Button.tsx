@@ -25,8 +25,8 @@ const buttonVariants: Record<ButtonVariant, string> = {
     "border border-[var(--color-border)] bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]",
   ghost:
     "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]",
-  danger: "bg-[var(--color-danger)] text-white hover:opacity-90",
-  success: "bg-[var(--color-success)] text-white hover:opacity-90",
+  danger: "bg-[var(--color-danger)] text-[var(--color-danger-contrast)] hover:opacity-90",
+  success: "bg-[var(--color-success)] text-[var(--color-success-contrast)] hover:opacity-90",
 };
 
 export const Button = ({

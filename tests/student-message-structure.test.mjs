@@ -105,8 +105,9 @@ test('storage authorization and audits include current student audio references'
 });
 
 test('student and staff UIs preserve the recipient, acknowledgement, reply, and project navigation contracts', async () => {
-  const [dashboard, widget, adminDashboard, supervisorDashboard, panel, recorder] = await Promise.all([
+  const [dashboard, communication, widget, adminDashboard, supervisorDashboard, panel, recorder] = await Promise.all([
     read('components/dashboards/StudentDashboard.tsx'),
+    read('components/student/StudentCommunicationSection.tsx'),
     read('components/student/StudentMessageWidget.tsx'),
     read('components/dashboards/AdminDashboard.tsx'),
     read('components/dashboards/SupervisorDashboard.tsx'),
@@ -114,8 +115,9 @@ test('student and staff UIs preserve the recipient, acknowledgement, reply, and 
     read('components/broadcast/hooks/useAudioRecorder.ts'),
   ]);
 
-  assert.equal((dashboard.match(/<StudentMessageWidget/g) || []).length, 1);
-  assert.ok(dashboard.indexOf('<StudentMessageWidget') > dashboard.indexOf('</DashboardShell>'));
+  assert.match(dashboard, /activeTab === 'messages'/);
+  assert.match(dashboard, /<StudentCommunicationSection/);
+  assert.match(communication, /<StudentMessageWidget embedded/);
   assert.match(widget, /useAudioRecorder\(\)/);
   assert.match(widget, /hasAssignedSupervisor/);
   assert.match(widget, /recipient: activeRecipient/);
@@ -124,7 +126,7 @@ test('student and staff UIs preserve the recipient, acknowledgement, reply, and 
   assert.match(widget, /message\.isStaffReply/);
   assert.match(recorder, /return APP_SETTINGS\.STUDENT_MESSAGE\.MAX_AUDIO_SECONDS;/);
   assert.match(adminDashboard, /activeTab === 'messages'/);
-  assert.match(supervisorDashboard, /label: 'Student Messages'/);
+  assert.match(supervisorDashboard, /label: 'Communication'/);
   assert.match(supervisorDashboard, /onOpenProject=\{openMessageProject\}/);
   assert.match(supervisorDashboard, /scrollIntoView/);
   assert.match(panel, /studentMessageType !== 'text'/);

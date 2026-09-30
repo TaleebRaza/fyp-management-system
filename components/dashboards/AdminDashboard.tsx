@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { signOut } from 'next-auth/react';
 import {
@@ -11,7 +11,6 @@ import {
   GraduationCap,
   LayoutDashboard,
   LockKeyhole,
-  LogIn,
   MessagesSquare,
   PauseCircle,
   ScrollText,
@@ -38,7 +37,6 @@ import {
   useAdminStudents,
   useAdminSupervisors,
 } from '../admin/hooks';
-import { buildAdminStats } from '../admin/selectors/adminDashboardSelectors';
 
 const loadAdminProjectReviewsPanel = () =>
   import('../admin/AdminProjectReviewsPanel');
@@ -78,12 +76,14 @@ type AdminTab =
   | 'reviews'
   | 'logs'
   | 'registration'
-  | 'fines';
+  | 'fines'
+  | 'portal';
 
 const AdminDashboard = ({
   session,
   showDialog,
   isDarkMode = false,
+  onToggleTheme,
   registrationPolicy,
   onRegistrationPolicyChange,
   portalPaused = false,
@@ -146,26 +146,11 @@ const AdminDashboard = ({
     refreshSupervisors: supervisors.refreshSupervisors,
   });
 
-  const stats = useMemo(
-    () =>
-      buildAdminStats(
-        students.students,
-        students.pagination.activeTotal ?? students.pagination.total,
-        supervisors.supervisors.length
-      ),
-    [
-      students.pagination.activeTotal,
-      students.pagination.total,
-      students.students,
-      supervisors.supervisors.length,
-    ]
-  );
-
   const navItems = [
     {
       id: 'overview',
-      label: 'Overview',
-      section: 'Dashboard',
+      label: 'Home',
+      section: 'Workspace',
       icon: <LayoutDashboard size={18} />,
       active: activeTab === 'overview',
       onClick: () => setActiveTab('overview'),
@@ -191,7 +176,8 @@ const AdminDashboard = ({
     {
       id: 'reviews',
       label: 'Project Reviews',
-      section: 'Portal Operations',
+      mobileLabel: 'Reviews',
+      section: 'Projects',
       icon: <ClipboardCheck size={18} />,
       active: activeTab === 'reviews',
       onClick: () => setActiveTab('reviews'),
@@ -199,14 +185,14 @@ const AdminDashboard = ({
     {
       id: 'viva',
       label: 'Viva',
-      section: 'Portal Operations',
+      section: 'Projects',
       icon: <ClipboardList size={18} />,
       onClick: () => setIsVivaView(true),
     },
     {
       id: 'messages',
-      label: 'Messages',
-      section: 'Portal Operations',
+      label: 'Communication',
+      section: 'Communication',
       icon: <MessagesSquare size={18} />,
       active: activeTab === 'messages',
       onClick: () => setActiveTab('messages'),
@@ -214,31 +200,27 @@ const AdminDashboard = ({
     {
       id: 'registration',
       label: 'Registration',
-      section: 'Portal Operations',
+      section: 'Operations',
       icon: <LockKeyhole size={18} />,
       active: activeTab === 'registration',
       badge: registrationPolicy?.isOpen === false ? 'Closed' : 'Open',
-      className:
-        registrationPolicy?.isOpen === false
-          ? 'border border-red-500/40 !bg-red-300/50 !text-red-950 hover:!bg-red-300/50 dark:!text-red-50'
-          : 'border border-emerald-500/40 !bg-emerald-300/50 !text-emerald-950 hover:!bg-emerald-300/50 dark:!text-emerald-50',
-      iconClassName:
-        registrationPolicy?.isOpen === false
-          ? '!text-red-900 dark:!text-red-100'
-          : '!text-emerald-900 dark:!text-emerald-100',
-      badgeClassName:
-        registrationPolicy?.isOpen === false
-          ? '!bg-red-950/10 !text-red-950 dark:!bg-red-50/10 dark:!text-red-50'
-          : '!bg-emerald-950/10 !text-emerald-950 dark:!bg-emerald-50/10 dark:!text-emerald-50',
       onClick: () => setActiveTab('registration'),
     },
     {
       id: 'fines',
       label: 'Fines',
-      section: 'Portal Operations',
+      section: 'Operations',
       icon: <CircleDollarSign size={18} />,
       active: activeTab === 'fines',
       onClick: () => setActiveTab('fines'),
+    },
+    {
+      id: 'portal',
+      label: 'Portal status',
+      section: 'Operations',
+      icon: <PauseCircle size={18} />,
+      active: activeTab === 'portal',
+      onClick: () => setActiveTab('portal'),
     },
     {
       id: 'reports',
@@ -264,6 +246,8 @@ const AdminDashboard = ({
         title="Manage Viva rounds"
         description="Set up rounds, panels, sessions, and result publication in one focused workspace."
         onExit={() => setIsVivaView(false)}
+        isDarkMode={isDarkMode}
+        onToggleTheme={onToggleTheme}
       >
         <AdminVivaSection />
       </VivaWorkspaceShell>
@@ -273,64 +257,39 @@ const AdminDashboard = ({
   return (
     <>
       <DashboardShell
-        title="Admin Dashboard"
-        description="Monitor portal health, then open the management area that needs attention."
+        title="Admin workspace"
+        description="Portal settings, activity, and management."
         navItems={navItems}
-        className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${
-          activeTab === 'supervisors' || activeTab === 'students'
-            ? '[&>div>div>main]:lg:overflow-hidden'
-            : ''
-        }`}
+        mobilePrimaryIds={['overview', 'students', 'reviews']}
+        isDarkMode={isDarkMode}
+        onToggleTheme={onToggleTheme}
+        showHomeSignOut={activeTab === 'overview'}
         user={{
           name: session?.user?.name || 'Administrator',
-          role: 'Admin',
         }}
-        actions={
-          <div className="flex gap-2">
-            <Button
-              variant={portalPaused ? 'success' : 'danger'}
-              disabled={isUpdatingPortal}
-              onClick={togglePortal}
-            >
-              <PauseCircle size={16} />
-              {portalPaused ? 'Reopen Portal' : 'Pause Portal'}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => signOut({ redirect: false })}
-            >
-              <LogIn size={16} className="rotate-180" />
-              Logout
-            </Button>
-          </div>
-        }
+        onSignOut={() => void signOut({ redirect: false })}
       >
         {activeTab === 'overview' && (
-          <div className="space-y-7 sm:space-y-6">
-            <AdminOverviewSection
-              stats={stats}
+          <AdminOverviewSection
+              students={reports.data?.totals?.students}
+              supervisors={reports.data?.totals?.supervisors}
               portalPaused={portalPaused}
               registrationPolicy={registrationPolicy}
+              projects={reports.data?.totals?.projects}
+              reviewQueue={reports.data?.totals?.reviewQueue}
+              summaryLoading={reports.isLoading}
+              summaryError={reports.summaryError}
               onOpenSupervisors={() => setActiveTab('supervisors')}
               onOpenStudents={() => setActiveTab('students')}
               onOpenReviews={() => setActiveTab('reviews')}
-              onOpenMessages={() => setActiveTab('messages')}
               onOpenRegistration={() => setActiveTab('registration')}
-              onOpenFines={() => setActiveTab('fines')}
+              onOpenPortal={() => setActiveTab('portal')}
               onOpenReports={reports.openReports}
-            />
-            <AdminHeadlineSection
-              headlineInput={headline.headlineInput}
-              onHeadlineInputChange={headline.setHeadlineInput}
-              currentHeadline={headline.currentHeadline}
-              onBroadcast={headline.broadcastHeadline}
-              onClear={headline.clearHeadline}
-            />
-          </div>
+          />
         )}
 
         {activeTab === 'supervisors' && (
-          <div className="min-h-0 lg:h-full">
+          <div>
             <AdminSupervisorsSection
               newSupervisor={supervisors.newSupervisor}
               onNewSupervisorChange={
@@ -350,7 +309,7 @@ const AdminDashboard = ({
         )}
 
         {activeTab === 'students' && (
-          <div className="min-h-0 lg:h-full">
+          <div>
             <AdminStudentsSection
               students={students.students}
               search={students.search}
@@ -378,7 +337,23 @@ const AdminDashboard = ({
           <AdminProjectReviewsPanel showDialog={showDialog} />
         )}
 
-        {activeTab === 'messages' && <StudentMessagesPanel isDarkMode={isDarkMode} />}
+        {activeTab === 'messages' && <div className="space-y-5">
+          <AdminHeadlineSection
+            headlineInput={headline.headlineInput}
+            onHeadlineInputChange={headline.setHeadlineInput}
+            currentHeadline={headline.currentHeadline}
+            onBroadcast={headline.broadcastHeadline}
+            onClear={headline.clearHeadline}
+          />
+          <StudentMessagesPanel isDarkMode={isDarkMode} />
+        </div>}
+
+        {activeTab === 'portal' && <section className="max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 sm:p-6">
+          <h2 className="text-lg font-semibold">Portal status</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">{portalPaused ? 'The portal is paused for students and supervisors.' : 'The portal is open to students and supervisors.'}</p>
+          {portalPaused && portalPauseReason && <p className="mt-3 rounded-xl bg-[var(--color-surface-muted)] p-3 text-sm">{portalPauseReason}</p>}
+          <Button className="mt-5" variant={portalPaused ? 'primary' : 'danger'} disabled={isUpdatingPortal} onClick={togglePortal}><PauseCircle size={16} />{portalPaused ? 'Reopen portal' : 'Pause portal'}</Button>
+        </section>}
 
         {activeTab === 'logs' && <AdminActivityLogsPanel />}
         {activeTab === 'fines' && (

@@ -11,6 +11,7 @@ export type SupervisorTheme = {
 
 export type SupervisorDashboardProps = {
   isDarkMode?: boolean;
+  onToggleTheme?: () => void;
   theme: SupervisorTheme;
   session: Session;
   showDialog?: ShowDialog;

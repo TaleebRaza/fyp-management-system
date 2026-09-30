@@ -234,7 +234,9 @@ export default function SupervisorProjectDialog({
                 </button>
               ))}
             </div>
-            <Badge variant={getStatusVariant(project.status)}>{getStatusLabel(project.status)}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant={getStatusVariant(project.status)}>{getStatusLabel(project.status)}</Badge>
+            </div>
           </div>
 
           {view === 'actions' && (
@@ -268,13 +270,17 @@ export default function SupervisorProjectDialog({
 
               <section className="portal-bento-tile p-4 sm:p-5 md:col-span-12">
                 <p className="portal-eyebrow">Decision</p>
+                {selectedPdfKey && <Button className="mt-3" variant="outline" onClick={handleOpenDocument} disabled={isOpeningDocument || isProcessingAction}><ExternalLink size={16} />{isOpeningDocument ? 'Opening document…' : 'Read submitted PDF'}</Button>}
+                {isSubmittedForReview && <p className="mt-3 text-sm text-[var(--color-text-muted)]">Read the document, then choose a decision for the team.</p>}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {isSubmittedForReview && <>
                   <Button variant="success" disabled={actionDisabled} onClick={handleApprove}>
                     {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}Approve
                   </Button>
                   <Button variant="accent" disabled={actionDisabled} onClick={() => onAction(project, 'Changes Requested')}>
                     {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}Request changes
                   </Button>
+                  </>}
                   {isProgressable && (
                     <Button variant="primary" disabled={isProcessingAction} onClick={handleStartProgression}>
                       {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <Milestone size={16} />}

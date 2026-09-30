@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { Loader2, LogIn } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import {
-  Button,
   DashboardShell,
   VivaWorkspaceShell,
 } from '../ui';
@@ -14,7 +13,7 @@ import StudentOverviewSection from '../student/StudentOverviewSection';
 import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';
 import StudentResourcesSection from '../student/StudentResourcesSection';
 import StudentTeamSection from '../student/StudentTeamSection';
-import StudentMessageWidget from '../student/StudentMessageWidget';
+import StudentCommunicationSection from '../student/StudentCommunicationSection';
 import StudentVivaWorkspace from '../student/StudentVivaWorkspace';
 import {
   AcademicUpdateDialog,
@@ -40,8 +39,7 @@ import { useStudentSupervisorActions } from '../student/hooks/useStudentSupervis
 import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
 import { updateStudentName } from '../student/api/studentWorkflowApi';
 import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
-const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDashboardProps) => {
-  const [isAnnouncementPanelOpen, setIsAnnouncementPanelOpen] = useState(false);
+const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDialog }: StudentDashboardProps) => {
   const [isVivaView, setIsVivaView] = useState(false);
 
   useVivaAccessRestriction(showDialog);
@@ -257,6 +255,8 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
         title="Viva schedule and results"
         description="See your panel, room, session time, and final grade after the panel completes your Viva."
         onExit={() => setIsVivaView(false)}
+        isDarkMode={isDarkMode}
+        onToggleTheme={onToggleTheme}
       >
         <StudentVivaWorkspace results={data?.vivaResults || []} sessions={data?.vivaSessions || []} />
       </VivaWorkspaceShell>
@@ -266,43 +266,43 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
   return (
     <>
       <DashboardShell
-        title={`Good day, ${me?.name || session?.user?.name || 'Student'}`}
+        title="Student workspace"
         description={`Final Year Project · ${currentProgramName} · ${me?.batch || 'Batch not set'}`}
         navItems={navItems}
+        isDarkMode={isDarkMode}
+        onToggleTheme={onToggleTheme}
+        mobilePrimaryIds={['overview', 'project', 'messages']}
         user={{
           name: me?.name || session?.user?.name || 'Student',
-          role: `${me?.program || 'Student'} · ${me?.batch || 'No batch'}`,
         }}
-        actions={
-          <div className="flex">
-            <Button
-              variant="danger"
-              onClick={() => {
-                void clearStoredProjectDraft().finally(() => {
-                  void signOut({ redirect: false });
-                });
-              }}
-            >
-              <LogIn size={16} className="rotate-180" />
-              Logout
-            </Button>
-          </div>
-        }
+        onSignOut={() => {
+          void clearStoredProjectDraft().finally(() => {
+            void signOut({ redirect: false });
+          });
+        }}
+        showHomeSignOut={activeTab === 'overview'}
       >
         {activeTab === 'overview' && (
           <StudentOverviewSection
             me={me}
             supervisor={supervisor}
-            projectId={project?._id}
             announcementItems={announcementItems}
-            isAnnouncementPanelOpen={isAnnouncementPanelOpen}
-            onToggleAnnouncements={() => setIsAnnouncementPanelOpen((previous) => !previous)}
             currentStage={currentStage}
             projectStatus={project?.status}
-            projectMembers={projectMembers}
-            getSecureMediaUrl={getSecureMediaUrl}
             onOpenProject={() => setActiveTab('project')}
             onOpenTeam={() => setActiveTab('team')}
+            onOpenUpdates={() => setActiveTab('messages')}
+            onResetProject={handleResetProject}
+            isSubmitting={isSubmitting}
+          />
+        )}
+        {activeTab === 'messages' && (
+          <StudentCommunicationSection
+            announcements={announcementItems}
+            getSecureMediaUrl={getSecureMediaUrl}
+            isDarkMode={Boolean(isDarkMode)}
+            hasAssignedSupervisor={hasAssignedSupervisor}
+            supervisorName={supervisor?.name}
           />
         )}
         {activeTab === 'project' && (
@@ -357,7 +357,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
             onJoinTeam={handleJoinTeam}
             canLeaveTeam={canLeaveTeam}
             onLeaveTeam={handleLeaveTeam}
-            onResetProject={handleResetProject}
             onCopyInviteCode={handleCopyInviteCode}
             onOpenSupervisorChange={openSupervisorChangeDialog}
             isSupervisorChangeLocked={isSupervisorChangeLocked}
@@ -378,12 +377,6 @@ const StudentDashboard = ({ isDarkMode = false, session, showDialog }: StudentDa
           />
         )}
       </DashboardShell>
-
-      <StudentMessageWidget
-        isDarkMode={Boolean(isDarkMode)}
-        hasAssignedSupervisor={hasAssignedSupervisor}
-        supervisorName={supervisor?.name}
-      />
 
       <SupervisorChangeDialog
         open={isSupervisorWarningOpen}

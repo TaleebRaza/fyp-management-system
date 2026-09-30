@@ -122,6 +122,7 @@ export type AcademicForm = {
 
 export type StudentDashboardProps = {
   isDarkMode?: boolean;
+  onToggleTheme?: () => void;
   session: Session;
   showDialog: ShowDialog;
 };

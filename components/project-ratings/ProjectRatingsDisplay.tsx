@@ -33,7 +33,7 @@ export function ProjectRatingsDisplay({
   if (completedRounds.length === 0) return null;
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className={`grid gap-4 ${completedRounds.length > 1 ? 'md:grid-cols-2' : ''}`}>
       {completedRounds.map((round) => {
         const snapshot = ratings?.[round];
 
@@ -52,7 +52,7 @@ export function ProjectRatingsDisplay({
                   <button
                     type="button"
                     onClick={() => onReviewRating(round)}
-                    className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-accent)] transition hover:bg-[var(--color-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                    className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[10px] font-semibold text-[var(--color-accent)] transition hover:bg-[var(--color-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
                   >
                     Review rating
                   </button>

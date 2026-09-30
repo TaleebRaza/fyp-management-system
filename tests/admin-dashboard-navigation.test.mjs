@@ -8,10 +8,11 @@ test('admin navigation is grouped in the shared left sidebar', async () => {
     readFile(new URL('../components/ui/dashboard/DashboardShell.tsx', import.meta.url), 'utf8'),
   ]);
 
-  for (const section of ['Dashboard', 'People', 'Portal Operations', 'Insights & Audit']) {
+  for (const section of ['Workspace', 'People', 'Projects', 'Communication', 'Operations', 'Insights & Audit']) {
     assert.ok(dashboard.includes(`section: '${section}'`));
   }
 
-  assert.match(shell, /role=\{section \? 'group' : undefined\}/);
+  assert.match(shell, /role=\{section \? "group" : undefined\}/);
+  assert.match(shell, /Primary dashboard navigation/);
   assert.match(shell, /overflow-y-auto/);
 });

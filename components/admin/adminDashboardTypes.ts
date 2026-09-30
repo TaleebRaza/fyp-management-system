@@ -6,6 +6,7 @@ export type AdminDashboardProps = {
   session: Session;
   showDialog: ShowDialog;
   isDarkMode?: boolean;
+  onToggleTheme?: () => void;
   registrationPolicy?: RegistrationPolicyDto;
   onRegistrationPolicyChange?: (policy: RegistrationPolicyDto) => void;
   portalPaused?: boolean;

@@ -218,6 +218,7 @@ export default function App() {
           session={session}
           showDialog={showDialog}
           isDarkMode={isDarkMode}
+          onToggleTheme={() => setIsDarkMode((current) => !current)}
           registrationPolicy={registrationPolicy}
           onRegistrationPolicyChange={setRegistrationPolicy}
           portalPaused={portalStatus?.paused}
@@ -242,6 +243,7 @@ export default function App() {
     return (
       <SupervisorDashboard
         isDarkMode={isDarkMode}
+        onToggleTheme={() => setIsDarkMode((current) => !current)}
         theme={PORTAL_THEME}
         session={session}
         showDialog={showDialog}
@@ -253,6 +255,7 @@ export default function App() {
     return (
       <StudentDashboard
         isDarkMode={isDarkMode}
+        onToggleTheme={() => setIsDarkMode((current) => !current)}
         session={session}
         showDialog={showDialog}
       />
@@ -325,11 +328,14 @@ export default function App() {
     );
   }
 
+  const showPublicChrome = status !== 'authenticated'
+    || (portalStatus?.paused && (session?.user as { role?: string } | undefined)?.role !== 'admin');
+
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] transition-colors">
       <PortalDialog key={dialog.instanceId} dialog={dialog} closeDialog={closeDialog} />
 
-      <nav className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      {showPublicChrome && <nav className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="mx-auto flex w-full items-center justify-between px-4 py-3 md:w-[90vw] md:px-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-[var(--color-border)] bg-white">
@@ -360,9 +366,9 @@ export default function App() {
             )}
           </button>
         </div>
-      </nav>
+      </nav>}
 
-      <main className="mx-auto mt-4 w-full px-4 pb-8 md:w-[90vw] md:px-0">
+      <main className={showPublicChrome ? 'mx-auto mt-4 w-full px-4 pb-8 md:w-[90vw] md:px-0' : 'w-full'}>
         <AnimatePresence mode="wait">{renderView()}</AnimatePresence>
       </main>
     </div>

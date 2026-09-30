@@ -107,19 +107,7 @@ export default function StudentProjectSubmissionSection({
         </div>
       </section>
 
-      <section className="portal-bento-tile portal-bento-accent p-5 md:col-span-7">
-        <p className="portal-eyebrow">Submission state</p>
-        <h2 className="mt-2 text-xl font-black text-[var(--color-text)]">
-          {projectSubmissionPendingReview ? 'Waiting for decision' : projectSubmissionComplete ? 'Stage completed' : canSubmit ? 'Ready when you are' : 'Submission unavailable'}
-        </h2>
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          <div className="rounded-xl bg-[var(--color-surface)] p-3"><p className="text-[10px] font-extrabold uppercase tracking-wide text-[var(--color-text-soft)]">Supervisor</p><p className="mt-1 text-xs font-extrabold text-[var(--color-text)]">{hasAssignedSupervisor ? 'Assigned' : 'Required'}</p></div>
-          <div className="rounded-xl bg-[var(--color-surface)] p-3"><p className="text-[10px] font-extrabold uppercase tracking-wide text-[var(--color-text-soft)]">Portal</p><p className="mt-1 text-xs font-extrabold text-[var(--color-text)]">{projectSubmissionsOpen ? 'Open' : 'Closed'}</p></div>
-          <div className="rounded-xl bg-[var(--color-surface)] p-3"><p className="text-[10px] font-extrabold uppercase tracking-wide text-[var(--color-text-soft)]">PDF</p><p className="mt-1 text-xs font-extrabold text-[var(--color-text)]">{pdfUrl ? 'On file' : 'Not uploaded'}</p></div>
-        </div>
-      </section>
-
-      <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-12">
+      <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-7">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="portal-eyebrow">Latest rating</p>
@@ -149,7 +137,7 @@ export default function StudentProjectSubmissionSection({
 
         {!canEditProjectDetails && (
           <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 text-xs leading-5 text-[var(--color-text-muted)]">
-            Project title, domains, tools, and description are locked after proposal progression. Use Reset Project from Team & Supervisor when necessary.
+            Project title, domains, tools, and description are locked after proposal progression. Use Reset Project from Home when necessary.
           </div>
         )}
 

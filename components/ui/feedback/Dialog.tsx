@@ -32,7 +32,7 @@ export const Dialog = ({ open, title, description, children, footer, onClose, si
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end justify-center p-2 sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="portal-dialog-title">
       <button type="button" aria-label={closeLabel} className="portal-dialog-backdrop absolute inset-0 cursor-default bg-black/55 backdrop-blur-[2px]" onClick={closeDisabled ? undefined : onClose} />
-      <div className={cn("portal-dialog portal-dialog-motion relative z-10 flex max-h-[calc(100vh-1rem)] w-full flex-col overflow-hidden rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-dialog)] sm:max-h-[calc(100vh-2.5rem)]", dialogSizes[size])}>
+      <div className={cn("portal-dialog portal-dialog-motion relative z-10 flex max-h-[calc(100vh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-dialog)] sm:max-h-[calc(100vh-2.5rem)]", dialogSizes[size])}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4 sm:px-6">
           <div className="min-w-0">
             <h2 id="portal-dialog-title" className="truncate text-lg font-extrabold tracking-tight text-[var(--color-text)]">{title}</h2>

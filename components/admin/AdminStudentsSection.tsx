@@ -55,7 +55,7 @@ export default function AdminStudentsSection({
   onToggleStatus: (id: string, active: boolean) => void;
 }) {
   return (
-    <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
+    <DashboardPanel className="flex flex-col">
       <div className="shrink-0">
         <SectionHeader
           title="Students"
@@ -83,7 +83,7 @@ export default function AdminStudentsSection({
         </div>
       </div>
 
-      <div className="portal-scrollbar mt-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
+      <div className="mt-5">
         {isLoading ? (
           <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
             <Loader2 size={32} className="mb-3 animate-spin text-[var(--color-accent)]" />

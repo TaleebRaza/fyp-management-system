@@ -1,103 +1,75 @@
-import {
-  AlertCircle,
-  BarChart3,
-  ClipboardCheck,
-  CircleDollarSign,
-  GraduationCap,
-  MessagesSquare,
-  ShieldCheck,
-  UserCheck,
-  Users,
-} from 'lucide-react';
-import { Button } from '../ui';
+import { ArrowRight } from 'lucide-react';
 import type { RegistrationPolicyDto } from '../../types/registrationPolicy';
-import type { AdminStats } from './adminDashboardTypes';
 
 export default function AdminOverviewSection({
-  stats,
+  students,
+  supervisors,
   portalPaused,
   registrationPolicy,
-  onOpenSupervisors,
+  projects,
+  reviewQueue,
+  summaryLoading,
+  summaryError,
   onOpenStudents,
+  onOpenSupervisors,
   onOpenReviews,
-  onOpenMessages,
   onOpenRegistration,
-  onOpenFines,
+  onOpenPortal,
   onOpenReports,
 }: {
-  stats: AdminStats;
+  students?: number;
+  supervisors?: number;
   portalPaused: boolean;
   registrationPolicy?: RegistrationPolicyDto;
-  onOpenSupervisors: () => void;
+  projects?: number;
+  reviewQueue?: number;
+  summaryLoading: boolean;
+  summaryError: boolean;
   onOpenStudents: () => void;
+  onOpenSupervisors: () => void;
   onOpenReviews: () => void;
-  onOpenMessages: () => void;
   onOpenRegistration: () => void;
-  onOpenFines: () => void;
+  onOpenPortal: () => void;
   onOpenReports: () => void;
 }) {
-  const registrationOpen = registrationPolicy?.isOpen !== false;
-  const submissionsOpen = registrationPolicy?.projectSubmissionsOpen !== false;
+  const states = [
+    { label: 'Portal', value: portalPaused ? 'Paused' : 'Open' },
+    { label: 'Registration', value: registrationPolicy?.isOpen === false ? 'Closed' : 'Open' },
+    { label: 'Submissions', value: registrationPolicy?.projectSubmissionsOpen === false ? 'Closed' : 'Open' },
+  ];
+  const reportValue = (value?: number) => summaryLoading && value === undefined ? 'Loading…' : summaryError || value === undefined ? 'Unavailable' : value.toLocaleString();
+  const figures = [
+    { label: 'Students', value: reportValue(students), onClick: onOpenStudents },
+    { label: 'Supervisors', value: reportValue(supervisors), onClick: onOpenSupervisors },
+    { label: 'Projects', value: reportValue(projects), onClick: onOpenReports },
+    { label: 'Waiting for review', value: reportValue(reviewQueue), onClick: onOpenReviews },
+  ];
 
   return (
-    <div className="portal-bento">
-      <section className="portal-bento-tile portal-bento-accent p-5 md:col-span-7">
-        <p className="portal-eyebrow">Portal health</p>
-        <div className="mt-2 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-black tracking-tight text-[var(--color-text)]">{portalPaused ? 'Portal paused' : 'Portal operating normally'}</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--color-text-muted)]">
-              Registration is {registrationOpen ? 'open' : 'closed'} and project submissions are {submissionsOpen ? 'open' : 'closed'}.
-            </p>
-          </div>
-          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${portalPaused ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200'}`}>
-            <ShieldCheck size={21} />
-          </span>
+    <div className="space-y-6">
+      <section>
+        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Portal overview</h2>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">Current portal settings and academic activity.</p>
+        <div className="mt-5 flex flex-wrap gap-x-8 gap-y-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-5">
+          {states.map((state) => <div key={state.label} className="flex items-center gap-2 text-base"><span className="text-[var(--color-text-muted)]">{state.label}</span><strong className="font-semibold">{state.value}</strong></div>)}
+          <button type="button" onClick={onOpenRegistration} className="ml-auto inline-flex items-center gap-1 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)]">Registration settings <ArrowRight size={14} /></button>
         </div>
       </section>
-
-      <section className="portal-bento-tile p-5 md:col-span-5">
-        <p className="portal-eyebrow">Needs attention</p>
-        <div className="mt-2 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-3xl font-black text-[var(--color-text)]">{stats.pendingStudents}</p>
-            <p className="mt-1 text-sm font-extrabold text-[var(--color-text)]">pending student records in the current view</p>
-          </div>
-          <AlertCircle size={22} className="text-[var(--color-accent)]" />
+      <section className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+        <h3 className="sr-only">Portal figures</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4">
+          {figures.map((figure) => <button key={figure.label} type="button" onClick={figure.onClick} className="min-w-0 border-b border-r border-[var(--color-border)] p-5 text-left last:border-r-0 hover:bg-[var(--color-surface-muted)] sm:p-7 lg:border-b-0">
+            <span className="block text-sm text-[var(--color-text-muted)]">{figure.label}</span>
+            <strong className="mt-3 block truncate text-3xl font-semibold tabular-nums" aria-live="polite">{figure.value}</strong>
+          </button>)}
         </div>
-        <Button className="mt-4" variant="outline" onClick={onOpenStudents}>Review students</Button>
       </section>
-
-      <button type="button" onClick={onOpenStudents} className="portal-bento-tile p-4 text-left md:col-span-3">
-        <p className="portal-eyebrow">Students</p>
-        <p className="mt-1 text-2xl font-black text-[var(--color-text)]">{stats.totalStudents}</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-[var(--color-text-muted)]"><GraduationCap size={14} />{stats.activeStudents} active in loaded records</p>
-      </button>
-      <button type="button" onClick={onOpenSupervisors} className="portal-bento-tile p-4 text-left md:col-span-3">
-        <p className="portal-eyebrow">Supervisors</p>
-        <p className="mt-1 text-2xl font-black text-[var(--color-text)]">{stats.supervisors}</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-[var(--color-text-muted)]"><UserCheck size={14} />Manage capacity and access</p>
-      </button>
-      <button type="button" onClick={onOpenReviews} className="portal-bento-tile p-4 text-left md:col-span-3">
-        <p className="portal-eyebrow">Project reviews</p>
-        <p className="mt-1 text-sm font-black text-[var(--color-text)]">Open review queue</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-[var(--color-text-muted)]"><ClipboardCheck size={14} />Review submitted work</p>
-      </button>
-      <button type="button" onClick={onOpenReports} className="portal-bento-tile p-4 text-left md:col-span-3">
-        <p className="portal-eyebrow">Reports</p>
-        <p className="mt-1 text-sm font-black text-[var(--color-text)]">Portal insights</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-[var(--color-text-muted)]"><BarChart3 size={14} />Generate on demand</p>
-      </button>
-
-      <section className="portal-bento-tile p-5 md:col-span-12">
-        <p className="portal-eyebrow">Quick management</p>
-        <h2 className="mt-1 text-lg font-black tracking-tight text-[var(--color-text)]">Open a focused workspace</h2>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          <Button variant="outline" onClick={onOpenSupervisors}><Users size={15} />Supervisors</Button>
-          <Button variant="outline" onClick={onOpenStudents}><GraduationCap size={15} />Students</Button>
-          <Button variant="outline" onClick={onOpenMessages}><MessagesSquare size={15} />Messages</Button>
-          <Button variant="outline" onClick={onOpenRegistration}><ShieldCheck size={15} />Registration</Button>
-          <Button variant="outline" onClick={onOpenFines}><CircleDollarSign size={15} />Fines</Button>
+      <section>
+        <h3 className="text-base font-semibold">Needs attention</h3>
+        <div className="mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          {portalPaused && <button type="button" onClick={onOpenPortal} className="flex w-full items-center justify-between gap-3 border-b border-[var(--color-border)] p-4 text-left text-sm hover:bg-[var(--color-surface-muted)]"><span>The portal is paused. Check the reason and reopen it when ready.</span><ArrowRight size={16} /></button>}
+          {typeof reviewQueue === 'number' && reviewQueue > 0 && <button type="button" onClick={onOpenReviews} className="flex w-full items-center justify-between gap-3 border-b border-[var(--color-border)] p-4 text-left text-sm hover:bg-[var(--color-surface-muted)]"><span>{reviewQueue} project {reviewQueue === 1 ? 'submission needs' : 'submissions need'} review.</span><ArrowRight size={16} /></button>}
+          {!portalPaused && !(typeof reviewQueue === 'number' && reviewQueue > 0) && <p className="p-4 text-sm text-[var(--color-text-muted)]">{summaryLoading ? 'Checking review activity…' : summaryError ? 'Review activity is unavailable. Open Reports to retry.' : 'No items need attention from the available portal signals.'}</p>}
         </div>
       </section>
     </div>

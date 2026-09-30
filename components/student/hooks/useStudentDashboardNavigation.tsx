@@ -7,11 +7,12 @@ import {
   FileText,
   ClipboardList,
   LayoutDashboard,
+  MessagesSquare,
   Users,
 } from 'lucide-react';
 import type { DashboardNavItem } from '../../ui/dashboard/DashboardShell';
 
-export type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources';
+export type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources' | 'messages';
 
 export function useStudentDashboardNavigation(hasFineRestriction: boolean, onOpenViva: () => void) {
   const [requestedTab, setRequestedTab] = useState<StudentTab>('overview');
@@ -21,7 +22,7 @@ export function useStudentDashboardNavigation(hasFineRestriction: boolean, onOpe
     () => [
       {
         id: 'overview',
-        label: 'Overview',
+        label: 'Home',
         section: 'Workspace',
         icon: <LayoutDashboard size={16} />,
         active: activeTab === 'overview',
@@ -42,6 +43,15 @@ export function useStudentDashboardNavigation(hasFineRestriction: boolean, onOpe
         icon: <Users size={16} />,
         active: activeTab === 'team',
         onClick: () => setRequestedTab('team'),
+      },
+      {
+        id: 'messages',
+        label: 'Updates & Messages',
+        mobileLabel: 'Updates',
+        section: 'Communication',
+        icon: <MessagesSquare size={16} />,
+        active: activeTab === 'messages',
+        onClick: () => setRequestedTab('messages'),
       },
       {
         id: 'resources',

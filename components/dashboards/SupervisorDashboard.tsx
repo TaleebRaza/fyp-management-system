@@ -5,9 +5,9 @@ import { signOut } from 'next-auth/react';
 import {
   ClipboardList,
   FileText,
+  HelpCircle,
   LayoutDashboard,
   Loader2,
-  LogIn,
   MessagesSquare,
 } from 'lucide-react';
 import BroadcastWidget from './BroadcastWidget';
@@ -16,6 +16,7 @@ import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import StudentMessagesPanel from '../messages/StudentMessagesPanel';
 import VivaSessionWorkspace from '../supervisor/VivaSessionWorkspace';
+import SupervisorHelpPanel from '../supervisor/SupervisorHelpPanel';
 import {
   useSupervisorExport,
   useSupervisorFeedback,
@@ -25,17 +26,19 @@ import {
   type SupervisorTab,
 } from '../supervisor/hooks';
 import type { SupervisorDashboardProps } from '../supervisor/supervisorDashboardTypes';
-import { Button, DashboardShell } from '../ui';
+import { DashboardShell } from '../ui';
 import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
 
 const SupervisorDashboard = ({
   isDarkMode = false,
+  onToggleTheme,
   theme,
   session,
   showDialog,
 }: SupervisorDashboardProps) => {
   const [activeTab, setActiveTab] = useState<SupervisorTab>('overview');
   const [messageProjectId, setMessageProjectId] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const supervisorName = session?.user?.name || 'Supervisor';
   const supervisorId = String((session.user as { id?: string }).id || '');
 
@@ -83,7 +86,7 @@ const SupervisorDashboard = ({
   const navItems = [
     {
       id: 'overview',
-      label: 'Overview',
+      label: 'Home',
       section: 'Workspace',
       icon: <LayoutDashboard size={16} />,
       active: activeTab === 'overview',
@@ -92,6 +95,7 @@ const SupervisorDashboard = ({
     {
       id: 'projects',
       label: 'Assigned Projects',
+      mobileLabel: 'Projects',
       section: 'Workspace',
       icon: <FileText size={16} />,
       active: activeTab === 'projects',
@@ -100,7 +104,8 @@ const SupervisorDashboard = ({
     },
     {
       id: 'messages',
-      label: 'Student Messages',
+      label: 'Communication',
+      mobileLabel: 'Messages',
       section: 'Communication',
       icon: <MessagesSquare size={16} />,
       active: activeTab === 'messages',
@@ -114,6 +119,13 @@ const SupervisorDashboard = ({
       active: activeTab === 'viva',
       onClick: () => setActiveTab('viva'),
     },
+    {
+      id: 'help',
+      label: 'Help',
+      section: 'Support',
+      icon: <HelpCircle size={16} />,
+      onClick: () => setHelpOpen(true),
+    },
   ];
 
   return (
@@ -122,33 +134,24 @@ const SupervisorDashboard = ({
         title="Supervisor Dashboard"
         description="Review projects, manage teams, and run Viva sessions."
         navItems={navItems}
-        className={`lg:h-[calc(100vh-7.5rem)] lg:min-h-0 [&>div]:lg:h-full [&>div]:lg:min-h-0 ${activeTab === 'projects' ? '[&>div>div>main]:lg:overflow-hidden' : ''}`}
-        user={{ name: supervisorName, role: `Supervisor · Code ${myMigrationCode}` }}
-        actions={
-          <div className="flex gap-2">
-            <BroadcastWidget isDarkMode={isDarkMode} theme={theme} />
-            <Button variant="danger" onClick={() => signOut({ redirect: false })}>
-              <LogIn size={16} className="rotate-180" />Logout
-            </Button>
-          </div>
-        }
+        mobilePrimaryIds={['overview', 'projects', 'messages']}
+        isDarkMode={isDarkMode}
+        onToggleTheme={onToggleTheme}
+        showHomeSignOut={activeTab === 'overview'}
+        user={{ name: supervisorName }}
+        onSignOut={() => void signOut({ redirect: false })}
       >
         {activeTab === 'overview' && (
           <SupervisorOverviewSection
             stats={filters.dashboardStats}
-            recentProjects={filters.recentProjects}
-            myMigrationCode={myMigrationCode}
-            isDarkMode={isDarkMode}
-            theme={theme}
-            isExporting={isExporting}
-            onExport={exportProjects}
+            migrationCode={myMigrationCode}
             onOpenProjects={filters.openProjectsView}
-            onOpenProject={actions.openProject}
+            onOpenViva={() => setActiveTab('viva')}
           />
         )}
 
         {activeTab === 'projects' && (
-          <div className="min-h-0 lg:h-full">
+          <div>
             <SupervisorProjectsSection
               title={filters.projectQueueTitle}
               description={filters.projectQueueDescription}
@@ -175,13 +178,13 @@ const SupervisorDashboard = ({
           </div>
         )}
 
-        {activeTab === 'messages' && (
-          <StudentMessagesPanel
-            isDarkMode={isDarkMode}
-            description="Messages sent directly to you by students on your assigned projects."
-            onOpenProject={openMessageProject}
-          />
-        )}
+        {activeTab === 'messages' && <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
+            <div><h2 className="text-base font-semibold">Announcements</h2><p className="mt-1 text-sm text-[var(--color-text-muted)]">Send a text or voice update to your assigned students.</p></div>
+            <BroadcastWidget isDarkMode={isDarkMode} theme={theme} />
+          </div>
+          <StudentMessagesPanel isDarkMode={isDarkMode} description="Messages sent directly to you by students on your assigned projects." onOpenProject={openMessageProject} />
+        </div>}
         {activeTab === 'viva' && <VivaSessionWorkspace />}
       </DashboardShell>
 
@@ -203,6 +206,7 @@ const SupervisorDashboard = ({
           onRemoveTeam: actions.handleRemoveTeam,
         }}
       />
+      <SupervisorHelpPanel open={helpOpen} topic="projects" onClose={() => setHelpOpen(false)} />
     </>
   );
 };

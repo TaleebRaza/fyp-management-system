@@ -31,7 +31,7 @@ export default function AdminSupervisorsSection({
   onDelete: (id: string, name: string) => void;
 }) {
   return (
-    <div className="grid gap-7 sm:gap-6 xl:h-full xl:min-h-0 xl:grid-cols-[0.8fr_1.2fr]">
+    <div className="grid gap-7 sm:gap-6 xl:grid-cols-[0.8fr_1.2fr]">
       <DashboardPanel className="h-fit xl:sticky xl:top-0">
         <SectionHeader title="Add Supervisor" description="Create a supervisor account with login credentials." />
         <form onSubmit={onAddSupervisor} className="space-y-4">
@@ -43,7 +43,7 @@ export default function AdminSupervisorsSection({
         </form>
       </DashboardPanel>
 
-      <DashboardPanel className="flex flex-col xl:h-full xl:min-h-0 xl:overflow-hidden">
+      <DashboardPanel className="flex flex-col">
         <div className="shrink-0">
           <SectionHeader
             title="Active Supervisors"
@@ -52,7 +52,7 @@ export default function AdminSupervisorsSection({
           <StyledInput icon={Search} value={search} onChange={(event) => onSearchChange(event.target.value)} type="search" placeholder="Search by name, ID, email, or migration code..." />
         </div>
 
-        <div className="portal-scrollbar mt-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
+        <div className="mt-5">
           {supervisors.length === 0 ? (
             <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] p-8 text-center">
               <Users className="mb-3 text-[var(--color-text-muted)]" size={28} />

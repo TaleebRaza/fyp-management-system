@@ -39,12 +39,14 @@ export default function StudentMessageWidget({
   isDarkMode,
   hasAssignedSupervisor,
   supervisorName,
+  embedded = false,
 }: {
   isDarkMode: boolean;
   hasAssignedSupervisor: boolean;
   supervisorName?: string;
+  embedded?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(embedded);
   const [isLoading, setIsLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [message, setMessage] = useState<StudentMessage | null>(null);
@@ -199,7 +201,7 @@ export default function StudentMessageWidget({
 
   return (
     <>
-      <button
+      {!embedded && <button
         type="button"
         aria-label="Messages"
         title="Messages"
@@ -211,17 +213,17 @@ export default function StudentMessageWidget({
         }}
       >
         <MessageCircle size={21} />
-      </button>
+      </button>}
 
       <section
-        aria-hidden={!isOpen}
+        aria-hidden={!isOpen && !embedded}
         aria-label="Student messages"
-        className={`fixed z-50 flex w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl transition-all duration-200 ease-out ${
+        className={embedded ? 'flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]' : `fixed z-50 flex w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl transition-all duration-200 ease-out ${
           isOpen
             ? 'visible translate-y-0 scale-100 opacity-100'
             : 'invisible pointer-events-none translate-y-3 scale-95 opacity-0'
         }`}
-        style={{
+        style={embedded ? undefined : {
           bottom: 'calc(max(1rem, env(safe-area-inset-bottom)) + 4rem)',
           right: 'max(1rem, env(safe-area-inset-right))',
         }}
@@ -239,7 +241,7 @@ export default function StudentMessageWidget({
                 : `Send one text or voice message. You can replace it after ${displayedRecipientLabel} sees or hears it.`}
             </p>
           </div>
-          <Button
+          {!embedded && <Button
             variant="ghost"
             className="min-h-9 rounded-lg px-2"
             onClick={close}
@@ -247,10 +249,10 @@ export default function StudentMessageWidget({
             aria-label="Close message window"
           >
             <X size={18} />
-          </Button>
+          </Button>}
         </div>
 
-        <div className="portal-scrollbar max-h-[min(28rem,calc(100vh-12rem))] overflow-y-auto px-4 py-4">
+        <div className={embedded ? 'portal-scrollbar px-4 py-4' : 'portal-scrollbar max-h-[min(28rem,calc(100vh-12rem))] overflow-y-auto px-4 py-4'}>
           {isLoading ? (
             <div className="flex min-h-32 items-center justify-center text-sm font-semibold text-[var(--color-text-muted)]">
               <Loader2 size={18} className="mr-2 animate-spin" />
