@@ -13,6 +13,8 @@ export type DialogOptions = {
   inputType?: 'text' | 'select' | 'email';
   inputOptions?: string[];
   placeholder?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
 };
 
 export type PortalDialogState = Required<DialogOptions> & {
@@ -148,7 +150,7 @@ export default function PortalDialog({
                   onClick={closeDialog}
                   className="min-h-10 rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface)]"
                 >
-                  Cancel
+                  {dialog.cancelLabel || 'Cancel'}
                 </button>
               )}
 
@@ -161,7 +163,7 @@ export default function PortalDialog({
                     : 'bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)]'
                 }`}
               >
-                {dialog.type === 'confirm' ? 'Confirm' : dialog.type === 'prompt' ? 'Save Changes' : 'OK'}
+                {dialog.confirmLabel || (dialog.type === 'confirm' ? 'Confirm' : dialog.type === 'prompt' ? 'Save Changes' : 'OK')}
               </button>
             </div>
           </motion.div>

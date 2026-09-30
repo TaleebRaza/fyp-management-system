@@ -23,6 +23,7 @@ type QueueProjectRecord = {
   stage?: string;
   version?: number;
   ratings?: unknown;
+  reviewRemarks?: string;
   maxTeamSize?: number;
 };
 
@@ -158,7 +159,7 @@ export async function getAdminProjectReviewQueue(
   }
 
   const projectFilter: Record<string, unknown> = {
-    status: 'Submitted For Review',
+    status: { $in: ['Submitted For Review', 'Document Approved'] },
     supervisorId: { $ne: null },
     pdfUrl: { $type: 'string', $ne: '' },
   };
@@ -170,7 +171,7 @@ export async function getAdminProjectReviewQueue(
   const projectQueryStarted = performance.now();
   const [projects, total] = await Promise.all([
     Project.find(projectFilter)
-      .select('_id supervisorId members title description domains tools pdfUrl status stage version ratings maxTeamSize')
+      .select('_id supervisorId members title description domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -223,6 +224,7 @@ export async function getAdminProjectReviewQueue(
       tools: project.tools,
       pdfUrl: project.pdfUrl,
       status: project.status,
+      reviewRemarks: project.reviewRemarks,
       stage: project.stage || 'PROPOSAL',
       version: Number(project.version || 0),
       ratings: getSafeProjectRatings(project.ratings),

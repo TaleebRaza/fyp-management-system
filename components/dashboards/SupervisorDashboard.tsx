@@ -186,10 +186,13 @@ const SupervisorDashboard = ({
       </DashboardShell>
 
       <SupervisorProjectDialog
+        key={`${actions.selectedProject?._id || 'closed'}-${actions.progressionRequestId}`}
         project={actions.selectedProject}
         onClose={actions.closeProject}
         isProcessingAction={actions.isProcessingAction}
         onAction={actions.handleAction}
+        onProgress={actions.handleProgress}
+        progressionRequestId={actions.progressionRequestId}
         management={{
           migrationStudentId: actions.migrationStudentId,
           onMigrationStudentChange: actions.setMigrationStudentId,

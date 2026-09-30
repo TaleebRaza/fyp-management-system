@@ -5,7 +5,8 @@ export type SupervisorNotify = (title: string, message: string) => void;
 export type SupervisorConfirmationRequest = (
   title: string,
   message: string,
-  onConfirm: () => Promise<void> | void
+  onConfirm: () => Promise<void> | void,
+  labels?: { confirmLabel?: string; cancelLabel?: string }
 ) => void;
 export type SupervisorRemarksRequest = (
   title: string,
@@ -27,13 +28,14 @@ export function useSupervisorFeedback(showDialog?: ShowDialog) {
   );
 
   const requestConfirmation = useCallback<SupervisorConfirmationRequest>(
-    (title, message, onConfirm) => {
+    (title, message, onConfirm, labels) => {
       if (showDialog) {
         showDialog({
           type: 'confirm',
           title,
           message,
           onConfirm,
+          ...labels,
         });
         return;
       }

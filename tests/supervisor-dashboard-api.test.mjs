@@ -10,6 +10,7 @@ const {
   expandSupervisorTeam,
   loadSupervisorDashboard,
   migrateSupervisorStudent,
+  progressSupervisorProjectStage,
   removeSupervisorTeam,
   updateSupervisorProjectStatus,
 } = supervisorApi;
@@ -38,15 +39,27 @@ test('dashboard loading keeps the existing endpoint and normalizes its response'
   assert.deepEqual(result, { projects, migrationCode: 'ABC123' });
 });
 
-test('status updates preserve the current action payload', async () => {
+test('document reviews and stage progression use separate action payloads', async () => {
   const calls = [];
   await updateSupervisorProjectStatus(
     {
       studentId: 'student-1',
-      status: 'Approved',
+      status: 'Document Approved',
       remarks: 'Looks good.',
       expectedStage: 'PROPOSAL',
       expectedVersion: 4,
+    },
+    async (...args) => {
+      calls.push(args);
+      return jsonResponse({ message: 'Updated' });
+    }
+  );
+  await progressSupervisorProjectStage(
+    {
+      studentId: 'student-1',
+      remarks: 'Progress now.',
+      expectedStage: 'PROPOSAL',
+      expectedVersion: 5,
       ratings: {
         projectIdea: 8,
         technicalMerit: 7,
@@ -66,10 +79,21 @@ test('status updates preserve the current action payload', async () => {
     body: JSON.stringify({
       action: 'updateStatus',
       studentId: 'student-1',
-      status: 'Approved',
+      status: 'Document Approved',
       remarks: 'Looks good.',
       expectedStage: 'PROPOSAL',
       expectedVersion: 4,
+    }),
+  });
+  assert.deepEqual(calls[1][1], {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'progressStage',
+      studentId: 'student-1',
+      remarks: 'Progress now.',
+      expectedStage: 'PROPOSAL',
+      expectedVersion: 5,
       ratings: {
         projectIdea: 8,
         technicalMerit: 7,

@@ -97,7 +97,6 @@ export function updateSupervisorProjectStatus(
     remarks: string;
     expectedStage: string;
     expectedVersion: number;
-    ratings?: ProjectRatingValues;
   },
   fetchImpl: SupervisorFetch = fetch
 ) {
@@ -109,9 +108,32 @@ export function updateSupervisorProjectStatus(
       remarks: input.remarks,
       expectedStage: input.expectedStage,
       expectedVersion: input.expectedVersion,
-      ...(input.ratings ? { ratings: input.ratings } : {}),
     },
     'Server failed to process the request.',
+    fetchImpl
+  );
+}
+
+export function progressSupervisorProjectStage(
+  input: {
+    studentId: string;
+    remarks: string;
+    expectedStage: string;
+    expectedVersion: number;
+    ratings?: ProjectRatingValues;
+  },
+  fetchImpl: SupervisorFetch = fetch
+) {
+  return postSupervisorAction(
+    {
+      action: 'progressStage',
+      studentId: input.studentId,
+      remarks: input.remarks,
+      expectedStage: input.expectedStage,
+      expectedVersion: input.expectedVersion,
+      ...(input.ratings ? { ratings: input.ratings } : {}),
+    },
+    'Server failed to progress the project stage.',
     fetchImpl
   );
 }
@@ -155,4 +177,3 @@ export function removeSupervisorTeam(
     fetchImpl
   );
 }
-

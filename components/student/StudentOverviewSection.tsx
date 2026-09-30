@@ -91,7 +91,7 @@ export default function StudentOverviewSection({
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--color-bg-soft)]"><div className="h-full rounded-full bg-[var(--color-accent)]" style={{ width: `${stageProgress}%` }} /></div>
           <div className="mt-3 flex flex-wrap gap-2">
             <Badge variant="muted">{documentStatus}</Badge>
-            {projectStatusPill && <Badge variant={projectStatusPill === 'Project Approved' ? 'success' : projectStatusPill === 'Rejected' ? 'danger' : 'warning'}>{projectStatusPill}</Badge>}
+            {projectStatusPill && <Badge variant={projectStatusPill.includes('Approved') ? 'success' : projectStatusPill === 'Rejected' ? 'danger' : 'warning'}>{projectStatusPill}</Badge>}
           </div>
         </section>
 

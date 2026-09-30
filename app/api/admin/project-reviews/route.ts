@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 
 import connectToDatabase from '../../../../lib/mongodb';
-import { reviewProject } from '../../../../lib/projectReview';
+import { progressProjectStage, reviewProject } from '../../../../lib/projectReview';
 import { getAdminProjectReviewQueue } from '../../../../lib/projectReviewQueue';
 import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
 import {
@@ -105,20 +105,26 @@ export async function POST(req: NextRequest) {
 
     const studentId = normalizeText(body.studentId, 64);
 
-    if (!mongoose.Types.ObjectId.isValid(studentId) || !isProjectReviewStatus(body.status)) {
+    const isProgression = body.action === 'progressStage';
+    const requestedStatus = isProjectReviewStatus(body.status) ? body.status : null;
+    if (!mongoose.Types.ObjectId.isValid(studentId)
+      || (!isProgression && !requestedStatus)) {
       return NextResponse.json({ error: 'Invalid project review request.' }, { status: 400 });
     }
 
     await connectToDatabase();
-    const result = await reviewProject({
+    const mutationInput = {
       studentId,
-      status: body.status,
       remarks: normalizeText(body.remarks, 2000) || 'No remarks provided.',
       expectedStage: normalizeText(body.expectedStage, 32),
       expectedVersion: body.expectedVersion,
       approverId: currentUser.id,
-      ratings: body.ratings,
-    });
+    };
+    const result = isProgression
+      ? await progressProjectStage({ ...mutationInput, ratings: body.ratings })
+      : requestedStatus
+        ? await reviewProject({ ...mutationInput, status: requestedStatus })
+        : { success: false as const, reason: 'invalid-request' as const };
 
     if (!result.success) {
       const invalidMessage = result.reason === 'invalid-request'
@@ -126,7 +132,7 @@ export async function POST(req: NextRequest) {
         : result.reason === 'ratings-required'
           ? 'All three ratings must be whole numbers from 1 through 10.'
           : result.reason === 'ratings-not-allowed'
-            ? 'Ratings are only allowed when approving a Proposal or Thesis submission.'
+            ? 'Ratings are only accepted when progressing a Proposal or Thesis stage.'
             : null;
       if (invalidMessage) {
         return NextResponse.json(
@@ -138,19 +144,35 @@ export async function POST(req: NextRequest) {
         {
           error: result.reason === 'not-reviewable'
             ? 'This project is no longer waiting for review.'
-            : 'Project not found.',
+            : result.reason === 'not-progressable'
+              ? 'This project is no longer eligible for stage progression.'
+              : 'Project not found.',
         },
-        { status: result.reason === 'not-reviewable' ? 409 : 404 }
+        { status: ['not-reviewable', 'not-progressable'].includes(result.reason) ? 409 : 404 }
       );
     }
 
+    const activityAction = isProgression
+      ? (result.completed ? 'project-completed' : 'project-stage-progressed')
+      : requestedStatus
+        ? projectReviewActivityAction(requestedStatus)
+        : null;
+    if (!activityAction) {
+      return NextResponse.json({ error: 'Invalid project review request.' }, { status: 400 });
+    }
     await recordPortalActivity({
-      action: projectReviewActivityAction(body.status),
+      action: activityAction,
       actorId: currentUser.id,
       actorRole: currentUser.role,
     });
 
-    return NextResponse.json({ message: 'Project review recorded.' }, { status: 200 });
+    return NextResponse.json({
+      message: isProgression
+        ? (result.completed ? 'Project completed successfully.' : 'Project stage progressed successfully.')
+        : 'Document review recorded.',
+      completed: result.completed,
+      newStage: result.newStage,
+    }, { status: 200 });
   } catch (error) {
     console.error('Admin project review error:', error);
     return NextResponse.json({ error: 'Failed to review project.' }, { status: 500 });

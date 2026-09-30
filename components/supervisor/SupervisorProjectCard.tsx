@@ -12,7 +12,7 @@ import type { SupervisorProject } from './supervisorDashboardTypes';
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'muted';
 
 export const getStatusVariant = (status?: string): BadgeVariant => {
-  if (status === 'Approved') return 'success';
+  if (status === 'Approved' || status === 'Document Approved') return 'success';
   if (status === 'Rejected') return 'danger';
   if (status === 'Changes Requested' || status === 'Pending') return 'warning';
   return 'muted';

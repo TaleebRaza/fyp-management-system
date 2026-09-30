@@ -5,11 +5,11 @@ import test from 'node:test';
 import { importTypeScriptModule } from './support/importTypeScript.mjs';
 
 const ratings = await importTypeScriptModule('config/projectRatings.ts');
-const [formSource, dialogSource, displaySource, studentOverviewSource, exportFormSource] = await Promise.all([
+const [formSource, dialogSource, displaySource, studentSubmissionSource, exportFormSource] = await Promise.all([
   readFile(new URL('../components/project-ratings/ApprovalRatingForm.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../components/supervisor/SupervisorProjectDialog.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../components/project-ratings/ProjectRatingsDisplay.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../components/student/StudentOverviewSection.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../components/student/StudentProjectSubmissionSection.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../components/admin/reports/ProjectRatingsExportForm.tsx', import.meta.url), 'utf8'),
 ]);
 
@@ -22,19 +22,19 @@ test('approval form uses required native radios for every shared category and 1-
   assert.match(formSource, /required/);
   assert.match(formSource, /aria-label=\{`\$\{label\}: \$\{value\} out of 10`\}/);
   assert.match(formSource, /peer-focus-visible:ring-2/);
-  assert.match(formSource, /review version \{version\}/);
+  assert.match(formSource, /review version \$\{version\}/);
 });
 
 test('approval is disabled until ratings are complete and while submission is running', () => {
   assert.match(dialogSource, /disabled=\{!completeRatings \|\| isProcessingAction\}/);
-  assert.match(dialogSource, /Approve and save ratings/);
+  assert.match(dialogSource, /Save ratings and progress/);
   assert.match(dialogSource, /getProjectRatingRound\(project\.stage\)/);
   assert.match(dialogSource, /type="submit"/);
 });
 
-test('approval state resets when a different project is opened', () => {
-  assert.match(dialogSource, /const isApprovalFormOpen = projectId !== null && approvalProjectId === projectId/);
-  assert.match(dialogSource, /setApprovalProjectId\(project\._id\)/);
+test('progression rating state is scoped to the selected project', () => {
+  assert.match(dialogSource, /const isRatingFormOpen = projectId !== null && ratingProjectId === projectId/);
+  assert.match(dialogSource, /setRatingProjectId\(project\._id\)/);
 });
 
 test('rating visibility hides future rounds and identifies passed rounds', () => {
@@ -46,7 +46,7 @@ test('rating visibility hides future rounds and identifies passed rounds', () =>
 
 test('supervisor and student views reuse the same rating display', () => {
   assert.match(dialogSource, /<ProjectRatingsDisplay/);
-  assert.match(studentOverviewSource, /<ProjectRatingsDisplay/);
+  assert.match(studentSubmissionSource, /<ProjectRatingsDisplay/);
 });
 
 test('saved ratings can be reviewed and updated without mutating project stage metadata', () => {

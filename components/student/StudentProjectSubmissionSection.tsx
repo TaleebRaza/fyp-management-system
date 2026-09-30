@@ -149,7 +149,7 @@ export default function StudentProjectSubmissionSection({
 
         {!canEditProjectDetails && (
           <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 text-xs leading-5 text-[var(--color-text-muted)]">
-            Project title, domains, tools, and description are locked after proposal approval. Use Change Proposal or Reset Project from Team & Supervisor when necessary.
+            Project title, domains, tools, and description are locked after proposal progression. Use Reset Project from Team & Supervisor when necessary.
           </div>
         )}
 

@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
-import VoiceNote from '../../../../models/VoiceNote';
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import { enqueueNotificationEmail } from '../../../../lib/emailOutbox';
 import {
@@ -38,17 +37,11 @@ import {
 } from '../../../../lib/projectSubmissionPolicy';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
-import { collectStorageDeletionTargets } from '../../../../lib/storageDeletionTargets';
 import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { escapeHtml, isRecord, normalizeText } from '../../../../lib/security/input';
-import {
-  getStorageObjectKind,
-  isOwnedStudentMessageKey,
-  normalizeStorageKey,
-} from '../../../../lib/storageValidation';
-import { getStaffReplySenderId } from '../../../../lib/studentMessageDirection';
+import { normalizeStorageKey } from '../../../../lib/storageValidation';
 import {
   capacityReservationError,
   releaseSupervisorProjectSlot,
@@ -215,7 +208,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid student action.' }, { status: 400 });
     }
     const action = body.action;
-    if (!['updateName', 'updateProgramBatch', 'resetProposal', 'resetProject', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
+    if (!['updateName', 'updateProgramBatch', 'resetProject', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown student action.' }, { status: 400 });
     }
 
@@ -295,7 +288,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (action === 'resetProposal') {
+    if (action === 'resetProject') {
       if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
         return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
       }
@@ -310,7 +303,7 @@ export async function POST(req: NextRequest) {
           const pdfKey = project.pdfUrl ? normalizeStorageKey(project.pdfUrl) : null;
           if (project.pdfUrl && !pdfKey) {
             throw new StorageProtocolError(
-              'The stored project file key is invalid. Run the storage integrity audit before changing your proposal.',
+              'The stored project file key is invalid. Run the storage integrity audit before resetting your project.',
               409
             );
           }
@@ -328,7 +321,7 @@ export async function POST(req: NextRequest) {
               await enqueueStorageDeletion({
                 key: pdfKey,
                 bytes: deletedBytes,
-                reason: 'student-proposal-reset',
+                reason: 'student-project-reset',
               }, session);
             }
           }
@@ -345,187 +338,11 @@ export async function POST(req: NextRequest) {
           return deletedBytes;
         });
 
-        await recordCurrentUserActivity('student-proposal-reset', currentUser);
-        return NextResponse.json(
-          {
-            message: 'Your project is back at the proposal stage. Your team and supervisor were kept.',
-            queuedDeletionBytes,
-          },
-          { status: 200 }
-        );
-      } catch (error) {
-        if (error instanceof StorageProtocolError) {
-          return NextResponse.json({ error: error.message }, { status: error.statusCode });
-        }
-        console.error('student_proposal_reset_failed');
-        return NextResponse.json({ error: 'Failed to change proposal.' }, { status: 500 });
-      }
-    }
-
-    if (action === 'resetProject') {
-      if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
-        return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
-      }
-
-      try {
-        const result = await withStorageTransaction(async (session) => {
-          const student = await User.findOne({
-            _id: currentUser.id,
-            role: 'student',
-          }).session(session);
-          if (!student) throw new StorageProtocolError('Student not found.', 404);
-
-          const currentProject = await Project.findOne({ members: student._id }).session(session);
-          if (!currentProject) {
-            throw new StorageProtocolError('Your current project record could not be found.', 404);
-          }
-
-          const memberIds = Array.from(
-            new Set((currentProject.members || []).map((memberId: unknown) => String(memberId)))
-          );
-          const studentId = String(student._id);
-          if (!memberIds.includes(studentId)) {
-            throw new StorageProtocolError('Your account is not listed as a member of this project.', 403);
-          }
-          const isOnlyMember = memberIds.length === 1;
-
-          const messageAudioKey = student.studentMessageType === 'audio'
-            ? normalizeStorageKey(student.studentMessageContent)
-            : null;
-          if (
-            student.studentMessageType === 'audio'
-            && (
-              !messageAudioKey
-              || getStorageObjectKind(messageAudioKey) !== 'student-message'
-              || !isOwnedStudentMessageKey(
-                messageAudioKey,
-                getStaffReplySenderId(student.studentMessageId) || studentId
-              )
-            )
-          ) {
-            throw new StorageProtocolError(
-              'The stored message audio key is invalid. Run the storage integrity audit before resetting your project.',
-              409
-            );
-          }
-
-          const voiceNotes = await VoiceNote.find(
-            isOnlyMember
-              ? { $or: [{ senderId: student._id }, { projectId: currentProject._id }] }
-              : { senderId: student._id }
-          )
-            .select('_id blobUrl fileSize')
-            .session(session)
-            .lean();
-          const storedReferences = [
-            ...(isOnlyMember ? [currentProject.pdfUrl] : []),
-            ...voiceNotes.map((voiceNote) => voiceNote.blobUrl),
-          ];
-          if (storedReferences.some((value) => {
-            if (value === null || value === undefined || String(value).trim() === '') return false;
-            return typeof value !== 'string' || !normalizeStorageKey(value);
-          })) {
-            throw new StorageProtocolError(
-              'Stored project files have invalid storage keys. Run the storage integrity audit before resetting your project.',
-              409
-            );
-          }
-
-          const deletionTargets = collectStorageDeletionTargets([
-            ...(isOnlyMember
-              ? [{ key: currentProject.pdfUrl, bytes: currentProject.pdfSize }]
-              : []),
-            ...voiceNotes.map((voiceNote) => ({ key: voiceNote.blobUrl, bytes: voiceNote.fileSize })),
-            ...(messageAudioKey
-              ? [{ key: messageAudioKey, bytes: student.studentMessageSize }]
-              : []),
-          ]);
-          let queuedDeletionBytes = 0;
-          if (deletionTargets.length > 0) {
-            await assertStorageLedgerReady(session);
-            const sharedKeys = await findSharedStorageKeys({
-              keys: deletionTargets.map((target) => target.key),
-              excludedProjectIds: isOnlyMember ? [currentProject._id] : [],
-              excludedVoiceNoteIds: voiceNotes.map((voiceNote) => voiceNote._id),
-              excludedStudentIds: messageAudioKey ? [student._id] : [],
-              session,
-            });
-            for (const target of deletionTargets) {
-              if (sharedKeys.has(target.key)) continue;
-              await enqueueStorageDeletion({ ...target, reason: 'student-project-reset' }, session);
-              queuedDeletionBytes += target.bytes;
-            }
-          }
-
-          if (voiceNotes.length > 0) {
-            await VoiceNote.deleteMany({
-              _id: { $in: voiceNotes.map((voiceNote) => voiceNote._id) },
-            }).session(session);
-          }
-          student.studentMessageId = null;
-          student.studentMessageType = null;
-          student.studentMessageContent = null;
-          student.studentMessageSize = 0;
-          student.studentMessageCreatedAt = null;
-          student.studentMessageAcknowledgedAt = null;
-          student.migrationCode = undefined;
-          await student.save({ session });
-
-          if (isOnlyMember) {
-            if (
-              currentProject.supervisorId
-              && !await releaseSupervisorProjectSlot(currentProject.supervisorId, session)
-            ) {
-              throw new StorageProtocolError('Unable to release the previous supervisor capacity.', 409);
-            }
-            const deletedProject = await Project.deleteOne(
-              {
-                _id: currentProject._id,
-                members: student._id,
-                'members.1': { $exists: false },
-              },
-              { session }
-            );
-            if (deletedProject.deletedCount !== 1) {
-              throw new StorageProtocolError('The team changed while your reset was being processed. Refresh and try again.', 409);
-            }
-          } else {
-            const remainingProject = await Project.findOneAndUpdate(
-              {
-                _id: currentProject._id,
-                members: student._id,
-                'members.1': { $exists: true },
-              },
-              { $pull: { members: student._id } },
-              { returnDocument: 'after', session }
-            );
-            if (!remainingProject) {
-              throw new StorageProtocolError('The team changed while your reset was being processed. Refresh and try again.', 409);
-            }
-          }
-
-          await createProjectWithUniqueInviteCode({
-            supervisorId: null,
-            members: [student._id],
-            stage: 'PROPOSAL',
-            status: 'Pending',
-            title: '',
-            titleFingerprint: '',
-            domains: [],
-            pdfUrl: '',
-            pdfSize: 0,
-          }, session);
-
-          return { queuedDeletionBytes, leftTeam: !isOnlyMember };
-        });
-
         await recordCurrentUserActivity('student-project-reset', currentUser);
         return NextResponse.json(
           {
-            message: result.leftTeam
-              ? 'Your project was reset and you have left the team. Remaining teammates kept their project.'
-              : 'Your project was reset. You are now unassigned and can start again from proposal.',
-            queuedDeletionBytes: result.queuedDeletionBytes,
+            message: 'Your project was reset to the proposal stage. Your team, supervisor, and project details were kept.',
+            queuedDeletionBytes,
           },
           { status: 200 }
         );

@@ -18,6 +18,8 @@ export function ApprovalRatingForm({
   disabled,
   onRatingChange,
   onRemarksChange,
+  heading = 'Rate this stage',
+  description,
 }: {
   ratings: PendingProjectRatings;
   remarks: string;
@@ -26,14 +28,15 @@ export function ApprovalRatingForm({
   disabled: boolean;
   onRatingChange: (category: ProjectRatingCategoryKey, value: number) => void;
   onRemarksChange: (value: string) => void;
+  heading?: string;
+  description?: string;
 }) {
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-base font-bold text-[var(--color-text)]">Approve this submission</h3>
+        <h3 className="text-base font-bold text-[var(--color-text)]">{heading}</h3>
         <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">
-          You are approving the {stageLabel} submission at review version {version}. Select a score
-          for every category; ratings are saved permanently with this approval.
+          {description || `Rate the ${stageLabel} stage at review version ${version}. Select a score for every category.`}
         </p>
       </div>
 

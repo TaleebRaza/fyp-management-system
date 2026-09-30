@@ -44,6 +44,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [progressionRequestId, setProgressionRequestId] = useState(0);
   const [projectSubmissionsOpen, setProjectSubmissionsOpen] = useState(true);
   const [isUpdatingSubmissionControl, setIsUpdatingSubmissionControl] = useState(false);
   const latestRequestId = useRef(0);
@@ -133,7 +134,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
   ) => {
     const supervisorName = projectBeingReviewed?.supervisorName || 'the assigned supervisor';
 
-    const submitReview = async (remarks = '', ratings?: ProjectRatingValues) => {
+    const submitReview = async (remarks = '') => {
       setIsProcessingAction(true);
 
       try {
@@ -146,13 +147,40 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
             remarks,
             expectedStage: projectBeingReviewed.stage || 'PROPOSAL',
             expectedVersion: Number(projectBeingReviewed.version || 0),
-            ...(ratings ? { ratings } : {}),
           }),
         });
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
           throw new Error(data.error || 'Failed to record the project review.');
+        }
+
+        if (status === 'Document Approved') {
+          const approvedProject = {
+            ...projectBeingReviewed,
+            status: 'Document Approved',
+            reviewRemarks: remarks || 'No remarks provided.',
+            version: Number(projectBeingReviewed.version || 0) + 1,
+          };
+          setSelectedProject(approvedProject);
+          setProjects((currentProjects) => currentProjects.map((project) =>
+            project._id === approvedProject._id ? approvedProject : project
+          ));
+          showDialog({
+            type: 'confirm',
+            title: 'Document approved',
+            message: projectBeingReviewed.stage === 'FINAL_DELIVERABLES'
+              ? 'Complete this project now?'
+              : 'Progress the student team to the next stage now?',
+            confirmLabel: projectBeingReviewed.stage === 'FINAL_DELIVERABLES' ? 'Complete project' : 'Progress stage',
+            cancelLabel: 'Stay in this stage',
+            onConfirm: () => {
+              setSelectedProject(approvedProject);
+              setProgressionRequestId((current) => current + 1);
+            },
+          });
+          void fetchProjects({ showLoading: false, forceRefresh: true });
+          return;
         }
 
         setSelectedProject(null);
@@ -190,7 +218,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
     };
 
     if (approval) {
-      void submitReview(approval.remarks, approval.ratings);
+      void submitReview(approval.remarks);
       return;
     }
 
@@ -201,6 +229,43 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
       placeholder: 'Write remarks for this team...',
       onConfirm: submitReview,
     });
+  };
+
+  const handleProgress = async (
+    projectBeingProgressed: SupervisorProject,
+    progression?: { ratings?: ProjectRatingValues; remarks: string }
+  ) => {
+    setIsProcessingAction(true);
+    try {
+      const response = await fetch('/api/admin/project-reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'progressStage',
+          studentId: projectBeingProgressed.triggerStudentId,
+          remarks: progression?.remarks || 'Stage progression approved.',
+          expectedStage: projectBeingProgressed.stage || 'PROPOSAL',
+          expectedVersion: Number(projectBeingProgressed.version || 0),
+          ...(progression?.ratings ? { ratings: progression.ratings } : {}),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to progress the project stage.');
+
+      setSelectedProject(null);
+      await fetchProjects({ showLoading: false, forceRefresh: true });
+      showDialog({
+        title: data.completed ? 'Project completed' : 'Stage progressed',
+        message: data.message || 'The project workflow was updated.',
+      });
+    } catch (error) {
+      showDialog({
+        title: 'Progression failed',
+        message: getErrorMessage(error, 'Unable to progress this project right now.'),
+      });
+    } finally {
+      setIsProcessingAction(false);
+    }
   };
 
   const updateSubmissionControl = async () => {
@@ -246,8 +311,8 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
       <div className="relative flex min-h-0 flex-col lg:h-full" aria-busy={isLoading}>
         <div className="min-h-0 flex-1">
           <SupervisorProjectsSection
-            title="Project Review Queue"
-            description="Submitted projects awaiting a decision. Reviews are applied as the assigned supervisor."
+            title="Project Review & Progression"
+            description="Review submitted documents or progress projects with an approved document."
             queueFilter="all"
             hideQueueFilterClear
             search={search}
@@ -258,10 +323,13 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
             filterLabel="Program"
             projects={projects}
             emptyState={{
-              title: 'No projects waiting for review',
-              description: 'There are no submitted projects awaiting a review right now.',
+              title: 'No projects need review or progression',
+              description: 'There are no submitted or document-approved projects right now.',
             }}
-            onOpenProject={setSelectedProject}
+            onOpenProject={(project) => {
+              setProgressionRequestId(0);
+              setSelectedProject(project);
+            }}
             compactCards
             headerActions={
               <Button
@@ -331,10 +399,16 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
       </div>
 
       <SupervisorProjectDialog
+        key={`${selectedProject?._id || 'closed'}-${progressionRequestId}`}
         project={selectedProject}
-        onClose={() => setSelectedProject(null)}
+        onClose={() => {
+          setProgressionRequestId(0);
+          setSelectedProject(null);
+        }}
         isProcessingAction={isProcessingAction}
         onAction={handleAction}
+        onProgress={handleProgress}
+        progressionRequestId={progressionRequestId}
       />
     </>
   );

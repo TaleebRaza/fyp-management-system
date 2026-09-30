@@ -4,7 +4,6 @@ import { useCallback, useState, type FormEvent } from 'react';
 import {
   joinStudentTeam,
   leaveStudentTeam,
-  resetStudentProposal,
   resetStudentProject,
 } from '../api/studentWorkflowApi';
 import type { StudentDashboardProps } from '../studentDashboardTypes';
@@ -123,10 +122,9 @@ export function useStudentTeamActions({
       setInviteCodeInput('');
       resetTemplates();
       await refreshDashboard();
-      await refreshSupervisors();
       showDialog({
         title: 'Project reset',
-        message: response.message || 'Your project has been reset. You can begin again by choosing a supervisor or joining a team.',
+        message: response.message || 'Your project is back at the proposal stage.',
       });
     } catch (error) {
       showDialog({
@@ -136,48 +134,17 @@ export function useStudentTeamActions({
     } finally {
       setIsSubmitting(false);
     }
-  }, [refreshDashboard, refreshSupervisors, resetProjectDraft, resetTemplates, showDialog]);
+  }, [refreshDashboard, resetProjectDraft, resetTemplates, showDialog]);
 
   const handleResetProject = useCallback(() => {
     showDialog({
       type: 'confirm',
       title: 'Reset your project?',
       message:
-        'This permanently removes your supervisor, project submission, messages, and voice notes. You will leave your current team, while any remaining teammates keep their project. This cannot be undone.',
+        'This returns the whole team to the proposal stage and deletes the current PDF and ratings. Your team, supervisor, project details, messages, and voice notes will be kept.',
       onConfirm: performProjectReset,
     });
   }, [performProjectReset, showDialog]);
-
-  const performProposalReset = useCallback(async () => {
-    setIsSubmitting(true);
-    try {
-      const response = await resetStudentProposal();
-      await resetProjectDraft();
-      resetTemplates();
-      await refreshDashboard();
-      showDialog({
-        title: 'Proposal ready to change',
-        message: response.message || 'Your project is back at the proposal stage.',
-      });
-    } catch (error) {
-      showDialog({
-        title: 'Proposal change failed',
-        message: getErrorMessage(error, 'Unable to change your proposal right now.'),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [refreshDashboard, resetProjectDraft, resetTemplates, showDialog]);
-
-  const handleResetProposal = useCallback(() => {
-    showDialog({
-      type: 'confirm',
-      title: 'Change your proposal?',
-      message:
-        'This returns the whole team to the proposal stage and deletes the current PDF. Your team, supervisor, and project details will be kept.',
-      onConfirm: performProposalReset,
-    });
-  }, [performProposalReset, showDialog]);
 
   const handleCopyInviteCode = useCallback(async () => {
     if (!inviteCode) return;
@@ -194,7 +161,6 @@ export function useStudentTeamActions({
     isSubmitting,
     handleJoinTeam,
     handleLeaveTeam,
-    handleResetProposal,
     handleResetProject,
     handleCopyInviteCode,
   };

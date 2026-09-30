@@ -6,8 +6,7 @@ import {
 } from '../config/projectRatings';
 
 export const REVIEWED_PROJECT_STATUSES = [
-  'Approved',
-  'Rejected',
+  'Document Approved',
   'Changes Requested',
 ] as const;
 
@@ -26,8 +25,25 @@ export function isProjectAwaitingReview(project: { pdfUrl?: unknown; status?: un
   return Boolean(String(project.pdfUrl || '').trim()) && project.status === 'Submitted For Review';
 }
 
+export function isProjectProgressable(project: { pdfUrl?: unknown; status?: unknown }) {
+  return Boolean(String(project.pdfUrl || '').trim()) && project.status === 'Document Approved';
+}
+
+export function getProjectProgressionState(stage: unknown) {
+  if (stage === 'PROPOSAL') {
+    return { newStage: 'THESIS_DRAFT', status: 'Pending', completed: false } as const;
+  }
+  if (stage === 'THESIS_DRAFT') {
+    return { newStage: 'FINAL_DELIVERABLES', status: 'Pending', completed: false } as const;
+  }
+  if (stage === 'FINAL_DELIVERABLES') {
+    return { newStage: undefined, status: 'Approved', completed: true } as const;
+  }
+  return null;
+}
+
 export function isProjectApproved(project: { status?: unknown; stage?: unknown }) {
-  return project.status === 'Approved' || APPROVED_STAGE_SET.has(String(project.stage || '').trim());
+  return project.status === 'Document Approved' || project.status === 'Approved' || APPROVED_STAGE_SET.has(String(project.stage || '').trim());
 }
 
 type ReviewRatingValidation =
@@ -46,18 +62,16 @@ type ReviewRatingValidation =
       reason: 'ratings-required' | 'ratings-not-allowed';
     };
 
-export function validateProjectReviewRatings({
-  status,
+export function validateProjectProgressionRatings({
   stage,
   ratings,
 }: {
-  status: ProjectReviewStatus;
   stage: unknown;
   ratings?: unknown;
 }): ReviewRatingValidation {
   const ratingRound = getProjectRatingRound(stage);
 
-  if (status !== 'Approved' || !ratingRound) {
+  if (!ratingRound) {
     return ratings === undefined
       ? { success: true, ratingRound: null, ratings: null }
       : { success: false, reason: 'ratings-not-allowed' };

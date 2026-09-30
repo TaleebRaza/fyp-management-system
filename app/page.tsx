@@ -79,6 +79,8 @@ export default function App() {
     inputType: 'text',
     inputOptions: [],
     placeholder: '',
+    confirmLabel: '',
+    cancelLabel: '',
     instanceId: 0,
   });
 
@@ -165,7 +167,7 @@ export default function App() {
   }, [introState]);
 
   // ✅ useCallback - stable function references
-  const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '', inputType = 'text', inputOptions = [], placeholder = '' }: DialogOptions) => {
+  const showDialog = useCallback(({ type = 'alert', title, message, onConfirm = () => {}, defaultValue = '', inputType = 'text', inputOptions = [], placeholder = '', confirmLabel = '', cancelLabel = '' }: DialogOptions) => {
     setDialog((previous) => ({
       isOpen: true,
       type,
@@ -176,6 +178,8 @@ export default function App() {
       inputType,
       inputOptions,
       placeholder,
+      confirmLabel,
+      cancelLabel,
       instanceId: previous.instanceId + 1,
     }));
   }, []);

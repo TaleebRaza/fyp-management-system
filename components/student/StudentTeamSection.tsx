@@ -1,5 +1,5 @@
 import type { FormEventHandler } from 'react';
-import { ArrowRight, Copy, FilePenLine, Loader2, Lock, LogOut, RotateCcw, UserCheck, Users } from 'lucide-react';
+import { ArrowRight, Copy, Loader2, Lock, LogOut, RotateCcw, UserCheck, Users } from 'lucide-react';
 import { AvatarBadge, Button, StyledInput } from '../ui';
 import { EXPANDED_TEAM_SIZE } from '../../config/appSettings';
 import type { ProjectMember, SupervisorOption } from './studentDashboardTypes';
@@ -20,7 +20,6 @@ export default function StudentTeamSection({
   onJoinTeam,
   canLeaveTeam,
   onLeaveTeam,
-  onResetProposal,
   onResetProject,
   onCopyInviteCode,
   onOpenSupervisorChange,
@@ -42,7 +41,6 @@ export default function StudentTeamSection({
   onJoinTeam: FormEventHandler<HTMLFormElement>;
   canLeaveTeam: boolean;
   onLeaveTeam: () => void;
-  onResetProposal: () => void;
   onResetProject: () => void;
   onCopyInviteCode: () => void;
   onOpenSupervisorChange: () => void;
@@ -129,12 +127,9 @@ export default function StudentTeamSection({
         <details className="portal-disclosure mt-4">
           <summary>Show advanced actions</summary>
           <div className="space-y-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Button type="button" variant="accent" onClick={onResetProposal} disabled={isSubmitting}>{isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <FilePenLine size={16} />}Change proposal</Button>
-              <Button type="button" variant="danger" onClick={onResetProject} disabled={isSubmitting}>{isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <RotateCcw size={16} />}Reset project</Button>
-            </div>
+            <Button type="button" variant="danger" className="w-full" onClick={onResetProject} disabled={isSubmitting}>{isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <RotateCcw size={16} />}Reset project</Button>
             <Button type="button" variant="outline" className="w-full" onClick={onLeaveTeam} disabled={isSubmitting || !canLeaveTeam}>{isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <LogOut size={16} />}Leave team</Button>
-            <p className="text-xs leading-5 text-[var(--color-text-muted)]">Change Proposal keeps the team and supervisor. Reset Project clears the project workflow. Leaving the team is unavailable when you are the only member.</p>
+            <p className="text-xs leading-5 text-[var(--color-text-muted)]">Reset Project returns the team to Proposal and deletes its current document and ratings while keeping the team and supervisor. Leaving the team is unavailable when you are the only member.</p>
           </div>
         </details>
       </section>

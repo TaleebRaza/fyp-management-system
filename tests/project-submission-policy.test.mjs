@@ -19,6 +19,7 @@ test('only approved final deliverables mark a project complete', () => {
   assert.equal(policy.isProjectComplete({ stage: 'THESIS_DRAFT', status: 'Approved' }), false);
   assert.equal(policy.isProjectComplete({ stage: 'PROPOSAL', status: 'Approved' }), false);
   assert.equal(policy.isProjectComplete({ stage: 'FINAL_DELIVERABLES', status: 'Pending' }), false);
+  assert.equal(policy.isProjectComplete({ stage: 'FINAL_DELIVERABLES', status: 'Document Approved' }), false);
   assert.equal(policy.isProjectComplete(), false);
 });
 

@@ -17,6 +17,7 @@ import { getStudentFineRestrictionState } from '../workflows/studentFineRestrict
 
 export type StudentProjectStatusPill =
   | 'Project Approved'
+  | 'Document Approved'
   | 'Changes Requested'
   | 'Rejected';
 
@@ -27,12 +28,14 @@ export function getStudentProjectStatusPill(
   if (stage === 'THESIS_DRAFT' || stage === 'FINAL_DELIVERABLES') {
     return 'Project Approved';
   }
+  if (status === 'Document Approved') return 'Document Approved';
   if (status === 'Rejected') return 'Rejected';
   if (status === 'Changes Requested') return 'Changes Requested';
   return null;
 }
 
 export function getStudentDocumentStatusLabel(status?: string, stage?: string): string {
+  if (status === 'Document Approved') return 'Document Approved';
   if (stage === 'THESIS_DRAFT' || stage === 'FINAL_DELIVERABLES') {
     if (status === 'Rejected') return 'Document Rejected';
     if (status === 'Changes Requested') return 'Changes Requested';
@@ -156,7 +159,7 @@ export function buildStudentDashboardViewModel(
       !fineState.isFineRestricted,
     isSupervisorChangeLocked:
       !isUnassigned &&
-      (project?.status === 'Approved' || currentStage !== 'PROPOSAL'),
+      (project?.status === 'Document Approved' || project?.status === 'Approved' || currentStage !== 'PROPOSAL'),
     announcementItems: getStudentAnnouncementItems(data, headline),
   };
 }

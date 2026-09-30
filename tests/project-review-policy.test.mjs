@@ -9,13 +9,14 @@ const {
   REVIEWED_PROJECT_STATUSES,
   isProjectAwaitingReview,
   isProjectReviewStatus,
-  validateProjectReviewRatings,
+  isProjectProgressable,
+  getProjectProgressionState,
+  validateProjectProgressionRatings,
 } = await importTypeScriptModule('lib/projectReviewPolicy.ts');
 
 test('project review statuses remain restricted to final supervisor decisions', () => {
   assert.deepEqual(REVIEWED_PROJECT_STATUSES, [
-    'Approved',
-    'Rejected',
+    'Document Approved',
     'Changes Requested',
   ]);
 
@@ -24,7 +25,7 @@ test('project review statuses remain restricted to final supervisor decisions', 
     assert.equal(isProjectReviewStatus(` ${status} `), true);
   }
 
-  for (const status of ['', 'Pending', 'Submitted', 'approved', null, undefined]) {
+  for (const status of ['', 'Pending', 'Submitted', 'Approved', 'Rejected', 'approved', null, undefined]) {
     assert.equal(isProjectReviewStatus(status), false);
   }
 });
@@ -39,7 +40,24 @@ test('only submitted projects without a final decision wait for review', () => {
   assert.equal(isProjectAwaitingReview({ pdfUrl: 'proposal.pdf', status: 'Changes Requested' }), false);
 });
 
-test('review rating rules require scores only for proposal and thesis approvals', () => {
+test('only an approved current document can progress and every stage moves forward', () => {
+  assert.equal(isProjectProgressable({ pdfUrl: 'proposal.pdf', status: 'Document Approved' }), true);
+  assert.equal(isProjectProgressable({ pdfUrl: 'proposal.pdf', status: 'Submitted For Review' }), false);
+  assert.equal(isProjectProgressable({ pdfUrl: '', status: 'Document Approved' }), false);
+
+  assert.deepEqual(getProjectProgressionState('PROPOSAL'), {
+    newStage: 'THESIS_DRAFT', status: 'Pending', completed: false,
+  });
+  assert.deepEqual(getProjectProgressionState('THESIS_DRAFT'), {
+    newStage: 'FINAL_DELIVERABLES', status: 'Pending', completed: false,
+  });
+  assert.deepEqual(getProjectProgressionState('FINAL_DELIVERABLES'), {
+    newStage: undefined, status: 'Approved', completed: true,
+  });
+  assert.equal(getProjectProgressionState('UNKNOWN'), null);
+});
+
+test('progression rating rules require scores only for proposal and thesis stages', () => {
   const ratings = {
     projectIdea: 8,
     technicalMerit: 7,
@@ -47,23 +65,23 @@ test('review rating rules require scores only for proposal and thesis approvals'
   };
 
   assert.deepEqual(
-    validateProjectReviewRatings({ status: 'Approved', stage: 'PROPOSAL', ratings }),
+    validateProjectProgressionRatings({ stage: 'PROPOSAL', ratings }),
     { success: true, ratingRound: 'proposal', ratings }
   );
   assert.deepEqual(
-    validateProjectReviewRatings({ status: 'Approved', stage: 'THESIS_DRAFT', ratings }),
+    validateProjectProgressionRatings({ stage: 'THESIS_DRAFT', ratings }),
     { success: true, ratingRound: 'thesis', ratings }
   );
   assert.deepEqual(
-    validateProjectReviewRatings({ status: 'Approved', stage: 'PROPOSAL' }),
+    validateProjectProgressionRatings({ stage: 'PROPOSAL' }),
     { success: false, reason: 'ratings-required' }
   );
   assert.deepEqual(
-    validateProjectReviewRatings({ status: 'Approved', stage: 'FINAL_DELIVERABLES' }),
+    validateProjectProgressionRatings({ stage: 'FINAL_DELIVERABLES' }),
     { success: true, ratingRound: null, ratings: null }
   );
   assert.deepEqual(
-    validateProjectReviewRatings({ status: 'Rejected', stage: 'PROPOSAL', ratings }),
+    validateProjectProgressionRatings({ stage: 'FINAL_DELIVERABLES', ratings }),
     { success: false, reason: 'ratings-not-allowed' }
   );
 });
@@ -74,4 +92,5 @@ test('projects count as approved after advancing beyond the proposal stage', () 
   assert.equal(isProjectApproved({ status: 'Pending', stage: 'THESIS_DRAFT' }), true);
   assert.equal(isProjectApproved({ status: 'Pending', stage: 'FINAL_DELIVERABLES' }), true);
   assert.equal(isProjectApproved({ status: 'Approved', stage: 'PROPOSAL' }), true);
+  assert.equal(isProjectApproved({ status: 'Document Approved', stage: 'PROPOSAL' }), true);
 });

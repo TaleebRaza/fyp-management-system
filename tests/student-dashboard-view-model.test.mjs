@@ -153,6 +153,10 @@ test('project status pill remains approved after the proposal stage', () => {
   assert.equal(selectors.getStudentProjectStatusPill('Pending', 'PROPOSAL'), null);
   assert.equal(selectors.getStudentProjectStatusPill('Pending'), null);
   assert.equal(
+    selectors.getStudentProjectStatusPill('Document Approved', 'PROPOSAL'),
+    'Document Approved'
+  );
+  assert.equal(
     selectors.getStudentProjectStatusPill('Pending', 'THESIS_DRAFT'),
     'Project Approved'
   );
@@ -167,6 +171,10 @@ test('project status pill remains approved after the proposal stage', () => {
 });
 
 test('document status reflects review remarks after proposal approval', () => {
+  assert.equal(
+    selectors.getStudentDocumentStatusLabel('Document Approved', 'THESIS_DRAFT'),
+    'Document Approved'
+  );
   assert.equal(
     selectors.getStudentDocumentStatusLabel('Approved', 'THESIS_DRAFT'),
     'Upload Your Documents For Review'
@@ -185,7 +193,7 @@ test('document status reflects review remarks after proposal approval', () => {
   );
 });
 
-test('project details stay locked after proposal approval until proposal reset', () => {
+test('project details stay locked after proposal progression until project reset', () => {
   const approved = selectors.buildStudentDashboardViewModel(
     { project: { stage: 'THESIS_DRAFT', status: 'Rejected' } },
     '',

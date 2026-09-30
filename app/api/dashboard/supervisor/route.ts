@@ -12,7 +12,7 @@ import { getSafeProjectRatings, parseProjectRatingValues } from '../../../../con
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
-import { reviewProject } from '../../../../lib/projectReview';
+import { progressProjectStage, reviewProject } from '../../../../lib/projectReview';
 import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
 import {
   capacityReservationError,
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     const body: unknown = await req.json();
     if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor action.' }, { status: 400 });
     const { action, studentId, status, remarks, expectedStage, expectedVersion, ratings, migrationCode, projectId, ratingRound } = body;
-    if (!['updateStatus', 'updateRating', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
+    if (!['updateStatus', 'progressStage', 'updateRating', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown supervisor action.' }, { status: 400 });
     }
 
@@ -202,22 +202,27 @@ export async function POST(req: NextRequest) {
       }, { status: 200 });
     }
 
-    if (action === 'updateStatus') {
+    if (action === 'updateStatus' || action === 'progressStage') {
       const requestedStudentId = normalizeText(studentId, 64);
-      if (!mongoose.Types.ObjectId.isValid(requestedStudentId) || !isProjectReviewStatus(status)) {
+      const requestedStatus = isProjectReviewStatus(status) ? status : null;
+      if (!mongoose.Types.ObjectId.isValid(requestedStudentId)
+        || (action === 'updateStatus' && !requestedStatus)) {
         return NextResponse.json({ error: 'Invalid project review request.' }, { status: 400 });
       }
 
-      const result = await reviewProject({
+      const mutationInput = {
         studentId: requestedStudentId,
-        status,
         remarks: normalizeText(remarks, 2000) || 'No remarks provided.',
         expectedStage: normalizeText(expectedStage, 32),
         expectedVersion,
         approverId: currentUser.id,
-        ratings,
         supervisorId: currentUser.id,
-      });
+      };
+      const result = action === 'progressStage'
+        ? await progressProjectStage({ ...mutationInput, ratings })
+        : requestedStatus
+          ? await reviewProject({ ...mutationInput, status: requestedStatus })
+          : { success: false as const, reason: 'invalid-request' as const };
 
       if (!result.success) {
         const invalidMessage = result.reason === 'invalid-request'
@@ -225,7 +230,7 @@ export async function POST(req: NextRequest) {
           : result.reason === 'ratings-required'
             ? 'All three ratings must be whole numbers from 1 through 10.'
             : result.reason === 'ratings-not-allowed'
-              ? 'Ratings are only allowed when approving a Proposal or Thesis submission.'
+              ? 'Ratings are only accepted when progressing a Proposal or Thesis stage.'
               : null;
         if (invalidMessage) {
           return NextResponse.json(
@@ -234,14 +239,28 @@ export async function POST(req: NextRequest) {
           );
         }
         return NextResponse.json(
-          { error: result.reason === 'not-reviewable' ? 'This project review is stale or no longer pending.' : 'Project not found.' },
-          { status: result.reason === 'not-reviewable' ? 409 : 404 }
+          { error: result.reason === 'not-reviewable'
+            ? 'This project review is stale or no longer pending.'
+            : result.reason === 'not-progressable'
+              ? 'This project is no longer eligible for stage progression.'
+              : 'Project not found.' },
+          { status: ['not-reviewable', 'not-progressable'].includes(result.reason) ? 409 : 404 }
         );
       }
 
-      await recordCurrentUserActivity(projectReviewActivityAction(status), currentUser);
+      const activityAction = action === 'progressStage'
+        ? (result.completed ? 'project-completed' : 'project-stage-progressed')
+        : requestedStatus
+          ? projectReviewActivityAction(requestedStatus)
+          : null;
+      if (activityAction) await recordCurrentUserActivity(activityAction, currentUser);
 
-      return NextResponse.json({ message: 'Status updated and timeline advanced!' }, { status: 200 });
+      return NextResponse.json({
+        message: action === 'progressStage'
+          ? (result.completed ? 'Project completed successfully.' : 'Project stage progressed successfully.')
+          : 'Document review recorded.',
+        ...(result.success ? { completed: result.completed, newStage: result.newStage } : {}),
+      }, { status: 200 });
     }
 
     if (action === 'migrate') {

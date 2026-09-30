@@ -14,6 +14,8 @@ export const PORTAL_ACTIVITY_ACTIONS = [
   'project-approved',
   'project-rejected',
   'project-changes-requested',
+  'project-stage-progressed',
+  'project-completed',
   'student-name-updated',
   'student-academic-details-updated',
   'student-supervisor-updated',
@@ -57,8 +59,7 @@ export function isPortalActivityActorRole(value: unknown): value is UserRole {
 }
 
 export function projectReviewActivityAction(status: ProjectReviewStatus): PortalActivityAction {
-  if (status === 'Approved') return 'project-approved';
-  return status === 'Rejected' ? 'project-rejected' : 'project-changes-requested';
+  return status === 'Document Approved' ? 'project-approved' : 'project-changes-requested';
 }
 
 export function createPortalActivityUpdate(input: PortalActivityInput) {

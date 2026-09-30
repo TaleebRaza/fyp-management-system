@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowRightLeft,
   CheckCircle,
@@ -6,6 +6,7 @@ import {
   FileText,
   Globe,
   Loader2,
+  Milestone,
   UserMinus,
   Users,
   Wrench,
@@ -51,6 +52,8 @@ export default function SupervisorProjectDialog({
   onClose,
   isProcessingAction,
   onAction,
+  onProgress,
+  progressionRequestId = 0,
   management,
 }: {
   project: SupervisorProject | null;
@@ -66,39 +69,55 @@ export default function SupervisorProjectDialog({
       isReviewEdit?: boolean;
     }
   ) => void;
+  onProgress: (
+    project: SupervisorProject,
+    progression?: { ratings?: ProjectRatingValues; remarks: string }
+  ) => void;
+  progressionRequestId?: number;
   management?: ProjectManagement;
 }) {
   const [view, setView] = useState<ProjectView>('actions');
-  const [approvalProjectId, setApprovalProjectId] = useState<string | null>(null);
+  const [ratingProjectId, setRatingProjectId] = useState<string | null>(null);
+  const [ratingFormMode, setRatingFormMode] = useState<'progress' | 'edit' | null>(null);
   const [approvalRatings, setApprovalRatings] = useState<PendingProjectRatings>({});
   const [approvalRemarks, setApprovalRemarks] = useState('');
   const [reviewRatingRound, setReviewRatingRound] = useState<ProjectRatingRound | null>(null);
   const [isOpeningDocument, setIsOpeningDocument] = useState(false);
+  const handledProgressionRequest = useRef(0);
   const projectId = project?._id ?? null;
-  const isApprovalFormOpen = projectId !== null && approvalProjectId === projectId;
+  const isRatingFormOpen = projectId !== null && ratingProjectId === projectId;
+  const isProgressionForm = ratingFormMode === 'progress';
   const selectedPdfKey = getSafePdfKey(project?.pdfUrl);
   const domainLabels = getProjectDomainDisplayLabels(project);
   const completeRatings = parseProjectRatingValues(approvalRatings);
   const isSubmittedForReview = project?.status === 'Submitted For Review';
-
-  useEffect(() => {
-    setView('actions');
-    setApprovalProjectId(null);
-    setApprovalRatings({});
-    setApprovalRemarks('');
-    setReviewRatingRound(null);
-  }, [projectId]);
+  const isProgressable = project?.status === 'Document Approved';
 
   const handleApprove = () => {
     if (!project) return;
+    onAction(project, 'Document Approved');
+  };
+
+  const handleStartProgression = useCallback(() => {
+    if (!project || !isProgressable) return;
     if (getProjectRatingRound(project.stage)) {
       setApprovalRatings({});
       setApprovalRemarks('');
-      setApprovalProjectId(project._id);
+      setReviewRatingRound(null);
+      setRatingFormMode('progress');
+      setRatingProjectId(project._id);
       return;
     }
-    onAction(project, 'Approved');
-  };
+    onProgress(project, { remarks: 'Final deliverables approved.' });
+  }, [isProgressable, onProgress, project]);
+
+  useEffect(() => {
+    if (progressionRequestId <= handledProgressionRequest.current
+      || project?.status !== 'Document Approved') return;
+    handledProgressionRequest.current = progressionRequestId;
+    const timer = window.setTimeout(handleStartProgression, 0);
+    return () => window.clearTimeout(timer);
+  }, [handleStartProgression, progressionRequestId, project?.status]);
 
   const handleRatingChange = (category: ProjectRatingCategoryKey, value: number) => {
     setApprovalRatings((current) => ({ ...current, [category]: value }));
@@ -106,7 +125,8 @@ export default function SupervisorProjectDialog({
 
   const handleClose = () => {
     setView('actions');
-    setApprovalProjectId(null);
+    setRatingProjectId(null);
+    setRatingFormMode(null);
     setApprovalRatings({});
     setApprovalRemarks('');
     setReviewRatingRound(null);
@@ -118,7 +138,8 @@ export default function SupervisorProjectDialog({
     if (!project) return;
     const snapshot = project.ratings?.[round];
     const reviewRemarks = project.reviewRemarks ?? project.remarks ?? '';
-    setApprovalProjectId(project._id);
+    setRatingProjectId(project._id);
+    setRatingFormMode('edit');
     setReviewRatingRound(round);
     setApprovalRatings(snapshot ? {
       projectIdea: snapshot.projectIdea,
@@ -141,17 +162,17 @@ export default function SupervisorProjectDialog({
     <Dialog
       open={!!project}
       onClose={isProcessingAction ? () => undefined : handleClose}
-      title={isApprovalFormOpen ? (reviewRatingRound ? 'Review rating' : 'Approve project and save ratings') : (project?.projectTitle || getMemberNames(project))}
-      description={isApprovalFormOpen ? getMemberNames(project) : (project ? `${getMemberNames(project)} · ${getMemberRollNumbers(project)}` : '')}
+      title={isRatingFormOpen ? (isProgressionForm ? 'Progress project stage' : 'Review rating') : (project?.projectTitle || getMemberNames(project))}
+      description={isRatingFormOpen ? getMemberNames(project) : (project ? `${getMemberNames(project)} · ${getMemberRollNumbers(project)}` : '')}
       size="xl"
       footer={
         project ? (
-          isApprovalFormOpen ? (
+          isRatingFormOpen ? (
             <>
-              <Button variant="outline" disabled={isProcessingAction} onClick={() => setApprovalProjectId(null)}>Cancel</Button>
+              <Button variant="outline" disabled={isProcessingAction} onClick={() => setRatingProjectId(null)}>Cancel</Button>
               <Button type="submit" form="project-approval-rating-form" variant="success" disabled={!completeRatings || isProcessingAction}>
                 {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                {isProcessingAction ? (reviewRatingRound ? 'Updating rating...' : 'Approving...') : (reviewRatingRound ? 'Update rating' : 'Approve and save ratings')}
+                {isProcessingAction ? (isProgressionForm ? 'Progressing...' : 'Updating rating...') : (isProgressionForm ? 'Save ratings and progress' : 'Update rating')}
               </Button>
             </>
           ) : (
@@ -160,25 +181,29 @@ export default function SupervisorProjectDialog({
         ) : null
       }
     >
-      {project && isApprovalFormOpen ? (
+      {project && isRatingFormOpen ? (
         <form
           id="project-approval-rating-form"
           onSubmit={(event) => {
             event.preventDefault();
             if (completeRatings) {
-              onAction(project, 'Approved', {
-                ratings: completeRatings,
-                remarks: approvalRemarks,
-                reviewRatingRound: reviewRatingRound || undefined,
-                isReviewEdit: !!reviewRatingRound,
-              });
+              if (isProgressionForm) {
+                onProgress(project, { ratings: completeRatings, remarks: approvalRemarks });
+              } else {
+                onAction(project, 'Document Approved', {
+                  ratings: completeRatings,
+                  remarks: approvalRemarks,
+                  reviewRatingRound: reviewRatingRound || undefined,
+                  isReviewEdit: true,
+                });
+              }
             }
           }}
         >
           <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-muted)] p-3">
             <div>
               <p className="text-xs font-extrabold text-[var(--color-text)]">{getProjectStageLabel(project.stage || 'PROPOSAL')}</p>
-              <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">Rate the document you are approving.</p>
+              <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">{isProgressionForm ? 'Rate this stage before progressing.' : 'Review the saved stage rating.'}</p>
             </div>
             <Button type="button" variant="outline" onClick={handleOpenDocument} disabled={!selectedPdfKey || isOpeningDocument || isProcessingAction}>
               {isOpeningDocument ? <Loader2 className="animate-spin" size={15} /> : <ExternalLink size={15} />}
@@ -193,6 +218,10 @@ export default function SupervisorProjectDialog({
             disabled={isProcessingAction}
             onRatingChange={handleRatingChange}
             onRemarksChange={setApprovalRemarks}
+            heading={isProgressionForm ? 'Rate and progress this stage' : 'Update saved rating'}
+            description={isProgressionForm
+              ? `These ratings will be saved for ${getProjectStageLabel(project.stage || 'PROPOSAL')} when the project progresses.`
+              : undefined}
           />
         </form>
       ) : project ? (
@@ -246,11 +275,15 @@ export default function SupervisorProjectDialog({
                   <Button variant="accent" disabled={actionDisabled} onClick={() => onAction(project, 'Changes Requested')}>
                     {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}Request changes
                   </Button>
-                  <Button variant="danger" disabled={actionDisabled} onClick={() => onAction(project, 'Rejected')}>
-                    {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <UserMinus size={16} />}Reject
-                  </Button>
+                  {isProgressable && (
+                    <Button variant="primary" disabled={isProcessingAction} onClick={handleStartProgression}>
+                      {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <Milestone size={16} />}
+                      {project.stage === 'FINAL_DELIVERABLES' ? 'Complete project' : 'Progress stage'}
+                    </Button>
+                  )}
                 </div>
-                {!isSubmittedForReview && <p className="mt-3 text-xs text-[var(--color-text-muted)]">Decision controls activate when a submitted document is waiting for review.</p>}
+                {!isSubmittedForReview && !isProgressable && <p className="mt-3 text-xs text-[var(--color-text-muted)]">Decision controls activate when a submitted document is waiting for review.</p>}
+                {isProgressable && <p className="mt-3 text-xs text-[var(--color-text-muted)]">The document is approved. Progress now or leave the project in this stage for another submission.</p>}
               </section>
             </div>
           )}
@@ -299,7 +332,7 @@ export default function SupervisorProjectDialog({
               <section className="portal-bento-tile p-4 sm:p-5 md:col-span-5">
                 <p className="portal-eyebrow">Ratings</p>
                 <div className="mt-3">
-                  <ProjectRatingsDisplay ratings={project.ratings} stage={project.stage || 'PROPOSAL'} onReviewRating={handleReviewRating} />
+                  <ProjectRatingsDisplay ratings={project.ratings} stage={project.stage || 'PROPOSAL'} onReviewRating={management ? handleReviewRating : undefined} />
                   {project.stage === 'PROPOSAL' ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Ratings appear after a stage is approved.</p> : null}
                 </div>
               </section>

@@ -65,7 +65,8 @@ test('broadcast, PDF submission, and review use reservation finalization instead
   assert.match(student, /finalizeUploadReservation/);
   assert.match(student, /enqueueStorageDeletion/);
   assert.match(review, /withStorageTransaction/);
-  assert.match(review, /enqueueStorageDeletion/);
+  assert.doesNotMatch(review, /enqueueStorageDeletion/);
+  assert.doesNotMatch(review, /pdfUrl: ''/);
   assert.doesNotMatch(review, /DeleteObjectCommand/);
 });
 

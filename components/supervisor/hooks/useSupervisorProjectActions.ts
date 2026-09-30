@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import {
   expandSupervisorTeam,
   migrateSupervisorStudent,
+  progressSupervisorProjectStage,
   removeSupervisorTeam,
   updateSupervisorProjectRating,
   updateSupervisorProjectStatus,
@@ -34,8 +35,10 @@ export function useSupervisorProjectActions({
   );
   const [migrationStudentId, setMigrationStudentId] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [progressionRequestId, setProgressionRequestId] = useState(0);
 
   const openProject = useCallback((project: SupervisorProject) => {
+    setProgressionRequestId(0);
     setSelectedProject(project);
     setMigrationStudentId(
       project.members?.[0]?._id || project.triggerStudentId
@@ -43,6 +46,7 @@ export function useSupervisorProjectActions({
   }, []);
 
   const closeProject = useCallback(() => {
+    setProgressionRequestId(0);
     setSelectedProject(null);
   }, []);
 
@@ -90,8 +94,32 @@ export function useSupervisorProjectActions({
             remarks: String(remarks || '').trim() || 'No remarks provided.',
             expectedStage: project.stage || 'PROPOSAL',
             expectedVersion: Number(project.version || 0),
-            ...(ratings ? { ratings } : {}),
           });
+          if (newStatus === 'Document Approved') {
+            const approvedProject = {
+              ...project,
+              status: 'Document Approved',
+              reviewRemarks: String(remarks || '').trim() || 'No remarks provided.',
+              version: Number(project.version || 0) + 1,
+            };
+            setSelectedProject(approvedProject);
+            await refreshProjects();
+            requestConfirmation(
+              'Document approved',
+              project.stage === 'FINAL_DELIVERABLES'
+                ? 'Complete this project now?'
+                : 'Progress the student team to the next stage now?',
+              () => {
+                setSelectedProject(approvedProject);
+                setProgressionRequestId((current) => current + 1);
+              },
+              {
+                confirmLabel: project.stage === 'FINAL_DELIVERABLES' ? 'Complete project' : 'Progress stage',
+                cancelLabel: 'Stay in this stage',
+              }
+            );
+            return;
+          }
           closeProject();
           await refreshProjects();
           notify(
@@ -122,8 +150,34 @@ export function useSupervisorProjectActions({
         (remarksValue) => submitReview(remarksValue)
       );
     },
-    [closeProject, notify, refreshProjects, requestRemarks]
+    [closeProject, notify, refreshProjects, requestConfirmation, requestRemarks]
   );
+
+  const handleProgress = useCallback(async (
+    project: SupervisorProject,
+    progression?: { ratings?: ProjectRatingValues; remarks: string }
+  ) => {
+    setIsProcessingAction(true);
+    try {
+      const response = await progressSupervisorProjectStage({
+        studentId: project.triggerStudentId,
+        remarks: String(progression?.remarks || '').trim() || 'Stage progression approved.',
+        expectedStage: project.stage || 'PROPOSAL',
+        expectedVersion: Number(project.version || 0),
+        ...(progression?.ratings ? { ratings: progression.ratings } : {}),
+      });
+      closeProject();
+      await refreshProjects();
+      notify(
+        response.completed ? 'Project completed' : 'Stage progressed',
+        typeof response.message === 'string' ? response.message : 'The project workflow was updated.'
+      );
+    } catch (error) {
+      notify('Progression failed', getSupervisorErrorMessage(error, 'Unable to progress this project right now.'));
+    } finally {
+      setIsProcessingAction(false);
+    }
+  }, [closeProject, notify, refreshProjects]);
 
   const handleMigrate = useCallback(async () => {
     if (!selectedProject) return;
@@ -276,7 +330,9 @@ export function useSupervisorProjectActions({
       : '',
     setSelectedMigrationCode,
     isProcessingAction,
+    progressionRequestId,
     handleAction,
+    handleProgress,
     handleMigrate,
     handleExpandTeam,
     handleRemoveTeam,

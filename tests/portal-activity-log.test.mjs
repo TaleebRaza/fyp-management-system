@@ -26,8 +26,7 @@ test('keeps activity storage atomically bounded to the latest 100 entries', () =
 });
 
 test('maps every project review result to a readable activity action', () => {
-  assert.equal(activityLog.projectReviewActivityAction('Approved'), 'project-approved');
-  assert.equal(activityLog.projectReviewActivityAction('Rejected'), 'project-rejected');
+  assert.equal(activityLog.projectReviewActivityAction('Document Approved'), 'project-approved');
   assert.equal(
     activityLog.projectReviewActivityAction('Changes Requested'),
     'project-changes-requested'
@@ -37,6 +36,8 @@ test('maps every project review result to a readable activity action', () => {
 test('allows the student project reset activity event', () => {
   assert.ok(activityLog.PORTAL_ACTIVITY_ACTIONS.includes('student-proposal-reset'));
   assert.ok(activityLog.PORTAL_ACTIVITY_ACTIONS.includes('student-project-reset'));
+  assert.ok(activityLog.PORTAL_ACTIVITY_ACTIONS.includes('project-stage-progressed'));
+  assert.ok(activityLog.PORTAL_ACTIVITY_ACTIONS.includes('project-completed'));
 });
 
 test('the logs endpoint stays admin-only and disables caching', async () => {
@@ -76,8 +77,9 @@ test('records actor identity with the requested authentication and project revie
   assert.match(authRoute, /actorName: user\.name/);
   assert.match(authRoute, /actorRollNo: user\.rollNo/);
   assert.match(passwordResetService, /action: 'password-changed'/);
-  assert.match(adminReviews, /projectReviewActivityAction\(body\.status\)/);
-  assert.match(supervisorDashboard, /recordCurrentUserActivity\(projectReviewActivityAction\(status\), currentUser\)/);
+  assert.match(adminReviews, /projectReviewActivityAction\(requestedStatus\)/);
+  assert.match(supervisorDashboard, /projectReviewActivityAction\(requestedStatus\)/);
+  assert.match(supervisorDashboard, /'project-stage-progressed'/);
   assert.match(authHelper, /select\('_id role name rollNo sessionVersion'\)/);
   assert.match(logPanel, /entry\.actorName/);
   assert.match(logPanel, /entry\.actorRollNo/);
