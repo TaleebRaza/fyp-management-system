@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
-import type { AdminReportsData } from '../adminDashboardTypes';
+import type { AdminOverviewSummary, AdminReportsData } from '../adminDashboardTypes';
 import type {
   ProjectRatingCategoryKey,
   ProjectRatingRound,
@@ -15,7 +15,11 @@ import {
   toReportRows,
   type ReportOption,
 } from '../AdminReports';
-import { getAdminReports, getProjectRatingsExport } from '../api/adminDashboardApi';
+import {
+  getAdminOverviewSummary,
+  getAdminReports,
+  getProjectRatingsExport,
+} from '../api/adminDashboardApi';
 
 const DEFAULT_RATING_EXPORT_FILTERS: ProjectRatingsExportFilters = {
   round: 'proposal',
@@ -25,7 +29,9 @@ const DEFAULT_RATING_EXPORT_FILTERS: ProjectRatingsExportFilters = {
 export function useAdminReports(showDialog: ShowDialog) {
   const [isOpen, setIsOpen] = useState(false);
   const [data, setData] = useState<AdminReportsData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [summary, setSummary] = useState<AdminOverviewSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(false);
   const [selectedReportId, setSelectedReportId] =
     useState<ReportOption['id']>('studentsPerSupervisor');
@@ -44,15 +50,13 @@ export function useAdminReports(showDialog: ShowDialog) {
     [data, selectedReportId]
   );
 
-  const loadReports = useCallback(async (silent: boolean) => {
+  const loadReports = useCallback(async () => {
     setIsLoading(true);
-    setSummaryError(false);
     try {
       setData(await getAdminReports());
     } catch (error) {
-      setSummaryError(true);
       console.error('Reports error:', error);
-      if (!silent) showDialog({
+      showDialog({
         title: 'Reports unavailable',
         message:
           'Unable to load report data right now. Please refresh and try again.',
@@ -63,11 +67,27 @@ export function useAdminReports(showDialog: ShowDialog) {
   }, [showDialog]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void loadReports(true), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadReports]);
+    let ignore = false;
 
-  const refreshReports = useCallback(() => loadReports(false), [loadReports]);
+    getAdminOverviewSummary()
+      .then((loadedSummary) => {
+        if (!ignore) setSummary(loadedSummary);
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setSummaryError(true);
+        console.error('Admin overview error:', error);
+      })
+      .finally(() => {
+        if (!ignore) setIsSummaryLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const refreshReports = useCallback(() => loadReports(), [loadReports]);
 
   const openReports = useCallback(async () => {
     setIsOpen(true);
@@ -150,7 +170,9 @@ export function useAdminReports(showDialog: ShowDialog) {
   return {
     isOpen,
     data,
+    summary,
     isLoading,
+    isSummaryLoading,
     summaryError,
     selectedReportId,
     setSelectedReportId,

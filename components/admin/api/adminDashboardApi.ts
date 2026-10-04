@@ -1,4 +1,5 @@
 import type {
+  AdminOverviewSummary,
   AdminReportsData,
   AdminStudent,
   AdminSupervisor,
@@ -144,6 +145,17 @@ export async function getAdminReports(): Promise<AdminReportsData> {
 
   if (!response.ok) {
     throw new Error(data.error || 'Failed to load reports');
+  }
+
+  return data;
+}
+
+export async function getAdminOverviewSummary(): Promise<AdminOverviewSummary> {
+  const response = await fetch('/api/admin/summary', { cache: 'no-store' });
+  const data = await readJson<AdminOverviewSummary & { error?: string }>(response);
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to load the admin overview');
   }
 
   return data;

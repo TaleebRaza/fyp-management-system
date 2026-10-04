@@ -167,6 +167,18 @@ test('does not prefetch review data when the admin dashboard loads', () => {
   assert.equal('prefetchAdminProjectReviews' in api, false);
 });
 
+test('loads the lightweight admin overview separately from full reports', async () => {
+  const expected = { students: 18, supervisors: 3, projects: 9, reviewQueue: 2 };
+
+  await withMockFetch(async (url, init) => {
+    assert.equal(url, '/api/admin/summary');
+    assert.deepEqual(init, { cache: 'no-store' });
+    return jsonResponse(expected);
+  }, async () => {
+    assert.deepEqual(await api.getAdminOverviewSummary(), expected);
+  });
+});
+
 test('loads project ratings rows with all server-side filter values', async () => {
   const expectedRows = [{ projectId: 'project-1', projectTitle: 'Example' }];
   await withMockFetch(async (url, init) => {

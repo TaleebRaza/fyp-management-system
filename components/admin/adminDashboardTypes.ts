@@ -92,3 +92,10 @@ export type AdminReportsData = {
   collectedFineStudents?: ReportSourceItem[];
   supervisorLoginCounts?: ReportSourceItem[]; 
 };
+
+export type AdminOverviewSummary = {
+  students: number;
+  supervisors: number;
+  projects: number;
+  reviewQueue: number;
+};

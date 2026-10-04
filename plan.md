@@ -1552,3 +1552,39 @@ Status: **KEEP — IDLE REQUEST, SERVER AUTHORIZATION, AND DB-WORK CHECKS PASS**
 - A test attempt initially found the temporary app server stopped; no data changed. Restarting the app and rerunning the test passed.
 - The headless browser required a dispatched `FocusEvent`; native desktop focus remains unverified. The focus handler and its follow-up request were verified in the browser.
 - Password-reset frozen-file hashes still match. The canonical `fyp_local` performance dataset and MinIO objects were preserved.
+
+## 2026-10-04 - Milestone 4 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Removed the Admin dashboard's mount-time full Reports request. Opening Reports now loads the full report once, and the existing hook keeps that data until an explicit refresh or a later invalidating action.
+- Added one authenticated `/api/admin/summary` endpoint with four direct counts for the unchanged overview figures: active students, supervisors, projects, and projects waiting for review.
+- Removed the mount-time Project Reviews module prefetch. The existing dynamic component now loads only on first review-tab use, remains mounted while navigating between Admin tabs, and therefore retains its loaded queue state.
+- Added focused regression coverage for the lightweight summary request and the two lazy-loading boundaries without adding a dependency or generic client cache.
+- Did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no lint, unit, build, server, database, performance, or browser test was run. Milestone 4 remains unverified until the next testing session compares initial request/DB work and confirms Reports and Project Reviews behavior in the real portal.
+
+## 2026-10-04 - Milestone 4 testing checkpoint
+
+Status: **CODE CHECKS PASS — LIVE PORTAL ACCEPTANCE AND MEASUREMENT PENDING**
+
+- Focused Admin dashboard/API checks: 12 passed, 0 failed.
+- `npm run build`: passed; Next.js includes the new `/api/admin/summary` route.
+- `npm run lint`: passed.
+- `npm run test:unit`: 187 passed, 1 failed, 12 skipped. The failure is the previously recorded unrelated `StudentTeamSection` “Reset project” expectation; skipped Viva/database integration checks require explicit MongoDB test URIs.
+- Password-reset frozen-file SHA-256 checks all passed.
+- The session has no in-app browser, Docker access is denied, and nothing is listening on local portal/MongoDB/MinIO ports 3100/27017/9000. Therefore role-based Admin UI/Network checks, live endpoint authentication/data verification, MongoDB command/scan counts, and before/after performance measurements were unavailable. No service was started and no seeded data was changed.
+- Keep Milestone 4 open until a local portal session verifies overview totals, confirms the full Reports route is absent on initial load and requested once on first open, confirms the review route/chunk is absent until first tab use and retained afterward, and captures initial-load DB work against the baseline.
+
+## 2026-10-04 - Milestone 4 local-service follow-up
+
+Status: **API AND DATABASE CHECKS PASS — BROWSER NETWORK ACCEPTANCE PENDING**
+
+- Docker access became available. The existing `fyp_local` replica set was PRIMARY and retained the canonical performance data: 5,501 users, 2,500 projects, 500 sessions, and one storage ledger row with 69,000 used bytes and 0 reserved bytes.
+- Left the existing portal on port 3100 untouched; it was serving a stale build (authenticated review queue returned 200, but `/api/admin/summary` returned 404). Started the current production build on port 3101 with explicit loopback MongoDB/MinIO settings and a local-only auth secret.
+- Authenticated local admin checks on port 3101 returned the expected overview values: 4,900 active students, 500 supervisors, 2,500 projects, and 500 projects waiting for review. The review endpoint returned 200 with 24 rows and 1,000 total queue records.
+- One request to full Reports returned 200 in 9,937 ms and totals matching the summary route (including 500 waiting for review). This is one diagnostic sample, not a p50/p95 comparison.
+- Summary latency sample (5 warmups + 30 timed requests): p50 32 ms, p95 44 ms.
+- A profiler-only DB-work capture was enabled for one summary request and disabled immediately afterward. It recorded four count operations plus one authenticated-user lookup; combined `docsExamined` was 9,501 and `keysExamined` was 7,503. The active-student count scanned 5,000 student documents, full project count scanned 2,500 project documents, and review count scanned 2,000 project documents. Profiler mode is confirmed off.
+- Password-reset frozen hashes still match. The authenticated synthetic admin login updated only its local login/activity records; no seed reset, project mutation, or object-storage change was made.
+- The Browser runtime still reports no available browser session even though Chromium is installed in the environment. Therefore the actual signed-in UI Network panel check (initial report/review requests absent; first-open requests occur once; loaded state retained) remains pending. Keep Milestone 4 open until that browser gate and a matched initial-dashboard baseline comparison are captured.

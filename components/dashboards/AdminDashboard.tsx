@@ -32,7 +32,6 @@ import type { AdminDashboardProps } from '../admin/adminDashboardTypes';
 import {
   useAdminEmailUpdate,
   useAdminHeadline,
-  useAdminProjectReviewPrefetch,
   useAdminReports,
   useAdminStudents,
   useAdminSupervisors,
@@ -91,6 +90,7 @@ const AdminDashboard = ({
   onPortalPauseChange,
 }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [hasOpenedReviews, setHasOpenedReviews] = useState(false);
   const [isVivaView, setIsVivaView] = useState(false);
   const [isUpdatingPortal, setIsUpdatingPortal] = useState(false);
   const headline = useAdminHeadline(showDialog);
@@ -100,6 +100,11 @@ const AdminDashboard = ({
     students.refreshStudents
   );
   const reports = useAdminReports(showDialog);
+
+  const openReviews = () => {
+    setHasOpenedReviews(true);
+    setActiveTab('reviews');
+  };
 
   const updatePortal = async (paused: boolean, reason = portalPauseReason) => {
         setIsUpdatingPortal(true);
@@ -134,8 +139,6 @@ const AdminDashboard = ({
       onConfirm: (reason) => updatePortal(!portalPaused, reason),
     });
   };
-
-  useAdminProjectReviewPrefetch(loadAdminProjectReviewsPanel);
 
   const handleUpdateEmail = useAdminEmailUpdate({
     showDialog,
@@ -180,7 +183,7 @@ const AdminDashboard = ({
       section: 'Projects',
       icon: <ClipboardCheck size={18} />,
       active: activeTab === 'reviews',
-      onClick: () => setActiveTab('reviews'),
+      onClick: openReviews,
     },
     {
       id: 'viva',
@@ -271,17 +274,17 @@ const AdminDashboard = ({
       >
         {activeTab === 'overview' && (
           <AdminOverviewSection
-              students={reports.data?.totals?.students}
-              supervisors={reports.data?.totals?.supervisors}
+              students={reports.summary?.students}
+              supervisors={reports.summary?.supervisors}
               portalPaused={portalPaused}
               registrationPolicy={registrationPolicy}
-              projects={reports.data?.totals?.projects}
-              reviewQueue={reports.data?.totals?.reviewQueue}
-              summaryLoading={reports.isLoading}
+              projects={reports.summary?.projects}
+              reviewQueue={reports.summary?.reviewQueue}
+              summaryLoading={reports.isSummaryLoading}
               summaryError={reports.summaryError}
               onOpenSupervisors={() => setActiveTab('supervisors')}
               onOpenStudents={() => setActiveTab('students')}
-              onOpenReviews={() => setActiveTab('reviews')}
+              onOpenReviews={openReviews}
               onOpenRegistration={() => setActiveTab('registration')}
               onOpenPortal={() => setActiveTab('portal')}
               onOpenReports={reports.openReports}
@@ -333,8 +336,10 @@ const AdminDashboard = ({
           </div>
         )}
 
-        {activeTab === 'reviews' && (
-          <AdminProjectReviewsPanel showDialog={showDialog} />
+        {hasOpenedReviews && (
+          <div hidden={activeTab !== 'reviews'}>
+            <AdminProjectReviewsPanel showDialog={showDialog} />
+          </div>
         )}
 
         {activeTab === 'messages' && <div className="space-y-5">
