@@ -12,6 +12,7 @@ scripts/*
 !scripts/migrate-password-hashes.mjs
 AGENTS.md
 .github
+.local-bench/
 
 # Sentry Config File
 .env.sentry-build-plugin

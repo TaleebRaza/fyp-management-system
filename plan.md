@@ -1435,3 +1435,43 @@ The optimization branch is ready only when all of the following are true:
 - [ ] final before/after report is complete.
 
 The key rule is simple: **measure first, change one thing, exercise the real portal against real local persistence, measure again, and keep only what earns its complexity.**
+
+---
+
+# Progress log
+
+## 2026-10-04 - Milestone 0 source baseline and validation
+
+Status: **SOURCE BASELINE CAPTURED — UNIT SUITE HAS ONE FAILURE**
+
+- Reused the existing dedicated `backend-fix` branch at commit `4031e3d997a5ef045702a15e32c1f1c2fab43f93`.
+- Confirmed the working tree was clean before preparation.
+- Recorded Node, npm, Git, OS, CPU, RAM, project-stack, and environment-variable-name metadata under `.local-bench/baseline/`.
+- Recorded SHA-256 hashes for every password-reset frozen file in `.local-bench/password-reset-before.sha256`.
+- Added `.local-bench/` to `.gitignore` so local evidence and machine-specific benchmark data cannot be committed accidentally.
+- Did not edit any password-reset frozen file.
+- `npm ci` and `npm run lint` passed; `npm run build` passed.
+- `npm run test:unit` reported 184 passed, 1 failed, and 12 skipped. The failure is `tests/student-project-reset-structure.test.mjs`, whose `/Reset project/i` assertion does not match the current `StudentTeamSection` component. The skipped database tests require local replica-set URIs.
+- Full command output summaries are saved in `.local-bench/baseline/validation-results.txt`.
+- MongoDB-backed checks and integration baselines remain pending until Milestone 1 provides the local replica set.
+- Password-reset digest comparison is recorded after validation; no frozen file is modified by this milestone.
+- Milestone 1 has not started.
+
+## 2026-10-04 - Milestone 1 implementation
+
+Status: **IMPLEMENTED — CORE LOCAL INFRASTRUCTURE VERIFIED; PORTAL BROWSER SMOKE TEST PENDING**
+
+- Added `compose.local.yaml` with pinned MongoDB, Mongo replica-set initializer, MinIO, and bucket initializer images.
+- Bound MongoDB and both MinIO ports to loopback and kept data in named Docker volumes.
+- Made the initializers idempotently create replica set `rs0`, bucket `fyp-local`, browser CORS rules, and exactly one empty storage-ledger record.
+- Added the smallest storage configuration change: `STORAGE_S3_ENDPOINT` selects an S3-compatible endpoint, while the absence of that variable preserves the existing Cloudflare R2 endpoint and `auto` region.
+- Applied the same local endpoint support to the existing storage integrity/repair script so later real-storage verification can reuse it.
+- Documented the local-only connection values and lifecycle commands in `README.md`.
+- Added no package, storage abstraction, or request-path initialization.
+- Did not modify any password-reset frozen file.
+- Verification session: Compose config/startup, lint, and production build passed. The unit suite remains at its recorded baseline of 184 passed, 1 pre-existing `StudentTeamSection` assertion failure, and 12 MongoDB tests skipped when no test URI is supplied.
+- The local S3-compatible service is `pgsty/silo:RELEASE.2026-09-03T13-18-01Z`, a pinned MinIO-derived server, rather than the unavailable upstream MinIO image. MongoDB uses `mongo:7.0.41-jammy` because MongoDB 8.0.30 refuses to start on this host's Linux 6.19 kernel. Both substitutions are pinned and local-only.
+- Mongo replica-set PRIMARY check, transaction abort, and exactly-one-ledger-row check passed. The existing Viva workflow integration test passed against its isolated local test database (504 synthetic users; 1 team).
+- The configured bucket initializer reran successfully. AWS SDK put/HEAD/get/delete passed for a temporary 23-byte object, the localhost:3100 CORS preflight returned the configured PUT/GET/HEAD permissions, and the existing read-only storage integrity audit reported zero objects/references and a valid ledger (1 row, 0 used bytes, 0 reserved bytes).
+- The first Viva workflow attempt was run without the loopback network permission and failed with `connect EPERM`; rerunning with the approved local access passed. It did not indicate an application/test regression.
+- The signed-in browser flow through the portal (presigned upload, portal read, and portal cleanup) has not yet been exercised. It needs local deterministic portal data and a running browser session; keep Milestone 1 open until that acceptance gate is completed during the baseline-data milestone/testing session. No production MongoDB or R2 endpoint was used.

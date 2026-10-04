@@ -300,6 +300,27 @@ The platform separates permissions between students, supervisors, and administra
 
 Viva integration tests use a local, disposable MongoDB replica-set database because the workflow relies on transactions. They seed fake data only and remove the target database when complete.
 
+Start the pinned local MongoDB replica set and MinIO services with:
+
+```bash
+docker compose -f compose.local.yaml up -d
+```
+
+The initializer containers create replica set `rs0`, bucket `fyp-local`, its browser CORS policy, and the single required storage-ledger record. Use these local-only application values:
+
+```text
+MONGODB_URI=mongodb://127.0.0.1:27017/fyp_local?replicaSet=rs0
+NEXTAUTH_URL=http://localhost:3100
+NEXTAUTH_SECRET=local-only-secret
+R2_ACCESS_KEY_ID=fyp-local
+R2_SECRET_ACCESS_KEY=fyp-local-secret
+R2_BUCKET_NAME=fyp-local
+STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
+STORAGE_S3_REGION=us-east-1
+```
+
+MinIO's console is available at `http://127.0.0.1:9001`. Stop the services with `docker compose -f compose.local.yaml down`; add `--volumes` only when intentionally discarding all local data.
+
 ```bash
 VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m12_test?replicaSet=rs0' npm run test:viva:workflow
 ```

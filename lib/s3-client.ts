@@ -3,18 +3,19 @@ import { S3Client } from '@aws-sdk/client-s3';
 const accountId = process.env.R2_ACCOUNT_ID;
 const accessKeyId = process.env.R2_ACCESS_KEY_ID;
 const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+const storageEndpoint = process.env.STORAGE_S3_ENDPOINT;
 
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || '';
 
 function assertStorageConfigured() {
-  if (!accountId || !accessKeyId || !secretAccessKey || !BUCKET_NAME) {
+  if ((!storageEndpoint && !accountId) || !accessKeyId || !secretAccessKey || !BUCKET_NAME) {
     throw new Error('R2 storage is not configured.');
   }
 }
 
 const storageClient = new S3Client({
-  region: 'auto',
-  endpoint: `https://${accountId || 'invalid'}.r2.cloudflarestorage.com`,
+  region: storageEndpoint ? (process.env.STORAGE_S3_REGION || 'us-east-1') : 'auto',
+  endpoint: storageEndpoint || `https://${accountId || 'invalid'}.r2.cloudflarestorage.com`,
   credentials: {
     accessKeyId: accessKeyId || 'invalid',
     secretAccessKey: secretAccessKey || 'invalid',
