@@ -27,3 +27,11 @@ test('supervisor Viva UI confirms requeueing and does not offer it after a saved
   assert.match(workspace, /!session\.result/);
   assert.match(workspace, /Confirm requeue/);
 });
+
+test('dashboard Viva access checks on mount and focus without polling', async () => {
+  const accessHook = await read('components/ui/dashboard/useVivaAccessRestriction.ts');
+
+  assert.match(accessHook, /void enforceRestriction\(\)/);
+  assert.match(accessHook, /addEventListener\('focus', enforceRestriction\)/);
+  assert.doesNotMatch(accessHook, /setInterval/);
+});

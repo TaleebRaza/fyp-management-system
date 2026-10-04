@@ -1503,3 +1503,52 @@ Status: **PARTIALLY VERIFIED — FULL BASELINE AND BROWSER ACCEPTANCE PENDING**
 - This session's browser runtime returned no available browser, and the local server/Compose processes from the prior run are no longer reachable from this session. Actual role-by-role UI/network checks, upload/read through the portal, idle 10-minute traffic, and browser screenshots remain unverified. Reopen the local stack and attach/enable a browser before claiming Milestone 1 or 2 acceptance complete.
 - A fresh final Docker/database run was not possible because Docker socket access is unavailable in this session. Prior results above are retained as evidence from the earlier local run, not represented as rerun results. No production database, bucket, or email service was targeted.
 - Baseline result artifacts are not yet saved as the required compact result file under `.local-bench/baseline/`; the metrics above are preserved here pending a follow-up test session with the local services/browser available. Milestone 2 remains open and no optimization milestone should be treated as having a completed baseline gate.
+
+## 2026-10-04 - Milestone 3 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Removed the dashboard's fixed 30-second Viva access polling timer while retaining the initial request and focus-triggered recheck.
+- Left the shared `requireCurrentUser` server-side Viva restriction enforcement unchanged.
+- Added one regression assertion to the existing Viva UI structure test so fixed polling cannot return unnoticed.
+- Added no dependency, cache, WebSocket, SSE, or replacement synchronization mechanism.
+- Did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no lint, unit, build, integration, browser, idle-window, database-operation, or authorization test was run. Milestone 3 remains unverified until the testing session.
+
+## 2026-10-04 - Milestone 3 testing checkpoint
+
+Status: **CODE AND SERVER CHECKS PASS — BROWSER ACCEPTANCE PENDING**
+
+- `node --test tests/viva-operations-ui.test.mjs`: 3 passed, including the no-polling regression check.
+- `npm run lint` and `npm run build`: passed.
+- `npm run test:unit`: 185 passed, 1 pre-existing failure in `tests/student-project-reset-structure.test.mjs` (`StudentTeamSection` does not contain the expected “Reset project” text), 12 database integration tests skipped without configured test URIs.
+- `tests/viva-access-restriction.integration.test.mjs` passed against the real local MongoDB replica set using its isolated `fyp_viva_m8_test` database; scheduled, active, completed, cancelled, admin, panel-member, and unrelated-user access cases passed.
+- Password-reset frozen-file SHA-256 checks passed.
+- Confirmed the existing `fyp_local` database and `fyp-local` bucket contain the canonical performance seed (5,501 users, 2,500 projects, 500 Viva sessions, and 1,000 proposal objects). They were not reset or modified by this session.
+- Started the production build against the local MongoDB and MinIO settings on loopback port 3100. The browser runtime reported no available browser (`agent.browsers.list()` returned an empty list), so sign-in workflows, Network-panel checks, browser storage lifecycle, idle polling observation, and live restriction UI behavior remain pending.
+- No 10-minute idle-window or Mongo operation-count measurement was taken. Milestones 1 and 2 remain open, and Milestone 3 is not accepted until its browser and measurement gates pass.
+
+## 2026-10-04 - Milestone 3 Playwright follow-up
+
+Status: **STUDENT IDLE REQUEST CHECK PASSED — LIVE AUTHORIZATION AND DB-WORK CHECKS PENDING**
+
+- Installed full Playwright Chromium 1.63 because only the headless shell was initially available; no repository dependency was added.
+- Signed in as seeded student `F26-0002` against the existing performance profile. The student dashboard rendered and the initial `/api/dashboard/viva-access` request returned 200.
+- Observed the student dashboard for 10 minutes: one initial request and one focus-event request, with zero timer-driven requests during idle. All Viva access responses were 200 and the browser reported no page errors.
+- The headless browser did not emit a native focus event when switching tabs. Dispatched a browser `FocusEvent` to verify the registered handler makes a fresh request; headed desktop focus remains unverified.
+- Signed in as seeded supervisor `E26-0002`; initial and focus-event requests returned 200, with no additional request during a 35-second idle window.
+- Saved the student dashboard screenshot and browser results under `.local-bench/m03-viva-poll/`.
+- No live restriction activation/protected-action scenario or MongoDB idle-operation comparison was run. The change is not marked KEEP and Milestone 3 remains open until those remaining gates are addressed.
+
+## 2026-10-04 - Milestone 3 pending checks complete
+
+Status: **KEEP — IDLE REQUEST, SERVER AUTHORIZATION, AND DB-WORK CHECKS PASS**
+
+- Used the application's real `startVivaSession` service to activate a seeded local Viva session while the student remained signed in. A protected `GET /api/dashboard/student` then returned 401.
+- The focus-event recheck returned `{ restricted: true }` and the browser returned to the sign-in screen. Viva access responses were 200, with no browser page errors.
+- With MongoDB profiling enabled at `slowms: 0`, the 10-minute idle sample recorded zero profile entries and zero reads/writes on the user or Viva-lock collections. Playwright recorded one initial Viva request and zero timer-driven requests.
+- Cleanup restored MongoDB profiling to level 0 and restored the seeded Viva session to `startedAt: null`; its participant locks and audit events both returned to zero.
+- Post-cleanup counts matched the preserved seed: 5,501 users, 2,500 projects, 500 Viva sessions, and 1,000 MinIO objects.
+- A test attempt initially found the temporary app server stopped; no data changed. Restarting the app and rerunning the test passed.
+- The headless browser required a dispatched `FocusEvent`; native desktop focus remains unverified. The focus handler and its follow-up request were verified in the browser.
+- Password-reset frozen-file hashes still match. The canonical `fyp_local` performance dataset and MinIO objects were preserved.

@@ -34,11 +34,9 @@ export function useVivaAccessRestriction(showDialog?: ShowDialog) {
     };
 
     void enforceRestriction();
-    const interval = window.setInterval(() => void enforceRestriction(), 30_000);
     window.addEventListener('focus', enforceRestriction);
     return () => {
       isCurrent = false;
-      window.clearInterval(interval);
       window.removeEventListener('focus', enforceRestriction);
     };
   }, [showDialog]);
