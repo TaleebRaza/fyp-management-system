@@ -1588,3 +1588,91 @@ Status: **API AND DATABASE CHECKS PASS — BROWSER NETWORK ACCEPTANCE PENDING**
 - A profiler-only DB-work capture was enabled for one summary request and disabled immediately afterward. It recorded four count operations plus one authenticated-user lookup; combined `docsExamined` was 9,501 and `keysExamined` was 7,503. The active-student count scanned 5,000 student documents, full project count scanned 2,500 project documents, and review count scanned 2,000 project documents. Profiler mode is confirmed off.
 - Password-reset frozen hashes still match. The authenticated synthetic admin login updated only its local login/activity records; no seed reset, project mutation, or object-storage change was made.
 - The Browser runtime still reports no available browser session even though Chromium is installed in the environment. Therefore the actual signed-in UI Network panel check (initial report/review requests absent; first-open requests occur once; loaded state retained) remains pending. Keep Milestone 4 open until that browser gate and a matched initial-dashboard baseline comparison are captured.
+
+## 2026-10-04 - Milestone 4 browser follow-up
+
+Status: **BROWSER CONNECTED — LOCALHOST API ACCESS BLOCKED**
+
+- The in-app browser session became available and the current tab was claimed successfully at `http://localhost:3101/`.
+- The login screen rendered, but its client requests to `/api/portal-status` and `/api/registration-policy` failed with browser-side `TypeError: Failed to fetch`. The browser therefore could not complete the sign-in flow or reach the Admin dashboard.
+- A second tab using the host address `http://192.168.1.10:3101/` did not render a usable page. No application or database data was changed by these attempts.
+- The host-side authenticated HTTP checks remain valid: the current build serves the summary endpoint and reports matching totals. The remaining acceptance gate is to run the same signed-in UI check from a browser that can reach the host's local port (for example, the user's external Chrome session or a browser configured to expose host localhost).
+
+## Standing testing instruction
+
+Any UI or browser acceptance test must remain for the user to perform manually. Codex may run code, API, database, lint, build, and automated checks, but must leave visual and UI workflow verification to the user unless the user explicitly requests Codex to perform it in a connected browser.
+
+## 2026-10-04 - Milestone 5 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Replaced both broadcast authorization checks against the non-canonical `User.supervisorId` field with one shared `Project.exists({ supervisorId, members })` relationship check.
+- Preserved the existing allowlist exactly: admin, broadcast owner, or a student in a project supervised by that owner. Other roles and missing relationships still deny by default.
+- Applied the same predicate to current `broadcasts/` keys and supported legacy keys without changing object-key parsing, redirects, or signed-URL behavior.
+- Added one focused regression guard that covers both authorization branches and prevents `User.exists(...)` from returning to broadcast access checks.
+- Added no dependency, storage abstraction, index, route, or schema field. The existing `members` index remains usable; the separately planned `supervisorId` index stays in Milestone 6.
+- Did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no test, lint, build, database, MinIO, API, browser, authorization-matrix, or query-count check was run. Milestone 5 remains unverified until the testing session.
+
+## 2026-10-04 - Milestone 5 testing checkpoint
+
+Status: **KEEP — AUTHORIZATION MATRIX AND SIGNED STORAGE READS PASS; BUILD GATE BLOCKED BY LOCAL TURBOPACK PROCESS SETUP**
+
+- The focused regression test passed: 1 passed, 0 failed.
+- `npm run lint` passed.
+- `npm run test:unit` reported 188 passed, 1 failed, and 12 skipped. The sole failure is the same pre-existing `tests/student-project-reset-structure.test.mjs` expectation for “Reset project” in `StudentTeamSection`; the skipped integration checks require their explicit MongoDB URIs.
+- Ran the authorization matrix against a dedicated `fyp_storage_m5_test` MongoDB database and real temporary objects in local MinIO. Admin, broadcast owner, and student in an owner-supervised project were allowed; a different supervisor and unrelated student were denied for both canonical and legacy keys.
+- Exercised the actual `GET /api/read-pdf` handler with signed NextAuth test cookies. Every allowed case returned a signed redirect, and following each redirect fetched the exact object bytes from MinIO. Denied cases returned 404 with no Location header; deactivated and stale-session users returned 401 before storage access.
+- Removed the temporary MinIO objects and dropped only the dedicated test database after the run. The canonical `fyp_local` baseline database and its bucket contents were not targeted.
+- An initial direct handler import hit the TypeScript test helper’s unresolved `next/server` subpath. Importing its generated route module with the explicit `next/server.js` entry point allowed the handler check to run; no repository source was changed for this loader issue.
+- `npm run build` did not complete: Turbopack failed while starting a local helper process (`Operation not permitted` during process/port setup), including on a permission retry. This is an environment failure without a TypeScript or application diagnostic.
+- The full signed-in portal/browser workflow remains for manual verification under the standing testing instruction. No UI redesign, query-count measurement, or performance comparison is part of this security milestone.
+- Password-reset frozen files were not modified. Keep Milestone 5; the build and manual browser gates remain visible for the wider plan release checks.
+
+## 2026-10-04 - Milestone 6 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Added the single-field `Project.supervisorId` index used by supervisor dashboard, authorization, and ownership lookups.
+- Did not add a speculative compound index, migration framework, or dependency.
+- Added a small source-structure regression guard for the schema declaration.
+- Preserved the existing Milestone 5 working-tree changes and did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no index build, `explain`, duplicate-index inspection, write check, lint, unit test, build, API test, or browser workflow was run. Milestone 6 remains unverified until the testing session.
+
+## 2026-10-04 - Milestone 7 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Established the missing snapshot invariant by writing round, project, member, supervisor, panel-admin, and examiner snapshots transactionally when a round is confirmed, after schedules and panels are frozen.
+- Reworked confirmed student schedule reads to use the existing `projectSnapshot.members.userId` multikey index and serialize the complete response from one `VivaSession` query.
+- Retained the previous project/round/panel/user lookup chain only as a compatibility fallback for legacy or incomplete sessions, preventing older data from disappearing.
+- Kept the response shape, schedule ordering, phase/cancellation fields, and empty-result behavior unchanged; no unrelated Viva service was converted.
+- Added focused source-structure guards for the confirmation snapshot write, indexed snapshot read, and legacy fallback.
+- Added no package, cache, aggregate framework, or new index beyond the already-defined snapshot membership index.
+- Per the user-requested model handoff, no lint, unit, build, MongoDB integration, golden-response comparison, query profiling, latency measurement, API test, or manual UI workflow was run. Milestone 7 remains unverified until the testing session.
+
+## 2026-10-04 - Milestone 8 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Moved the student role filter ahead of the remaining report facet and replaced two per-student `$expr` project scans with one `localField`/`foreignField` membership lookup that can use the existing `Project.members` multikey index.
+- Moved supervisor rows/counts into one direct indexed role query rather than passing every user through a first-stage facet.
+- Replaced the first-stage Project `$facet` with one projected/grouped collection pass, then folded its compact status/stage rows into the unchanged response summaries in application memory.
+- Preserved report response keys, totals, labels, fine-detail limits, sorting rules, review definitions, approval definitions, and `no-store` behavior.
+- Added a focused source-structure guard that rejects the old `$expr` membership lookup and requires the new query shapes.
+- Added no cache, report builder, dependency, or new report-specific index.
+- Per the user-requested model handoff, no lint, unit, build, report snapshot comparison, empty/mixed/large-data check, `explain`, profiler capture, latency/CPU measurement, API test, export check, or manual UI workflow was run. Milestone 8 remains unverified until the testing session.
+
+## 2026-10-04 - Milestones 6-8 testing checkpoint
+
+Status: **FOCUSED CHECKS PASS — FULL ACCEPTANCE AND MEASUREMENT PENDING**
+
+- The focused milestone/storage structure tests passed: 4 passed, 0 failed.
+- `npm run lint`, `npx tsc --noEmit`, and `git diff --check` passed after implementation. All password-reset frozen-file hashes still match Milestone 0.
+- `npm run test:unit` completed with 70 test files passing and the same one pre-existing failure in `tests/student-project-reset-structure.test.mjs` (`StudentTeamSection` does not contain the expected “Reset project” text). No new unit failure was observed.
+- Real local MongoDB replica-set integration passed for round administration, including newly added assertions that confirmation writes round/project/panel/person snapshots and the student schedule response returns the expected round and panel from those snapshots. The session-dashboard, manual scheduling, automatic scheduling, and full Viva workflow integration suites also passed against their dedicated `fyp_viva_m*_test` databases. The full workflow used 504 synthetic users and one team.
+- Milestone 6 explain on preserved `fyp_local` data (2,500 projects, supervisor `200000000000000000000002`): before the index, `COLLSCAN`, 5 returned, 2,500 documents examined, 0 keys, 2 ms; after creating `supervisorId_1`, `IXSCAN` + `FETCH`, same 5 returned, 5 documents and 5 keys examined, 0 ms. Existing index inspection showed no duplicate. The index was created only on the local `fyp_local` database.
+- Read-only execution of the Milestone 8 project aggregation against `fyp_local` returned 2,500 projects, 4,500 assigned project-member rows, 1,000 projects with PDFs, 500 waiting for review, and 1,833 approved. The role-filtered indexed-membership lookup returned 5,000 students (4,900 active and 100 deactivated) in 451 supervisor/unassigned groups. The shared seed data was not reset or changed.
+- A MongoDB shell `explain` attempt for the `$lookup` form failed inside the shell with `TypeError: this is null or not defined`; aggregation execution and output checks succeeded. A saved before/after report JSON comparison, authenticated reports API/browser workflow, full report profiler/query plan, and latency/CPU comparison have not yet been captured.
+- `npm run build` failed twice, including a permission retry, on the existing Turbopack helper process/port error (`Operation not permitted`) while processing `app/globals.css`; it produced no TypeScript or application diagnostic. This matches the environment failure recorded during Milestone 5.
+- No UI/browser checks were performed. Milestones 6-8 remain pending their remaining query/response, browser, write-impact, and performance acceptance gates; the local schema/index and focused correctness evidence above are not presented as full KEEP decisions.

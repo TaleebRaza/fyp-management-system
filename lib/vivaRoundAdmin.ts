@@ -85,6 +85,11 @@ type VivaRoundRecord = {
 type ProjectRecord = {
   _id: unknown;
   title?: unknown;
+  description?: unknown;
+  domains?: unknown;
+  tools?: unknown;
+  pdfUrl?: unknown;
+  pdfSize?: unknown;
   members?: unknown[];
   supervisorId?: unknown;
 };
@@ -94,6 +99,18 @@ type UserRecord = {
   name?: unknown;
   rollNo?: unknown;
   program?: unknown;
+};
+
+type PanelRecord = {
+  _id: unknown;
+  examinerIds?: unknown[];
+  panelAdminId?: unknown;
+};
+
+type ScheduledSessionRecord = {
+  _id: unknown;
+  projectId?: unknown;
+  panelId?: unknown;
 };
 
 type ParsedVivaRoundInput =
@@ -163,6 +180,99 @@ function asStringList(value: unknown): string[] {
 
 function asPanelRevision(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function snapshotPerson(person: UserRecord) {
+  return {
+    userId: String(person._id),
+    name: typeof person.name === 'string' ? person.name : '',
+    rollNo: typeof person.rollNo === 'string' ? person.rollNo : '',
+  };
+}
+
+async function snapshotConfirmedSessions(
+  round: VivaRoundRecord,
+  sessions: ScheduledSessionRecord[],
+  databaseSession: ClientSession
+): Promise<boolean> {
+  if (sessions.length === 0) return true;
+
+  const projectIds = [...new Set(sessions.map(({ projectId }) => String(projectId)))];
+  const panelIds = [...new Set(sessions.map(({ panelId }) => String(panelId)))];
+  const [projects, panels] = await Promise.all([
+    Project.find({ _id: { $in: projectIds } })
+      .select('_id supervisorId members title description domains tools pdfUrl pdfSize')
+      .session(databaseSession)
+      .lean<ProjectRecord[]>(),
+    VivaPanel.find({ _id: { $in: panelIds }, roundId: round._id })
+      .select('_id examinerIds panelAdminId')
+      .session(databaseSession)
+      .lean<PanelRecord[]>(),
+  ]);
+  const projectsById = new Map(projects.map((project) => [String(project._id), project]));
+  const panelsById = new Map(panels.map((panel) => [String(panel._id), panel]));
+  const userIds = [...new Set([
+    ...projects.flatMap((project) => [
+      ...(project.members || []).map(String),
+      String(project.supervisorId || ''),
+    ]),
+    ...panels.flatMap((panel) => [
+      ...(panel.examinerIds || []).map(String),
+      String(panel.panelAdminId || ''),
+    ]),
+  ].filter((id) => mongoose.Types.ObjectId.isValid(id)))];
+  const users = await User.find({ _id: { $in: userIds } })
+    .select('_id name rollNo')
+    .session(databaseSession)
+    .lean<UserRecord[]>();
+  const usersById = new Map(users.map((user) => [String(user._id), user]));
+  const writes = sessions.flatMap((vivaSession) => {
+    const project = projectsById.get(String(vivaSession.projectId));
+    const panel = panelsById.get(String(vivaSession.panelId));
+    const members = (project?.members || []).map((id) => usersById.get(String(id)));
+    const supervisor = usersById.get(String(project?.supervisorId || ''));
+    const examiners = (panel?.examinerIds || []).map((id) => usersById.get(String(id)));
+    const panelAdmin = usersById.get(String(panel?.panelAdminId || ''));
+    if (!project || !panel || members.some((person) => !person) || examiners.some((person) => !person) || !panelAdmin) {
+      return [];
+    }
+
+    return [{
+      updateOne: {
+        filter: { _id: vivaSession._id, roundId: round._id, startedAt: null, cancelledAt: null },
+        update: {
+          $set: {
+            roundSnapshot: {
+              name: typeof round.name === 'string' ? round.name : '',
+              targetPanelSize: Number(round.targetPanelSize),
+              minimumPanelSize: Number(round.minimumPanelSize),
+              vivaDurationMinutes: Number(round.vivaDurationMinutes),
+            },
+            projectSnapshot: {
+              projectId: String(project._id),
+              title: typeof project.title === 'string' ? project.title : '',
+              description: typeof project.description === 'string' ? project.description : '',
+              domains: Array.isArray(project.domains) ? project.domains : [],
+              tools: typeof project.tools === 'string' ? project.tools : '',
+              pdfUrl: typeof project.pdfUrl === 'string' ? project.pdfUrl : '',
+              pdfSize: Math.max(Number(project.pdfSize) || 0, 0),
+              members: members.map((person) => snapshotPerson(person!)),
+              ...(supervisor ? { supervisor: snapshotPerson(supervisor) } : {}),
+            },
+            panelSnapshot: {
+              panelId: String(panel._id),
+              panelAdmin: snapshotPerson(panelAdmin),
+              examiners: examiners.map((person) => snapshotPerson(person!)),
+            },
+          },
+        },
+      },
+    }];
+  });
+  if (writes.length !== sessions.length) return false;
+
+  const result = await VivaSession.bulkWrite(writes, { session: databaseSession, ordered: true });
+  return result.matchedCount === sessions.length;
 }
 
 function serializeVivaRound(round: VivaRoundRecord): VivaRoundDto {
@@ -447,7 +557,7 @@ export async function confirmVivaRound(
 
   return withVivaTransaction(async (session) => {
     const round = await VivaRound.findById(roundId)
-      .select('_id projectIds confirmedAt scheduleRevision')
+      .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds confirmedAt scheduleRevision')
       .session(session)
       .lean<VivaRoundRecord | null>();
     if (!round) return { success: false, reason: 'not-found', error: 'This Viva round no longer exists.' };
@@ -460,9 +570,9 @@ export async function confirmVivaRound(
       cancelledAt: null,
       scheduledAt: { $type: 'date' },
     })
-      .select('projectId')
+      .select('_id projectId panelId')
       .session(session)
-      .lean<Array<{ projectId?: unknown }>>();
+      .lean<ScheduledSessionRecord[]>();
     const scheduledProjectIds = new Set(scheduledSessions.map((vivaSession) => String(vivaSession.projectId)));
     const heldProjectIds = projectIds.filter((projectId) => !scheduledProjectIds.has(projectId));
     const scheduleRevision = typeof round.scheduleRevision === 'number' && Number.isSafeInteger(round.scheduleRevision)
@@ -471,6 +581,13 @@ export async function confirmVivaRound(
     const revisionFilter = scheduleRevision === 0
       ? { $or: [{ scheduleRevision: 0 }, { scheduleRevision: { $exists: false } }] }
       : { scheduleRevision };
+    if (!await snapshotConfirmedSessions(round, scheduledSessions, session)) {
+      return {
+        success: false,
+        reason: 'invalid',
+        error: 'One or more scheduled Viva teams or panels are incomplete. Fix them before confirming.',
+      };
+    }
     const confirmedRound = await VivaRound.findOneAndUpdate(
       { _id: roundId, confirmedAt: null, ...revisionFilter },
       { $set: { confirmedAt, heldProjectIds }, $inc: { scheduleRevision: 1 } },

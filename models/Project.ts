@@ -60,6 +60,7 @@ const ProjectSchema = new Schema({
 
 ProjectSchema.index({ status: 1, updatedAt: -1 });
 ProjectSchema.index({ members: 1 });
+ProjectSchema.index({ supervisorId: 1 });
 
 const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);
 export default Project;

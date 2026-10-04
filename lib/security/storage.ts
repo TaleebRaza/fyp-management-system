@@ -18,6 +18,10 @@ async function canAccessProject(currentUser: CurrentUser, pdfUrl: string | RegEx
   return Boolean(await Project.exists({ pdfUrl, ...projectAccessFilter(currentUser) }));
 }
 
+async function hasSupervisedProject(studentId: string, supervisorId: string) {
+  return Boolean(await Project.exists({ supervisorId, members: studentId }));
+}
+
 async function canAccessBroadcast(currentUser: CurrentUser, broadcastContent: string | RegExp) {
   const broadcastOwner = await User.findOne({
     role: 'supervisor',
@@ -28,10 +32,8 @@ async function canAccessBroadcast(currentUser: CurrentUser, broadcastContent: st
   if (!broadcastOwner) return false;
   if (currentUser.role === 'admin' || currentUser.id === broadcastOwner._id.toString()) return true;
 
-  return currentUser.role === 'student' && Boolean(await User.exists({
-    _id: currentUser.id,
-    supervisorId: broadcastOwner._id,
-  }));
+  return currentUser.role === 'student'
+    && hasSupervisedProject(currentUser.id, broadcastOwner._id.toString());
 }
 
 async function canAccessStudentMessage(currentUser: CurrentUser, studentMessageContent: string) {
@@ -69,10 +71,8 @@ async function canAccessLegacyStoredObject(currentUser: CurrentUser, key: string
   if (!broadcastOwner) return false;
   if (currentUser.role === 'admin' || currentUser.id === broadcastOwner._id.toString()) return true;
 
-  return currentUser.role === 'student' && Boolean(await User.exists({
-    _id: currentUser.id,
-    supervisorId: broadcastOwner._id,
-  }));
+  return currentUser.role === 'student'
+    && hasSupervisedProject(currentUser.id, broadcastOwner._id.toString());
 }
 
 export async function canAccessStoredObject(currentUser: CurrentUser, key: string) {

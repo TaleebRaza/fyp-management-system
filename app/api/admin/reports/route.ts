@@ -25,12 +25,6 @@ type CountRow = {
   total: number;
 };
 
-type SupervisorRow = {
-  _id: unknown;
-  name?: string;
-  rollNo?: string;
-};
-
 type SupervisorCountRow = CountRow & {
   active?: number;
   deactivated?: number;
@@ -51,13 +45,6 @@ type StudentTotals = {
   unassignedStudents?: number;
 };
 
-type PdfReview = {
-  totalProjects?: number;
-  withPdf?: number;
-  waitingForReview?: number;
-  approved?: number;
-};
-
 type SupervisorLoginRow = {
   _id: unknown;
   name?: string;
@@ -67,7 +54,6 @@ type SupervisorLoginRow = {
 };
 
 type UserReportFacets = {
-  supervisors: SupervisorRow[];
   studentsPerSupervisor: SupervisorCountRow[];
   studentActivity: CountRow[];
   programs: CountRow[];
@@ -76,16 +62,15 @@ type UserReportFacets = {
   collectedFineStudents: FinedStudentRecord[];
   outstandingFineSummary: Array<{ total: number; totalFineAmount: number }>;
   studentTotals: StudentTotals[];
-  supervisorCount: Array<{ total: number }>;
-  supervisorLoginCounts: SupervisorLoginRow[];
 };
 
-type ProjectReportFacets = {
-  projectStatus: CountRow[];
-  studentStatus: CountRow[];
-  projectStage: CountRow[];
-  pdfReview: PdfReview[];
-  projectTotals: Array<{ total: number }>;
+type ProjectReportRow = {
+  _id: { status: unknown; stage: unknown };
+  projects: number;
+  students: number;
+  withPdf: number;
+  waitingForReview: number;
+  approved: number;
 };
 
 const normalizeLabel = (value: unknown, fallback: string) => {
@@ -100,6 +85,15 @@ const toLabelRows = (rows: CountRow[], fallback: string) => {
   }));
 };
 
+const incrementCount = (counts: Map<string, number>, label: unknown, total: number) => {
+  const key = String(label);
+  counts.set(key, (counts.get(key) || 0) + Number(total || 0));
+};
+
+const countRows = (counts: Map<string, number>): CountRow[] => (
+  [...counts].map(([_id, total]) => ({ _id, total })).sort((a, b) => b.total - a.total)
+);
+
 export async function GET(req: NextRequest) {
   try {
     if (!await requireCurrentUser(req, ['admin'])) {
@@ -108,33 +102,25 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    const [userReports, projectReports] = await Promise.all([
+    const [userReports, supervisors, projectReportRows] = await Promise.all([
       User.aggregate<UserReportFacets>([
+        { $match: { role: 'student' } },
+        {
+          $lookup: {
+            from: 'projects',
+            localField: '_id',
+            foreignField: 'members',
+            pipeline: [
+              { $project: { supervisorId: 1 } },
+              { $limit: 1 },
+            ],
+            as: 'canonicalProjects',
+          },
+        },
+        { $set: { canonicalProject: { $arrayElemAt: ['$canonicalProjects', 0] } } },
         {
           $facet: {
-            supervisors: [
-              { $match: { role: 'supervisor' } },
-              { $project: { _id: 1, name: 1, rollNo: 1 } },
-            ],
             studentsPerSupervisor: [
-              { $match: { role: 'student' } },
-              {
-                $lookup: {
-                  from: 'projects',
-                  let: { studentId: '$_id' },
-                  pipeline: [
-                    { $match: { $expr: { $in: ['$$studentId', '$members'] } } },
-                    { $project: { supervisorId: 1 } },
-                    { $limit: 1 },
-                  ],
-                  as: 'canonicalProjects',
-                },
-              },
-              {
-                $set: {
-                  canonicalProject: { $arrayElemAt: ['$canonicalProjects', 0] },
-                },
-              },
               {
                 $group: {
                   _id: {
@@ -152,7 +138,6 @@ export async function GET(req: NextRequest) {
               { $sort: { total: -1 } },
             ],
             studentActivity: [
-              { $match: { role: 'student' } },
               {
                 $group: {
                   _id: { $cond: [{ $eq: ['$isActive', false] }, 'Deactivated', 'Active'] },
@@ -162,12 +147,10 @@ export async function GET(req: NextRequest) {
               { $sort: { total: -1 } },
             ],
             programs: [
-              { $match: { role: 'student' } },
               { $group: { _id: { $ifNull: ['$program', 'No Program'] }, total: { $sum: 1 } } },
               { $sort: { total: -1 } },
             ],
             batches: [
-              { $match: { role: 'student' } },
               { $group: { _id: { $ifNull: ['$batch', 'No Batch'] }, total: { $sum: 1 } } },
               { $sort: { total: -1 } },
             ],
@@ -265,24 +248,6 @@ export async function GET(req: NextRequest) {
               },
             ],
             studentTotals: [
-              { $match: { role: 'student' } },
-              {
-                $lookup: {
-                  from: 'projects',
-                  let: { studentId: '$_id' },
-                  pipeline: [
-                    { $match: { $expr: { $in: ['$$studentId', '$members'] } } },
-                    { $project: { supervisorId: 1 } },
-                    { $limit: 1 },
-                  ],
-                  as: 'canonicalProjects',
-                },
-              },
-              {
-                $set: {
-                  canonicalProject: { $arrayElemAt: ['$canonicalProjects', 0] },
-                },
-              },
               {
                 $group: {
                   _id: null,
@@ -310,101 +275,73 @@ export async function GET(req: NextRequest) {
                 },
               },
             ],
-            supervisorCount: [
-              { $match: { role: 'supervisor' } },
-              { $count: 'total' },
-            ],
-            supervisorLoginCounts: [
-              { $match: { role: 'supervisor' } },
-              {
-                $project: {
-                  name: 1,
-                  rollNo: 1,
-                  monthlyLoginCount: { $ifNull: ['$monthlyLoginCount', 0] },
-                  lastLoginMonth: 1,
-                },
-              },
-              { $sort: { monthlyLoginCount: -1, name: 1 } },
-            ],
           },
         },
       ]),
-      Project.aggregate<ProjectReportFacets>([
+      User.find({ role: 'supervisor' })
+        .select('_id name rollNo monthlyLoginCount lastLoginMonth')
+        .lean<SupervisorLoginRow[]>(),
+      Project.aggregate<ProjectReportRow>([
         {
-          $facet: {
-            projectStatus: [
-              { $group: { _id: { $ifNull: ['$status', 'Pending'] }, total: { $sum: 1 } } },
-              { $sort: { total: -1 } },
-            ],
-            studentStatus: [
-              { $match: { supervisorId: { $type: 'objectId' } } },
-              { $unwind: '$members' },
-              { $group: { _id: { $ifNull: ['$status', 'Pending'] }, total: { $sum: 1 } } },
-              { $sort: { total: -1 } },
-            ],
-            projectStage: [
-              { $group: { _id: { $ifNull: ['$stage', 'PROPOSAL'] }, total: { $sum: 1 } } },
-              { $sort: { total: -1 } },
-            ],
-            pdfReview: [
-              {
-                $group: {
-                  _id: null,
-                  totalProjects: { $sum: 1 },
-                  withPdf: {
-                    $sum: {
-                      $cond: [{ $gt: [{ $strLenCP: { $ifNull: ['$pdfUrl', ''] } }, 0] }, 1, 0],
-                    },
-                  },
-                  waitingForReview: {
-                    $sum: {
-                      $cond: [
-                        {
-                          $and: [
-                            { $gt: [{ $strLenCP: { $ifNull: ['$pdfUrl', ''] } }, 0] },
-                            {
-                              $not: [
-                                {
-                                  $in: [
-                                    { $ifNull: ['$status', 'Pending'] },
-                                    REVIEWED_PROJECT_STATUSES,
-                                  ],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                        1,
-                        0,
-                      ],
-                    },
-                  },
-                  approved: {
-                    $sum: {
-                      $cond: [
-                        {
-                          $or: [
-                            { $eq: ['$status', 'Approved'] },
-                            { $in: [{ $ifNull: ['$stage', 'PROPOSAL'] }, APPROVED_PROJECT_STAGES] },
-                          ],
-                        },
-                        1,
-                        0,
-                      ],
-                    },
-                  },
-                },
+          $project: {
+            status: { $ifNull: ['$status', 'Pending'] },
+            stage: { $ifNull: ['$stage', 'PROPOSAL'] },
+            students: {
+              $cond: [
+                { $eq: [{ $type: '$supervisorId' }, 'objectId'] },
+                { $cond: [{ $isArray: '$members' }, { $size: '$members' }, 0] },
+                0,
+              ],
+            },
+            hasPdf: { $gt: [{ $strLenCP: { $ifNull: ['$pdfUrl', ''] } }, 0] },
+          },
+        },
+        {
+          $group: {
+            _id: { status: '$status', stage: '$stage' },
+            projects: { $sum: 1 },
+            students: { $sum: '$students' },
+            withPdf: { $sum: { $cond: ['$hasPdf', 1, 0] } },
+            waitingForReview: {
+              $sum: {
+                $cond: [
+                  { $and: ['$hasPdf', { $not: [{ $in: ['$status', REVIEWED_PROJECT_STATUSES] }] }] },
+                  1,
+                  0,
+                ],
               },
-            ],
-            projectTotals: [{ $count: 'total' }],
+            },
+            approved: {
+              $sum: {
+                $cond: [
+                  { $or: [{ $eq: ['$status', 'Approved'] }, { $in: ['$stage', APPROVED_PROJECT_STAGES] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
           },
         },
       ]),
     ]);
 
     const userReport = userReports[0];
-    const projectReport = projectReports[0];
-    const supervisors = userReport?.supervisors || [];
+    const projectStatusCounts = new Map<string, number>();
+    const studentStatusCounts = new Map<string, number>();
+    const projectStageCounts = new Map<string, number>();
+    const pdfReview = { totalProjects: 0, withPdf: 0, waitingForReview: 0, approved: 0 };
+    for (const row of projectReportRows) {
+      incrementCount(projectStatusCounts, row._id.status, row.projects);
+      if (row.students > 0) incrementCount(studentStatusCounts, row._id.status, row.students);
+      incrementCount(projectStageCounts, row._id.stage, row.projects);
+      pdfReview.totalProjects += Number(row.projects || 0);
+      pdfReview.withPdf += Number(row.withPdf || 0);
+      pdfReview.waitingForReview += Number(row.waitingForReview || 0);
+      pdfReview.approved += Number(row.approved || 0);
+    }
+    const projectStatus = countRows(projectStatusCounts);
+    const studentStatus = countRows(studentStatusCounts);
+    const projectStage = countRows(projectStageCounts);
     const studentsPerSupervisorRaw = userReport?.studentsPerSupervisor || [];
     const supervisorMap = new Map(
       supervisors.map((supervisor) => [
@@ -443,7 +380,6 @@ export async function GET(req: NextRequest) {
       });
 
     const studentsPerSupervisor = [...supervisorRows, ...extraRows].sort((a, b) => b.total - a.total);
-    const pdfReview = projectReport?.pdfReview[0] || { totalProjects: 0, withPdf: 0, waitingForReview: 0, approved: 0 };
     const studentTotals = userReport?.studentTotals[0]
       || { students: 0, activeStudents: 0, deactivatedStudents: 0, assignedStudents: 0, unassignedStudents: 0 };
     const finedStudents = (userReport?.finedStudents || []).flatMap((student) => {
@@ -500,7 +436,7 @@ export async function GET(req: NextRequest) {
     const deactivatedStudents = Number(studentTotals.deactivatedStudents || 0);
     const assignedStudents = Number(studentTotals.assignedStudents || 0);
     const unassignedStudents = Number(studentTotals.unassignedStudents || 0);
-    const canonicalStudentStatus = [...(projectReport?.studentStatus || [])];
+    const canonicalStudentStatus = [...studentStatus];
     if (unassignedStudents > 0) {
       canonicalStudentStatus.push({ _id: 'Unassigned', total: unassignedStudents });
     }
@@ -515,15 +451,20 @@ export async function GET(req: NextRequest) {
     ];
 
     const currentMonth = new Date().toISOString().slice(0, 7);
-    const supervisorLoginCounts = (userReport?.supervisorLoginCounts || []).map((row) => ({
-      label: row.name || row.rollNo || 'Unknown Supervisor',
-      total: Number(row.monthlyLoginCount || 0),
-      note: row.lastLoginMonth === currentMonth
-        ? 'Logged in this month'
-        : row.lastLoginMonth
-          ? `Last active ${row.lastLoginMonth}`
-          : 'No recorded logins',
-    }));
+    const supervisorLoginCounts = [...supervisors]
+      .sort((first, second) => (
+        Number(second.monthlyLoginCount || 0) - Number(first.monthlyLoginCount || 0)
+        || String(first.name || '').localeCompare(String(second.name || ''))
+      ))
+      .map((row) => ({
+        label: row.name || row.rollNo || 'Unknown Supervisor',
+        total: Number(row.monthlyLoginCount || 0),
+        note: row.lastLoginMonth === currentMonth
+          ? 'Logged in this month'
+          : row.lastLoginMonth
+            ? `Last active ${row.lastLoginMonth}`
+            : 'No recorded logins',
+      }));
 
     return NextResponse.json(
       {
@@ -532,10 +473,10 @@ export async function GET(req: NextRequest) {
           students,
           activeStudents,
           deactivatedStudents,
-          supervisors: Number(userReport?.supervisorCount[0]?.total || 0),
+          supervisors: supervisors.length,
           assignedStudents,
           unassignedStudents,
-          projects: Number(projectReport?.projectTotals[0]?.total || 0),
+          projects: pdfReview.totalProjects,
           reviewQueue: Number(pdfReview.waitingForReview || 0),
           projectsWithPdf: Number(pdfReview.withPdf || 0),
           finedStudents: Number(outstandingFineSummary?.total || 0),
@@ -548,8 +489,8 @@ export async function GET(req: NextRequest) {
         studentActivitySummary: toLabelRows(userReport?.studentActivity || [], 'Unknown'),
         programSummary: toLabelRows(userReport?.programs || [], 'No Program'),
         batchSummary: toLabelRows(userReport?.batches || [], 'No Batch'),
-        projectStatusSummary: toLabelRows(projectReport?.projectStatus || [], 'Pending'),
-        projectStageSummary: toLabelRows(projectReport?.projectStage || [], 'PROPOSAL'),
+        projectStatusSummary: toLabelRows(projectStatus, 'Pending'),
+        projectStageSummary: toLabelRows(projectStage, 'PROPOSAL'),
         pdfReviewSummary,
         supervisorLoginCounts,
       },

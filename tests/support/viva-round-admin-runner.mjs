@@ -19,6 +19,7 @@ const [
     parseVivaRoundInput,
     updateVivaRound,
   },
+  { getConfirmedVivaSchedulesForStudent },
 ] = await Promise.all([
   importTypeScriptModuleWithDependencies('models/User.ts'),
   importTypeScriptModuleWithDependencies('models/Project.ts'),
@@ -27,6 +28,7 @@ const [
   importTypeScriptModuleWithDependencies('models/VivaSession.ts'),
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaRoundAdmin.ts'),
+  importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts'),
 ]);
 
 const actor = {
@@ -230,6 +232,25 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
     });
     const confirmedDeletable = await confirmVivaRound(deletable.round.id, actor);
     assert.equal(confirmedDeletable.success, true, confirmedDeletable.success ? '' : confirmedDeletable.error);
+    const confirmedSession = await VivaSession.findOne({ roundId: deletable.round.id }).lean();
+    assert.equal(confirmedSession.roundSnapshot.name, 'Delete this scheduled Viva');
+    assert.deepEqual(confirmedSession.projectSnapshot.members.map(({ userId }) => userId), [
+      String(studentOne._id),
+      String(studentTwo._id),
+    ]);
+    assert.deepEqual(confirmedSession.panelSnapshot.examiners.map(({ userId }) => userId), [
+      String(supervisorOne._id),
+      String(supervisorTwo._id),
+    ]);
+    assert.equal(confirmedSession.panelSnapshot.panelAdmin.userId, String(supervisorOne._id));
+    const studentSchedules = await getConfirmedVivaSchedulesForStudent(String(studentOne._id));
+    assert.equal(studentSchedules.length, 1);
+    assert.equal(studentSchedules[0].roundName, 'Delete this scheduled Viva');
+    assert.equal(studentSchedules[0].panel.admin.id, String(supervisorOne._id));
+    assert.deepEqual(studentSchedules[0].panel.members.map(({ id }) => id), [
+      String(supervisorOne._id),
+      String(supervisorTwo._id),
+    ]);
     const invalidDelete = await deleteVivaRound('invalid-round-id');
     assert.equal(invalidDelete.success, false);
     assert.equal(invalidDelete.reason, 'invalid');

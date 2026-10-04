@@ -163,6 +163,13 @@ type VivaSessionRecord = {
   cancellationReason?: unknown;
   locationLabel?: unknown;
   version?: unknown;
+  roundSnapshot?: { name?: unknown };
+  projectSnapshot?: { members?: unknown };
+  panelSnapshot?: {
+    panelId?: unknown;
+    panelAdmin?: unknown;
+    examiners?: unknown;
+  };
 };
 
 type ScheduleContext = {
@@ -292,6 +299,40 @@ function toScheduleDto(session: VivaSessionRecord): VivaScheduleDto | null {
       cancelledAt: session.cancelledAt instanceof Date ? session.cancelledAt : null,
     }),
     cancellationReason: typeof session.cancellationReason === 'string' ? session.cancellationReason : '',
+  };
+}
+
+function snapshotPerson(value: unknown): { id: string; name: string; rollNo: string } | null {
+  if (!isRecord(value)) return null;
+
+  const id = typeof value.userId === 'string' ? value.userId : '';
+  const name = typeof value.name === 'string' ? value.name.trim() : '';
+  const rollNo = typeof value.rollNo === 'string' ? value.rollNo.trim() : '';
+  return id && name && rollNo ? { id, name, rollNo } : null;
+}
+
+function toSnapshotStudentSession(session: VivaSessionRecord): VivaStudentSessionDto | null {
+  const schedule = toScheduleDto(session);
+  const roundName = typeof session.roundSnapshot?.name === 'string'
+    ? session.roundSnapshot.name.trim()
+    : '';
+  const panelId = typeof session.panelSnapshot?.panelId === 'string'
+    ? session.panelSnapshot.panelId
+    : '';
+  const admin = snapshotPerson(session.panelSnapshot?.panelAdmin);
+  const members = Array.isArray(session.panelSnapshot?.examiners)
+    ? session.panelSnapshot.examiners.map(snapshotPerson)
+    : [];
+  if (!schedule || !roundName || !panelId || !admin || members.some((member) => !member)) return null;
+
+  return {
+    ...schedule,
+    roundName,
+    panel: {
+      id: panelId,
+      admin,
+      members: members.filter((member): member is NonNullable<typeof member> => Boolean(member)),
+    },
   };
 }
 
@@ -1574,6 +1615,18 @@ export async function getVivaSchedules(): Promise<VivaScheduleDto[]> {
 
 export async function getConfirmedVivaSchedulesForStudent(studentId: string): Promise<VivaStudentSessionDto[]> {
   if (!mongoose.Types.ObjectId.isValid(studentId)) return [];
+  const snapshotSessions = await VivaSession.find({
+    'projectSnapshot.members.userId': studentId,
+    scheduledAt: { $type: 'date' },
+  })
+    .select('_id roundId panelId projectId scheduledAt vivaEndsAt startedAt completedAt cancelledAt cancellationReason locationLabel version roundSnapshot.name panelSnapshot.panelId panelSnapshot.panelAdmin panelSnapshot.examiners')
+    .sort({ scheduledAt: 1, _id: 1 })
+    .lean<VivaSessionRecord[]>();
+  const snapshotSchedules = snapshotSessions.map(toSnapshotStudentSession);
+  if (snapshotSchedules.length > 0 && snapshotSchedules.every(Boolean)) {
+    return snapshotSchedules.filter((schedule): schedule is VivaStudentSessionDto => Boolean(schedule));
+  }
+
   const project = await Project.findOne({ members: studentId }).select('_id').lean<{ _id: unknown } | null>();
   if (!project) return [];
   const rounds = await VivaRound.find({ confirmedAt: { $type: 'date' } }).select('_id name').lean<Array<{ _id: unknown; name?: unknown }>>();
