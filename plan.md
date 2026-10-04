@@ -1475,3 +1475,31 @@ Status: **IMPLEMENTED — CORE LOCAL INFRASTRUCTURE VERIFIED; PORTAL BROWSER SMO
 - The configured bucket initializer reran successfully. AWS SDK put/HEAD/get/delete passed for a temporary 23-byte object, the localhost:3100 CORS preflight returned the configured PUT/GET/HEAD permissions, and the existing read-only storage integrity audit reported zero objects/references and a valid ledger (1 row, 0 used bytes, 0 reserved bytes).
 - The first Viva workflow attempt was run without the loopback network permission and failed with `connect EPERM`; rerunning with the approved local access passed. It did not indicate an application/test regression.
 - The signed-in browser flow through the portal (presigned upload, portal read, and portal cleanup) has not yet been exercised. It needs local deterministic portal data and a running browser session; keep Milestone 1 open until that acceptance gate is completed during the baseline-data milestone/testing session. No production MongoDB or R2 endpoint was used.
+
+## 2026-10-04 - Milestone 2 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING AND BASELINE CAPTURE DEFERRED BY USER**
+
+- Added one guarded `scripts/seed-local.mjs` entrypoint with `functional`, `performance`, and `reset` modes; no package or seed framework was added.
+- The script refuses non-loopback MongoDB/storage targets and any database/bucket other than `fyp_local`/`fyp-local` before destructive work.
+- Both profiles rebuild the real Mongoose collections and indexes after reset, use deterministic IDs/dates/account data, initialize exactly one storage-ledger row, clear local object storage, and print non-secret record counts plus local test credentials.
+- The functional profile defines 1 admin, 3 supervisors, 18 students, representative assignment/review/fine/message states, one text broadcast, one small real PDF object, and scheduled/active/completed/restricted Viva states.
+- The canonical performance profile defines 5,000 students, 500 Viva-relevant supervisors, 2,500 projects, 500 Viva sessions, report/review/fine/status variety, and unique 69-byte PDFs on assigned review-queue projects (1,000 objects, 69 KB total). The four primary counts have bounded environment overrides.
+- Added `seed:local:functional`, `seed:local:performance`, and `seed:local:reset` npm commands and documented their safety boundary, defaults, overrides, and local credentials in `README.md`.
+- Did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no seed command, test, lint, build, database check, storage check, browser workflow, measurement, or baseline capture was run. Milestone 2 is not complete until those gates pass and results are saved.
+
+## 2026-10-04 - Milestone 2 testing checkpoint
+
+Status: **PARTIALLY VERIFIED — FULL BASELINE AND BROWSER ACCEPTANCE PENDING**
+
+- Re-ran `npm run lint`, `node --check scripts/seed-local.mjs`, `git diff --check`, and the password-reset frozen-file SHA-256 check; all passed. No frozen file changed.
+- Earlier in the local test session, both functional resets produced the same counts: 22 users, 9 projects, 1 round/panel, 3 sessions, and 1 object. The canonical performance profile was reseeded repeatedly with stable counts: 5,501 users, 2,500 projects, 1 round, 250 panels, 500 sessions, and 1,000 PDFs (69,000 bytes). Credentials and non-secret profile details are in `README.md`.
+- Earlier local checks passed: replica-set PRIMARY/transaction-abort verification; isolated Viva workflow integration (504 synthetic users, 1 team); local S3-compatible PUT/HEAD/GET/DELETE; storage integrity audit (1,000 valid active references, no missing/invalid/duplicate/cross-kind references, 69,000 used bytes and 0 reserved); and production build.
+- The baseline production API smoke passed for student dashboard/headline/supervisor list and admin student list/supervisors/review queue/Viva administration. Admin reports returned 200 but took 17.3 seconds for one unprofiled request; a separate profiler-enabled capture took 18.9 seconds and is not comparable for latency. Do not repeat the heavy report route 30 times until its aggregation work is addressed or a bounded measurement budget is approved.
+- Representative production latency samples (5 warmups + 30 requests, one run; not the plan's required 3 complete samples): student dashboard p50/p95 45.4/80.1 ms; supervisor dashboard 27.6/42.2 ms; pending admin students 777.1/897.3 ms; review queue 33.3/46.4 ms. Admin report is excluded from these multi-sample stats.
+- Explain/profiler observations saved from the local run: project-by-supervisor lookup scanned 2,500 documents (COLLSCAN) and returned 5 in 4 ms; review page returned 24 with 25 keys/24 docs in <1 ms; student project lookup returned 1 with 1 key/1 doc in <1 ms; confirmed Viva session returned 1 after scanning 500 docs in 2 ms. Admin report project facet scanned 2,500 docs in 23 ms; user report facet scanned 25,015,501 docs in 18.6 s. That user aggregation is a measured baseline bottleneck, not a latency claim collected under profiling.
+- `npm run test:unit` remains at 184 passed, 1 known failure (`StudentTeamSection` missing expected “Reset project” text), and 12 integration tests skipped without their explicit test URIs. This matches the Milestone 0 failure.
+- This session's browser runtime returned no available browser, and the local server/Compose processes from the prior run are no longer reachable from this session. Actual role-by-role UI/network checks, upload/read through the portal, idle 10-minute traffic, and browser screenshots remain unverified. Reopen the local stack and attach/enable a browser before claiming Milestone 1 or 2 acceptance complete.
+- A fresh final Docker/database run was not possible because Docker socket access is unavailable in this session. Prior results above are retained as evidence from the earlier local run, not represented as rerun results. No production database, bucket, or email service was targeted.
+- Baseline result artifacts are not yet saved as the required compact result file under `.local-bench/baseline/`; the metrics above are preserved here pending a follow-up test session with the local services/browser available. Milestone 2 remains open and no optimization milestone should be treated as having a completed baseline gate.

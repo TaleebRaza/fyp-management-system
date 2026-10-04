@@ -26,6 +26,14 @@ Run `npm run deploy:preflight` against the target database before deployment. Mi
 
 Production trusts only Vercel's overwritten `x-vercel-forwarded-for` header for client-IP rate-limit dimensions. Sessions expire after eight hours and are revoked when credentials change or an account is deactivated. Storage cleanup runs daily from `vercel.json`; monitor dead-lettered cleanup records between runs.
 
+## Browser test setup
+
+Browser-driven tests use the existing Node test runner with Playwright. After `npm ci`, install the lightweight headless Chromium shell once per machine:
+
+```bash
+npm run browser:install
+```
+
 ---
 
 ## 📌 Overview
@@ -320,6 +328,18 @@ STORAGE_S3_REGION=us-east-1
 ```
 
 MinIO's console is available at `http://127.0.0.1:9001`. Stop the services with `docker compose -f compose.local.yaml down`; add `--volumes` only when intentionally discarding all local data.
+
+Create a disposable deterministic portal dataset with one of these commands:
+
+```bash
+npm run seed:local:functional
+npm run seed:local:performance
+npm run seed:local:reset
+```
+
+Each command replaces only the loopback `fyp_local` database and `fyp-local` bucket; it refuses any other database, remote storage endpoint, or bucket name. The functional profile creates one admin, three supervisors, eighteen students, representative project/review/fine/message states, scheduled/active/completed Viva sessions, and one small proposal PDF. The performance profile defaults to 5,000 students, 500 supervisors, 2,500 projects, and 500 Viva sessions. It stores one 69-byte PDF for each assigned review-queue project (1,000 objects and 69 KB of file data with canonical counts), so query measurements and object ownership use realistic references without generating large files. Override its canonical counts with `M2_STUDENT_COUNT`, `M2_SUPERVISOR_COUNT`, `M2_PROJECT_COUNT`, and `M2_VIVA_SESSION_COUNT` only when the result is not being compared with the canonical baseline.
+
+All seeded accounts use password `Local-only-2026!`. The command output lists the profile's admin, supervisor, student, proposal-student, and restricted-student roll numbers where applicable.
 
 ```bash
 VIVA_TEST_MONGODB_URI='mongodb://127.0.0.1:27017/fyp_viva_m12_test?replicaSet=rs0' npm run test:viva:workflow

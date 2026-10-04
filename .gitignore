@@ -10,6 +10,7 @@ node_modules
 .tools
 scripts/*
 !scripts/migrate-password-hashes.mjs
+!scripts/seed-local.mjs
 AGENTS.md
 .github
 .local-bench/

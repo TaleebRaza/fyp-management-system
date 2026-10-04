@@ -24,6 +24,7 @@
     "test:viva:stress": "VIVA_STRESS_STAGE=stress node tests/support/viva-http-stress-runner.mjs",
     "test:viva:stress:traffic": "VIVA_STRESS_STAGE=traffic node tests/support/viva-http-stress-runner.mjs",
     "test:viva:stress:soak": "VIVA_STRESS_STAGE=soak node tests/support/viva-http-stress-runner.mjs",
+    "browser:install": "playwright install --only-shell chromium",
     "test:portal-pause:cache": "node --test tests/portal-pause-cache.integration.test.mjs",
     "capacity:reconcile": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs",
     "capacity:repair": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs --repair",
@@ -37,6 +38,9 @@
     "rate-limit:ttl:apply": "node --env-file-if-exists=.env.local scripts/update-rate-limit-ttl.mjs --apply",
     "passwords:audit": "node --env-file-if-exists=.env.local scripts/migrate-password-hashes.mjs",
     "passwords:migrate": "node --env-file-if-exists=.env.local scripts/migrate-password-hashes.mjs --apply",
+    "seed:local:functional": "node --env-file-if-exists=.env.local scripts/seed-local.mjs functional",
+    "seed:local:performance": "node --env-file-if-exists=.env.local scripts/seed-local.mjs performance",
+    "seed:local:reset": "node --env-file-if-exists=.env.local scripts/seed-local.mjs reset",
     "deploy:preflight": "npm run indexes:refactor:audit && npm run rate-limit:ttl:audit && npm run passwords:audit",
     "verify:refactor": "npm run lint && npm run test:unit && npm run build",
     "test": "npm run test:unit"
@@ -64,6 +68,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "playwright": "^1.63.0",
     "repomix": "^1.18.0",
     "tailwindcss": "^4",
     "typescript": "^5"
