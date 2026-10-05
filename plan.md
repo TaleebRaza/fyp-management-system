@@ -1770,3 +1770,51 @@ Status: **M12/M13 FOCUSED CHECKS PASS — M14 PARTIAL; PORTAL ACCEPTANCE PENDING
 - A local webpack development server started on loopback port 3102, but compiling `/` retried and did not finish; the headless Chromium sign-in attempt timed out waiting for the page. The server was stopped. Student/supervisor/admin browser flows, portal HTTP acceptance, request-panel checks, and in-portal upload/read/delete flows remain unverified.
 - The Next development attempt generated a temporary block in ignored `AGENTS.md` and changed `next-env.d.ts`; both generated changes were restored to their pre-test contents. No password-reset source file changed.
 - Milestone 14 remains open until a working production build/browser session can exercise role workflows and real portal storage lifecycle. No local audit discrepancies were repaired during this test session.
+
+## 2026-10-05 - Milestones 14-16 testing handoff prepared
+
+Status: **PREPARED — TESTING AND FINAL REPORT PENDING**
+
+- No application code, local data, service, test, build, benchmark, or browser workflow was changed or run for this handoff. The next session should execute M14, then M15, then M16; preparation does not satisfy their completion gates.
+- The last known local `fyp_local` seed is the **functional** profile (22 users, 9 projects, 3 Viva sessions, 1 PDF). The canonical performance profile and its MinIO objects must be reseeded before M15. Check the actual database and bucket before any reset; the seed replaces local data.
+- `.env.local` previously pointed to a different database. Supply explicit loopback MongoDB and MinIO settings for every seed, server, audit, and runner command. Confirm the effective targets before running any command that mutates data. Never aim a reset, cleanup, or stress run at production services.
+- M14 first: resolve the production-build/browser access problem recorded above. With the functional seed, complete the student, supervisor, admin, and storage lifecycle checklists in the M14 section. Record each action's role, visible result, HTTP status, database/object effect, and any failure. Include the deferred M1 browser storage smoke test and M4/M9-M13 UI acceptance checks where their screens overlap. Run the listed read-only audits, existing regression suites, and frozen-file hash check. The known unit assertion failure and local seed/index audit discrepancies are **not** passing gates; distinguish pre-existing failures from new ones. Leave M14 open for every unexercised workflow.
+- M15 next: after M14, reseed the canonical performance profile, save its record/object counts, and use the same dataset, production server mode, machine, workload, warmups, repetitions, and profiler setting as the baseline for each comparison. Run latency with profiler off and query-plan work separately. Save raw runs under `.local-bench/` and fill the M15 table only where comparable before/after evidence exists. The M2 baseline is incomplete: it has one 30-request run for selected endpoints and a single heavy Reports request, not three complete samples. Reconstruct a comparable baseline from the baseline commit in an isolated checkout if feasible; otherwise mark those rows **not comparable**, not improved. Do not run 30 heavy report requests without a bounded measurement budget. Record KEEP/REVERT/REDESIGN for each retained change using the plan's thresholds and security proofs.
+- M16 last: write the final report from saved M14/M15 artifacts, including all 22 required sections. Use `not measured` for missing values; never calculate a percentage from different datasets, server modes, or profiler settings. Record the exact baseline and final SHAs, versions, seed counts, commands, raw-result paths, failures/skips, regressions, and decisions. The final report and release gate remain open until its evidence exists.
+
+### Fill-in result record for the testing session
+
+```text
+M14 functional seed/counts and environment targets:
+M14 production build/browser access:
+M14 student workflow (pass/fail/blocked + evidence path):
+M14 supervisor workflow (pass/fail/blocked + evidence path):
+M14 admin workflow (pass/fail/blocked + evidence path):
+M14 proposal/broadcast/message storage lifecycle and authorization:
+M14 read-only audits, regression suites, frozen-file hashes:
+M14 unresolved failures and gate decision:
+
+M15 baseline SHA / final SHA:
+M15 performance seed/counts and environment:
+M15 comparable raw baseline/final result paths:
+M15 request counts, DB operations/plans, p50/p95/p99, CPU/RSS, errors:
+M15 per-change KEEP/REVERT/REDESIGN evidence:
+M15 missing or non-comparable measurements and gate decision:
+
+M16 report path and evidence index:
+M16 final release-gate result and remaining bottlenecks:
+```
+
+## 2026-10-05 - Milestone 14 testing attempt
+
+Status: **PARTIAL — CODE/DATABASE CHECKS PASS; BUILD AND BROWSER WORKFLOWS BLOCKED**
+
+- Confirmed `compose.local.yaml` services were running: loopback-only MongoDB `127.0.0.1:27017` and local S3-compatible storage `127.0.0.1:9000`. MongoDB reports PRIMARY. Read-only counts in `fyp_local`: 22 users, 9 projects, 3 Viva sessions; storage ledger has one row (69 used bytes, 0 reserved). This matches the functional seed noted above. No reseed, reset, repair, or cleanup was run.
+- `npm run lint`: PASS. `npx tsc --noEmit`: PASS. `git diff --check`: PASS. Password-reset frozen-file check: all 11 hashes PASS.
+- `npm run test:unit`: FAIL, with the same known `tests/student-project-reset-structure.test.mjs` assertion expecting “Reset project” in `StudentTeamSection`; no other failing test was observed. Database-backed cases without explicit test URIs are skipped by this command.
+- `npm run build`: FAIL in Turbopack while creating its CSS helper process/binding a port (`Operation not permitted`), including the approved retry. `npx next build --webpack`: FAIL because Next cannot parse TypeScript `--showConfig`; direct `npx tsc --showConfig -p tsconfig.json` returns valid configuration JSON. No application TypeScript diagnostic was reported.
+- Browser connection attempt for `http://localhost:3100`: unavailable; Browser reports no connected browser. No production app server was started. Student, supervisor, admin, and browser storage workflows plus Network-panel acceptance remain unrun.
+- Read-only `storage:keys:audit`: PASS (zero invalid keys). `storage:integrity:audit`: PASS (1 object/69 bytes, 1 active reference, no missing/cross-kind/duplicate/orphan objects, matching ledger). `rate-limit:ttl:audit`: PASS (900 seconds).
+- Read-only `project:drift-audit`: reports 18 project-member rows but zero matching legacy `userProjects`/projection rows (exit 2), matching the prior local finding. `indexes:refactor:audit`: reports expected indexes missing on projects, voice notes, users, and related collections (exit 2), also previously recorded. These findings were not repaired.
+- The available checks preserve the prior report that all 11 Viva integration suites and the portal-pause integration passed in the previous session; they were not rerun in this attempt. No fresh full regression evidence was produced.
+- **M14 decision: INCOMPLETE.** Resolve the build/browser availability and finish role workflows, storage lifecycle, and browser acceptance before closing it. **M15 and M16 not started** because their comparison/report depend on M14 and reproducible baseline/final runs. No benchmark percentages or KEEP/REVERT sweep were added.
