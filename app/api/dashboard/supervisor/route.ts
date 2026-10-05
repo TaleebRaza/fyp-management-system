@@ -3,12 +3,9 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import mongoose from 'mongoose';
-import {
-  formatProjectDomainLabels,
-  normalizeProjectDomainIds,
-} from '../../../../config/projectDomains';
-import { DEFAULT_TEAM_SIZE, EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../../../config/appSettings';
-import { getSafeProjectRatings, parseProjectRatingValues } from '../../../../config/projectRatings';
+import { normalizeProjectDomainIds } from '../../../../config/projectDomains';
+import { EXPANDED_TEAM_SIZE } from '../../../../config/appSettings';
+import { parseProjectRatingValues } from '../../../../config/projectRatings';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
@@ -24,110 +21,25 @@ import {
   projectReviewActivityAction,
   recordCurrentUserActivity,
 } from '../../../../lib/portalActivityLog';
+import {
+  getSupervisorDashboard,
+  SUPERVISOR_DASHBOARD_AUTH_FIELDS,
+  type SupervisorDashboardFields,
+} from '../../../../lib/features/supervisor/dashboard';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const currentUser = await requireCurrentUser(req, ['supervisor']);
+  const currentUser = await requireCurrentUser<SupervisorDashboardFields>(
+    req,
+    ['supervisor'],
+    SUPERVISOR_DASHBOARD_AUTH_FIELDS
+  );
   if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized supervisor request.' }, { status: 401 });
   }
   try {
-    const [projects, supervisor] = await Promise.all([
-      Project.find({ supervisorId: currentUser.id })
-        .select('_id members title description domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
-        .lean(),
-      User.findById(currentUser.id).select('+migrationCode').lean(),
-    ]);
-
-    type SupervisorProjectRow = {
-      _id: unknown;
-      members?: unknown[];
-      title?: string;
-      description?: string;
-      domains?: unknown;
-      tools?: string;
-      pdfUrl?: string;
-      status?: string;
-      reviewRemarks?: string;
-      stage?: string;
-      version?: number;
-      ratings?: unknown;
-      maxTeamSize?: number;
-    };
-
-    type SupervisorStudentRow = {
-      _id: unknown;
-      name?: string;
-      rollNo?: string;
-      email?: string;
-      program?: string;
-      batch?: string;
-      semester?: string;
-    };
-
-    const projectRows = projects as unknown as SupervisorProjectRow[];
-
-    const memberIds = Array.from(new Set(
-      projectRows.flatMap((project) =>
-        (project.members || []).map((memberId) => String(memberId))
-      )
-    ));
-
-    const students = memberIds.length > 0
-      ? await User.find({ _id: { $in: memberIds }, role: 'student' })
-          .select('_id name rollNo email program batch semester')
-          .lean()
-      : [];
-
-    const studentRows = students as unknown as SupervisorStudentRow[];
-    const studentsById = new Map(
-      studentRows.map((student) => [String(student._id), student])
-    );
-
-    const mappedProjects = projectRows.flatMap((project) => {
-      const members = (project.members || []).flatMap((memberId) => {
-        const student = studentsById.get(String(memberId));
-        return student ? [student] : [];
-      });
-      const firstMember = members[0];
-      if (!firstMember) return [];
-
-      const domainIds = normalizeProjectDomainIds(project.domains);
-      return [{
-        _id: String(project._id),
-        triggerStudentId: String(firstMember._id),
-        projectTitle: project.title,
-        projectDesc: project.description,
-        domain: formatProjectDomainLabels(domainIds),
-        domains: domainIds,
-        tools: project.tools,
-        pdfUrl: project.pdfUrl,
-        status: project.status,
-        remarks: project.reviewRemarks,
-        stage: project.stage || 'PROPOSAL',
-        version: Number(project.version || 0),
-        ratings: getSafeProjectRatings(project.ratings),
-        maxTeamSize: getTeamCapacity(project.maxTeamSize) || DEFAULT_TEAM_SIZE,
-        program: firstMember.program || 'N/A',
-        batch: firstMember.batch || 'N/A',
-        semester: firstMember.semester || '7th Semester',
-        members: members.map((student) => ({
-          _id: student._id,
-          name: student.name,
-          rollNo: student.rollNo,
-          email: student.email,
-          program: student.program || 'N/A',
-          batch: student.batch || 'N/A',
-          semester: student.semester || '7th Semester',
-        })),
-      }];
-    });
-
-    return NextResponse.json(
-      { projects: mappedProjects, migrationCode: supervisor?.migrationCode || '' },
-      { status: 200 }
-    );
+    return NextResponse.json(await getSupervisorDashboard(currentUser), { status: 200 });
   } catch (error) {
     console.error('Supervisor Dashboard GET Error:', error);
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });

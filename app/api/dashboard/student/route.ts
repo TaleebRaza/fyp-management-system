@@ -10,8 +10,6 @@ import {
   normalizeProjectDomainIds,
   validateProjectDomainIds,
 } from '../../../../config/projectDomains';
-import { getSafeProjectRatings } from '../../../../config/projectRatings';
-
 import {
   buildFineRestriction,
   FINE_RESTRICTION_CODE,
@@ -19,7 +17,6 @@ import {
 } from '../../../../lib/fineRestriction';
 import {
   getTeamFineRestriction,
-  getTeamFineRestrictionFromMembers,
   getTeamFineRestrictionMessage,
 } from '../../../../lib/teamFineRestriction';
 import {
@@ -56,8 +53,11 @@ import {
   withStorageTransaction,
 } from '../../../../lib/storageProtocol';
 import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
-import { getCompletedVivaResultsForStudent } from '../../../../lib/vivaResults';
-import { getConfirmedVivaSchedulesForStudent } from '../../../../lib/vivaScheduling';
+import {
+  getStudentDashboard,
+  STUDENT_DASHBOARD_AUTH_FIELDS,
+  type StudentDashboardFields,
+} from '../../../../lib/features/student/dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,126 +65,21 @@ const NAME_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
   try {
-    const currentUser = await requireCurrentUser(req, ['student']);
+    const currentUser = await requireCurrentUser<StudentDashboardFields>(
+      req,
+      ['student'],
+      STUDENT_DASHBOARD_AUTH_FIELDS
+    );
     if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized student request.' }, { status: 401 });
     }
 
-    const studentId = currentUser.id;
-
-    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+    if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
       return NextResponse.json({ error: 'Invalid student account.' }, { status: 400 });
     }
 
-    // Use the authenticated student's ID and return only dashboard-safe fields.
-    const student = await User.findOne({ _id: studentId, role: 'student' })
-            .select(
-        '_id name email rollNo role program batch semester notificationsEnabled isActive lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus lateRegistrationFineResolvedAt registrationPunishment'
-      )
-      .lean();
-
-    if (!student) {
-      return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-    }
-
-    const fineRestriction = buildFineRestriction(student);
-
-    const [project, policyDocument, vivaResults, vivaSessions] = await Promise.all([
-      Project.findOne({ members: student._id })
-        .select('_id supervisorId members title description status reviewRemarks stage version domains tools pdfUrl inviteCode maxTeamSize ratings')
-        .lean(),
-      getOrCreateRegistrationPolicy(),
-      getCompletedVivaResultsForStudent(studentId),
-      getConfirmedVivaSchedulesForStudent(studentId),
-    ]);
-    const [supervisor, projectMembers] = await Promise.all([
-      project?.supervisorId
-        ? User.findById(project.supervisorId)
-            .select('_id name email broadcastType broadcastContent broadcastSize broadcastCreatedAt')
-            .lean()
-        : Promise.resolve(null),
-      project?.members?.length
-        ? User.find({ _id: { $in: project.members }, role: 'student' })
-            .select('_id name rollNo email lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment')
-            .lean()
-        : Promise.resolve([]),
-    ]);
-    const teamFineRestriction = getTeamFineRestrictionFromMembers(projectMembers, student._id);
-    const policy = serializeRegistrationPolicy(policyDocument);
-    const fineRestrictionResponse = fineRestriction
-      ? { ...fineRestriction, payment: policy.finePayment }
-      : null;
-    const safeProjectMembers = projectMembers.map((member) => ({
-      _id: member._id,
-      name: member.name,
-      rollNo: member.rollNo,
-      email: member.email,
-    }));
-
-    const supervisorBroadcast = supervisor?.broadcastType && supervisor?.broadcastContent
-      ? {
-          type: supervisor.broadcastType,
-          content: supervisor.broadcastContent,
-          size: supervisor.broadcastSize || 0,
-          createdAt: supervisor.broadcastCreatedAt || null,
-          supervisorName: supervisor.name || 'Supervisor',
-        }
-      : null;
-
-        const projectRecord = project as {
-      _id?: unknown;
-      supervisorId?: unknown;
-      title?: string;
-      description?: string;
-      status?: string;
-      reviewRemarks?: string;
-      domains?: unknown;
-      tools?: string;
-      pdfUrl?: string;
-      ratings?: unknown;
-    } | null;
-    const studentRecord = student as Record<string, unknown>;
-    const normalizedDomains = normalizeProjectDomainIds(projectRecord?.domains);
-    const normalizedDomainText = formatProjectDomainLabels(normalizedDomains);
-    const studentResponse = {
-      ...studentRecord,
-      supervisorId: projectRecord?.supervisorId || null,
-      status: projectRecord?.supervisorId ? (projectRecord.status || 'Pending') : 'Unassigned',
-      remarks: projectRecord?.reviewRemarks || '',
-      projectTitle: projectRecord?.title || '',
-      projectDesc: projectRecord?.description || '',
-      tools: projectRecord?.tools || '',
-      pdfUrl: projectRecord?.pdfUrl || '',
-      projectId: projectRecord?._id || null,
-      lateRegistrationDays: fineRestriction?.lateRegistrationFine?.daysLate || 0,
-      lateRegistrationFine: fineRestriction?.lateRegistrationFine?.amount || 0,
-      domains: normalizedDomains,
-      domain: normalizedDomainText,
-    };
-
-    const projectResponse = projectRecord
-      ? {
-          ...projectRecord,
-          members: safeProjectMembers,
-          domains: normalizedDomains,
-          domain: normalizedDomainText,
-          ratings: getSafeProjectRatings(projectRecord.ratings),
-        }
-      : projectRecord;
-
     return NextResponse.json(
-      {
-        student: studentResponse,
-        supervisor,
-        project: projectResponse,
-        supervisorBroadcast,
-        fineRestriction: fineRestrictionResponse,
-        teamFineRestriction,
-        fineRestrictions: fineRestriction || teamFineRestriction ? policy.fineRestrictions : undefined,
-        projectSubmissionsOpen: policy.projectSubmissionsOpen,
-        vivaResults,
-        vivaSessions,
-      },
+      await getStudentDashboard(currentUser),
       {
         status: 200,
         headers: { 'Cache-Control': 'no-store, max-age=0' },

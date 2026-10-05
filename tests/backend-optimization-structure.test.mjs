@@ -25,3 +25,24 @@ test('admin reports avoid first-stage facets and expression membership lookups',
   assert.doesNotMatch(source, /\$expr:\s*\{\s*\$in:\s*\['\$\$studentId', '\$members'\]/);
   assert.match(source, /Project\.aggregate<ProjectReportRow>\(\[\s*\{\s*\$project:/);
 });
+
+test('dashboard auth projections remove duplicate user reads without weakening revocation', async () => {
+  const [auth, studentRoute, supervisorRoute, studentFeature, supervisorFeature] = await Promise.all([
+    readSource('lib/security/auth.ts'),
+    readSource('app/api/dashboard/student/route.ts'),
+    readSource('app/api/dashboard/supervisor/route.ts'),
+    readSource('lib/features/student/dashboard.ts'),
+    readSource('lib/features/supervisor/dashboard.ts'),
+  ]);
+  const studentGet = studentRoute.split('export async function POST')[0];
+  const supervisorGet = supervisorRoute.split('export async function POST')[0];
+
+  assert.match(auth, /query\.select\(extraProjection\)/);
+  assert.match(auth, /Number\(token\.sessionVersion[\s\S]*Number\(sessionVersion/);
+  assert.match(studentGet, /getStudentDashboard\(currentUser\)/);
+  assert.doesNotMatch(studentGet, /User\.findOne/);
+  assert.match(supervisorGet, /getSupervisorDashboard\(currentUser\)/);
+  assert.doesNotMatch(supervisorGet, /User\.findById/);
+  assert.match(studentFeature, /Project\.findOne\(\{ members: student\.id \}\)/);
+  assert.match(supervisorFeature, /migrationCode: supervisor\.migrationCode/);
+});

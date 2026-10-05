@@ -10,16 +10,22 @@ import { getPortalPause } from '../portalPause';
 
 export type UserRole = 'admin' | 'supervisor' | 'student';
 
-export type CurrentUser = {
+type CurrentUserBase = {
   id: string;
   role: UserRole;
   name: string;
   rollNo: string;
 };
 
+export type CurrentUser<ExtraFields extends object = Record<never, never>> =
+  CurrentUserBase & ExtraFields;
+
 const USER_ROLES: UserRole[] = ['admin', 'supervisor', 'student'];
 
-export async function getCurrentUser(req: NextRequest): Promise<CurrentUser | null> {
+export async function getCurrentUser<ExtraFields extends object = Record<never, never>>(
+  req: NextRequest,
+  extraProjection?: string
+): Promise<CurrentUser<ExtraFields> | null> {
   if (!isSameOriginMutation(req)) return null;
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -28,27 +34,31 @@ export async function getCurrentUser(req: NextRequest): Promise<CurrentUser | nu
   }
 
   await connectToDatabase();
-  const user = await User.findOne({ _id: token.id, isActive: true })
-    .select('_id role name rollNo sessionVersion')
-    .lean();
+  const query = User.findOne({ _id: token.id, isActive: true })
+    .select('_id role name rollNo sessionVersion');
+  if (extraProjection) query.select(extraProjection);
+  const user = await query.lean();
 
   if (!user || !USER_ROLES.includes(user.role as UserRole)) return null;
-  if (Number(token.sessionVersion ?? 0) !== Number(user.sessionVersion ?? 0)) return null;
 
-  const currentUser = {
-    id: user._id.toString(),
-    role: user.role as UserRole,
-    name: String(user.name || '').trim(),
-    rollNo: String(user.rollNo || '').trim(),
-  };
-  return currentUser;
+  const { _id, role, name, rollNo, sessionVersion, ...extraFields } =
+    user as unknown as Record<string, unknown>;
+  if (Number(token.sessionVersion ?? 0) !== Number(sessionVersion ?? 0)) return null;
+  return {
+    ...extraFields,
+    id: String(_id),
+    role: role as UserRole,
+    name: String(name || '').trim(),
+    rollNo: String(rollNo || '').trim(),
+  } as CurrentUser<ExtraFields>;
 }
 
-export async function requireCurrentUser(
+export async function requireCurrentUser<ExtraFields extends object = Record<never, never>>(
   req: NextRequest,
-  allowedRoles?: UserRole[]
-): Promise<CurrentUser | null> {
-  const currentUser = await getCurrentUser(req);
+  allowedRoles?: UserRole[],
+  extraProjection?: string
+): Promise<CurrentUser<ExtraFields> | null> {
+  const currentUser = await getCurrentUser<ExtraFields>(req, extraProjection);
   if (!currentUser) return null;
 
   const [portal, vivaAccessRestricted] = await Promise.all([

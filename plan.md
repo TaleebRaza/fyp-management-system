@@ -1723,3 +1723,34 @@ Status: **CODE, API, AND LOCAL DATABASE GATES PASS — IN-BROWSER UI ACCEPTANCE 
 - On `fyp_local`, the old deep offset query examined 984 documents/985 keys; the equivalent deep cursor query examined 40 documents/45 keys (95.9% fewer documents for the page query). Both used the status/updatedAt index family. The schema change had left the old `{ status, updatedAt }` prefix index alongside its replacement; after confirming the exact local index definitions, the redundant prefix index alone was dropped. No documents were changed. **Decision: KEEP.** This is query-plan evidence, not an endpoint p95 comparison.
 - Temporary test databases were verified absent before creation and dropped after their checks. No production database, storage bucket, or email service was used.
 - Milestones 9-11 have code/API/database evidence and KEEP decisions where measured. Finish their UI-side acceptance when an interactive browser is available; keep the full release gates in Milestone 14 open.
+
+## 2026-10-05 - Milestone 12 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Extended the existing database-backed authentication helper with an optional explicit projection while preserving the active-user and `sessionVersion` checks on every protected request.
+- Reused that authenticated read for the student dashboard's student fields and the supervisor dashboard's hidden migration code, removing one duplicate `User` query from each hot dashboard request.
+- Audited client mutations that refresh both dashboard and supervisor-list data. Those calls were retained because the affected mutations change both project state and supervisor capacity; deleting either refresh would knowingly leave stale UI.
+- Added no auth cache, revocation delay, dependency, or frontend state library.
+- Added a focused structural regression check for the projected auth read, retained revocation comparison, and absence of the two duplicate dashboard user reads.
+- Did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no test, lint, typecheck, build, database, API, browser, revocation, request-count, or latency check was run. Milestone 12 remains unverified until the testing session.
+
+## 2026-10-05 - Milestone 13 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Moved the substantial student and supervisor dashboard GET query/serialization logic into `lib/features/student/dashboard.ts` and `lib/features/supervisor/dashboard.ts`.
+- Left authentication, HTTP responses, error mapping, and all mutation handling in the Route Handlers; the two GET handlers are now thin adapters.
+- Kept direct Mongoose queries in the feature modules and introduced no repository classes, factories, interfaces, dependency injection, or generic data layer.
+- Limited the cleanup to the two hot read paths already changed by Milestone 12. Oversized mutation and Viva modules were not shuffled without a measured or reusable boundary.
+- Preserved the existing dashboard response fields and `no-store` behavior by moving the current mapping logic rather than redesigning it.
+- Did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no test, lint, typecheck, build, local MongoDB/MinIO workflow, API comparison, query count, p95 measurement, or browser check was run. Milestone 13 remains unverified until the testing session.
+
+## 2026-10-05 - Milestone 14 handoff checkpoint
+
+Status: **NOT STARTED — DEFERRED BY USER FOR THE NEXT MODEL**
+
+- Stopped after Milestones 12 and 13 implementation as requested.
+- The full local portal regression, password-reset hash verification, real MongoDB/MinIO workflows, and browser acceptance checks in Milestone 14 must begin in the next testing session.
