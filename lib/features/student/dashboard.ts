@@ -75,13 +75,28 @@ export async function getStudentDashboard(student: StudentDashboardUser) {
     pdfUrl?: string;
     ratings?: unknown;
   } | null;
-  const { id, ...studentFields } = student;
   const normalizedDomains = normalizeProjectDomainIds(projectRecord?.domains);
   const normalizedDomainText = formatProjectDomainLabels(normalizedDomains);
+  const studentFields = {
+    _id: student.id,
+    name: student.name,
+    email: student.email,
+    rollNo: student.rollNo,
+    role: student.role,
+    program: student.program,
+    batch: student.batch,
+    semester: student.semester,
+    notificationsEnabled: student.notificationsEnabled,
+    isActive: student.isActive,
+    lateRegistrationDays: student.lateRegistrationDays,
+    lateRegistrationFine: student.lateRegistrationFine,
+    lateRegistrationFineStatus: student.lateRegistrationFineStatus,
+    lateRegistrationFineResolvedAt: student.lateRegistrationFineResolvedAt,
+    registrationPunishment: student.registrationPunishment,
+  };
 
   return {
     student: {
-      _id: id,
       ...studentFields,
       supervisorId: projectRecord?.supervisorId || null,
       status: projectRecord?.supervisorId ? (projectRecord.status || 'Pending') : 'Unassigned',

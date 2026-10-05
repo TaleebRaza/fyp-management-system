@@ -1750,7 +1750,23 @@ Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
 
 ## 2026-10-05 - Milestone 14 handoff checkpoint
 
-Status: **NOT STARTED — DEFERRED BY USER FOR THE NEXT MODEL**
+Status: **TESTING STARTED — LOCAL CODE/DATABASE GATES MOSTLY PASS; BROWSER/PRODUCTION BUILD BLOCKED**
 
-- Stopped after Milestones 12 and 13 implementation as requested.
-- The full local portal regression, password-reset hash verification, real MongoDB/MinIO workflows, and browser acceptance checks in Milestone 14 must begin in the next testing session.
+- The guarded functional seeder replaced the local `fyp_local` performance profile and `fyp-local` bucket with 22 users, 9 projects, 1 Viva round/panel, 3 sessions, and 1 PDF object. It used explicit loopback MongoDB/MinIO overrides because `.env.local` points at a different database. No production endpoint was used.
+
+## 2026-10-05 - Milestones 12-14 testing checkpoint
+
+Status: **M12/M13 FOCUSED CHECKS PASS — M14 PARTIAL; PORTAL ACCEPTANCE PENDING**
+
+- `npx tsc --noEmit`, `npm run lint`, and `git diff --check` passed. Password-reset frozen-file hashes all passed with `sha256sum -c .local-bench/password-reset-before.sha256`.
+- Focused dashboard/API/view-model/optimization tests passed: 28 passed, 0 failed.
+- The full unit suite reported 195 passed, 1 failed, and 12 skipped. The lone failure is the previously recorded `tests/student-project-reset-structure.test.mjs` expectation for “Reset project” in `StudentTeamSection`; the database integration tests skip without explicit URIs.
+- All 11 Viva integration suites passed against their dedicated local replica-set databases; the portal-pause MongoDB integration also passed. Total: 12 test files and 13 passing integration cases, including the 50-concurrent-session performance test. Its 50-session agenda read used 5 MongoDB reads versus 202 in the legacy comparison; both student and examiner conflict races had exactly one winner.
+- A live MongoDB auth-helper check verified the student fields and supervisor `migrationCode` projections, one authenticated-user read per dashboard auth request, and immediate rejection after `sessionVersion` changed. The test restored the student's original session version (0).
+- The extracted student/supervisor dashboard feature functions returned the expected functional-seed results: student `F26-0007` with 2 project members and 1 Viva session; supervisor `E26-0001` with 2 projects and an empty migration code. No application data was changed by these reads.
+- Read-only integrity audits: supervisor capacity had 0 mismatches; storage key audit passed; storage integrity passed with 1 object/69 bytes, 1 active reference, no missing/cross-kind/duplicate/orphan objects, and matching ledger totals (69 used, 0 reserved); rate-limit TTL was 900 seconds as expected.
+- Two existing audit discrepancies remain visible and were not repaired: project drift reported 18 project-member rows but 0 matching legacy `userProjects`/projection rows; the refactor-index audit reported expected indexes absent on projects, voice notes, and users. Both audit commands returned exit code 2. These are local seed/schema audit findings, not application-workflow assertions.
+- `npm run build` failed before compilation in Turbopack while its CSS helper attempted to create a process/bind a local port (`Operation not permitted`); retrying with elevated local process permission produced the same failure. `npx next build --webpack` instead failed while Next parsed TypeScript `--showConfig`; invoking the same TypeScript CLI directly produced valid JSON for 278 files. No TypeScript/application diagnostic came from either build attempt.
+- A local webpack development server started on loopback port 3102, but compiling `/` retried and did not finish; the headless Chromium sign-in attempt timed out waiting for the page. The server was stopped. Student/supervisor/admin browser flows, portal HTTP acceptance, request-panel checks, and in-portal upload/read/delete flows remain unverified.
+- The Next development attempt generated a temporary block in ignored `AGENTS.md` and changed `next-env.d.ts`; both generated changes were restored to their pre-test contents. No password-reset source file changed.
+- Milestone 14 remains open until a working production build/browser session can exercise role workflows and real portal storage lifecycle. No local audit discrepancies were repaired during this test session.
