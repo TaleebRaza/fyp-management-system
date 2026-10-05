@@ -1,7 +1,8 @@
 
 node_modules
-.env
-.env.local
+.env*
+!.env.example
+!.env.template
 .next
 *.tsbuildinfo
 .idea
@@ -15,6 +16,28 @@ AGENTS.md
 .github
 .local-bench/
 .vscode
+
+# Local credentials and hosting state
+.aws/
+.vercel/
+*.pem
+*.key
+
+# Generated exports and test output
+out/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+*.log
+
+# Temporary files and operating-system metadata
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
 # Sentry Config File
 .env.sentry-build-plugin

@@ -5,8 +5,10 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('project reset keeps the team and supervisor while clearing document workflow state', async () => {
-  const [route, teamSection, teamActions] = await Promise.all([
+  const [route, dashboard, overview, teamSection, teamActions] = await Promise.all([
     read('app/api/dashboard/student/route.ts'),
+    read('components/dashboards/StudentDashboard.tsx'),
+    read('components/student/StudentOverviewSection.tsx'),
     read('components/student/StudentTeamSection.tsx'),
     read('components/student/hooks/useStudentTeamActions.ts'),
   ]);
@@ -23,7 +25,10 @@ test('project reset keeps the team and supervisor while clearing document workfl
   assert.match(resetAction, /project\.ratings = undefined/);
   assert.doesNotMatch(resetAction, /deleteOne|\$pull|releaseSupervisorProjectSlot|VoiceNote/);
   assert.doesNotMatch(route, /resetProposal/);
-  assert.match(teamSection, /Reset project/i);
+  assert.match(dashboard, /onResetProject=\{handleResetProject\}/);
+  assert.match(overview, /onResetProject/);
+  assert.match(overview, /Reset Project/i);
+  assert.doesNotMatch(teamSection, /Reset project/i);
   assert.doesNotMatch(teamSection, /Change proposal/i);
   assert.match(teamActions, /team, supervisor, project details, messages, and voice notes will be kept/i);
 });

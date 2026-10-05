@@ -9,7 +9,7 @@ if (!uri) {
 }
 
 const expectedIndexes = {
-  projects: [{ key: { status: 1, updatedAt: -1 } }, ...refactorIndexes.projects],
+  projects: [{ key: { status: 1, updatedAt: -1, _id: -1 } }, ...refactorIndexes.projects],
   voicenotes: refactorIndexes.voicenotes,
   users: refactorIndexes.users,
   storagedeletionoutboxes: refactorIndexes.storagedeletionoutboxes,
