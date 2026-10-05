@@ -58,7 +58,7 @@ const ProjectSchema = new Schema({
   }
 }, { timestamps: true });
 
-ProjectSchema.index({ status: 1, updatedAt: -1 });
+ProjectSchema.index({ status: 1, updatedAt: -1, _id: -1 });
 ProjectSchema.index({ members: 1 });
 ProjectSchema.index({ supervisorId: 1 });
 

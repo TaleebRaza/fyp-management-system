@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Headline from '../../../models/Headline';
 import { requireCurrentUser } from '../../../lib/security/auth';
 import { normalizeText } from '../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../lib/security/request';
 import {
   getPublicHeadline,
   invalidatePublicContent,
@@ -36,7 +37,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { text } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { text } = json.value as Record<string, unknown>;
     const normalizedText = normalizeText(text, 500);
     
     // 3. Hard-delete all previous headlines to permanently reclaim database storage space

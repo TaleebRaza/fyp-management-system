@@ -4,6 +4,7 @@ import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import mongoose from 'mongoose';
 import { parseBoolean } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
@@ -14,7 +15,9 @@ export async function POST(req: NextRequest) {
 
   try {
     await connectToDatabase();
-    const { id, enabled } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { id, enabled } = json.value as { id: string; enabled: unknown };
     const notificationsEnabled = parseBoolean(enabled);
     if (!mongoose.Types.ObjectId.isValid(id) || notificationsEnabled === null) {
       return NextResponse.json({ error: 'Invalid notification settings request.' }, { status: 400 });

@@ -7,6 +7,7 @@ import { APP_SETTINGS } from '../../../../config/appSettings';
 import { consumeRateLimitDimensions } from '../../../../lib/rateLimit';
 import { requireCurrentUser, type CurrentUser } from '../../../../lib/security/auth';
 import { isRecord } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import {
   createStaffReplyId,
@@ -225,7 +226,9 @@ export async function POST(req: NextRequest) {
 
   let audioKey = '';
   try {
-    const body: unknown = await req.json().catch(() => null);
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
     const studentId = isRecord(body) && typeof body.studentId === 'string' ? body.studentId : '';
     const messageId = isRecord(body) && typeof body.messageId === 'string' ? body.messageId.trim() : '';
     if (
@@ -325,7 +328,9 @@ export async function PATCH(req: NextRequest) {
   const staffUser = asStaffUser(await requireCurrentUser(req, ['admin', 'supervisor']));
   if (!staffUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const body: unknown = await req.json().catch(() => null);
+  const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+  if (!json.ok) return json.response;
+  const body = json.value;
   const studentId = isRecord(body) && typeof body.studentId === 'string' ? body.studentId : '';
   const messageId = isRecord(body) && typeof body.messageId === 'string' ? body.messageId.trim() : '';
   if (!mongoose.Types.ObjectId.isValid(studentId) || !messageId || messageId.length > 128) {

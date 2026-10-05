@@ -15,6 +15,7 @@ import {
   getTeamFineRestrictionMessage,
 } from '../../../lib/teamFineRestriction';
 import { requireCurrentUser } from '../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../lib/security/request';
 import { getOrCreateRegistrationPolicy, serializeRegistrationPolicy } from '../../../lib/registrationPolicy';
 import {
   areProjectSubmissionsOpen,
@@ -122,7 +123,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-    const { filename, contentType, fileSize, idempotencyKey } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.metadata);
+    if (!json.ok) return json.response;
+    const { filename, contentType, fileSize, idempotencyKey } = json.value as {
+      filename?: unknown;
+      contentType?: string;
+      fileSize?: unknown;
+      idempotencyKey?: string;
+    };
     if (!Number.isSafeInteger(Number(fileSize)) || Number(fileSize) <= 0) {
       return NextResponse.json({ error: 'A valid file size is required.' }, { status: 400 });
     }

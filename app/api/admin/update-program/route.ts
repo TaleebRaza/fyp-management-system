@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/academicReset';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
@@ -10,7 +11,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
     }
 
-    const { targetUserId, newProgram } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { targetUserId, newProgram } = json.value as { targetUserId: string; newProgram: string };
 
     const result = await resetStudentAcademicInfo({
       targetUserId,

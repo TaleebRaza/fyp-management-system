@@ -14,6 +14,7 @@ import {
 import { buildStorageStagingKey } from '../../../../lib/storageValidation';
 import { APP_SETTINGS } from '../../../../config/appSettings';
 import { isRecord } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,7 +30,9 @@ export async function POST(req: NextRequest) {
 
     await connectToDatabase();
     
-    const body: unknown = await req.json().catch(() => null);
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.metadata);
+    if (!json.ok) return json.response;
+    const body = json.value;
     if (!isRecord(body)) {
       return NextResponse.json({ error: 'Invalid upload request.' }, { status: 400 });
     }

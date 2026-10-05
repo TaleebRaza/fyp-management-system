@@ -6,6 +6,7 @@ import { APP_SETTINGS } from '../../../../../config/appSettings';
 import { consumeRateLimitDimensions } from '../../../../../lib/rateLimit';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { isRecord } from '../../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../../lib/security/request';
 import { findSharedStorageKeys } from '../../../../../lib/storageReferenceSafety';
 import {
   createStudentMessageId,
@@ -222,7 +223,9 @@ export async function POST(req: NextRequest) {
 
   let audioKey = '';
   try {
-    const body: unknown = await req.json().catch(() => null);
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
     if (
       !isRecord(body)
       || (body.type !== 'text' && body.type !== 'audio')
@@ -331,7 +334,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
-    const body: unknown = await req.json().catch(() => null);
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const body = json.value;
     const messageId = isRecord(body) && typeof body.messageId === 'string'
       ? body.messageId.trim()
       : '';

@@ -1676,3 +1676,50 @@ Status: **FOCUSED CHECKS PASS — FULL ACCEPTANCE AND MEASUREMENT PENDING**
 - A MongoDB shell `explain` attempt for the `$lookup` form failed inside the shell with `TypeError: this is null or not defined`; aggregation execution and output checks succeeded. A saved before/after report JSON comparison, authenticated reports API/browser workflow, full report profiler/query plan, and latency/CPU comparison have not yet been captured.
 - `npm run build` failed twice, including a permission retry, on the existing Turbopack helper process/port error (`Operation not permitted`) while processing `app/globals.css`; it produced no TypeScript or application diagnostic. This matches the environment failure recorded during Milestone 5.
 - No UI/browser checks were performed. Milestones 6-8 remain pending their remaining query/response, browser, write-impact, and performance acceptance gates; the local schema/index and focused correctness evidence above are not presented as full KEEP decisions.
+
+## 2026-10-04 - Milestone 9 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Added one native streaming `readBoundedJson` helper that checks JSON content type, rejects oversized declared lengths, stops reading once actual streamed bytes exceed the limit, and returns explicit 400, 413, or 415 responses.
+- Defined four conservative payload classes: 8 KiB control actions, 16 KiB upload metadata, 32 KiB normal forms/messages, and 256 KiB bulk Viva scheduling/panel data.
+- Migrated every non-password-reset Route Handler that parsed JSON directly; the only remaining `req.json()` calls are the two frozen password-reset routes.
+- Added focused helper coverage for valid, malformed, unsupported-content-type, declared-oversize, and actual streamed-oversize bodies.
+- Added no dependency, schema-validation layer, middleware, or request buffering abstraction.
+- Did not modify any password-reset frozen file.
+- Per the user-requested model handoff, no test, lint, typecheck, build, server, browser, or live mutation workflow was run. Milestone 9 remains unverified until the testing session.
+
+## 2026-10-04 - Milestone 10 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Removed the duplicate `Project.find` page lookup from the Admin Students status-filter branch because its aggregation already projects the canonical project status into every returned student row.
+- Kept the existing project lookup for the normal branch, where it still supplies information not present on the User rows.
+- Preserved the current cursor pagination, response keys, status fallback, filters, searches, and metadata behavior.
+- Added no cache, endpoint, client change, or abstraction.
+- Per the user-requested model handoff, no query-count, response comparison, latency measurement, API test, or browser filter workflow was run. Milestone 10 remains unverified until the testing session.
+
+## 2026-10-04 - Milestone 11 implementation checkpoint
+
+Status: **IMPLEMENTED — TESTING DEFERRED BY USER**
+
+- Replaced review-queue `.skip()` pagination with an opaque `updatedAt + _id` cursor while retaining the existing page size, page labels, total count, filters, searches, and forward/back controls.
+- Added `_id` as the stable sort tie-breaker and extended the existing review index to `{ status: 1, updatedAt: -1, _id: -1 }` rather than keeping a redundant old prefix index.
+- The Admin review panel stores only already-visited page cursors and clears them when search or program filters change; no generic pagination library or shared client cache was introduced.
+- Added a focused regression guard for the removed offset, stable sort, matching index, and Milestone 10 query deletion.
+- Per the user-requested model handoff, no test, lint, typecheck, build, index application, `explain`, deep-page measurement, mutation-between-pages check, API test, or browser navigation workflow was run. Milestone 11 remains unverified until the testing session.
+
+## 2026-10-05 - Milestones 9-11 testing checkpoint
+
+Status: **CODE, API, AND LOCAL DATABASE GATES PASS — IN-BROWSER UI ACCEPTANCE PENDING**
+
+- `npx tsc --noEmit`, `npm run lint`, and `git diff --check` passed. The focused body-limit and review-search tests passed (2 tests). All Milestone 0 password-reset frozen-file hashes still match.
+- `npm run test:unit` reported 194 passed, 1 failed, and 12 skipped. The only failure remains the previously recorded `tests/student-project-reset-structure.test.mjs` expectation for “Reset project” in `StudentTeamSection`; it predates these milestones. The skipped Viva integration tests require their explicit MongoDB test URI.
+- The default `npm run build` still fails when Turbopack tries to start/bind its CSS helper process (`Operation not permitted`), including after the permission retry. `npx next build --webpack` completed successfully, including TypeScript and route generation.
+- The Browser runtime returned no available browser. The portal was started locally on port 3101 against loopback `fyp_local` and MinIO, and authenticated HTTP checks were run instead. The browser-only Admin review controls, back/forward navigation, and ordinary mutation workflows still need an interactive session.
+- Milestone 9: every direct non-reset `req.json()` call in an App Route Handler now uses the shared byte-bounded reader; the two password-reset routes remain the only direct JSON readers. Helper checks passed for valid JSON, exact byte boundary, one byte over, malformed JSON, unsupported content type, declared oversize, and streamed oversize. Authenticated portal checks returned the expected 400 (malformed), 415 (wrong content type), and 413 (declared and chunked oversize) across control, form, metadata, and bulk payload classes. The password-reset workflow was not edited.
+- Milestone 10: the authenticated Admin Students endpoint returned the same first five pages as the MongoDB `createdAt, _id` order (100 IDs); exact roll-number/email search, name-prefix search, batch filtering, and Pending status results were checked. Returned Pending statuses matched their canonical Project rows. The status-filter branch no longer runs the redundant second `Project.find`, so it removes one MongoDB operation per request. **Decision: KEEP.**
+- Milestone 11: the authenticated review API traversed all 1,000 queue rows in 42 pages, with no duplicate IDs and an exact match to the MongoDB `updatedAt, _id` sort. A later page without its cursor returned 400. A disposable local database confirmed equal timestamps use `_id` as a stable tie-breaker across three pages. A separate update-between-pages check confirmed that rows moved ahead of a saved mutable `updatedAt` cursor are included after restarting from page 1; this behavior is documented beside the cursor filter.
+- On `fyp_local`, the old deep offset query examined 984 documents/985 keys; the equivalent deep cursor query examined 40 documents/45 keys (95.9% fewer documents for the page query). Both used the status/updatedAt index family. The schema change had left the old `{ status, updatedAt }` prefix index alongside its replacement; after confirming the exact local index definitions, the redundant prefix index alone was dropped. No documents were changed. **Decision: KEEP.** This is query-plan evidence, not an endpoint p95 comparison.
+- Temporary test databases were verified absent before creation and dropped after their checks. No production database, storage bucket, or email service was used.
+- Milestones 9-11 have code/API/database evidence and KEEP decisions where measured. Finish their UI-side acceptance when an interactive browser is available; keep the full release gates in Milestone 14 open.

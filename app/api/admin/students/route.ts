@@ -226,7 +226,7 @@ export async function GET(req: NextRequest) {
     };
 
     const pageStudentIds = students.map((student) => student._id);
-    const projectRows = pageStudentIds.length > 0
+    const projectRows = (!status || status === 'All') && pageStudentIds.length > 0
       ? await Project.find({ members: { $in: pageStudentIds } })
           .select('members supervisorId status')
           .lean() as unknown as StudentProjectStatusRow[]

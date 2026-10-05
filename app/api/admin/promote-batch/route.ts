@@ -3,6 +3,7 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { normalizeText } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
@@ -13,7 +14,9 @@ export async function POST(req: NextRequest) {
 
   try {
     await connectToDatabase();
-    const { targetBatch } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { targetBatch } = json.value as Record<string, unknown>;
     const normalizedBatch = normalizeText(targetBatch, 20);
 
     if (!/^(Spring|Fall) \d{4}$/.test(normalizedBatch)) {

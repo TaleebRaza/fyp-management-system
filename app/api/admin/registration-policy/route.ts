@@ -8,6 +8,7 @@ import {
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import { DEFAULT_REGISTRATION_CLOSED_MESSAGE } from '../../../../types/registrationPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import {
   invalidatePublicContent,
   PUBLIC_REGISTRATION_POLICY_TAG,
@@ -54,7 +55,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Administrator access is required.' }, { status: 403 });
     }
 
-    const body = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const body = json.value as Record<string, unknown>;
     if (typeof body?.isOpen !== 'boolean') {
       return NextResponse.json(
         { error: 'Registration status must be open or closed.' },
@@ -73,7 +76,9 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const rawPunishment = body.punishment || {};
+    const rawPunishment = body.punishment && typeof body.punishment === 'object'
+      ? body.punishment as Record<string, unknown>
+      : {};
     const punishmentEnabled = rawPunishment.enabled === true;
     const category = rawPunishment.category === 'other' ? 'other' : 'fine';
     const title = normalizeText(rawPunishment.title, 120);

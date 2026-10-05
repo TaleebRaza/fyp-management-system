@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import mongoose from 'mongoose';
 
 import {
   formatProjectDomainLabels,
@@ -12,6 +13,7 @@ import type { ProjectReviewProject } from '../types/projectReview';
 
 type QueueProjectRecord = {
   _id: unknown;
+  updatedAt: Date;
   supervisorId?: unknown;
     members: unknown[];
   title?: string;
@@ -41,6 +43,7 @@ type QueueUserRecord = {
 export type AdminProjectReviewQueueOptions = {
   page?: number;
   limit?: number;
+  cursor?: string;
   search?: string;
   program?: string;
 };
@@ -53,6 +56,7 @@ export type AdminProjectReviewQueueResult = {
     total: number;
     totalPages: number;
   };
+  nextCursor: string | null;
   timings: {
     filterLookupMs: number;
     projectQueryMs: number;
@@ -65,6 +69,11 @@ const DEFAULT_PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 50;
 const MAX_PAGE = 1_000;
 
+type ReviewQueueCursor = {
+  updatedAt: string;
+  id: string;
+};
+
 function clampInteger(value: number | undefined, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.min(Math.max(Math.trunc(value as number), min), max);
@@ -72,6 +81,34 @@ function clampInteger(value: number | undefined, fallback: number, min: number, 
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function parseAdminProjectReviewCursor(value: string | null | undefined): ReviewQueueCursor | null {
+  if (!value) return null;
+
+  try {
+    const cursor = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as ReviewQueueCursor;
+    if (
+      !cursor
+      || typeof cursor.updatedAt !== 'string'
+      || Number.isNaN(new Date(cursor.updatedAt).getTime())
+      || !mongoose.Types.ObjectId.isValid(cursor.id)
+    ) {
+      return null;
+    }
+    return cursor;
+  } catch {
+    return null;
+  }
+}
+
+function createReviewQueueCursor(project: QueueProjectRecord | undefined) {
+  if (!project?.updatedAt || !project._id) return null;
+
+  return Buffer.from(JSON.stringify({
+    updatedAt: project.updatedAt.toISOString(),
+    id: String(project._id),
+  })).toString('base64url');
 }
 
 function buildUserSearchClauses(regex: RegExp) {
@@ -92,6 +129,7 @@ export async function getAdminProjectReviewQueue(
   const limit = clampInteger(options.limit, DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE);
   const search = String(options.search || '').trim();
   const program = String(options.program || '').trim();
+  const cursor = parseAdminProjectReviewCursor(options.cursor);
   const searchRegex = search ? new RegExp(escapeRegex(search), 'i') : null;
 
   const filterLookupStarted = performance.now();
@@ -122,6 +160,7 @@ export async function getAdminProjectReviewQueue(
     return {
       projects: [],
       pagination: { page, limit, total: 0, totalPages: 0 },
+      nextCursor: null,
       timings: {
         filterLookupMs,
         projectQueryMs: 0,
@@ -168,12 +207,29 @@ export async function getAdminProjectReviewQueue(
     projectFilter.$and = additionalConditions;
   }
 
+  const pageFilter = cursor
+    ? {
+        $and: [
+          projectFilter,
+          // ponytail: mutable updatedAt cursors omit rows moved ahead mid-walk; restart at page 1 to include them.
+          {
+            $or: [
+              { updatedAt: { $lt: new Date(cursor.updatedAt) } },
+              {
+                updatedAt: new Date(cursor.updatedAt),
+                _id: { $lt: new mongoose.Types.ObjectId(cursor.id) },
+              },
+            ],
+          },
+        ],
+      }
+    : projectFilter;
+
   const projectQueryStarted = performance.now();
   const [projects, total] = await Promise.all([
-    Project.find(projectFilter)
-      .select('_id supervisorId members title description domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
-      .sort({ updatedAt: -1 })
-      .skip((page - 1) * limit)
+    Project.find(pageFilter)
+      .select('_id updatedAt supervisorId members title description domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
+      .sort({ updatedAt: -1, _id: -1 })
       .limit(limit)
       .lean<QueueProjectRecord[]>(),
     Project.countDocuments(projectFilter),
@@ -251,6 +307,9 @@ export async function getAdminProjectReviewQueue(
       total,
       totalPages: total === 0 ? 0 : Math.ceil(total / limit),
     },
+    nextCursor: projects.length === limit
+      ? createReviewQueueCursor(projects.at(-1))
+      : null,
     timings: {
       filterLookupMs,
       projectQueryMs,

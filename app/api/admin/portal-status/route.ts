@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import connectToDatabase from '../../../../lib/mongodb';
 import {
   DEFAULT_PORTAL_PAUSE_REASON,
@@ -14,7 +15,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Administrator access is required.' }, { status: 403 });
     }
 
-    const body = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const body = json.value as Record<string, unknown>;
     if (typeof body?.paused !== 'boolean') {
       return NextResponse.json({ error: 'Portal status must be paused or active.' }, { status: 400 });
     }

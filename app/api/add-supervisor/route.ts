@@ -9,6 +9,7 @@ import {
   normalizeText,
 } from '../../../lib/security/input';
 import { hashPassword, validatePassword } from '../../../lib/security/password';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../lib/security/request';
 import {
   invalidatePublicContent,
   PUBLIC_SUPERVISORS_TAG,
@@ -23,7 +24,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body: unknown = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
     if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor request.' }, { status: 400 });
 
     const name = normalizeText(body.name, 100);

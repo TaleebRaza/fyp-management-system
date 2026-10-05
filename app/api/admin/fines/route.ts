@@ -16,6 +16,7 @@ import {
 } from '../../../../lib/fineRestriction';
 import { calculateLateRegistrationFine } from '../../../../lib/lateRegistrationFine';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 import { FINE_RESTRICTION_DEFINITIONS } from '../../../../types/registrationPolicy';
 import {
@@ -176,7 +177,11 @@ export async function PATCH(req: NextRequest) {
     }
 
     await connectToDatabase();
-    const body = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value as Record<string, unknown> & {
+      finePayment?: Record<string, unknown>;
+    };
     const action = String(body?.action || '');
     const now = new Date();
     const updatedBy =

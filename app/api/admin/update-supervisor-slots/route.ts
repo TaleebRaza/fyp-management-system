@@ -7,6 +7,7 @@ import {
   normalizeExtraSupervisorSlots,
 } from '../../../../lib/supervisorSlots';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import {
   invalidatePublicContent,
   PUBLIC_SUPERVISORS_TAG,
@@ -20,7 +21,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
     }
 
-    const { supervisorId, extraSlots } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { supervisorId, extraSlots } = json.value as { supervisorId: string; extraSlots: unknown };
 
     if (!mongoose.Types.ObjectId.isValid(supervisorId)) {
       return NextResponse.json({ error: 'Invalid supervisor selected.' }, { status: 400 });

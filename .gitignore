@@ -14,6 +14,7 @@ scripts/*
 AGENTS.md
 .github
 .local-bench/
+.vscode
 
 # Sentry Config File
 .env.sentry-build-plugin

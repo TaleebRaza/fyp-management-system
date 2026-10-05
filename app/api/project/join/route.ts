@@ -9,6 +9,7 @@ import { getTeamCapacity } from '../../../../config/appSettings';
 import { buildFineRestriction, FINE_RESTRICTION_CODE } from '../../../../lib/fineRestriction';
 import { consumeRateLimit, refundRateLimit } from '../../../../lib/rateLimit';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
 import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
@@ -19,7 +20,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { inviteCode } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { inviteCode } = json.value as Record<string, unknown>;
     const normalizedInviteCode = String(inviteCode || '').trim().toUpperCase();
     if (!normalizedInviteCode) {
       return NextResponse.json({ error: 'Invite code is required.' }, { status: 400 });

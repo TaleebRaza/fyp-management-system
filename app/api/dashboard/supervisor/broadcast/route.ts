@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../../lib/mongodb';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { isRecord, normalizeText } from '../../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../../lib/security/request';
 import { normalizeStorageKey } from '../../../../../lib/storageValidation';
 import { findSharedStorageKeys } from '../../../../../lib/storageReferenceSafety';
 import {
@@ -51,7 +52,9 @@ export async function POST(req: NextRequest) {
     }
 
     await connectToDatabase();
-    const body: unknown = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
     if (!isRecord(body)) return NextResponse.json({ error: 'Invalid broadcast request.' }, { status: 400 });
 
     const broadcastType = body.broadcastType;

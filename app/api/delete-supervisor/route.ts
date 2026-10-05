@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import User from '../../../models/User';
 import Project from '../../../models/Project';
 import { requireCurrentUser } from '../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../lib/security/request';
 import { normalizeStorageKey } from '../../../lib/storageValidation';
 import { findSharedStorageKeys } from '../../../lib/storageReferenceSafety';
 import {
@@ -23,7 +24,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { id } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { id } = json.value as { id: string };
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid supervisor ID.' }, { status: 400 });
     }

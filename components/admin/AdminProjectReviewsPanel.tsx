@@ -48,6 +48,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
   const [projectSubmissionsOpen, setProjectSubmissionsOpen] = useState(true);
   const [isUpdatingSubmissionControl, setIsUpdatingSubmissionControl] = useState(false);
   const latestRequestId = useRef(0);
+  const pageCursors = useRef<Record<number, string>>({});
 
   const programs = useMemo(
     () => Object.keys(PROGRAM_MAP).sort((a, b) => getProgramName(a).localeCompare(getProgramName(b))),
@@ -70,6 +71,9 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
 
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (programFilter !== 'All') params.set('program', programFilter);
+      if (page > 1 && pageCursors.current[page]) {
+        params.set('cursor', pageCursors.current[page]);
+      }
 
       const response = await fetch(`/api/admin/project-reviews?${params.toString()}`, {
         cache: forceRefresh ? 'reload' : 'default',
@@ -84,6 +88,11 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
 
       setProjects(Array.isArray(data.projects) ? data.projects : []);
       setProjectSubmissionsOpen(data.projectSubmissionsOpen !== false);
+      if (typeof data.nextCursor === 'string') {
+        pageCursors.current[page + 1] = data.nextCursor;
+      } else {
+        delete pageCursors.current[page + 1];
+      }
       setPagination(data.pagination || {
         page,
         limit: PAGE_SIZE,
@@ -106,13 +115,17 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
   }, [debouncedSearch, page, programFilter, showDialog]);
 
   useEffect(() => {
+    const nextSearch = search.trim();
+    if (nextSearch === debouncedSearch) return;
+
     const timer = window.setTimeout(() => {
+      pageCursors.current = {};
       setPage(1);
-      setDebouncedSearch(search.trim());
+      setDebouncedSearch(nextSearch);
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [debouncedSearch, search]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -123,6 +136,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
   }, [fetchProjects]);
 
   const handleProgramFilterChange = (value: string) => {
+    pageCursors.current = {};
     setPage(1);
     setProgramFilter(value);
   };

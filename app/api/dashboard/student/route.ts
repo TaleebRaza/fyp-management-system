@@ -39,6 +39,7 @@ import { AcademicResetError, resetStudentAcademicInfo } from '../../../../lib/ac
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
 import { findSharedStorageKeys } from '../../../../lib/storageReferenceSafety';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { escapeHtml, isRecord, normalizeText } from '../../../../lib/security/input';
 import { normalizeStorageKey } from '../../../../lib/storageValidation';
@@ -203,7 +204,9 @@ export async function POST(req: NextRequest) {
     }
 
     await connectToDatabase();
-    const body: unknown = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
     if (!isRecord(body)) {
       return NextResponse.json({ error: 'Invalid student action.' }, { status: 400 });
     }

@@ -9,6 +9,7 @@ import {
 } from '../../../../../lib/vivaSessionDashboard';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { isRecord } from '../../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../../lib/security/request';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,12 +44,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized Viva session request.' }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });
-  }
+  const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+  if (!json.ok) return json.response;
+  const body = json.value;
   if (!isRecord(body) || typeof body.sessionId !== 'string') {
     return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });
   }

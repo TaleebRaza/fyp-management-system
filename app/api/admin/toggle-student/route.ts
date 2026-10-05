@@ -4,6 +4,7 @@ import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import mongoose from 'mongoose';
 import { parseBoolean } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
 export async function POST(req: NextRequest) {
@@ -14,7 +15,9 @@ export async function POST(req: NextRequest) {
 
   try {
     await connectToDatabase();
-    const { studentId, isActive } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { studentId, isActive } = json.value as { studentId: string; isActive: unknown };
     const nextIsActive = parseBoolean(isActive);
     if (!mongoose.Types.ObjectId.isValid(studentId) || nextIsActive === null) {
       return NextResponse.json({ error: 'Invalid student status request.' }, { status: 400 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import { requireCurrentUser } from '../../../../lib/security/auth';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import mongoose from 'mongoose';
 import { recordPortalActivity } from '../../../../lib/portalActivityLog';
 
@@ -20,7 +21,9 @@ export async function POST(req: NextRequest) {
 
     await connectToDatabase();
 
-    const { targetUserId, newEmail } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const { targetUserId, newEmail } = json.value as { targetUserId: string; newEmail: unknown };
     const cleanedEmail = String(newEmail || '').trim().toLowerCase();
 
     if (!mongoose.Types.ObjectId.isValid(targetUserId)) {

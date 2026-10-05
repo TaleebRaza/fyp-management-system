@@ -12,6 +12,7 @@ import { getSafeProjectRatings, parseProjectRatingValues } from '../../../../con
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { progressProjectStage, reviewProject } from '../../../../lib/projectReview';
 import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
 import {
@@ -142,8 +143,10 @@ export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
 
-    // Read the body once only. Reading req.json() twice breaks migration.
-    const body: unknown = await req.json();
+    // Read the body once so every action shares the same byte limit.
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
     if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor action.' }, { status: 400 });
     const { action, studentId, status, remarks, expectedStage, expectedVersion, ratings, migrationCode, projectId, ratingRound } = body;
     if (!['updateStatus', 'progressStage', 'updateRating', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {

@@ -27,6 +27,7 @@ import {
 } from '../../../../lib/vivaScheduling';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isRecord } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,12 +55,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid Viva request.' }, { status: 400 });
-  }
+  const json = await readBoundedJson(req, JSON_BODY_LIMITS.bulk);
+  if (!json.ok) return json.response;
+  const body = json.value;
 
   if (isRecord(body) && body.action === 'generate-panels') {
     const parsed = parseVivaPanelAllocationInput(body);
@@ -121,12 +119,9 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid Viva round request.' }, { status: 400 });
-  }
+  const json = await readBoundedJson(req, JSON_BODY_LIMITS.bulk);
+  if (!json.ok) return json.response;
+  const body = json.value;
   if (!isRecord(body) || typeof body.roundId !== 'string' || !mongoose.Types.ObjectId.isValid(body.roundId)) {
     return NextResponse.json({ error: 'Invalid Viva round request.' }, { status: 400 });
   }
@@ -155,12 +150,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid Viva panel request.' }, { status: 400 });
-  }
+  const json = await readBoundedJson(req, JSON_BODY_LIMITS.bulk);
+  if (!json.ok) return json.response;
+  const body = json.value;
 
   if (isRecord(body) && body.action === 'confirm-round') {
     if (typeof body.roundId !== 'string') {

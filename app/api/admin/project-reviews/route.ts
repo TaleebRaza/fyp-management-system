@@ -5,7 +5,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import connectToDatabase from '../../../../lib/mongodb';
 import { progressProjectStage, reviewProject } from '../../../../lib/projectReview';
-import { getAdminProjectReviewQueue } from '../../../../lib/projectReviewQueue';
+import {
+  getAdminProjectReviewQueue,
+  parseAdminProjectReviewCursor,
+} from '../../../../lib/projectReviewQueue';
 import { isProjectReviewStatus } from '../../../../lib/projectReviewPolicy';
 import {
   REGISTRATION_POLICY_KEY,
@@ -23,6 +26,7 @@ import {
 } from '../../../../lib/portalActivityLog';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,16 +55,21 @@ export async function GET(req: NextRequest) {
     const limit = parsePositiveInteger(req.nextUrl.searchParams.get('limit'), 24, 50);
     const search = normalizeText(req.nextUrl.searchParams.get('search'), 120);
     const program = normalizeText(req.nextUrl.searchParams.get('program'), 32);
+    const cursor = req.nextUrl.searchParams.get('cursor');
+    if (page > 1 && !parseAdminProjectReviewCursor(cursor)) {
+      return NextResponse.json({ error: 'A pagination cursor is required for later pages.' }, { status: 400 });
+    }
 
     // requireCurrentUser already establishes the cached MongoDB connection.
     const [result, policyDocument] = await Promise.all([
-      getAdminProjectReviewQueue({ page, limit, search, program }),
+      getAdminProjectReviewQueue({ page, limit, cursor: cursor || undefined, search, program }),
       getOrCreateRegistrationPolicy(),
     ]);
     const policy = serializeRegistrationPolicy(policyDocument);
     const response = NextResponse.json({
       projects: result.projects,
       pagination: result.pagination,
+      nextCursor: result.nextCursor,
       projectSubmissionsOpen: policy.projectSubmissionsOpen,
     }, { status: 200 });
 
@@ -91,13 +100,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let body: unknown;
-
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid review request.' }, { status: 400 });
-    }
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
 
     if (!isRecord(body)) {
       return NextResponse.json({ error: 'Invalid review request.' }, { status: 400 });
@@ -186,13 +191,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    let body: unknown;
-
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid submission control request.' }, { status: 400 });
-    }
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.control);
+    if (!json.ok) return json.response;
+    const body = json.value;
 
     if (!isRecord(body) || typeof body.projectSubmissionsOpen !== 'boolean') {
       return NextResponse.json({ error: 'Submission status must be open or closed.' }, { status: 400 });

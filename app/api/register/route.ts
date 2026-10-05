@@ -30,7 +30,7 @@ import {
   reserveSupervisorProjectSlot,
 } from '../../../lib/supervisorCapacity';
 import { recordPortalActivity } from '../../../lib/portalActivityLog';
-import { isContentLengthTooLarge } from '../../../lib/security/request';
+import { JSON_BODY_LIMITS, readBoundedJson } from '../../../lib/security/request';
 import { getPortalPause } from '../../../lib/portalPause';
 
 export async function POST(req: NextRequest) {
@@ -39,10 +39,17 @@ export async function POST(req: NextRequest) {
     if (portal.paused) {
       return NextResponse.json({ code: 'PORTAL_PAUSED', error: portal.reason }, { status: 503 });
     }
-    if (isContentLengthTooLarge(req, 16 * 1024)) {
-      return NextResponse.json({ error: 'Registration request is too large.' }, { status: 413 });
-    }
-    const { name, email, rollNo, password, supervisorId, program, batch } = await req.json();
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const { name, email, rollNo, password, supervisorId, program, batch } = json.value as {
+      name?: unknown;
+      email?: unknown;
+      rollNo?: unknown;
+      password?: unknown;
+      supervisorId?: string;
+      program?: unknown;
+      batch?: unknown;
+    };
     const normalizedName = normalizeText(name, 100);
     const normalizedEmail = normalizeEmailAddress(email);
     const normalizedRollNo = normalizeRollNo(rollNo);
