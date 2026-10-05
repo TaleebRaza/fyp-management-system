@@ -4,6 +4,8 @@
 >
 > **Execution rule:** Each milestone is one small hypothesis. Implement it, run its local database/storage tests, measure it, then either **keep it** or **revert it** before moving on. Do not stack unmeasured optimizations.
 
+> **Testing ownership (current):** Browser and visual UI checks are outside this plan's testing and release gates. The user will check the UI manually. Codex should verify affected behavior through code, API, local database/storage, build, and performance checks where applicable. Earlier dated checkpoints record what happened at the time; browser items there are history, not outstanding Codex test gates.
+
 ## 1. Goals, constraints, and definition of success
 
 ### Primary goals
@@ -147,18 +149,9 @@ Use two separate measurement modes because MongoDB profiling itself adds overhea
 - Disable profiling immediately after capture.
 - Do not compare latency numbers collected with the profiler enabled to latency-mode numbers.
 
-### Browser mode
+### UI review
 
-For every user-facing milestone, test the real portal in a browser at `http://localhost:3100`:
-
-- sign in as the relevant role
-- use the actual screen/buttons/forms
-- inspect the Network panel for request count, duplicate requests, response status, response size, and timing
-- confirm loading/error/success UI remains identical
-- repeat once with a fresh session and once with a warm session
-- record screenshots before and after for the touched screens if the change could affect rendering
-
-No code-only milestone is considered complete when it changes a user workflow.
+The user will manually check the affected screens and workflows. Browser checks, screenshots, and DevTools inspection are not required for a testing milestone or release gate. Verify request counts, responses, and data effects through API and local-service checks where possible.
 
 ### Resource mode
 
@@ -353,19 +346,14 @@ Do not add silent production initialization inside request paths.
 
 **Portal storage smoke test**
 1. Start the Next production server using the local MongoDB and MinIO env.
-2. Sign in through the portal.
-3. Use an existing upload flow to request a signed upload.
-4. Upload through the browser.
-5. Open/download through the portal.
-6. Confirm the object exists in MinIO.
-7. Trigger the portal deletion/cleanup path.
-8. Confirm the object is deleted and storage ledger values remain valid.
+2. Use authenticated API requests to reserve, upload, read, and delete a test object through the portal's existing routes.
+3. Confirm the object and storage ledger values in MinIO and MongoDB at each stage.
 
 ### Completion gate
 
 - Mongo transactions work.
-- Browser presigned upload works against MinIO.
-- Browser read works.
+- Portal presigned upload works against MinIO.
+- Portal authorized read works.
 - portal cleanup works.
 - no request touched real R2 or production MongoDB.
 
@@ -475,10 +463,10 @@ Capture `explain("executionStats")` for:
 ### Tests
 
 - Reset and reseed twice. The record counts must match.
-- Run all browser workflows successfully.
+- Verify affected workflows through authenticated API and local-service checks.
 - Run the full existing unit/build checks.
 - Run the local Viva integration workflow.
-- Run storage upload/read/delete via the browser.
+- Run storage upload/read/delete through the portal API.
 - Save baseline latency, query, resource, and request-count results.
 
 ### Completion gate
@@ -509,14 +497,10 @@ In `components/ui/dashboard/useVivaAccessRestriction.ts`:
 
 ### Tests
 
-**Browser functional**
-1. Sign in as a normal student.
-2. Open the dashboard.
-3. Verify the initial Viva-access request occurs.
-4. Leave the tab open for 10 minutes.
-5. Verify no 30-second request repeats.
-6. Move focus away and back.
-7. Verify the intended focus recheck still occurs.
+**Request behavior**
+1. Confirm the fixed polling timer is absent and the initial and focus/visibility checks remain.
+2. Verify server authorization still rejects a newly restricted user through an authenticated API request.
+3. Use server-side request counts for any before/after measurement available without a browser.
 
 **Authorization reality**
 1. Using the local database, create/activate a Viva restriction for the logged-in student while the page is open.
@@ -566,16 +550,10 @@ Implement the smallest change:
 
 ### Tests
 
-**Browser**
-1. Sign in as admin with DevTools Network open.
-2. Load the initial dashboard.
-3. Verify report/review heavy endpoints are absent.
-4. Open Reports.
-5. Verify exactly one report request is made.
-6. Close and reopen Reports.
-7. Verify it does not refetch unless invalidated.
-8. Repeat for Project Review.
-9. Verify all existing totals/cards still show the same values.
+**Request and data checks**
+1. Confirm the initial Admin load no longer triggers heavy report/review requests.
+2. Verify Reports and Project Review load on first use and retain data until invalidated.
+3. Compare the summary totals with the underlying local database data.
 
 **Database**
 - Profile initial admin load before and after.
@@ -854,7 +832,7 @@ For each limit category, test through the running local portal/server:
 6. boundary-size payload -> accepted if valid
 7. one byte over boundary -> rejected
 
-Then run normal browser mutation workflows for each affected role.
+Then run authenticated API mutation checks for each affected role.
 
 ### Password-reset guard
 
@@ -993,14 +971,13 @@ Start with:
 3. Make a protected request.
 4. Verify it is rejected immediately according to existing behavior.
 
-**Portal**
-- run all student and supervisor mutation workflows
-- verify data updates correctly without a manual refresh
-- verify no stale supervisor capacity/status is displayed after actions that change it
+**Portal API**
+- run affected student and supervisor mutation requests
+- verify subsequent reads return updated data and supervisor capacity/status
 
 **Measurement**
 - DB operations per dashboard request
-- browser requests after each mutation
+- API request counts after each mutation
 - dashboard p50/p95
 
 ### Completion gate
@@ -1122,9 +1099,9 @@ Prove the optimized portal works as a portal, not just as isolated functions.
 - deterministic functional dataset
 - no production services
 - no real SMTP
-- same browser and machine for before/after comparison
+- same machine and server mode for before/after comparison
 
-### Student end-to-end checklist
+### Student API and data checklist
 
 - sign in
 - load dashboard
@@ -1140,7 +1117,7 @@ Prove the optimized portal works as a portal, not just as isolated functions.
 - inspect completed result
 - sign out
 
-### Supervisor end-to-end checklist
+### Supervisor API and data checklist
 
 - sign in
 - load dashboard/projects
@@ -1153,7 +1130,7 @@ Prove the optimized portal works as a portal, not just as isolated functions.
 - use Viva panel/session actions permitted to that supervisor/panel admin
 - sign out
 
-### Admin end-to-end checklist
+### Admin API and data checklist
 
 - sign in
 - initial dashboard
@@ -1211,7 +1188,7 @@ sha256sum -c .local-bench/password-reset-before.sha256
 
 ### Completion gate
 
-No critical user workflow fails. Storage and database effects match what the UI claims happened.
+No critical API workflow fails. Storage and database effects match the API responses. The user checks the UI manually.
 
 ---
 
@@ -1361,7 +1338,7 @@ For each milestone:
 4. run static/unit checks
 5. run local Mongo integration
 6. run local MinIO path if storage is relevant
-7. run browser portal workflow
+7. run authenticated portal API workflow
 8. run measurement
 9. record result
 10. KEEP, REVERT, or REDESIGN
@@ -1412,16 +1389,16 @@ Add infrastructure only after a measured remaining bottleneck demonstrates that 
 
 The optimization branch is ready only when all of the following are true:
 
-- [ ] UI is functionally unchanged.
+- [ ] The user has the implementation summary needed for a manual UI check; UI verification is outside this release gate.
 - [ ] Password-reset frozen files are byte-for-byte unchanged.
 - [ ] `npm run lint` has no new failures.
 - [ ] unit tests have no new failures.
 - [ ] production build succeeds or only pre-existing documented failures remain.
 - [ ] local MongoDB integration tests pass.
 - [ ] local MinIO upload/read/delete lifecycle passes.
-- [ ] student browser workflow passes.
-- [ ] supervisor browser workflow passes.
-- [ ] admin browser workflow passes.
+- [ ] student API workflow passes.
+- [ ] supervisor API workflow passes.
+- [ ] admin API workflow passes.
 - [ ] storage authorization matrix passes.
 - [ ] immediate auth/session revocation behavior still passes.
 - [ ] Viva workflow/integration suite passes.
@@ -1818,3 +1795,29 @@ Status: **PARTIAL — CODE/DATABASE CHECKS PASS; BUILD AND BROWSER WORKFLOWS BLO
 - Read-only `project:drift-audit`: reports 18 project-member rows but zero matching legacy `userProjects`/projection rows (exit 2), matching the prior local finding. `indexes:refactor:audit`: reports expected indexes missing on projects, voice notes, users, and related collections (exit 2), also previously recorded. These findings were not repaired.
 - The available checks preserve the prior report that all 11 Viva integration suites and the portal-pause integration passed in the previous session; they were not rerun in this attempt. No fresh full regression evidence was produced.
 - **M14 decision: INCOMPLETE.** Resolve the build/browser availability and finish role workflows, storage lifecycle, and browser acceptance before closing it. **M15 and M16 not started** because their comparison/report depend on M14 and reproducible baseline/final runs. No benchmark percentages or KEEP/REVERT sweep were added.
+
+## 2026-10-05 - Testing scope update
+
+The user will manually check the UI. Browser availability and UI workflow checks no longer block Milestones 1-16 or the final release gate. For Milestone 14, finish the student, supervisor, admin, and storage checks through authenticated API calls and local MongoDB/MinIO evidence. The build issue, known unit failure, local audit findings, incomplete baseline, final measurements, and report remain open as described above. Do not count manual UI review as completed until the user reports it.
+
+## 2026-10-05 - Milestones 14-16 preparation handoff
+
+Status: **PREPARED — TESTING DEFERRED BY USER**
+
+- The user requested preparation of the next three milestones in order, then a stop before testing. The existing M14-16 handoff and fill-in result record above already specify the needed commands, evidence, and sequence; no duplicate runner, report template, or dependency was added.
+- M14: use the functional local seed and authenticated API/MongoDB/MinIO checks. UI review belongs to the user. Resolve the production build issue during the testing session and record remaining failures honestly.
+- M15: only after M14, reseed the performance profile and collect comparable baseline/final measurements. Preserve raw evidence and leave unmatched metrics unquantified.
+- M16: only after M15, write the 22-section report from the recorded evidence and evaluate the final release gate.
+- No application code, test, build, benchmark, service, database, or storage operation was run for this preparation. M14-16 remain open.
+
+## 2026-10-05 - Milestones 14-16 testing continuation
+
+Status: **M14 PARTIAL — M15 BASELINE RUN BLOCKED — M16 EVIDENCE REPORT DRAFTED WITH LIMITATIONS**
+
+- M14 checks recorded during this session: production build/lint/TypeScript and focused test suites passed; all 11 password-reset hash checks passed. Prior API results cover student, supervisor, admin, pagination/filtering, Viva access restriction/results, review mutation, proposal upload/finalize/read authorization, student-message upload/read/delete, supervisor broadcast/read/delete, and cleanup/outbox reconciliation. The Mongoose 9 cleanup update-pipeline option was added to `lib/storageProtocol.ts` after the real cleanup API returned 500; the rebuilt worker drained the queue and the final storage integrity audit passed (2 objects / 138 bytes; 2 active references; 0 outbox/dead-letter/reservation rows; ledger matched).
+- A local fixture-only action removed F26-0002 from its seed team to make a project slot available. The follow-up project create/join/leave API requests were not completed: the earlier Next process had exited, and the restart could not bind due sandbox loopback restrictions. The server was found listening under the elevated local runtime afterward, but the authenticated requests were not retried against that listener. Therefore M14 stays incomplete for those flows. The user owns visual UI checks as specified above.
+- Unit suite still has the baseline `StudentTeamSection` “Reset project” assertion failure. The project drift and refactor-index audits still have the previously recorded local seed/schema discrepancies. Storage/capacity/key/TTL checks pass. The fresh portal-pause rerun was not completed because prior auto-approval attempts timed out. No production services or email were used.
+- M15 canonical performance seed completed against guarded loopback `fyp_local` and `fyp-local`: 5,501 users, 2,500 projects, 1 round, 250 panels, 500 sessions, 1,000 PDF objects. The server remained listening on loopback port 3100. The existing Viva HTTP stress preflight returned `/api/portal-status` 200 and CSRF 200, but its login callback returned 401 for the runner-generated fixture credential; it failed before workload stages. Raw report: `/tmp/fyp-final-artifacts/stress/viva-http-stress-2026-10-05T13-53-30-237Z.{json,md}`. No M15 endpoint benchmark suite or 10-minute idle check was run.
+- The only saved baseline measurements are the single-sample M2 numbers recorded above, from a different historical run; the raw baseline database fixture and comparable artifacts are absent. No defensible before/after percentages can be calculated. Dedicated query-plan capture also cannot run because its guarded benchmark fixture/owner marker is not present. CPU/RSS and MongoDB resource measurements were not captured. The plan’s stress-runner code drops its dedicated database even on failure; it was isolated from `fyp_local`.
+- Frozen password-reset hashes passed. No optimization was reverted in this continuation. Keep the storage worker option as a correctness fix proven by cleanup; retain other prior changes provisionally under their milestone evidence, with their M15 performance contribution unverified. Do not claim the 50% target or M15 completion.
+- M16 report path: [docs/optimization-final-report.md](docs/optimization-final-report.md). It has all 22 required sections, links the available evidence, marks unavailable comparisons honestly, and concludes the release gate is not met while M14 workflows and comparable M15 measurements remain outstanding.

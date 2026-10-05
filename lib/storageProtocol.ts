@@ -587,7 +587,7 @@ export async function processStorageDeletionOutbox(limit = 25) {
               },
             },
           ],
-          { session }
+          { session, updatePipeline: true }
         );
         await StorageDeletionOutbox.deleteOne({ _id: activeTarget._id }).session(session);
       });
