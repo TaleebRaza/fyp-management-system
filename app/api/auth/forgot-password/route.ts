@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
-
-import { verifyPasswordResetKnowledge } from '../../../../lib/auth/passwordResetService';
-import { isContentLengthTooLarge } from '../../../../lib/security/request';
+import { requestPasswordReset } from '../../../../lib/auth/passwordResetService';
+import { readBoundedJson } from '../../../../lib/security/request';
 
 export async function POST(req: Request) {
   try {
-    if (isContentLengthTooLarge(req, 8 * 1024)) {
-      return NextResponse.json({ error: 'Password reset request is too large.' }, { status: 413 });
-    }
-    const response = await verifyPasswordResetKnowledge(await req.json());
+    const parsed = await readBoundedJson(req, 8 * 1024);
+    if (!parsed.ok) return parsed.response;
+    const response = await requestPasswordReset(parsed.value, req.headers);
     return NextResponse.json(response.body, { status: response.status });
   } catch {
-    console.error('password_reset_verification_failed');
-    return NextResponse.json({ error: 'Failed to verify account details.' }, { status: 500 });
+    console.error('password_reset_request_failed');
+    return NextResponse.json({ error: 'Unable to request a reset code.' }, { status: 500 });
   }
 }

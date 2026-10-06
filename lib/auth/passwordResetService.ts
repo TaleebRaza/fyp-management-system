@@ -1,179 +1,123 @@
-import { randomBytes } from 'crypto';
-
+import { randomInt } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 import connectToDatabase from '../mongodb';
-import Project from '../../models/Project';
 import User from '../../models/User';
-import { buildRollNoRegex, normalizeRollNo } from '../rollNo';
-import { consumeRateLimit } from '../rateLimit';
+import { consumeRateLimitDimensions } from '../rateLimit';
 import { hashPassword } from '../security/password';
 import { isPortalActivityActorRole, recordPortalActivity } from '../portalActivityLog';
-import { matchesPasswordResetKnowledge } from '../security/passwordResetKnowledge';
+import { isEmailConfigured, sendNotificationEmail } from '../mailer';
 import {
   parsePasswordResetCompletionInput,
-  parsePasswordResetKnowledgeInput,
+  parsePasswordResetRequestInput,
+  passwordResetAccountFilter,
 } from './passwordResetValidation';
 
-const PASSWORD_RESET_REQUEST_LIMIT = 5;
-const PASSWORD_RESET_ATTEMPT_LIMIT = 10;
-const PASSWORD_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const RESET_TOKEN_EXPIRY_MS = 15 * 60 * 1000;
-const DETAILS_MISMATCH_ERROR = 'The account details do not match our records.';
-const INVALID_TOKEN_ERROR = 'Account recovery has expired. Verify your details again.';
+const EMAIL_INTERVAL_MS = 2 * 60 * 1000;
+const EMAIL_WAIT_MS = 24 * 60 * 60 * 1000;
+const OTP_EXPIRY_MS = 10 * 60 * 1000;
+const OTP_PREFIX = 'otp:v1:';
+const INVALID_CODE = 'The code is invalid, expired, or has reached its attempt limit. Request a new code.';
+const REQUEST_MESSAGE = 'If an eligible account exists, a reset code has been sent. Codes expire in 10 minutes. Allow two minutes between requests; after three emails, wait 24 hours.';
 
-type PasswordResetBody = Record<string, unknown>;
+type PasswordResetServiceResult = { status: number; body: Record<string, unknown> };
+const result = (status: number, body: Record<string, unknown>): PasswordResetServiceResult => ({ status, body });
 
-type PasswordResetServiceResult = {
-  status: number;
-  body: PasswordResetBody;
-};
-
-function result(status: number, body: PasswordResetBody): PasswordResetServiceResult {
-  return { status, body };
-}
-
-async function findPasswordResetUserByRollNo(rollNo: string, includeResetCode = false) {
-  const filter = { role: { $in: ['student', 'supervisor'] }, rollNo };
-  const select = includeResetCode ? '+resetCode +resetCodeExpiry' : '';
-  const exactUser = await User.findOne(filter).select(select);
-  if (exactUser) return exactUser;
-
-  return await User.findOne({ ...filter, rollNo: buildRollNoRegex(rollNo) }).select(select);
-}
-
-function passwordChangeCooldown(lastPasswordChange: Date | null | undefined) {
-  if (!lastPasswordChange) return null;
-
-  const remaining = PASSWORD_CHANGE_COOLDOWN_MS - (Date.now() - new Date(lastPasswordChange).getTime());
-  if (remaining <= 0) return null;
-
-  return result(429, {
-    error: `Password was changed recently. Please try again in ${Math.ceil(remaining / 3_600_000)} hours.`,
-  });
-}
-
-export async function verifyPasswordResetKnowledge(input: unknown): Promise<PasswordResetServiceResult> {
-  const parsed = parsePasswordResetKnowledgeInput(input);
+export async function requestPasswordReset(input: unknown, headers: Headers): Promise<PasswordResetServiceResult> {
+  const parsed = parsePasswordResetRequestInput(input);
   if (!parsed.ok) return result(400, { error: parsed.error });
-
+  if (!isEmailConfigured()) return result(503, { error: 'Email recovery is temporarily unavailable.' });
   await connectToDatabase();
-  const { rollNo, supervisorId, batch, program, teammateRollNo } = parsed.value;
-  const rateLimit = await consumeRateLimit(
-    `forgot-password:${rollNo.toLowerCase()}`,
-    PASSWORD_RESET_REQUEST_LIMIT
-  );
-  if (!rateLimit.allowed) {
-    return result(429, {
-      error: 'Too many password reset attempts. Please try again in an hour.',
-    });
+  const { email } = parsed.value;
+  const limit = await consumeRateLimitDimensions('reset-request', email, headers, 20);
+  if (!limit.allowed) return result(429, { error: 'Too many requests. Please try again later.' });
+
+  const otp = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  const resetCode = OTP_PREFIX + await bcrypt.hash(otp, 10);
+  const now = new Date();
+  const waitBoundary = new Date(now.getTime() - EMAIL_WAIT_MS);
+  // Claim the send and replace the code atomically, across all server instances.
+  // Return the previous state so a failed SMTP send can safely refund its slot.
+  const user = await User.findOneAndUpdate({
+    ...passwordResetAccountFilter(email),
+    $and: [
+      { $or: [{ resetEmailSentAt: null }, { resetEmailSentAt: { $lte: new Date(now.getTime() - EMAIL_INTERVAL_MS) } }] },
+      { $or: [{ resetEmailCount: { $lt: 3 } }, { resetEmailCount: null }, { resetEmailSentAt: { $lte: waitBoundary } }] },
+    ],
+  }, [{ $set: {
+    resetEmailCount: { $cond: [
+      { $lte: [{ $ifNull: ['$resetEmailSentAt', new Date(0)] }, waitBoundary] },
+      1, { $add: [{ $ifNull: ['$resetEmailCount', 0] }, 1] },
+    ] },
+    resetEmailSentAt: now,
+    resetAttempts: 0,
+    resetCode,
+    resetCodeExpiry: new Date(now.getTime() + OTP_EXPIRY_MS),
+  } }], { returnDocument: 'before', updatePipeline: true })
+    .select('+resetCode +resetCodeExpiry +resetEmailCount +resetEmailSentAt +resetAttempts');
+
+  // Same response for missing, ineligible, and rate-limited accounts.
+  if (!user) return result(200, { message: REQUEST_MESSAGE });
+  const text = `Your FYP Portal password reset code is ${otp}. It expires in 10 minutes. If you did not request this, ignore this email. Do not share this code.`;
+  const delivered = await sendNotificationEmail(email, 'FYP Portal password reset code', `<p>${text}</p>`, text);
+  if (!delivered) {
+    await User.updateOne({ _id: user._id, resetCode }, { $set: {
+      resetCode: user.resetCode ?? null,
+      resetCodeExpiry: user.resetCodeExpiry ?? null,
+      resetEmailCount: user.resetEmailCount ?? 0,
+      resetEmailSentAt: user.resetEmailSentAt ?? null,
+      resetAttempts: user.resetAttempts ?? 0,
+    } });
+    return result(200, { message: REQUEST_MESSAGE });
   }
-
-  const user = await findPasswordResetUserByRollNo(rollNo);
-  if (!user) return result(400, { error: DETAILS_MISMATCH_ERROR });
-
-  if (user.role === 'student') {
-    const project = await Project.findOne({ members: user._id })
-      .select('members supervisorId')
-      .lean();
-    const projectMembers = Array.isArray(project?.members) ? project.members : [];
-    const teammateIds = projectMembers.filter(
-      (memberId: unknown) => String(memberId) !== String(user._id)
-    );
-    const teammates = teammateIds.length
-      ? await User.find({ _id: { $in: teammateIds }, role: 'student' }).select('rollNo').lean()
-      : [];
-
-    const detailsMatch = matchesPasswordResetKnowledge(
-      {
-        rollNo: normalizeRollNo(user.rollNo),
-        supervisorId: project?.supervisorId ? String(project.supervisorId) : 'none',
-        batch: String(user.batch || '').trim(),
-        program: String(user.program || '').trim().toUpperCase(),
-        teammateRollNos: (teammates as Array<{ rollNo?: unknown }>).map((teammate) =>
-          normalizeRollNo(teammate.rollNo)
-        ),
-        requiresTeammate: teammates.length > 0,
-      },
-      { rollNo, supervisorId, batch, program, teammateRollNo }
-    );
-    if (!detailsMatch) return result(400, { error: DETAILS_MISMATCH_ERROR });
-  }
-
-  const cooldown = passwordChangeCooldown(user.lastPasswordChange);
-  if (cooldown) return cooldown;
-
-  const resetToken = randomBytes(32).toString('hex');
-  await User.findByIdAndUpdate(user._id, {
-    resetCode: await bcrypt.hash(resetToken, 10),
-    resetCodeExpiry: new Date(Date.now() + RESET_TOKEN_EXPIRY_MS),
-  });
-
-  return result(200, {
-    message: user.role === 'supervisor'
-      ? 'Supervisor ID verified. Choose a new password.'
-      : 'Account details verified. Choose a new password.',
-    resetToken,
-  });
+  return result(200, { message: REQUEST_MESSAGE });
 }
 
-export async function completePasswordReset(input: unknown): Promise<PasswordResetServiceResult> {
+export async function completePasswordReset(input: unknown, headers: Headers): Promise<PasswordResetServiceResult> {
   const parsed = parsePasswordResetCompletionInput(input);
   if (!parsed.ok) return result(400, { error: parsed.error });
-
   await connectToDatabase();
-  const { rollNo, resetToken, newPassword } = parsed.value;
-  const rateLimit = await consumeRateLimit(
-    `reset-password:${rollNo.toLowerCase()}`,
-    PASSWORD_RESET_ATTEMPT_LIMIT
-  );
-  if (!rateLimit.allowed) {
-    return result(429, {
-      error: 'Too many password reset attempts. Please try again in an hour.',
-    });
+  const { email, otp, newPassword } = parsed.value;
+  const limit = await consumeRateLimitDimensions('reset-verify', email, headers, 30);
+  if (!limit.allowed) return result(429, { error: 'Too many attempts. Please try again later.' });
+
+  // Reserve an attempt before comparing, so concurrent requests cannot bypass the limit.
+  const user = await User.findOneAndUpdate({
+    ...passwordResetAccountFilter(email),
+    resetCode: { $regex: '^otp:v1:' },
+    resetCodeExpiry: { $gt: new Date() },
+    resetAttempts: { $lt: 5 },
+  }, { $inc: { resetAttempts: 1 } }, { returnDocument: 'after' })
+    .select('+resetCode +resetCodeExpiry +resetAttempts');
+  if (!user || !await bcrypt.compare(otp, user.resetCode.slice(OTP_PREFIX.length))) {
+    return result(400, { error: INVALID_CODE });
   }
 
-  const user = await findPasswordResetUserByRollNo(rollNo, true);
-  const tokenIsValid = Boolean(
-    user
-    && user.resetCode
-    && user.resetCodeExpiry
-    && new Date(user.resetCodeExpiry).getTime() > Date.now()
-    && await bcrypt.compare(resetToken, user.resetCode)
-  );
-  if (!user || !tokenIsValid) return result(400, { error: INVALID_TOKEN_ERROR });
-
-  const updateResult = await User.updateOne(
-    {
-      _id: user._id,
-      role: { $in: ['student', 'supervisor'] },
-      resetCode: user.resetCode,
-      resetCodeExpiry: { $gt: new Date() },
+  const update = await User.updateOne({
+    _id: user._id,
+    ...passwordResetAccountFilter(email),
+    resetCode: user.resetCode,
+    resetCodeExpiry: { $gt: new Date() },
+  }, {
+    $set: {
+      password: await hashPassword(newPassword),
+      resetCode: null,
+      resetCodeExpiry: null,
+      lastPasswordChange: new Date(),
     },
-    {
-      $set: {
-        password: await hashPassword(newPassword),
-        resetCode: null,
-        resetCodeExpiry: null,
-        lastPasswordChange: new Date(),
-      },
-      $inc: { sessionVersion: 1 },
-    }
-  );
-
-  if (updateResult.modifiedCount !== 1) {
-    return result(400, { error: INVALID_TOKEN_ERROR });
-  }
+    $inc: { sessionVersion: 1 },
+  });
+  if (update.modifiedCount !== 1) return result(400, { error: INVALID_CODE });
 
   if (isPortalActivityActorRole(user.role)) {
-    await recordPortalActivity({
-      action: 'password-changed',
-      actorId: user._id.toString(),
-      actorRole: user.role,
-      actorName: user.name,
-      actorRollNo: user.rollNo,
-    });
+    try {
+      await recordPortalActivity({
+        action: 'password-changed', actorId: user._id.toString(), actorRole: user.role,
+        actorName: user.name, actorRollNo: user.rollNo,
+      });
+    } catch {
+      console.error('password_reset_activity_record_failed');
+    }
   }
-
   return result(200, { message: 'Password successfully updated! You can now log in.' });
 }

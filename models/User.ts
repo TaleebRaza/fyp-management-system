@@ -34,6 +34,9 @@ const UserSchema = new Schema({
 
   resetCode: { type: String, required: false, select: false },
   resetCodeExpiry: { type: Date, required: false, select: false },
+  resetEmailCount: { type: Number, default: 0, select: false },
+  resetEmailSentAt: { type: Date, required: false, select: false },
+  resetAttempts: { type: Number, default: 0, select: false },
   lastPasswordChange: { type: Date, required: false },
   lastNameChangeAt: { type: Date, required: false },
 

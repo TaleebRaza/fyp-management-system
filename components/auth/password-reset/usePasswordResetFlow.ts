@@ -1,167 +1,86 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
-
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
-import {
-  completePasswordReset,
-  loadPasswordResetSupervisors,
-  verifyPasswordResetDetails,
-} from './passwordResetApi';
-import {
-  buildPasswordResetBatchOptions,
-  getPasswordResetProgramOptions,
-} from './passwordResetOptions';
-import type { PasswordResetStep, PasswordResetSupervisor } from './passwordResetTypes';
+import { completePasswordReset, requestPasswordReset } from './passwordResetApi';
 
-type UsePasswordResetFlowOptions = {
-  showDialog: ShowDialog;
-  onBack: () => void;
-};
-
-export function usePasswordResetFlow({ showDialog, onBack }: UsePasswordResetFlowOptions) {
-  const [step, setStep] = useState<PasswordResetStep>('verify');
-  const [rollNo, setRollNo] = useState('');
-  const [supervisorId, setSupervisorId] = useState('');
-  const [batch, setBatch] = useState('');
-  const [program, setProgram] = useState('');
-  const [teammateRollNo, setTeammateRollNo] = useState('');
-  const [resetToken, setResetToken] = useState('');
+export function usePasswordResetFlow({ showDialog, onBack }: { showDialog: ShowDialog; onBack: () => void }) {
+  const [email, setEmail] = useState('');
+  const [codeRequested, setCodeRequested] = useState(false);
+  const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [supervisors, setSupervisors] = useState<PasswordResetSupervisor[]>([]);
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  const batchOptions = useMemo(() => buildPasswordResetBatchOptions(), []);
-  const programOptions = useMemo(() => getPasswordResetProgramOptions(), []);
+  const [resendAt, setResendAt] = useState(0);
+  const [secondsRemaining, setSecondsRemaining] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!resendAt) return;
+    const update = () => setSecondsRemaining(Math.max(0, Math.ceil((resendAt - Date.now()) / 1000)));
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendAt]);
 
-    void loadPasswordResetSupervisors()
-      .then((value) => {
-        if (!cancelled) setSupervisors(value);
-      })
-      .catch((error) => console.error('Unable to load supervisors:', error));
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const verifyDetails = useCallback(async () => {
-    const normalizedRollNo = rollNo.trim();
-    const normalizedTeammateRollNo = teammateRollNo.trim();
-
-    if (!normalizedRollNo) {
-      showDialog({
-        title: 'Account details required',
-        message: 'Enter your student roll number or supervisor ID.',
-      });
-      return;
-    }
-
+  async function requestCode() {
+    if (isLoading || secondsRemaining > 0) return;
     setIsLoading(true);
     try {
-      const result = await verifyPasswordResetDetails({
-        rollNo: normalizedRollNo,
-        supervisorId,
-        batch,
-        program,
-        teammateRollNo: normalizedTeammateRollNo,
-      });
-
-      if (result.ok && result.resetToken) {
-        setResetToken(result.resetToken);
-        setStep('reset');
-        showDialog({ title: 'Details verified', message: result.message });
-        return;
+      const result = await requestPasswordReset(email.trim().toLowerCase());
+      if (result.ok) {
+        setCodeRequested(true);
+        setOtp('');
+        setResendAt(Date.now() + 120_000);
+        setSecondsRemaining(120);
       }
-
-      showDialog({ title: 'Verification failed', message: result.message });
+      showDialog({ title: result.ok ? 'Check your email' : 'Code request failed', message: result.message });
     } catch {
-      showDialog({
-        title: 'Connection error',
-        message: 'Unable to verify your account details right now. Please try again.',
-      });
+      showDialog({ title: 'Connection error', message: 'Unable to request a code. Please try again.' });
     } finally {
       setIsLoading(false);
     }
-  }, [batch, program, rollNo, showDialog, supervisorId, teammateRollNo]);
+  }
 
-  const resetPassword = useCallback(async () => {
-    const normalizedRollNo = rollNo.trim();
-
-    if (!normalizedRollNo || !resetToken || !newPassword) {
-      showDialog({
-        title: 'Missing information',
-        message: 'Verify your account details and enter a new password.',
-      });
+  async function resetPassword() {
+    if (isLoading) return;
+    if (newPassword !== confirmPassword) {
+      showDialog({ title: 'Passwords do not match', message: 'Enter the same new password in both fields.' });
       return;
     }
-
     setIsLoading(true);
     try {
-      const result = await completePasswordReset({
-        rollNo: normalizedRollNo,
-        resetToken,
-        newPassword,
-      });
-
+      const result = await completePasswordReset({ email, otp, newPassword });
       if (result.ok) {
         try {
           await signOut({ redirect: false });
         } catch {
           onBack();
-          showDialog({
-            title: 'Password updated',
-            message: `${result.message} Other open tabs could not be signed out automatically. Please sign out of them before signing in again.`,
-          });
+          showDialog({ title: 'Password updated', message: `${result.message} Other open tabs could not be signed out automatically. Please sign out of them before signing in again.` });
           return;
         }
-
         onBack();
         showDialog({ title: 'Password updated', message: result.message });
         return;
       }
-
       showDialog({ title: 'Password reset failed', message: result.message });
     } catch {
-      showDialog({
-        title: 'Connection error',
-        message: 'Unable to reset your password right now. Please try again.',
-      });
+      showDialog({ title: 'Connection error', message: 'Unable to reset your password. Please try again.' });
     } finally {
       setIsLoading(false);
     }
-  }, [newPassword, onBack, resetToken, rollNo, showDialog]);
+  }
 
-  const returnToVerification = useCallback(() => {
-    setResetToken('');
+  function changeEmail() {
+    setCodeRequested(false);
+    setOtp('');
     setNewPassword('');
-    setStep('verify');
-  }, []);
+    setConfirmPassword('');
+    setResendAt(0);
+    setSecondsRemaining(0);
+  }
 
   return {
-    step,
-    rollNo,
-    setRollNo,
-    supervisorId,
-    setSupervisorId,
-    batch,
-    setBatch,
-    program,
-    setProgram,
-    teammateRollNo,
-    setTeammateRollNo,
-    newPassword,
-    setNewPassword,
-    supervisors,
-    batchOptions,
-    programOptions,
-    isLoading,
-    verifyDetails,
-    resetPassword,
-    returnToVerification,
+    email, setEmail, codeRequested, otp, setOtp, newPassword, setNewPassword,
+    confirmPassword, setConfirmPassword, isLoading, secondsRemaining, requestCode, resetPassword, changeEmail,
   };
 }
