@@ -1,7 +1,7 @@
 export type PasswordResetCompletion = {
   email: string;
-  otp: string;
+  resetToken: string;
   newPassword: string;
 };
 
-export type PasswordResetApiResult = { ok: boolean; message: string };
+export type PasswordResetApiResult = { ok: boolean; message: string; resetToken?: string };

@@ -17,21 +17,23 @@ export default function PasswordResetFlow({ showDialog, onBack }: { showDialog: 
           <h2 className="text-xl font-bold tracking-tight text-[var(--color-text)]">Reset your password</h2>
         </div>
         <p className="mt-4 text-sm leading-6 text-[var(--color-text-muted)]">
-          {flow.codeRequested ? 'Enter the code from your email and choose a new password.' : 'Students: use your registered @student.uoh.edu.pk email. Staff and admins: use your registered email.'}
+          {flow.resetToken ? 'Code verified. Choose a new password within five minutes.' : flow.codeRequested ? 'Enter the code from your email to verify your identity.' : 'Students: use your registered @student.uoh.edu.pk email. Staff and admins: use your registered email.'}
         </p>
       </div>
       <div className="px-5 py-5 sm:px-6">
-        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void (flow.codeRequested ? flow.resetPassword() : flow.requestCode()); }}>
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void (flow.resetToken ? flow.resetPassword() : flow.codeRequested ? flow.verifyCode() : flow.requestCode()); }}>
           <div>
             <label htmlFor="reset-email" className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Registered email</label>
             <StyledInput id="reset-email" icon={Mail} type="email" value={flow.email} onChange={(event) => flow.setEmail(event.target.value)} required maxLength={254} autoComplete="email" readOnly={flow.codeRequested} disabled={flow.isLoading} />
           </div>
-          {flow.codeRequested && <>
+          {flow.codeRequested && !flow.resetToken && <>
             <div>
               <label htmlFor="reset-otp" className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Six-digit code</label>
               <StyledInput id="reset-otp" value={flow.otp} onChange={(event) => flow.setOtp(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} autoComplete="one-time-code" required disabled={flow.isLoading} />
               <p className="mt-2 text-sm text-[var(--color-text-muted)]">Expires after 10 minutes. Five attempts per code.</p>
             </div>
+          </>}
+          {flow.resetToken && <>
             <div>
               <label htmlFor="reset-password" className="mb-2 block text-sm font-semibold text-[var(--color-text)]">New password</label>
               <StyledInput id="reset-password" icon={Lock} type="password" value={flow.newPassword} onChange={(event) => flow.setNewPassword(event.target.value)} required minLength={10} maxLength={128} placeholder="10 to 128 characters" autoComplete="new-password" disabled={flow.isLoading} />
@@ -43,7 +45,7 @@ export default function PasswordResetFlow({ showDialog, onBack }: { showDialog: 
           </>}
           <button type="submit" disabled={flow.isLoading} className={buttonClass}>
             {flow.isLoading && <Loader2 className="animate-spin" size={18} />}
-            {flow.isLoading ? 'Please wait...' : flow.codeRequested ? 'Update password' : 'Send reset code'}
+            {flow.isLoading ? 'Please wait...' : flow.resetToken ? 'Update password' : flow.codeRequested ? 'Verify code' : 'Send reset code'}
           </button>
           {flow.codeRequested && <>
             <button type="button" onClick={() => void flow.requestCode()} disabled={flow.isLoading || flow.secondsRemaining > 0} className="min-h-10 w-full rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] disabled:opacity-55">

@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
-import { completePasswordReset, requestPasswordReset } from './passwordResetApi';
+import { completePasswordReset, requestPasswordReset, verifyPasswordResetOtp } from './passwordResetApi';
 
 export function usePasswordResetFlow({ showDialog, onBack }: { showDialog: ShowDialog; onBack: () => void }) {
   const [email, setEmail] = useState('');
   const [codeRequested, setCodeRequested] = useState(false);
   const [otp, setOtp] = useState('');
+  const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,12 +31,33 @@ export function usePasswordResetFlow({ showDialog, onBack }: { showDialog: ShowD
       if (result.ok) {
         setCodeRequested(true);
         setOtp('');
+        setResetToken('');
+        setNewPassword('');
+        setConfirmPassword('');
         setResendAt(Date.now() + 120_000);
         setSecondsRemaining(120);
       }
       showDialog({ title: result.ok ? 'Check your email' : 'Code request failed', message: result.message });
     } catch {
       showDialog({ title: 'Connection error', message: 'Unable to request a code. Please try again.' });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function verifyCode() {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const result = await verifyPasswordResetOtp(email, otp);
+      if (result.ok && result.resetToken) {
+        setResetToken(result.resetToken);
+        setOtp('');
+      } else {
+        showDialog({ title: 'Code verification failed', message: result.message });
+      }
+    } catch {
+      showDialog({ title: 'Connection error', message: 'Unable to verify the code. Please try again.' });
     } finally {
       setIsLoading(false);
     }
@@ -49,7 +71,7 @@ export function usePasswordResetFlow({ showDialog, onBack }: { showDialog: ShowD
     }
     setIsLoading(true);
     try {
-      const result = await completePasswordReset({ email, otp, newPassword });
+      const result = await completePasswordReset({ email, resetToken, newPassword });
       if (result.ok) {
         try {
           await signOut({ redirect: false });
@@ -72,6 +94,7 @@ export function usePasswordResetFlow({ showDialog, onBack }: { showDialog: ShowD
 
   function changeEmail() {
     setCodeRequested(false);
+    setResetToken('');
     setOtp('');
     setNewPassword('');
     setConfirmPassword('');
@@ -80,7 +103,7 @@ export function usePasswordResetFlow({ showDialog, onBack }: { showDialog: ShowD
   }
 
   return {
-    email, setEmail, codeRequested, otp, setOtp, newPassword, setNewPassword,
+    email, setEmail, codeRequested, otp, setOtp, resetToken, verifyCode, newPassword, setNewPassword,
     confirmPassword, setConfirmPassword, isLoading, secondsRemaining, requestCode, resetPassword, changeEmail,
   };
 }
