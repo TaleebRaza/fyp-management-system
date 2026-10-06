@@ -50,7 +50,7 @@ export default function StudentOverviewSection({
         <p className="mt-2 max-w-[56ch] text-sm leading-6 text-[var(--color-text-muted)]">{nextStep.body}</p>
         <Button className="mt-5" onClick={nextStep.onClick}>{nextStep.action}<ArrowRight size={16} /></Button>
       </section>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <h3 className="text-sm font-semibold">Project status</h3>
           <p className="mt-3 text-lg font-semibold">{getProjectStageLabel(currentStage)}</p>

@@ -124,13 +124,10 @@ export default function StudentTeamSection({
       <section className="portal-bento-tile p-5 md:col-span-6">
         <p className="portal-eyebrow">Advanced team changes</p>
         <h2 className="mt-1 text-lg font-black text-[var(--color-text)]">Use only when the project setup must change</h2>
-        <details className="portal-disclosure mt-4">
-          <summary>Show advanced actions</summary>
-          <div className="space-y-3">
-            <Button type="button" variant="outline" className="w-full" onClick={onLeaveTeam} disabled={isSubmitting || !canLeaveTeam}>{isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <LogOut size={16} />}Leave team</Button>
-            <p className="text-xs leading-5 text-[var(--color-text-muted)]">Leaving the team is unavailable when you are the only member.</p>
-          </div>
-        </details>
+        <div className="mt-4 space-y-3">
+          <Button type="button" variant="outline" className="w-full" onClick={onLeaveTeam} disabled={isSubmitting || !canLeaveTeam}>{isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <LogOut size={16} />}Leave team</Button>
+          <p className="text-xs leading-5 text-[var(--color-text-muted)]">Leaving the team is unavailable when you are the only member.</p>
+        </div>
       </section>
     </div>
   );
