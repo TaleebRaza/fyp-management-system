@@ -128,14 +128,15 @@ export async function consumeRateLimitDimensions(
   scope: string,
   accountIdentifier: string,
   headers: HeaderSource,
-  maxRequests: number
+  maxRequests: number,
+  ipMaxRequests = maxRequests
 ) {
   const accountKey = `${scope}:account:${hashRateLimitIdentifier(accountIdentifier)}`;
   const clientIp = getTrustedClientIp(headers);
   const [account, ip] = await Promise.all([
     consumeRateLimit(accountKey, maxRequests),
     clientIp
-      ? consumeRateLimit(`${scope}:ip:${hashRateLimitIdentifier(clientIp)}`, maxRequests)
+      ? consumeRateLimit(`${scope}:ip:${hashRateLimitIdentifier(clientIp)}`, ipMaxRequests)
       : Promise.resolve(null),
   ]);
 

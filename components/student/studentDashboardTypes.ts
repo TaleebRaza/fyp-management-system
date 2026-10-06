@@ -14,6 +14,7 @@ export type WordTemplate = {
 };
 
 export type StudentSummary = {
+  email?: string;
   name?: string;
   program?: string;
   batch?: string;

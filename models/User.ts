@@ -38,6 +38,13 @@ const UserSchema = new Schema({
   resetEmailSentAt: { type: Date, required: false, select: false },
   resetAttempts: { type: Number, default: 0, select: false },
   lastPasswordChange: { type: Date, required: false },
+  lastEmailChangeAt: { type: Date, required: false, select: false },
+  pendingEmailChange: {
+    type: new Schema({
+      email: String, code: String, expiresAt: Date, attempts: Number, sentAt: Date,
+    }, { _id: false }),
+    required: false, select: false,
+  },
   lastNameChangeAt: { type: Date, required: false },
 
   // Limits student Program/Batch self-editing to once per 24 hours.

@@ -365,6 +365,8 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
         )}
         {activeTab === 'resources' && (
           <StudentResourcesSection
+            email={me?.email}
+            showDialog={showDialog}
             currentStage={currentStage}
             isFetchingTemplates={isFetchingTemplates}
             onFetchTemplates={loadTemplates}

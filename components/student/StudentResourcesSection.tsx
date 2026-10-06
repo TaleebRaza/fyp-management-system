@@ -1,4 +1,6 @@
 import { ExternalLink, FileText, Loader2, Pencil, RefreshCcw, Settings } from 'lucide-react';
+import StudentEmailChange from './StudentEmailChange';
+import type { StudentDashboardProps } from './studentDashboardTypes';
 import { Button } from '../ui';
 import { getProjectStageLabel } from '../ui/Timeline';
 import type { WordTemplate } from './studentDashboardTypes';
@@ -13,6 +15,8 @@ export default function StudentResourcesSection({
   batch,
   onOpenAcademicEditor,
   onOpenNameEditor,
+  email,
+  showDialog,
 }: {
   currentStage: string;
   isFetchingTemplates: boolean;
@@ -23,6 +27,8 @@ export default function StudentResourcesSection({
   batch?: string;
   onOpenAcademicEditor: () => void;
   onOpenNameEditor: () => void;
+  email?: string;
+  showDialog: StudentDashboardProps['showDialog'];
 }) {
   return (
     <div className="portal-bento">
@@ -63,6 +69,7 @@ export default function StudentResourcesSection({
         <h2 className="mt-1 text-lg font-black text-[var(--color-text)]">{currentProgramName}</h2>
         <p className="mt-1 text-sm font-bold text-[var(--color-text-muted)]">{batch || 'No batch'}</p>
         <div className="mt-5 space-y-2">
+          <StudentEmailChange currentEmail={email} showDialog={showDialog} />
           <Button variant="outline" className="w-full" onClick={onOpenNameEditor}><Pencil size={15} />Edit name</Button>
           <Button variant="outline" className="w-full" onClick={onOpenAcademicEditor}><Settings size={15} />Program / batch</Button>
         </div>
