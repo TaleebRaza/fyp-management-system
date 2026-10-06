@@ -6,20 +6,25 @@ type SendMailOptions = {
   fromName?: string;
 };
 
-const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'FYP Portal';
-const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || process.env.EMAIL_USER;
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'FYP Portal Security';
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO;
+const configuredPort = Number(process.env.BREVO_SMTP_PORT || 587);
+const smtpPort = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65535
+  ? configuredPort : 587;
 
 export function isEmailConfigured() {
-  return Boolean(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD);
+  return Boolean(process.env.BREVO_SMTP_USER && process.env.BREVO_SMTP_KEY && process.env.EMAIL_FROM_ADDRESS);
 }
 
-// Create a reusable transporter object using the default SMTP transport.
-// Keep this Gmail-based so the portal still works on the current free setup.
+// Reuse one transporter for Brevo transactional SMTP.
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com',
+  port: smtpPort,
+  secure: smtpPort === 465,
+  requireTLS: smtpPort === 587,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD,
+    user: process.env.BREVO_SMTP_USER,
+    pass: process.env.BREVO_SMTP_KEY,
   },
 });
 
@@ -54,7 +59,7 @@ export const sendNotificationEmail = async (
   const cleanSubject = String(subject || '').trim();
   const plainText = String(textContent || '').trim() || stripHtml(htmlContent);
   const fromName = options.fromName || EMAIL_FROM_NAME;
-  const fromAddress = normalizeEmailAddress(process.env.EMAIL_USER);
+  const fromAddress = normalizeEmailAddress(process.env.EMAIL_FROM_ADDRESS);
   const replyTo = normalizeEmailAddress(options.replyTo || EMAIL_REPLY_TO);
 
   if (
@@ -82,11 +87,23 @@ export const sendNotificationEmail = async (
       },
     });
 
-    void info;
-    console.info('email_dispatched');
+    console.info('email_dispatched', {
+      acceptedCount: info.accepted?.length || 0,
+      rejectedCount: info.rejected?.length || 0,
+    });
     return true;
-  } catch {
-    console.error('email_dispatch_failed');
+  } catch (error) {
+    const metadata = error as { code?: unknown; responseCode?: unknown; command?: unknown } | null;
+    // Allowlist protocol metadata; raw errors/responses can contain credentials or addresses.
+    console.error('email_dispatch_failed', {
+      code: ['EAUTH', 'ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'EENVELOPE', 'EMESSAGE', 'EDNS', 'ETLS']
+        .find((code) => code === metadata?.code),
+      responseCode: typeof metadata?.responseCode === 'number'
+        && Number.isInteger(metadata.responseCode) && metadata.responseCode >= 100 && metadata.responseCode <= 599
+        ? metadata.responseCode : undefined,
+      command: ['CONN', 'EHLO', 'HELO', 'STARTTLS', 'AUTH', 'AUTH PLAIN', 'AUTH LOGIN', 'MAIL FROM', 'RCPT TO', 'DATA', 'QUIT']
+        .find((command) => command === metadata?.command),
+    });
     return false;
   }
 };
