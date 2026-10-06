@@ -394,8 +394,17 @@ function toRoundFields(input: VivaRoundInput) {
   };
 }
 
-export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
-  const projects = await Project.find({ members: { $exists: true, $ne: [] } })
+export async function getVivaRoundAdminData(includeCatalogue = true): Promise<VivaRoundAdminData> {
+  const rounds = await VivaRound.find()
+    .select(
+      'name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds examinerIds panelRevision heldProjectIds confirmedAt frozenAt createdAt updatedAt'
+    )
+    .sort({ createdAt: -1 })
+    .lean<VivaRoundRecord[]>();
+  const projects = await Project.find({
+    members: { $exists: true, $ne: [] },
+    ...(!includeCatalogue ? { _id: { $in: rounds.flatMap((round) => round.projectIds || []) } } : {}),
+  })
     .select('_id title members supervisorId')
     .sort({ title: 1, _id: 1 })
     .lean<ProjectRecord[]>();
@@ -403,22 +412,19 @@ export async function getVivaRoundAdminData(): Promise<VivaRoundAdminData> {
     new Set(projects.flatMap((project) => (project.members || []).map(String)))
   );
 
-  const [students, examiners, rounds, panels, schedules] = await Promise.all([
+  const [students, examiners, panels, schedules] = await Promise.all([
     studentIds.length > 0
       ? User.find({ _id: { $in: studentIds }, role: 'student', isActive: true })
           .select('_id name rollNo program')
           .lean<UserRecord[]>()
       : Promise.resolve([]),
-    User.find({ role: 'supervisor', isActive: true })
+    User.find({
+      role: 'supervisor', isActive: true,
+      ...(!includeCatalogue ? { _id: { $in: rounds.flatMap((round) => round.examinerIds || []) } } : {}),
+    })
       .select('_id name rollNo')
       .sort({ name: 1, _id: 1 })
       .lean<UserRecord[]>(),
-    VivaRound.find()
-      .select(
-        'name targetPanelSize minimumPanelSize vivaDurationMinutes projectIds examinerIds panelRevision heldProjectIds confirmedAt frozenAt createdAt updatedAt'
-      )
-      .sort({ createdAt: -1 })
-      .lean<VivaRoundRecord[]>(),
     getVivaPanels(),
     getVivaSchedules(),
   ]);

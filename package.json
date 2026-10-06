@@ -23,6 +23,7 @@
     "test:viva:stress:login": "VIVA_STRESS_STAGE=login node tests/support/viva-http-stress-runner.mjs",
     "test:viva:stress": "VIVA_STRESS_STAGE=stress node tests/support/viva-http-stress-runner.mjs",
     "test:viva:stress:traffic": "VIVA_STRESS_STAGE=traffic node tests/support/viva-http-stress-runner.mjs",
+    "test:viva:stress:mixed": "node tests/support/viva-mixed-stress-runner.mjs",
     "test:viva:stress:soak": "VIVA_STRESS_STAGE=soak node tests/support/viva-http-stress-runner.mjs",
     "browser:install": "playwright install --only-shell chromium",
     "test:portal-pause:cache": "node --test tests/portal-pause-cache.integration.test.mjs",

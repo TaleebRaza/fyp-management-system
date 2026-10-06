@@ -294,12 +294,12 @@ export default function AdminVivaSection() {
     [teamProgramFilter, teams]
   );
 
-  const loadConfiguration = useCallback(async () => {
+  const loadConfiguration = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
     setError('');
 
     try {
-      const response = await fetch('/api/admin/viva', { cache: 'no-store' });
+      const response = await fetch(`/api/admin/viva?catalogue=${activeWorkspaceSection === 'setup' ? '1' : '0'}`, { cache: 'no-store', signal });
       const body: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(body, 'Unable to load Viva configuration.'));
 
@@ -312,17 +312,22 @@ export default function AdminVivaSection() {
       setPanels(data.panels);
       setSchedules(data.schedules);
     } catch (requestError) {
+      if (signal?.aborted) return;
       setError(requestError instanceof Error ? requestError.message : 'Unable to load Viva configuration.');
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
-  }, []);
+  }, [activeWorkspaceSection]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void loadConfiguration();
+      void loadConfiguration(controller.signal);
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [loadConfiguration]);
 
   const startNewRound = () => {

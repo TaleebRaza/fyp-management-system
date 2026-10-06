@@ -26,13 +26,14 @@ export const STUDENT_DASHBOARD_AUTH_FIELDS =
 
 export async function getStudentDashboard(student: StudentDashboardUser) {
   const fineRestriction = buildFineRestriction(student);
+  const projectQuery = Project.findOne({ members: student.id })
+    .select('_id supervisorId members title description status reviewRemarks stage version domains tools pdfUrl inviteCode maxTeamSize ratings')
+    .lean().exec();
   const [project, policyDocument, vivaResults, vivaSessions] = await Promise.all([
-    Project.findOne({ members: student.id })
-      .select('_id supervisorId members title description status reviewRemarks stage version domains tools pdfUrl inviteCode maxTeamSize ratings')
-      .lean(),
+    projectQuery,
     getOrCreateRegistrationPolicy(),
     getCompletedVivaResultsForStudent(student.id),
-    getConfirmedVivaSchedulesForStudent(student.id),
+    getConfirmedVivaSchedulesForStudent(student.id, projectQuery),
   ]);
   const [supervisor, projectMembers] = await Promise.all([
     project?.supervisorId

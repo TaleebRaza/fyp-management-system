@@ -8,6 +8,9 @@ import {
 export const REGISTRATION_POLICY_KEY = 'student-registration';
 
 export async function getOrCreateRegistrationPolicy() {
+  const policy = await readRegistrationPolicy();
+  if (policy) return policy;
+
   return RegistrationPolicy.findOneAndUpdate(
     { policyKey: REGISTRATION_POLICY_KEY },
     {

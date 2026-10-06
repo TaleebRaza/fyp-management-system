@@ -83,6 +83,7 @@ export const refactorIndexes = {
       },
     },
     { key: { roundId: 1, scheduledAt: 1 } },
+    { key: { projectId: 1, scheduledAt: 1, _id: 1 } },
     { key: { panelId: 1, cancelledAt: 1, scheduledAt: 1, _id: 1 } },
   ],
   vivaparticipantlocks: [

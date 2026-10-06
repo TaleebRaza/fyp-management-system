@@ -14,7 +14,7 @@ import { importTypeScriptModuleWithDependencies } from './importTypeScript.mjs';
 const BASE_URL = process.env.VIVA_STRESS_BASE_URL || 'http://127.0.0.1:3100';
 const MONGODB_URI = process.env.VIVA_STRESS_MONGODB_URI || '';
 const DATABASE_NAME = 'fyp_viva_http_stress_test';
-const SESSION_CEILING = 50;
+const SESSION_CEILING = 75;
 const SYNTHETIC_DOMAIN = 'example.test';
 const PASSWORD = 'viva-http-stress-password';
 const REPORT_DIR = process.env.VIVA_STRESS_ARTIFACT_DIR || '/tmp/fyp-viva-http-stress';
@@ -29,7 +29,7 @@ function assertLoopbackUrl(value, label) {
   return url;
 }
 
-function guardEnvironment(requestedSessions = SESSION_CEILING) {
+export function guardEnvironment(requestedSessions = SESSION_CEILING) {
   const baseUrl = assertLoopbackUrl(BASE_URL, 'VIVA_STRESS_BASE_URL');
   assert.ok(MONGODB_URI, 'VIVA_STRESS_MONGODB_URI is required.');
   const databaseUrl = assertLoopbackUrl(MONGODB_URI, 'VIVA_STRESS_MONGODB_URI');
@@ -54,7 +54,7 @@ function cookieLines(response) {
   return header ? header.split(/,(?=[^;]+=)/) : [];
 }
 
-class HttpClient {
+export class HttpClient {
   constructor(baseUrl, ip) {
     this.baseUrl = baseUrl;
     this.ip = ip;
@@ -94,6 +94,7 @@ class HttpClient {
     let response;
     try {
       response = await fetch(new URL(path, this.baseUrl), {
+        signal: AbortSignal.timeout(30_000),
         ...requestOptions,
         method,
         headers,
@@ -155,7 +156,7 @@ class HttpClient {
   }
 }
 
-const metrics = {
+export const metrics = {
   rows: [],
   record(action, status, durationMs, details = {}) {
     const row = { action, status, durationMs, error: null, ...details };
@@ -200,7 +201,7 @@ const metrics = {
   },
 };
 
-async function loadModels() {
+export async function loadModels() {
   process.env.MONGODB_URI = MONGODB_URI;
   const [user, project, round, panel, session, lock, audit, systemConfig, registrationPolicy, password] = await Promise.all([
     importTypeScriptModuleWithDependencies('models/User.ts'),
@@ -228,7 +229,9 @@ async function loadModels() {
   };
 }
 
-async function seedFixture(models) {
+export async function seedFixture(models, { sessionCount = 50, otherStudentCount = 25, createViva = true } = {}) {
+  assert.ok(Number.isInteger(sessionCount) && sessionCount > 0 && sessionCount <= SESSION_CEILING);
+  assert.ok(Number.isInteger(otherStudentCount) && otherStudentCount > 0 && otherStudentCount <= 5000);
   await mongoose.connect(MONGODB_URI, { maxPoolSize: 20, minPoolSize: 1 });
   await mongoose.connection.dropDatabase();
   await Promise.all(Object.values(models).filter((value) => typeof value?.init === 'function').map((model) => model.init()));
@@ -236,10 +239,10 @@ async function seedFixture(models) {
   const legacyPassword = await bcrypt.hash(PASSWORD, 4);
   const definitions = [
     ...Array.from({ length: 2 }, (_, index) => ({ key: `admin${index + 1}`, name: `HTTP Admin ${index + 1}`, role: 'admin' })),
-    ...Array.from({ length: 100 }, (_, index) => ({ key: `panelSup${index + 1}`, name: `HTTP Panel Supervisor ${index + 1}`, role: 'supervisor' })),
+    ...Array.from({ length: sessionCount * 2 }, (_, index) => ({ key: `panelSup${index + 1}`, name: `HTTP Panel Supervisor ${index + 1}`, role: 'supervisor' })),
     ...Array.from({ length: 20 }, (_, index) => ({ key: `otherSup${index + 1}`, name: `HTTP Other Supervisor ${index + 1}`, role: 'supervisor' })),
-    ...Array.from({ length: 100 }, (_, index) => ({ key: `vivaStudent${index + 1}`, name: `HTTP Viva Student ${index + 1}`, role: 'student' })),
-    ...Array.from({ length: 25 }, (_, index) => ({ key: `otherStudent${index + 1}`, name: `HTTP Other Student ${index + 1}`, role: 'student' })),
+    ...Array.from({ length: sessionCount * 2 }, (_, index) => ({ key: `vivaStudent${index + 1}`, name: `HTTP Viva Student ${index + 1}`, role: 'student' })),
+    ...Array.from({ length: otherStudentCount }, (_, index) => ({ key: `otherStudent${index + 1}`, name: `HTTP Other Student ${index + 1}`, role: 'student' })),
     { key: 'legacyStudent', name: 'HTTP Legacy Student', role: 'student' },
     { key: 'inactiveStudent', name: 'HTTP Inactive Student', role: 'student', isActive: false },
   ].map((user, index) => ({
@@ -252,13 +255,13 @@ async function seedFixture(models) {
   }));
   const users = await models.User.create(definitions);
   const usersByKey = new Map(users.map((user, index) => [definitions[index].key, user]));
-  const vivaStudents = Array.from({ length: 100 }, (_, index) => usersByKey.get(`vivaStudent${index + 1}`));
-  const panelSupervisors = Array.from({ length: 100 }, (_, index) => usersByKey.get(`panelSup${index + 1}`));
-  const otherStudents = Array.from({ length: 25 }, (_, index) => usersByKey.get(`otherStudent${index + 1}`));
+  const vivaStudents = Array.from({ length: sessionCount * 2 }, (_, index) => usersByKey.get(`vivaStudent${index + 1}`));
+  const panelSupervisors = Array.from({ length: sessionCount * 2 }, (_, index) => usersByKey.get(`panelSup${index + 1}`));
+  const otherStudents = Array.from({ length: otherStudentCount }, (_, index) => usersByKey.get(`otherStudent${index + 1}`));
   const otherSupervisors = Array.from({ length: 20 }, (_, index) => usersByKey.get(`otherSup${index + 1}`));
   assert.ok([...vivaStudents, ...panelSupervisors, ...otherStudents, ...otherSupervisors].every(Boolean));
 
-  const projects = await models.Project.create(Array.from({ length: 50 }, (_, index) => ({
+  const projects = await models.Project.create(Array.from({ length: sessionCount }, (_, index) => ({
     supervisorId: otherSupervisors[index % otherSupervisors.length]._id,
     members: [vivaStudents[index * 2]._id, vivaStudents[index * 2 + 1]._id],
     inviteCode: `HTTPVIVA${String(index + 1).padStart(3, '0')}`,
@@ -268,10 +271,10 @@ async function seedFixture(models) {
   const unrelatedProjects = await models.Project.create(otherStudents.map((student, index) => ({
     supervisorId: otherSupervisors[index % otherSupervisors.length]._id,
     members: [student._id],
-    inviteCode: `HTTPOther${String(index + 1).padStart(3, '0')}`,
+    inviteCode: `HTTPOTHER${String(index + 1).padStart(3, '0')}`,
     title: `HTTP unrelated project ${index + 1}`,
   })));
-  const round = await models.VivaRound.create({
+  const round = createViva ? await models.VivaRound.create({
     name: 'HTTP stress synthetic round',
     targetPanelSize: 2,
     minimumPanelSize: 2,
@@ -279,21 +282,21 @@ async function seedFixture(models) {
     projectIds: projects.map((project) => project._id),
     examinerIds: panelSupervisors.map((user) => user._id),
     confirmedAt: new Date(),
-  });
-  const panels = await models.VivaPanel.create(Array.from({ length: 50 }, (_, index) => ({
+  }) : null;
+  const panels = createViva ? await models.VivaPanel.create(Array.from({ length: sessionCount }, (_, index) => ({
     roundId: round._id,
     examinerIds: [panelSupervisors[index * 2]._id, panelSupervisors[index * 2 + 1]._id],
     panelAdminId: panelSupervisors[index * 2]._id,
     locationLabel: `HTTP Lab ${index + 1}`,
-  })));
-  const sessions = await models.VivaSession.create(projects.map((project, index) => ({
+  }))) : [];
+  const sessions = createViva ? await models.VivaSession.create(projects.map((project, index) => ({
     roundId: round._id,
     panelId: panels[index]._id,
     projectId: project._id,
     scheduledAt: new Date(Date.now() - 60_000),
     vivaEndsAt: new Date(Date.now() + 1_800_000),
     locationLabel: `HTTP Lab ${index + 1}`,
-  })));
+  }))) : [];
   await models.SystemConfig.updateOne(
     { configKey: 'portal' },
     { $set: { portalPaused: false, portalPauseReason: '' } },
@@ -305,7 +308,8 @@ async function seedFixture(models) {
     { upsert: true }
   );
   return {
-    roundId: id(round),
+    roundId: round ? id(round) : null,
+    projectIds: projects.map(id),
     sessions: sessions.map((session) => id(session)),
     panelAdmins: panelSupervisors.filter((_, index) => index % 2 === 0).map((user) => ({ id: id(user), rollNo: user.rollNo })),
     panelMembers: panelSupervisors.filter((_, index) => index % 2 === 1).map((user) => ({ id: id(user), rollNo: user.rollNo })),
@@ -821,7 +825,7 @@ async function packageVersion(name) {
   }
 }
 
-async function collectRunEnvironment() {
+export async function collectRunEnvironment() {
   const [nextVersion, mongooseVersion, nextAuthVersion, source] = await Promise.all([
     packageVersion('next'),
     packageVersion('mongoose'),

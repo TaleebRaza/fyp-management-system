@@ -16,7 +16,7 @@ test('confirmed student schedules use snapshots with a legacy fallback', async (
   ]);
   assert.match(roundAdmin, /snapshotConfirmedSessions\(round, scheduledSessions, session\)/);
   assert.match(scheduling, /'projectSnapshot\.members\.userId': studentId/);
-  assert.match(scheduling, /const project = await Project\.findOne\(\{ members: studentId \}\)/);
+  assert.match(scheduling, /projectQuery \?\? Project\.findOne\(\{ members: studentId \}\)/);
 });
 
 test('admin reports avoid first-stage facets and expression membership lookups', async () => {

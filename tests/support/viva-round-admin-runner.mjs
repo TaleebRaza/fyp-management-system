@@ -20,6 +20,8 @@ const [
     updateVivaRound,
   },
   { getConfirmedVivaSchedulesForStudent },
+  { default: RegistrationPolicy },
+  { getOrCreateRegistrationPolicy },
 ] = await Promise.all([
   importTypeScriptModuleWithDependencies('models/User.ts'),
   importTypeScriptModuleWithDependencies('models/Project.ts'),
@@ -29,6 +31,8 @@ const [
   importTypeScriptModuleWithDependencies('models/VivaAuditEvent.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaRoundAdmin.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaScheduling.ts'),
+  importTypeScriptModuleWithDependencies('models/RegistrationPolicy.ts'),
+  importTypeScriptModuleWithDependencies('lib/registrationPolicy.ts'),
 ]);
 
 const actor = {
@@ -67,6 +71,19 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
   try {
     await mongoose.connect(testDatabaseUri);
     await mongoose.connection.dropDatabase();
+    await RegistrationPolicy.init();
+    const initialPolicy = await getOrCreateRegistrationPolicy();
+    const policyTimestamp = initialPolicy.updatedAt.getTime();
+    let policyWrites = 0;
+    mongoose.set('debug', (collection, method) => {
+      if (collection === 'registrationpolicies' && method !== 'findOne') policyWrites += 1;
+    });
+    await Promise.all(Array.from({ length: 20 }, () => getOrCreateRegistrationPolicy()));
+    mongoose.set('debug', false);
+    assert.equal(policyWrites, 0, 'Reading an existing policy must not write it.');
+    assert.equal((await RegistrationPolicy.findById(initialPolicy._id)).updatedAt.getTime(), policyTimestamp);
+    await RegistrationPolicy.updateOne({ _id: initialPolicy._id }, { $set: { projectSubmissionsOpen: false } });
+    assert.equal((await getOrCreateRegistrationPolicy()).projectSubmissionsOpen, false, 'Policy changes must be visible immediately.');
     await Promise.all([
       User.init(),
       Project.init(),
@@ -175,6 +192,15 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
 
     const selection = await getVivaRoundAdminData();
     assert.deepEqual(selection.teams.map((team) => team.id), [String(activeTeam._id)]);
+    await User.updateOne({ _id: inactiveStudent._id }, { $set: { isActive: true } });
+    assert.equal((await getVivaRoundAdminData()).teams.length, 2, 'Setup must retain the full eligible catalogue.');
+    const operational = await getVivaRoundAdminData(false);
+    assert.deepEqual(operational.teams.map((team) => team.id), [String(activeTeam._id)]);
+    assert.deepEqual(operational.examiners.map((examiner) => examiner.id), [
+      String(supervisorOne._id), String(supervisorTwo._id),
+    ]);
+    assert.deepEqual(operational.rounds, selection.rounds);
+    await User.updateOne({ _id: inactiveStudent._id }, { $set: { isActive: false } });
     assert.equal(selection.teams[0].program, 'BSAI');
     assert.deepEqual(
       selection.examiners.map((examiner) => examiner.id),
@@ -251,6 +277,37 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
       String(supervisorOne._id),
       String(supervisorTwo._id),
     ]);
+    await VivaSession.updateOne({ _id: confirmedSession._id }, {
+      $unset: { projectSnapshot: 1, panelSnapshot: 1, roundSnapshot: 1 },
+    });
+    const scheduleReads = [];
+    mongoose.set('debug', (collection, method) => scheduleReads.push(`${collection}:${method}`));
+    const legacySchedules = await getConfirmedVivaSchedulesForStudent(
+      String(studentOne._id), Promise.resolve({ _id: activeTeam._id })
+    );
+    mongoose.set('debug', false);
+    assert.deepEqual(legacySchedules, studentSchedules, 'Legacy schedules must retain their fallback.');
+    assert.ok(!scheduleReads.includes('projects:findOne'), 'Reuse the supplied project.');
+    await VivaRound.updateOne({ _id: deletable.round.id }, { $unset: { confirmedAt: 1 } });
+    assert.deepEqual(await getConfirmedVivaSchedulesForStudent(
+      String(studentOne._id), Promise.resolve({ _id: activeTeam._id })
+    ), [], 'Unconfirmed schedules must remain hidden.');
+    await VivaRound.updateOne({ _id: deletable.round.id }, {
+      $set: { confirmedAt: new Date(confirmedDeletable.round.confirmedAt) },
+    });
+    scheduleReads.length = 0;
+    mongoose.set('debug', (collection, method) => scheduleReads.push(`${collection}:${method}`));
+    assert.deepEqual(await getConfirmedVivaSchedulesForStudent(
+      String(inactiveStudent._id), Promise.resolve({ _id: inactiveTeam._id })
+    ), []);
+    mongoose.set('debug', false);
+    assert.ok(!scheduleReads.includes('vivapanels:find'), 'No panel query is needed without sessions.');
+    assert.ok(!scheduleReads.includes('vivarounds:find'), 'No round query is needed without sessions.');
+    const emptySchedulePlan = await VivaSession.find({
+      projectId: inactiveTeam._id, scheduledAt: { $type: 'date' },
+    }).sort({ scheduledAt: 1, _id: 1 }).explain('executionStats');
+    assert.equal(emptySchedulePlan.executionStats.totalDocsExamined, 0);
+    assert.match(JSON.stringify(emptySchedulePlan.queryPlanner.winningPlan), /IXSCAN/);
     const invalidDelete = await deleteVivaRound('invalid-round-id');
     assert.equal(invalidDelete.success, false);
     assert.equal(invalidDelete.reason, 'invalid');
@@ -301,7 +358,7 @@ export async function runVivaRoundAdminIntegration(testDatabaseUri) {
       database: testDatabase.pathname.slice(1),
       seededUsers: 7,
       seededTeams: 2,
-      verified: ['input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'scheduled-round-deletion', 'started-round-rejection', 'legacy-frozen-round-rejection'],
+      verified: ['policy-read-no-writes', 'operational-catalogue', 'legacy-schedule-project-reuse', 'empty-schedule-short-circuit', 'input-validation', 'create-audit', 'active-selection', 'no-factor-requirement', 'update-audit', 'scheduled-round-deletion', 'started-round-rejection', 'legacy-frozen-round-rejection'],
     }));
   } finally {
     if (mongoose.connection.readyState !== 0) {

@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await getVivaRoundAdminData());
+    return NextResponse.json(await getVivaRoundAdminData(req.nextUrl.searchParams.get('catalogue') === '1'));
   } catch (error) {
     console.error('Admin Viva configuration fetch error:', error);
     return NextResponse.json({ error: 'Failed to load Viva configuration.' }, { status: 500 });

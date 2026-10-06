@@ -1613,7 +1613,10 @@ export async function getVivaSchedules(): Promise<VivaScheduleDto[]> {
   });
 }
 
-export async function getConfirmedVivaSchedulesForStudent(studentId: string): Promise<VivaStudentSessionDto[]> {
+export async function getConfirmedVivaSchedulesForStudent(
+  studentId: string,
+  projectQuery?: Promise<{ _id: unknown } | null>
+): Promise<VivaStudentSessionDto[]> {
   if (!mongoose.Types.ObjectId.isValid(studentId)) return [];
   const snapshotSessions = await VivaSession.find({
     'projectSnapshot.members.userId': studentId,
@@ -1627,14 +1630,19 @@ export async function getConfirmedVivaSchedulesForStudent(studentId: string): Pr
     return snapshotSchedules.filter((schedule): schedule is VivaStudentSessionDto => Boolean(schedule));
   }
 
-  const project = await Project.findOne({ members: studentId }).select('_id').lean<{ _id: unknown } | null>();
+  const project = await (projectQuery ?? Project.findOne({ members: studentId }).select('_id').lean<{ _id: unknown } | null>());
   if (!project) return [];
-  const rounds = await VivaRound.find({ confirmedAt: { $type: 'date' } }).select('_id name').lean<Array<{ _id: unknown; name?: unknown }>>();
-  if (rounds.length === 0) return [];
-  const names = new Map(rounds.map((round) => [String(round._id), typeof round.name === 'string' ? round.name : 'Viva round']));
-  const sessions = await VivaSession.find({ roundId: { $in: rounds.map((round) => round._id) }, projectId: project._id, scheduledAt: { $type: 'date' } })
+  const candidates = await VivaSession.find({ projectId: project._id, scheduledAt: { $type: 'date' } })
     .select('_id roundId panelId projectId scheduledAt vivaEndsAt startedAt completedAt cancelledAt cancellationReason locationLabel version')
     .sort({ scheduledAt: 1, _id: 1 }).lean<VivaSessionRecord[]>();
+  if (candidates.length === 0) return [];
+  const rounds = await VivaRound.find({
+    _id: { $in: candidates.map((session) => session.roundId) },
+    confirmedAt: { $type: 'date' },
+  }).select('_id name').lean<Array<{ _id: unknown; name?: unknown }>>();
+  const names = new Map(rounds.map((round) => [String(round._id), typeof round.name === 'string' ? round.name : 'Viva round']));
+  const sessions = candidates.filter((session) => names.has(String(session.roundId)));
+  if (sessions.length === 0) return [];
   const panels = await VivaPanel.find({ _id: { $in: sessions.map((session) => session.panelId) } })
     .select('_id examinerIds panelAdminId')
     .lean<VivaPanelRecord[]>();
