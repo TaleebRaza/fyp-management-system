@@ -29,3 +29,9 @@ export function isValidEmailAddress(value: unknown) {
     && !UNSUPPORTED_EMAIL_SYNTAX.test(email)
     && EMAIL_PATTERN.test(email);
 }
+
+export function isValidRegistrationEmailAddress(value: unknown) {
+  const email = normalizeEmailAddress(value);
+  return isValidEmailAddress(email)
+    && (email.endsWith('@student.uoh.edu.pk') || email.endsWith('@uoh.edu.pk'));
+}

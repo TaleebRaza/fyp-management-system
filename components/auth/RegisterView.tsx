@@ -7,6 +7,7 @@ import { Card, Select, StyledInput } from '../ui';
 import type { ShowDialog } from '../../app/_components/PortalDialog';
 import type { RegistrationPolicyDto } from '../../types/registrationPolicy';
 import { isValidRollNo, normalizeRollNo } from '../../lib/rollNo';
+import { isValidRegistrationEmailAddress } from '../../lib/security/input';
 
 export type RegistrationSupervisor = {
   _id: string;
@@ -80,15 +81,14 @@ export default function RegisterView({
     const email = String(registrationData.get('email') || '').trim().toLowerCase();
     const rollNo = normalizeRollNo(registrationData.get('rollNo'));
     const password = String(registrationData.get('password') || '');
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!name || !email || !rollNo || !password || !program || !batch) {
       showDialog({ title: 'Missing information', message: 'Complete your name, email, roll number, password, program, and batch.' });
       return;
     }
 
-    if (!emailPattern.test(email)) {
-      showDialog({ title: 'Invalid email', message: 'Enter a valid email address.' });
+    if (!isValidRegistrationEmailAddress(email)) {
+      showDialog({ title: 'Invalid email', message: 'Use an email address ending in @student.uoh.edu.pk or @uoh.edu.pk.' });
       return;
     }
 
@@ -178,7 +178,7 @@ export default function RegisterView({
                     Required format: F23-0201 or S23-0201. Each roll number can register only once.
                   </p>
                 </div>
-                <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Email address</label><StyledInput icon={Mail} name="email" type="email" required placeholder="student@gmail.com or student@outlook.com" autoComplete="email" /><p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Use the email address where supervisors should send project updates, approvals, and rejection messages.</p></div>
+                <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Email address</label><StyledInput icon={Mail} name="email" type="email" required placeholder="name@student.uoh.edu.pk" autoComplete="email" /><p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Use your @student.uoh.edu.pk or @uoh.edu.pk email address for project updates and approvals.</p></div>
                 <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Password</label><StyledInput icon={Lock} name="password" type="password" required minLength={10} maxLength={128} placeholder="Minimum 10 characters" autoComplete="new-password" /></div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-[var(--color-text)]">Program</label>

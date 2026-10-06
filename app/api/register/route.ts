@@ -19,7 +19,7 @@ import {
 } from '../../../lib/registrationPolicy';
 import { hashPassword, validatePassword } from '../../../lib/security/password';
 import {
-  isValidEmailAddress,
+  isValidRegistrationEmailAddress,
   normalizeEmailAddress,
   normalizeText,
 } from '../../../lib/security/input';
@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (normalizedEmail.length > 254 || !isValidEmailAddress(normalizedEmail)) {
-      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
+    if (!isValidRegistrationEmailAddress(normalizedEmail)) {
+      return NextResponse.json({ error: 'Use an email address ending in @student.uoh.edu.pk or @uoh.edu.pk.' }, { status: 400 });
     }
 
     if (!isValidRollNo(normalizedRollNo)) {
