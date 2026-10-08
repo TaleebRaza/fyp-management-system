@@ -43,7 +43,7 @@ type FineManagementData = {
   search?: string;
   limit?: number;
   finePayment?: typeof EMPTY_PAYMENT;
-  lateFineAccrual?: { paused?: boolean };
+  lateFineAccrual?: { paused?: boolean; enabled?: boolean };
   fineRestrictions?: FineRestrictionPolicy;
   currentLateFine?: { daysLate: number; fineAmount: number };
 };
@@ -153,6 +153,10 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
         }));
       }
 
+      if (json.finesCleared) {
+        setData((previous) => ({ ...(previous || {}), students: [] }));
+      }
+
       if (json.studentId) {
         setData((previous) => ({
           ...(previous || {}),
@@ -217,6 +221,30 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
     });
   };
 
+  const chooseFineReset = () => {
+    const options = ['Waive all outstanding fines', 'Erase all fine data and history'];
+    showDialog({
+      type: 'prompt',
+      inputType: 'select',
+      inputOptions: options,
+      defaultValue: options[0],
+      title: 'Eliminate fines',
+      message: 'Choose whether to waive unpaid fines or permanently erase all student fine history. Student accounts and other portal data are preserved.',
+      onConfirm: (value) => {
+        if (!options.includes(value || '')) return;
+        const erase = value === options[1];
+        showDialog({
+          type: 'confirm',
+          title: erase ? 'Permanently erase all fine history?' : 'Waive all outstanding fines?',
+          message: erase
+            ? 'This removes pending, waived, and collected fine data from every student, including inactive accounts. This cannot be undone.'
+            : 'This waives all unpaid fines, including inactive students. No payment will be recorded. Previously collected fines remain in history.',
+          onConfirm: () => runAction(erase ? 'eraseFineHistory' : 'clearAllFines'),
+        });
+      },
+    });
+  };
+
   if (isLoading) {
     return (
       <DashboardPanel>
@@ -237,6 +265,21 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
 
   return (
     <div className="space-y-6">
+      <DashboardPanel>
+        <SectionHeader title="Fine helpers" description="Manage existing fines and whether new registrations receive monetary fines." />
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" onClick={chooseFineReset} disabled={Boolean(busyAction)}>
+            Eliminate fines
+          </Button>
+          <Button variant="outline" disabled={Boolean(busyAction)}
+            onClick={() => void runAction('setNewRegistrationFines', { enabled: accrual.enabled === false })}>
+            {accrual.enabled === false ? 'Resume fining new registrations' : 'Stop fining new registrations'}
+          </Button>
+        </div>
+        <p className="mt-3 text-sm text-[var(--color-text-muted)]">
+          {accrual.enabled === false ? 'New registration fines are off.' : 'New registration fines are on.'}
+        </p>
+      </DashboardPanel>
       <DashboardPanel>
         <SectionHeader
           title="Late Fine Compounding"
@@ -303,7 +346,9 @@ export default function FineManagementPanel({ showDialog }: { showDialog: ShowDi
           )}
           <p className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
             <Clock3 size={16} />
-            {accrual.paused
+            {accrual.enabled === false
+              ? 'New registration fines are off; compounding settings are retained.'
+              : accrual.paused
               ? 'New registrations keep the frozen fine until compounding is resumed.'
               : 'New registrations use the current calculated fine.'}
           </p>

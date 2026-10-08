@@ -23,6 +23,7 @@ const FinePaymentSchema = new Schema(
 
 const LateFineAccrualSchema = new Schema(
   {
+    enabled: { type: Boolean, default: true },
     paused: { type: Boolean, default: false },
     frozenDays: { type: Number, min: 0, default: 0 },
     frozenAmount: { type: Number, min: 0, default: 0 },

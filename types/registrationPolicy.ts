@@ -16,6 +16,7 @@ export interface FinePaymentPolicy {
 }
 
 export interface LateFineAccrualPolicy {
+  enabled?: boolean;
   paused: boolean;
   frozenDays: number;
   frozenAmount: number;
@@ -73,6 +74,7 @@ export const DEFAULT_REGISTRATION_POLICY: RegistrationPolicyDto = {
     instructions: '',
   },
   lateFineAccrual: {
+    enabled: true,
     paused: false,
     frozenDays: 0,
     frozenAmount: 0,

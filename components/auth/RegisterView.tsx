@@ -138,7 +138,8 @@ export default function RegisterView({
             <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Register immediately with your email address. No registration verification code is required.</p>
           </div>
           <div className="px-5 py-5 sm:px-6">
-            {registrationPolicy.punishment.enabled && (
+            {registrationPolicy.punishment.enabled &&
+              (registrationPolicy.punishment.category !== 'fine' || registrationPolicy.lateFineAccrual.enabled !== false) && (
               <div className="mb-5 flex items-start gap-3 rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent-soft)] px-4 py-3">
                 <AlertTriangle className="mt-0.5 shrink-0 text-[var(--color-accent)]" size={19} />
                 <div>

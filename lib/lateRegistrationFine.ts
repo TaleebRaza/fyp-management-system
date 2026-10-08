@@ -65,7 +65,7 @@ export function calculateLateRegistrationFine(
   accrual?: Partial<LateFineAccrualPolicy> | null
 ): LateRegistrationAssessment {
   const policy = APP_SETTINGS.LATE_REGISTRATION;
-  if (!policy.ENABLED) {
+  if (!policy.ENABLED || accrual?.enabled === false) {
     return { daysLate: 0, fineAmount: 0 };
   }
 

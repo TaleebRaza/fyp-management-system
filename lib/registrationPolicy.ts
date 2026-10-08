@@ -80,6 +80,7 @@ export function serializeRegistrationPolicy(policy: RegistrationPolicyRecord | n
       instructions: String(finePayment.instructions || '').trim(),
     },
     lateFineAccrual: {
+      enabled: lateFineAccrual.enabled !== false,
       paused: lateFineAccrual.paused === true,
       frozenDays: Math.max(Math.trunc(Number(lateFineAccrual.frozenDays) || 0), 0),
       frozenAmount: Math.max(Math.round(Number(lateFineAccrual.frozenAmount) || 0), 0),
@@ -104,7 +105,8 @@ export function buildRegistrationPunishmentSnapshot(
   policy: RegistrationPolicyDto,
   imposedAt = new Date()
 ) {
-  if (!policy.isOpen || !policy.punishment.enabled) {
+  if (!policy.isOpen || !policy.punishment.enabled ||
+    (policy.lateFineAccrual.enabled === false && policy.punishment.category === 'fine')) {
     return {
       active: false,
       category: null,

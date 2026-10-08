@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { clearStudentFines } from '../../../../lib/clearStudentFines';
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
@@ -187,6 +188,41 @@ export async function PATCH(req: NextRequest) {
     const updatedBy =
       typeof token.id === 'string' && mongoose.Types.ObjectId.isValid(token.id) ? token.id : null;
 
+    if (action === 'clearAllFines' || action === 'eraseFineHistory') {
+      const result = await clearStudentFines(action === 'eraseFineHistory');
+      await recordPortalActivity({ action: 'admin-fines-updated', actorId: token.id, actorRole: token.role });
+      return NextResponse.json({
+        message: action === 'eraseFineHistory'
+          ? 'All student fine data and history erased. Other portal data is unchanged.'
+          : 'All outstanding student fines waived. Previously collected fine history is unchanged.',
+        finesCleared: true,
+        modifiedCount: result.modifiedCount,
+      });
+    }
+
+    if (action === 'setNewRegistrationFines') {
+      if (typeof body.enabled !== 'boolean') {
+        return NextResponse.json({ error: 'Invalid fine setting.' }, { status: 400 });
+      }
+      const policyDocument = await RegistrationPolicy.findOneAndUpdate(
+        { policyKey: REGISTRATION_POLICY_KEY },
+        {
+          $set: { 'lateFineAccrual.enabled': body.enabled, updatedBy },
+          $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
+          $inc: { version: 1 },
+        },
+        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      );
+      const policy = serializeRegistrationPolicy(policyDocument);
+      invalidatePublicContent(PUBLIC_REGISTRATION_POLICY_TAG);
+      await recordPortalActivity({ action: 'admin-fines-updated', actorId: token.id, actorRole: token.role });
+      return NextResponse.json({
+        message: body.enabled ? 'Fines for new registrations enabled.' : 'New registrations will receive no monetary fines. Existing fines are unchanged.',
+        lateFineAccrual: policy.lateFineAccrual,
+        currentLateFine: calculateLateRegistrationFine(now, policy.lateFineAccrual),
+      });
+    }
+
     if (action === 'updatePaymentDetails') {
       const finePayment = {
         methodLabel: normalizeText(body?.finePayment?.methodLabel, 100),
@@ -224,7 +260,7 @@ export async function PATCH(req: NextRequest) {
       let updatedPolicy = policy;
 
       if (!policy.lateFineAccrual.paused) {
-        const current = calculateLateRegistrationFine(now, policy.lateFineAccrual);
+        const current = calculateLateRegistrationFine(now, { ...policy.lateFineAccrual, enabled: true });
         const updatedPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
           { policyKey: REGISTRATION_POLICY_KEY },
           {
