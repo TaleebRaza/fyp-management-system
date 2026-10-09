@@ -59,15 +59,15 @@ export function AdminReportsDialog({
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button variant="outline" disabled={!data || rows.length === 0} onClick={onDownloadCsv}>
+          <Button variant="outline" disabled={isLoading || !data || rows.length === 0} onClick={onDownloadCsv}>
             <Download size={16} />
             CSV
           </Button>
-          <Button variant="outline" disabled={!data || rows.length === 0} onClick={onDownloadHtml}>
+          <Button variant="outline" disabled={isLoading || !data || rows.length === 0} onClick={onDownloadHtml}>
             <FileText size={16} />
             HTML
           </Button>
-          <Button disabled={!data || rows.length === 0} onClick={onOpenReport}>
+          <Button disabled={isLoading || !data || rows.length === 0} onClick={onOpenReport}>
             <ExternalLink size={16} />
             Open Report
           </Button>
@@ -83,6 +83,13 @@ export function AdminReportsDialog({
           onDownload={onDownloadRatings}
         />
 
+        <AdminReportControls
+          selectedReportId={selectedReportId}
+          onSelectedReportChange={onSelectedReportChange}
+          onRefresh={onRefresh}
+          isLoading={isLoading}
+        />
+
         {isLoading ? (
           <div className="flex min-h-80 flex-col items-center justify-center">
             <Loader2 className="mb-3 animate-spin text-[var(--color-accent)]" size={36} />
@@ -96,12 +103,6 @@ export function AdminReportsDialog({
           </div>
         ) : (
           <>
-            <AdminReportControls
-              selectedReportId={selectedReportId}
-              onSelectedReportChange={onSelectedReportChange}
-              onRefresh={onRefresh}
-              isLoading={isLoading}
-            />
             <AdminReportSummary data={data} />
             <AdminReportPreview data={data} selectedReport={selectedReport} rows={rows} />
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-text-muted)]">

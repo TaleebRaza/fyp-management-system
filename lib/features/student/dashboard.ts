@@ -112,7 +112,7 @@ export async function getStudentDashboard(student: StudentDashboardUser) {
       domains: normalizedDomains,
       domain: normalizedDomainText,
     },
-    supervisor,
+    supervisor: supervisor ? { _id: supervisor._id, name: supervisor.name, email: supervisor.email } : null,
     project: projectRecord
       ? {
           ...projectRecord,

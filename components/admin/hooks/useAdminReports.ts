@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ShowDialog } from '../../../app/_components/PortalDialog';
 import type { AdminOverviewSummary, AdminReportsData } from '../adminDashboardTypes';
 import type {
@@ -29,11 +29,13 @@ const DEFAULT_RATING_EXPORT_FILTERS: ProjectRatingsExportFilters = {
 export function useAdminReports(showDialog: ShowDialog, overviewVisible = true) {
   const [isOpen, setIsOpen] = useState(false);
   const [data, setData] = useState<AdminReportsData | null>(null);
+  const reportCache = useRef(new Map<ReportOption['id'], AdminReportsData>());
+  const reportRequest = useRef<AbortController | null>(null);
   const [summary, setSummary] = useState<AdminOverviewSummary | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSummaryLoading, setIsSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(false);
-  const [selectedReportId, setSelectedReportId] =
+  const [selectedReportId, selectReportId] =
     useState<ReportOption['id']>('studentsPerSupervisor');
   const [ratingExportFilters, setRatingExportFilters] = useState(DEFAULT_RATING_EXPORT_FILTERS);
   const [isDownloadingRatings, setIsDownloadingRatings] = useState(false);
@@ -50,11 +52,19 @@ export function useAdminReports(showDialog: ShowDialog, overviewVisible = true) 
     [data, selectedReportId]
   );
 
-  const loadReports = useCallback(async () => {
+  const loadReports = useCallback(async (reportId: ReportOption['id']) => {
+    reportRequest.current?.abort();
+    const controller = new AbortController();
+    reportRequest.current = controller;
     setIsLoading(true);
+    setData(null);
     try {
-      setData(await getAdminReports());
+      const loaded = await getAdminReports(reportId, controller.signal);
+      if (controller.signal.aborted) return;
+      reportCache.current.set(reportId, loaded);
+      setData(loaded);
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error('Reports error:', error);
       showDialog({
         title: 'Reports unavailable',
@@ -62,7 +72,7 @@ export function useAdminReports(showDialog: ShowDialog, overviewVisible = true) 
           'Unable to load report data right now. Please refresh and try again.',
       });
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   }, [showDialog]);
 
@@ -91,7 +101,24 @@ export function useAdminReports(showDialog: ShowDialog, overviewVisible = true) 
     };
   }, [overviewVisible]);
 
-  const refreshReports = useCallback(() => loadReports(), [loadReports]);
+  useEffect(() => () => reportRequest.current?.abort(), []);
+
+  const refreshReports = useCallback(() => {
+    reportCache.current.clear();
+    return loadReports(selectedReportId);
+  }, [loadReports, selectedReportId]);
+
+  const setSelectedReportId = useCallback((reportId: ReportOption['id']) => {
+    reportRequest.current?.abort();
+    selectReportId(reportId);
+    const cached = reportCache.current.get(reportId);
+    if (cached) {
+      setData(cached);
+      setIsLoading(false);
+    } else {
+      void loadReports(reportId);
+    }
+  }, [loadReports]);
 
   const openReports = useCallback(async () => {
     setIsOpen(true);

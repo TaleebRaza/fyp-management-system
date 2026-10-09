@@ -275,7 +275,7 @@ export async function POST(req: NextRequest) {
       let leftTeam = false;
 
       try {
-        const student = await User.findById(studentId).session(session);
+        const student = await User.findById(studentId).select('_id role').session(session);
 
         if (!student || student.role !== 'student') {
           await session.abortTransaction();
@@ -406,7 +406,7 @@ await session.commitTransaction();
       session.startTransaction();
 
       try {
-        const triggeringStudent = await User.findById(body.id).session(session);
+        const triggeringStudent = await User.findById(body.id).select('_id').session(session);
         if (!triggeringStudent) {
           await session.abortTransaction();
           session.endSession();
@@ -500,7 +500,7 @@ await session.commitTransaction();
     const triggeringStudent = await User.findOne({
       _id: submissionStudentId,
       role: 'student',
-    });
+    }).select('_id lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment');
         if (!triggeringStudent) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
@@ -609,7 +609,7 @@ await session.commitTransaction();
         const studentInTransaction = await User.findOne({
           _id: submissionStudentId,
           role: 'student',
-        }).session(session);
+        }).select('_id name').session(session);
                 if (!studentInTransaction) {
           throw new StorageProtocolError('Student record not found.', 409);
         }
@@ -633,7 +633,7 @@ await session.commitTransaction();
               { status: 'Approved' },
               { stage: { $in: ['THESIS_DRAFT', 'FINAL_DELIVERABLES'] } },
             ],
-          }).session(session);
+          }).select('_id').session(session);
           if (duplicateProject) {
             throw new StorageProtocolError(
               'A project utilizing these core concepts has already been approved for another team. Please select a unique topic.',

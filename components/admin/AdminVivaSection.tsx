@@ -294,21 +294,27 @@ export default function AdminVivaSection() {
     [teamProgramFilter, teams]
   );
 
-  const loadConfiguration = useCallback(async (signal?: AbortSignal) => {
+  const loadConfiguration = useCallback(async (signal?: AbortSignal, includeCatalogue = false) => {
     setIsLoading(true);
     setError('');
 
     try {
-      const response = await fetch(`/api/admin/viva?catalogue=${activeWorkspaceSection === 'setup' ? '1' : '0'}`, { cache: 'no-store', signal });
+      const response = await fetch(`/api/admin/viva?catalogue=${includeCatalogue ? '1' : '0'}`, { cache: 'no-store', signal });
       const body: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(body, 'Unable to load Viva configuration.'));
 
       const data = readConfiguration(body);
       if (!data) throw new Error('Viva configuration response was invalid.');
+      if (signal?.aborted) return;
 
       setRounds(data.rounds);
-      setTeams(data.teams);
-      setExaminers(data.examiners);
+      // Retain the setup catalogue while replacing any refreshed operational records.
+      setTeams((current) => includeCatalogue ? data.teams : [
+        ...new Map([...current, ...data.teams].map((team) => [team.id, team])).values(),
+      ]);
+      setExaminers((current) => includeCatalogue ? data.examiners : [
+        ...new Map([...current, ...data.examiners].map((examiner) => [examiner.id, examiner])).values(),
+      ]);
       setPanels(data.panels);
       setSchedules(data.schedules);
     } catch (requestError) {
@@ -317,12 +323,12 @@ export default function AdminVivaSection() {
     } finally {
       if (!signal?.aborted) setIsLoading(false);
     }
-  }, [activeWorkspaceSection]);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void loadConfiguration(controller.signal);
+      void loadConfiguration(controller.signal, true);
     }, 0);
     return () => {
       window.clearTimeout(timer);
@@ -449,6 +455,7 @@ export default function AdminVivaSection() {
               <option key={round.id} value={round.id}>{round.name}</option>
             ))}
           </select>
+          <Button variant="outline" className="min-h-10 shrink-0 px-3" onClick={() => void loadConfiguration(undefined, activeWorkspaceSection === 'setup')} disabled={isSaving}><RotateCcw size={16} />Refresh</Button>
           <Button variant="outline" className="min-h-10 shrink-0 px-3" onClick={startNewRound} disabled={isSaving}>
             <Plus size={16} />New
           </Button>
@@ -476,6 +483,8 @@ export default function AdminVivaSection() {
         </nav>
       </DashboardPanel>
 
+      {error && <p role="alert" className="mb-4 rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
+
       {activeWorkspaceSection === 'setup' && (
       <form onSubmit={saveRound} className="space-y-6" aria-busy={isSaving}>
         <DashboardPanel className="p-4 sm:p-5">
@@ -500,7 +509,6 @@ export default function AdminVivaSection() {
             }
           />
 
-          {error && <p role="alert" className="mb-4 rounded-xl bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>}
           {savedMessage && <p role="status" className="mb-4 rounded-xl bg-[var(--color-success-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-success)]">{savedMessage}</p>}
 
           <fieldset disabled={isFrozen || isSaving} className="grid gap-4 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(7rem,1fr))] disabled:opacity-65">
@@ -604,7 +612,7 @@ export default function AdminVivaSection() {
         </div>
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button variant="outline" disabled={isSaving} onClick={() => void loadConfiguration()}>Reload</Button>
+          <Button variant="outline" disabled={isSaving} onClick={() => void loadConfiguration(undefined, true)}>Reload</Button>
           {!isFrozen && <Button type="submit" disabled={isSaving}>{isSaving ? <Loader2 className="animate-spin" size={16} /> : null}{isSaving ? 'Saving...' : selectedRound ? 'Save Changes' : 'Create Viva Round'}</Button>}
         </div>
       </form>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { PipelineStage } from 'mongoose';
 
 import connectToDatabase from '../../../../lib/mongodb';
 import {
@@ -102,185 +103,230 @@ export async function GET(req: NextRequest) {
 
     await connectToDatabase();
 
-    const [userReports, supervisors, projectReportRows] = await Promise.all([
-      User.aggregate<UserReportFacets>([
-        { $match: { role: 'student' } },
-        {
-          $lookup: {
-            from: 'projects',
-            localField: '_id',
-            foreignField: 'members',
-            pipeline: [
-              { $project: { supervisorId: 1 } },
-              { $limit: 1 },
-            ],
-            as: 'canonicalProjects',
-          },
+    const reportFacets = {
+      studentsPerSupervisor: 'studentsPerSupervisor',
+      studentStatusSummary: 'studentTotals',
+      studentActivitySummary: 'studentActivity',
+      programSummary: 'programs',
+      batchSummary: 'batches',
+      projectStatusSummary: '',
+      projectStageSummary: '',
+      pdfReviewSummary: '',
+      finedStudents: 'finedStudents',
+      collectedFineStudents: 'collectedFineStudents',
+      supervisorLoginCounts: '',
+    };
+    const requestedReport = req.nextUrl.searchParams.get('report');
+    if (requestedReport !== null && !Object.hasOwn(reportFacets, requestedReport)) {
+      return NextResponse.json({ error: 'Unknown report.' }, { status: 400 });
+    }
+    const report = requestedReport as keyof typeof reportFacets | null;
+    const needsAssignment = !report || report === 'studentsPerSupervisor' || report === 'studentStatusSummary';
+    const needsSupervisors = !report || report === 'studentsPerSupervisor' || report === 'supervisorLoginCounts';
+
+    const userPipeline: PipelineStage[] = [
+      { $match: { role: 'student' } },
+      {
+        $lookup: {
+          from: 'projects',
+          localField: '_id',
+          foreignField: 'members',
+          pipeline: [
+            { $project: { supervisorId: 1 } },
+            { $limit: 1 },
+          ],
+          as: 'canonicalProjects',
         },
-        { $set: { canonicalProject: { $arrayElemAt: ['$canonicalProjects', 0] } } },
-        {
-          $facet: {
-            studentsPerSupervisor: [
-              {
-                $group: {
-                  _id: {
-                    $cond: [
-                      { $eq: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
-                      '$canonicalProject.supervisorId',
-                      'unassigned',
+      },
+      { $set: { canonicalProject: { $arrayElemAt: ['$canonicalProjects', 0] } } },
+      {
+        $facet: {
+          studentsPerSupervisor: [
+            {
+              $group: {
+                _id: {
+                  $cond: [
+                    { $eq: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
+                    '$canonicalProject.supervisorId',
+                    'unassigned',
+                  ],
+                },
+                total: { $sum: 1 },
+                active: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
+                deactivated: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
+              },
+            },
+            { $sort: { total: -1 } },
+          ],
+          studentActivity: [
+            {
+              $group: {
+                _id: { $cond: [{ $eq: ['$isActive', false] }, 'Deactivated', 'Active'] },
+                total: { $sum: 1 },
+              },
+            },
+            { $sort: { total: -1 } },
+          ],
+          programs: [
+            { $group: { _id: { $ifNull: ['$program', 'No Program'] }, total: { $sum: 1 } } },
+            { $sort: { total: -1 } },
+          ],
+          batches: [
+            { $group: { _id: { $ifNull: ['$batch', 'No Batch'] }, total: { $sum: 1 } } },
+            { $sort: { total: -1 } },
+          ],
+          finedStudents: [
+            { $match: OUTSTANDING_STUDENT_FINE_FILTER },
+            { $sort: { createdAt: -1, _id: -1 } },
+            {
+              $project: {
+                name: 1,
+                rollNo: 1,
+                program: 1,
+                batch: 1,
+                lateRegistrationDays: 1,
+                lateRegistrationFine: 1,
+                lateRegistrationFineStatus: 1,
+                registrationPunishment: 1,
+              },
+            },
+            { $limit: FINE_DETAIL_LIMIT },
+          ],
+          collectedFineStudents: [
+            { $match: COLLECTED_STUDENT_FINE_FILTER },
+            { $sort: { createdAt: -1, _id: -1 } },
+            {
+              $project: {
+                name: 1,
+                rollNo: 1,
+                program: 1,
+                batch: 1,
+                lateRegistrationDays: 1,
+                lateRegistrationFine: 1,
+                lateRegistrationFineStatus: 1,
+                registrationPunishment: 1,
+              },
+            },
+            { $limit: FINE_DETAIL_LIMIT },
+          ],
+          outstandingFineSummary: [
+            { $match: OUTSTANDING_STUDENT_FINE_FILTER },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                totalFineAmount: {
+                  $sum: {
+                    $add: [
+                      {
+                        $cond: [
+                          {
+                            $and: [
+                              { $gt: ['$lateRegistrationFine', 0] },
+                              {
+                                $not: [
+                                  {
+                                    $in: [
+                                      { $ifNull: ['$lateRegistrationFineStatus', 'pending'] },
+                                      ['resolved', 'waived'],
+                                    ],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                          '$lateRegistrationFine',
+                          0,
+                        ],
+                      },
+                      {
+                        $cond: [
+                          {
+                            $and: [
+                              { $eq: ['$registrationPunishment.active', true] },
+                              { $eq: ['$registrationPunishment.category', 'fine'] },
+                              { $gt: ['$registrationPunishment.amount', 0] },
+                              {
+                                $not: [
+                                  {
+                                    $in: [
+                                      { $ifNull: ['$registrationPunishment.status', 'pending'] },
+                                      ['resolved', 'waived'],
+                                    ],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                          '$registrationPunishment.amount',
+                          0,
+                        ],
+                      },
                     ],
                   },
-                  total: { $sum: 1 },
-                  active: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
-                  deactivated: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
                 },
               },
-              { $sort: { total: -1 } },
-            ],
-            studentActivity: [
-              {
-                $group: {
-                  _id: { $cond: [{ $eq: ['$isActive', false] }, 'Deactivated', 'Active'] },
-                  total: { $sum: 1 },
+            },
+          ],
+          studentTotals: [
+            {
+              $group: {
+                _id: null,
+                students: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
+                activeStudents: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
+                deactivatedStudents: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
+                assignedStudents: {
+                  $sum: {
+                    $cond: [
+                      { $eq: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
+                      1,
+                      0,
+                    ],
+                  },
                 },
-              },
-              { $sort: { total: -1 } },
-            ],
-            programs: [
-              { $group: { _id: { $ifNull: ['$program', 'No Program'] }, total: { $sum: 1 } } },
-              { $sort: { total: -1 } },
-            ],
-            batches: [
-              { $group: { _id: { $ifNull: ['$batch', 'No Batch'] }, total: { $sum: 1 } } },
-              { $sort: { total: -1 } },
-            ],
-            finedStudents: [
-              { $match: OUTSTANDING_STUDENT_FINE_FILTER },
-              { $sort: { createdAt: -1, _id: -1 } },
-              {
-                $project: {
-                  name: 1,
-                  rollNo: 1,
-                  program: 1,
-                  batch: 1,
-                  lateRegistrationDays: 1,
-                  lateRegistrationFine: 1,
-                  lateRegistrationFineStatus: 1,
-                  registrationPunishment: 1,
-                },
-              },
-              { $limit: FINE_DETAIL_LIMIT },
-            ],
-            collectedFineStudents: [
-              { $match: COLLECTED_STUDENT_FINE_FILTER },
-              { $sort: { createdAt: -1, _id: -1 } },
-              {
-                $project: {
-                  name: 1,
-                  rollNo: 1,
-                  program: 1,
-                  batch: 1,
-                  lateRegistrationDays: 1,
-                  lateRegistrationFine: 1,
-                  lateRegistrationFineStatus: 1,
-                  registrationPunishment: 1,
-                },
-              },
-              { $limit: FINE_DETAIL_LIMIT },
-            ],
-            outstandingFineSummary: [
-              { $match: OUTSTANDING_STUDENT_FINE_FILTER },
-              {
-                $group: {
-                  _id: null,
-                  total: { $sum: 1 },
-                  totalFineAmount: {
-                    $sum: {
-                      $add: [
-                        {
-                          $cond: [
-                            {
-                              $and: [
-                                { $gt: ['$lateRegistrationFine', 0] },
-                                {
-                                  $not: [
-                                    {
-                                      $in: [
-                                        { $ifNull: ['$lateRegistrationFineStatus', 'pending'] },
-                                        ['resolved', 'waived'],
-                                      ],
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                            '$lateRegistrationFine',
-                            0,
-                          ],
-                        },
-                        {
-                          $cond: [
-                            {
-                              $and: [
-                                { $eq: ['$registrationPunishment.active', true] },
-                                { $eq: ['$registrationPunishment.category', 'fine'] },
-                                { $gt: ['$registrationPunishment.amount', 0] },
-                                {
-                                  $not: [
-                                    {
-                                      $in: [
-                                        { $ifNull: ['$registrationPunishment.status', 'pending'] },
-                                        ['resolved', 'waived'],
-                                      ],
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                            '$registrationPunishment.amount',
-                            0,
-                          ],
-                        },
-                      ],
-                    },
+                unassignedStudents: {
+                  $sum: {
+                    $cond: [
+                      { $ne: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
+                      1,
+                      0,
+                    ],
                   },
                 },
               },
-            ],
-            studentTotals: [
-              {
-                $group: {
-                  _id: null,
-                  students: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
-                  activeStudents: { $sum: { $cond: [{ $ne: ['$isActive', false] }, 1, 0] } },
-                  deactivatedStudents: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] } },
-                  assignedStudents: {
-                    $sum: {
-                      $cond: [
-                        { $eq: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
-                        1,
-                        0,
-                      ],
-                    },
-                  },
-                  unassignedStudents: {
-                    $sum: {
-                      $cond: [
-                        { $ne: [{ $type: '$canonicalProject.supervisorId' }, 'objectId'] },
-                        1,
-                        0,
-                      ],
-                    },
-                  },
-                },
-              },
-            ],
-          },
+            },
+          ],
         },
-      ]),
-      User.find({ role: 'supervisor' })
+      },
+    ];
+    if (report) {
+      const facetStage = userPipeline.find((stage) => '$facet' in stage);
+      if (facetStage && '$facet' in facetStage) {
+        const facets = facetStage.$facet;
+        for (const key of Object.keys(facets)) {
+          if (key !== reportFacets[report] && key !== 'studentTotals' && key !== 'outstandingFineSummary') {
+            delete facets[key];
+          }
+        }
+        if (!needsAssignment) {
+          const totalsStage = facets.studentTotals[0];
+          if ('$group' in totalsStage) {
+            const totals = totalsStage.$group as Record<string, unknown>;
+            delete totals.assignedStudents;
+            delete totals.unassignedStudents;
+          }
+        }
+      }
+    }
+
+    const [userReports, supervisors, supervisorCount, projectReportRows] = await Promise.all([
+      User.aggregate<UserReportFacets>(needsAssignment ? userPipeline : userPipeline.filter(
+        (stage) => !('$lookup' in stage) && !('$set' in stage)
+      )),
+      needsSupervisors ? User.find({ role: 'supervisor' })
         .select('_id name rollNo monthlyLoginCount lastLoginMonth')
-        .lean<SupervisorLoginRow[]>(),
+        .lean<SupervisorLoginRow[]>() : Promise.resolve([] as SupervisorLoginRow[]),
+      needsSupervisors ? Promise.resolve(null) : User.countDocuments({ role: 'supervisor' }),
       Project.aggregate<ProjectReportRow>([
         {
           $project: {
@@ -466,34 +512,34 @@ export async function GET(req: NextRequest) {
             : 'No recorded logins',
       }));
 
-    return NextResponse.json(
-      {
-        generatedAt: new Date().toISOString(),
-        totals: {
-          students,
-          activeStudents,
-          deactivatedStudents,
-          supervisors: supervisors.length,
-          assignedStudents,
-          unassignedStudents,
-          projects: pdfReview.totalProjects,
-          reviewQueue: Number(pdfReview.waitingForReview || 0),
-          projectsWithPdf: Number(pdfReview.withPdf || 0),
-          finedStudents: Number(outstandingFineSummary?.total || 0),
-          totalFineAmount,
-        },
-        finedStudents,
-        collectedFineStudents,
-        studentsPerSupervisor,
-        studentStatusSummary: toLabelRows(canonicalStudentStatus, 'No Status'),
-        studentActivitySummary: toLabelRows(userReport?.studentActivity || [], 'Unknown'),
-        programSummary: toLabelRows(userReport?.programs || [], 'No Program'),
-        batchSummary: toLabelRows(userReport?.batches || [], 'No Batch'),
-        projectStatusSummary: toLabelRows(projectStatus, 'Pending'),
-        projectStageSummary: toLabelRows(projectStage, 'PROPOSAL'),
-        pdfReviewSummary,
-        supervisorLoginCounts,
+    const responseData = {
+      generatedAt: new Date().toISOString(),
+      totals: {
+        students,
+        activeStudents,
+        deactivatedStudents,
+        supervisors: supervisorCount ?? supervisors.length,
+        ...(needsAssignment ? { assignedStudents, unassignedStudents } : {}),
+        projects: pdfReview.totalProjects,
+        reviewQueue: Number(pdfReview.waitingForReview || 0),
+        projectsWithPdf: Number(pdfReview.withPdf || 0),
+        finedStudents: Number(outstandingFineSummary?.total || 0),
+        totalFineAmount,
       },
+      finedStudents,
+      collectedFineStudents,
+      studentsPerSupervisor,
+      studentStatusSummary: toLabelRows(canonicalStudentStatus, 'No Status'),
+      studentActivitySummary: toLabelRows(userReport?.studentActivity || [], 'Unknown'),
+      programSummary: toLabelRows(userReport?.programs || [], 'No Program'),
+      batchSummary: toLabelRows(userReport?.batches || [], 'No Batch'),
+      projectStatusSummary: toLabelRows(projectStatus, 'Pending'),
+      projectStageSummary: toLabelRows(projectStage, 'PROPOSAL'),
+      pdfReviewSummary,
+      supervisorLoginCounts,
+    };
+    return NextResponse.json(
+      report ? { generatedAt: responseData.generatedAt, totals: responseData.totals, [report]: responseData[report] } : responseData,
       {
         status: 200,
         headers: {

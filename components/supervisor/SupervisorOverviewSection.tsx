@@ -23,7 +23,7 @@ export default function SupervisorOverviewSection({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/dashboard/supervisor/viva', { cache: 'no-store', signal: controller.signal })
+    fetch('/api/dashboard/supervisor/viva?preview=1', { cache: 'no-store', signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject())
       .then((body: { sessions?: VivaPreview[] }) => setSessions(Array.isArray(body.sessions) ? body.sessions.filter((session) => session && typeof session.id === 'string' && typeof session.scheduledAt === 'string' && typeof session.project?.title === 'string') : []))
       .catch(() => { if (!controller.signal.aborted) setLoadFailed(true); });

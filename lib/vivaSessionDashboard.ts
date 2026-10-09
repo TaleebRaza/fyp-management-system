@@ -968,7 +968,7 @@ export async function requeueVivaSession(
   }
 }
 
-export async function getVivaPanelSessions(actorId: string): Promise<VivaSessionWorkspaceDto[]> {
+export async function getVivaPanelSessions(actorId: string, preview = false): Promise<VivaSessionWorkspaceDto[]> {
   if (!mongoose.Types.ObjectId.isValid(actorId)) return [];
 
   const panels = await VivaPanel.find({ examinerIds: actorId })
@@ -979,6 +979,7 @@ export async function getVivaPanelSessions(actorId: string): Promise<VivaSession
   const sessions = await VivaSession.find({
     panelId: { $in: panels.map((panel) => panel._id) },
     cancelledAt: null,
+    ...(preview ? { completedAt: null } : {}),
   })
     .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel result version roundSnapshot projectSnapshot panelSnapshot')
     .sort({ scheduledAt: 1, _id: 1 })

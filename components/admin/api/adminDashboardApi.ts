@@ -5,6 +5,7 @@ import type {
   AdminSupervisor,
   StudentPagination,
 } from '../adminDashboardTypes';
+import type { ReportId } from '../reports/reportTypes';
 import type { ProjectRatingsExportFilters } from '../../../config/projectRatings';
 import type { ProjectRatingExportRow } from '../../../lib/projectRatingsExport';
 
@@ -143,8 +144,8 @@ export async function getAdminStudents(
   return data;
 }
 
-export async function getAdminReports(): Promise<AdminReportsData> {
-  const response = await fetch('/api/admin/reports', { cache: 'no-store' });
+export async function getAdminReports(report?: ReportId, signal?: AbortSignal): Promise<AdminReportsData> {
+  const response = await fetch(`/api/admin/reports${report ? `?report=${encodeURIComponent(report)}` : ''}`, { cache: 'no-store', ...(signal ? { signal } : {}) });
   const data = await readJson<AdminReportsData & { error?: string }>(response);
 
   if (!response.ok) {

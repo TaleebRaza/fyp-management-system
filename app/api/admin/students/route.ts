@@ -158,11 +158,28 @@ export async function GET(req: NextRequest) {
             ],
           }
         : {};
-      const [result] = await User.aggregate<{
+      // Shortlist assigned students by status, then recheck the same canonical
+      // project as the user-first path. Grouping prevents duplicate membership counts.
+      const assignedStatus = status !== 'Unassigned';
+      const candidateStages: mongoose.PipelineStage[] = assignedStatus ? [
+        { $match: { status, supervisorId: { $type: 'objectId' } } },
+        { $unwind: '$members' },
+        { $group: { _id: '$members' } },
+        { $lookup: {
+          from: User.collection.name,
+          localField: '_id',
+          foreignField: '_id',
+          pipeline: [{ $match: baseQuery }],
+          as: 'student',
+        } },
+        { $unwind: '$student' },
+        { $replaceWith: '$student' },
+      ] : [{ $match: baseQuery }];
+      const [result] = await (assignedStatus ? Project : User).aggregate<{
         rows: Array<Record<string, unknown>>;
         metadata: Array<{ total: number }>;
       }>([
-        { $match: baseQuery },
+        ...candidateStages,
         {
           $lookup: {
             from: Project.collection.name,

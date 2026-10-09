@@ -216,3 +216,16 @@ test('later-page reads can omit metadata while initial and explicit reads retain
   assert.equal(api.buildAdminStudentSearchParams({ ...query, includeMetadata: false }).get('metadata'), '0');
   assert.equal(api.buildAdminStudentSearchParams({ ...query, includeMetadata: false }).get('cursor'), 'page-two');
 });
+
+test('selected reports use the existing endpoint and forward cancellation', async () => {
+  const controller = new AbortController();
+  await withMockFetch(async (url, init) => {
+    assert.equal(url, '/api/admin/reports?report=programSummary');
+    assert.equal(init.cache, 'no-store');
+    assert.equal(init.signal, controller.signal);
+    return jsonResponse({ programSummary: [{ label: 'BSCS', total: 2 }] });
+  }, async () => {
+    const result = await api.getAdminReports('programSummary', controller.signal);
+    assert.equal(result.programSummary[0].total, 2);
+  });
+});

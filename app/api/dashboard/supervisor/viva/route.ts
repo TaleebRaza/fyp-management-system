@@ -31,7 +31,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    return NextResponse.json({ sessions: await getVivaPanelSessions(currentUser.id) });
+    const preview = req.nextUrl.searchParams.get('preview') === '1';
+    const sessions = await getVivaPanelSessions(currentUser.id, preview);
+    return NextResponse.json({ sessions: preview
+      ? sessions.filter((session) => session.phase !== 'completed').slice(0, 3).map((session) => ({
+          id: session.id,
+          scheduledAt: session.scheduledAt,
+          phase: session.phase,
+          project: { title: session.project.title },
+        }))
+      : sessions,
+    }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error) {
     console.error('Supervisor Viva session fetch error:', error);
     return NextResponse.json({ error: 'Failed to load Viva sessions.' }, { status: 500 });
