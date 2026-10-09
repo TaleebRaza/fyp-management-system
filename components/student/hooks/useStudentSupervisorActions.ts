@@ -81,8 +81,7 @@ export function useStudentSupervisorActions({
           resetTemplates();
         }
 
-        await refreshDashboard();
-        await refreshSupervisors();
+        await Promise.all([refreshDashboard(), refreshSupervisors()]);
         showDialog({
           title: action === 'changeSupervisor' ? 'Supervisor changed' : 'Supervisor assigned',
           message:

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
 
@@ -64,6 +64,10 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
   const {
     data,
     supervisors: localSups,
+    supervisorsLoaded,
+    isLoadingSupervisors,
+    supervisorsError,
+    loadSupervisors,
     headline,
     isLoading,
     refreshDashboard: fetchData,
@@ -143,6 +147,14 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
     resetTemplates,
     showDialog,
   });
+  const needsSupervisors = (activeTab === 'team' && isUnassigned) || isSupervisorWarningOpen;
+  useEffect(() => {
+    if (needsSupervisors && !supervisorsLoaded) {
+      void loadSupervisors().catch(() => {});
+    }
+  }, [loadSupervisors, needsSupervisors, supervisorsLoaded]);
+  const retrySupervisors = () => { void loadSupervisors().catch(() => {}); };
+
   const {
     inviteCodeInput,
     setInviteCodeInput,
@@ -347,6 +359,9 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
             inviteCode={project?.inviteCode}
             isUnassigned={isUnassigned}
             supervisorName={supervisor?.name}
+            supervisorsLoading={isLoadingSupervisors || (needsSupervisors && !supervisorsLoaded && !supervisorsError)}
+            supervisorsError={supervisorsError}
+            onRetrySupervisors={retrySupervisors}
             supervisorOptions={supervisorOptions}
             selectedSupervisorId={selectedSupervisorId}
             onSupervisorChange={setSelectedSupervisorId}
@@ -360,7 +375,6 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
             onCopyInviteCode={handleCopyInviteCode}
             onOpenSupervisorChange={openSupervisorChangeDialog}
             isSupervisorChangeLocked={isSupervisorChangeLocked}
-            supervisorChangeOptions={supervisorChangeOptions}
           />
         )}
         {activeTab === 'resources' && (
@@ -387,6 +401,9 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
         onConfirm={handleConfirmSupervisorChange}
         selectedSupervisorId={selectedSupervisorId}
         onSelectedSupervisorIdChange={setSelectedSupervisorId}
+        supervisorsLoading={isLoadingSupervisors || (!supervisorsLoaded && !supervisorsError)}
+        supervisorsError={supervisorsError}
+        onRetrySupervisors={retrySupervisors}
         options={supervisorChangeOptions}
         selectedSupervisorName={selectedSupervisorName}
         isDarkMode={Boolean(isDarkMode)}

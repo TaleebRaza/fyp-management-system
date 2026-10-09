@@ -26,7 +26,7 @@ const DEFAULT_RATING_EXPORT_FILTERS: ProjectRatingsExportFilters = {
   minimums: { projectIdea: 0, technicalMerit: 0, documentationQuality: 0 },
 };
 
-export function useAdminReports(showDialog: ShowDialog) {
+export function useAdminReports(showDialog: ShowDialog, overviewVisible = true) {
   const [isOpen, setIsOpen] = useState(false);
   const [data, setData] = useState<AdminReportsData | null>(null);
   const [summary, setSummary] = useState<AdminOverviewSummary | null>(null);
@@ -67,11 +67,15 @@ export function useAdminReports(showDialog: ShowDialog) {
   }, [showDialog]);
 
   useEffect(() => {
+    if (!overviewVisible) return;
     let ignore = false;
 
     getAdminOverviewSummary()
       .then((loadedSummary) => {
-        if (!ignore) setSummary(loadedSummary);
+        if (!ignore) {
+          setSummary(loadedSummary);
+          setSummaryError(false);
+        }
       })
       .catch((error) => {
         if (ignore) return;
@@ -85,7 +89,7 @@ export function useAdminReports(showDialog: ShowDialog) {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [overviewVisible]);
 
   const refreshReports = useCallback(() => loadReports(), [loadReports]);
 

@@ -94,6 +94,7 @@ export type AdminReportsData = {
 };
 
 export type AdminOverviewSummary = {
+  totalStudents: number;
   students: number;
   supervisors: number;
   projects: number;

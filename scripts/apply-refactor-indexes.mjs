@@ -35,7 +35,23 @@ try {
       });
     }
   }
-  console.log(JSON.stringify({ mode: 'apply', created }, null, 2));
+  // Drop only the superseded ordinary index, after its replacement was built.
+  const users = mongoose.connection.collection('users');
+  const indexes = await users.listIndexes().toArray();
+  const replacement = indexes.find((index) =>
+    JSON.stringify(index.key) === JSON.stringify({ role: 1, createdAt: -1, _id: -1 })
+    && !index.partialFilterExpression && !index.sparse && !index.hidden && !index.collation
+  );
+  if (!replacement) throw new Error('Student sort index verification failed; old index retained.');
+  const dropped = [];
+  for (const index of indexes) {
+    if (JSON.stringify(index.key) === JSON.stringify({ role: 1, createdAt: -1 })
+      && !index.unique && !index.partialFilterExpression && !index.sparse && !index.collation) {
+      await users.dropIndex(index.name);
+      dropped.push(index.name);
+    }
+  }
+  console.log(JSON.stringify({ mode: 'apply', created, dropped }, null, 2));
 } finally {
   await mongoose.disconnect();
 }

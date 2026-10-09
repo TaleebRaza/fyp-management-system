@@ -204,3 +204,15 @@ test('loads project ratings rows with all server-side filter values', async () =
     assert.equal(result.filename, 'project-ratings-proposal-2026-08-06.pdf');
   });
 });
+
+
+test('later-page reads can omit metadata while initial and explicit reads retain the default', () => {
+  const query = {
+    page: 2, limit: 20, studentFilter: 'All', batchFilter: 'All',
+    search: '', programCodes: ['BSCS'], cursor: 'page-two',
+  };
+  assert.equal(api.buildAdminStudentSearchParams(query).has('metadata'), false);
+  assert.equal(api.buildAdminStudentSearchParams({ ...query, includeMetadata: true }).has('metadata'), false);
+  assert.equal(api.buildAdminStudentSearchParams({ ...query, includeMetadata: false }).get('metadata'), '0');
+  assert.equal(api.buildAdminStudentSearchParams({ ...query, includeMetadata: false }).get('cursor'), 'page-two');
+});

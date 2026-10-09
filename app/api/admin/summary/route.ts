@@ -13,8 +13,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [students, supervisors, projects, reviewQueue] = await Promise.all([
-      User.countDocuments({ role: 'student', isActive: { $ne: false } }),
+    const [studentCounts, supervisors, projects, reviewQueue] = await Promise.all([
+      User.aggregate<{ total: number; active: number }>([
+        { $match: { role: 'student' } },
+        { $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: { $sum: { $cond: [{ $eq: ['$isActive', false] }, 0, 1] } },
+        } },
+      ]),
       User.countDocuments({ role: 'supervisor' }),
       Project.countDocuments(),
       Project.countDocuments({
@@ -24,7 +31,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     return NextResponse.json(
-      { students, supervisors, projects, reviewQueue },
+      { students: studentCounts[0]?.active || 0, totalStudents: studentCounts[0]?.total || 0, supervisors, projects, reviewQueue },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error) {

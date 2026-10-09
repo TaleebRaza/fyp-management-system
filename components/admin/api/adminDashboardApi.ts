@@ -29,6 +29,7 @@ export type AdminStudentQuery = {
   search: string;
   programCodes: readonly string[];
   cursor?: string;
+  includeMetadata?: boolean;
 };
 
 export type AdminStudentsResponse = {
@@ -102,6 +103,8 @@ export function buildAdminStudentSearchParams(query: AdminStudentQuery): URLSear
     params.set('cursor', query.cursor);
   }
 
+  if (query.includeMetadata === false) params.set('metadata', '0');
+
   return params;
 }
 
@@ -120,6 +123,7 @@ export async function publishAdminHeadline(
 export async function getAdminSupervisors(): Promise<AdminSupervisor[]> {
   const response = await fetch('/api/admin/supervisors', { cache: 'no-store' });
   const data: unknown = await response.json();
+  if (!response.ok) throw new Error('Failed to fetch supervisors');
   return Array.isArray(data) ? (data as AdminSupervisor[]) : [];
 }
 

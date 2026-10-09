@@ -11,6 +11,9 @@ export type SupervisorChangeDialogProps = {
   onConfirm: () => void;
   selectedSupervisorId: string;
   onSelectedSupervisorIdChange: (value: string) => void;
+  supervisorsLoading: boolean;
+  supervisorsError: boolean;
+  onRetrySupervisors: () => void;
   options: SupervisorOption[];
   selectedSupervisorName: string;
   isDarkMode: boolean;
@@ -30,6 +33,9 @@ export function SupervisorChangeDialog({
   onConfirm,
   selectedSupervisorId,
   onSelectedSupervisorIdChange,
+  supervisorsLoading,
+  supervisorsError,
+  onRetrySupervisors,
   options,
   selectedSupervisorName,
   isDarkMode,
@@ -48,7 +54,7 @@ export function SupervisorChangeDialog({
           <Button
             variant="danger"
             onClick={onConfirm}
-            disabled={isSubmitting || !selectedSupervisorId}
+            disabled={isSubmitting || supervisorsLoading || supervisorsError || !selectedSupervisorId}
           >
             {isSubmitting ? (
               <Loader2 className="animate-spin" size={16} />
@@ -68,16 +74,18 @@ export function SupervisorChangeDialog({
           <select
             value={selectedSupervisorId}
             onChange={(event: ChangeEvent<HTMLSelectElement>) => onSelectedSupervisorIdChange(event.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || supervisorsLoading || supervisorsError}
             className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <option value="">Select a new supervisor</option>
+            <option value="">{supervisorsLoading ? 'Loading supervisors...' : 'Select a new supervisor'}</option>
             {options.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
               </option>
             ))}
           </select>
+          {supervisorsError && <p role="alert" className="mt-2 text-sm text-[var(--color-text-muted)]">Supervisors could not load. <button type="button" onClick={onRetrySupervisors} className="underline">Retry</button></p>}
+          {!supervisorsLoading && !supervisorsError && options.length === 0 && <p className="mt-2 text-sm text-[var(--color-text-muted)]">No other supervisor currently has an available slot.</p>}
           {selectedSupervisorId && (
             <p className="mt-2 text-sm text-[var(--color-text-muted)]">
               You selected{' '}

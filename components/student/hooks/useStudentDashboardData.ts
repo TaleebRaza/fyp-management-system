@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { normalizeProjectDomainIds } from '../../../config/projectDomains';
 import {
   getStudentDashboard,
@@ -44,6 +44,10 @@ export function useStudentDashboardData({
 }: UseStudentDashboardDataOptions) {
   const [data, setData] = useState<StudentDashboardData | null>(null);
   const [supervisors, setSupervisors] = useState<AvailableSupervisor[]>([]);
+  const [supervisorsLoaded, setSupervisorsLoaded] = useState(false);
+  const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(false);
+  const [supervisorsError, setSupervisorsError] = useState(false);
+  const supervisorRequest = useRef<Promise<void> | null>(null);
   const [headline, setHeadline] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -77,18 +81,39 @@ export function useStudentDashboardData({
         title: 'Dashboard unavailable',
         message: 'Unable to load your dashboard right now. Please refresh and try again.',
       });
+      throw new Error('The dashboard refresh failed. Your change may already be saved; refresh before retrying.');
     } finally {
       setIsLoading(false);
     }
   }, [applyDashboard, showDialog, userId]);
 
-  const refreshSupervisors = useCallback(async () => {
-    try {
-      setSupervisors(await getStudentSupervisors());
-    } catch (error) {
-      console.error('Supervisor fetch error:', error);
-    }
+  const loadSupervisors = useCallback((): Promise<void> => {
+    if (supervisorRequest.current) return supervisorRequest.current;
+    setIsLoadingSupervisors(true);
+    setSupervisorsError(false);
+    const request = getStudentSupervisors()
+      .then((value) => {
+        setSupervisors(value);
+        setSupervisorsLoaded(true);
+      })
+      .catch((error) => {
+        setSupervisorsError(true);
+        throw error;
+      })
+      .finally(() => {
+        setIsLoadingSupervisors(false);
+        supervisorRequest.current = null;
+      });
+    supervisorRequest.current = request;
+    return request;
   }, []);
+
+  const refreshSupervisors = useCallback(async () => {
+    if (!supervisorsLoaded && !supervisorRequest.current) return;
+    // Wait for a pre-mutation read before requesting current capacity.
+    if (supervisorRequest.current) await supervisorRequest.current.catch(() => {});
+    await loadSupervisors();
+  }, [loadSupervisors, supervisorsLoaded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,12 +123,6 @@ export function useStudentDashboardData({
         if (!cancelled) setHeadline(value);
       })
       .catch((error) => console.error('Failed to fetch headline:', error));
-
-    const supervisorRequest = getStudentSupervisors()
-      .then((value) => {
-        if (!cancelled) setSupervisors(value);
-      })
-      .catch((error) => console.error('Supervisor fetch error:', error));
 
     const dashboardRequest = userId
       ? getStudentDashboard(userId)
@@ -127,7 +146,7 @@ export function useStudentDashboardData({
           if (!cancelled) setIsLoading(false);
         });
 
-    void Promise.allSettled([headlineRequest, supervisorRequest, dashboardRequest]);
+    void Promise.allSettled([headlineRequest, dashboardRequest]);
     return () => {
       cancelled = true;
     };
@@ -136,6 +155,10 @@ export function useStudentDashboardData({
   return {
     data,
     supervisors,
+    supervisorsLoaded,
+    isLoadingSupervisors,
+    supervisorsError,
+    loadSupervisors,
     headline,
     isLoading,
     refreshHeadline,

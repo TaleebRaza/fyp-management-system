@@ -16,7 +16,7 @@ export function useStudentFineRefresh({
 
     const refreshFineStatus = () => {
       if (document.visibilityState === 'visible') {
-        void refreshDashboard();
+        void refreshDashboard().catch(() => {});
       }
     };
 

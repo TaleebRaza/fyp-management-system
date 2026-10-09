@@ -29,8 +29,10 @@ const EMPTY_SUPERVISOR: NewSupervisor = {
 
 export function useAdminSupervisors(
   showDialog: ShowDialog,
-  refreshStudents: () => Promise<void>
+  refreshStudents: () => Promise<void>,
+  enabled = true
 ) {
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [newSupervisor, setNewSupervisor] =
     useState<NewSupervisor>(EMPTY_SUPERVISOR);
   const [supervisors, setSupervisors] = useState<AdminSupervisor[]>([]);
@@ -48,26 +50,39 @@ export function useAdminSupervisors(
   const refreshSupervisors = useCallback(async () => {
     try {
       setSupervisors(await getAdminSupervisors());
+      setHasLoaded(true);
     } catch (error) {
       console.error('Supervisor fetch error:', error);
+      showDialog({ title: 'Supervisors could not load', message: 'Please refresh and try again.' });
     }
-  }, []);
+  }, [showDialog]);
 
   useEffect(() => {
+    if (!enabled) return;
     let ignore = false;
 
     getAdminSupervisors()
       .then((loadedSupervisors) => {
-        if (!ignore) setSupervisors(loadedSupervisors);
+        if (!ignore) {
+          setSupervisors(loadedSupervisors);
+          setHasLoaded(true);
+        }
       })
       .catch((error) => {
-        if (!ignore) console.error('Supervisor fetch error:', error);
+        if (ignore) return;
+        console.error('Supervisor fetch error:', error);
+        showDialog({
+          type: 'confirm',
+          title: 'Retry loading supervisors?',
+          message: 'The supervisor list could not be loaded. Try again?',
+          onConfirm: () => refreshSupervisors(),
+        });
       });
 
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [enabled, refreshSupervisors, showDialog]);
 
   const handleNewSupervisorChange = useCallback(
     (field: NewSupervisorField, value: string) => {
@@ -267,6 +282,7 @@ export function useAdminSupervisors(
     newSupervisor,
     handleNewSupervisorChange,
     supervisors,
+    hasLoaded,
     filteredSupervisors,
     search,
     setSearch,

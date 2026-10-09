@@ -100,7 +100,7 @@ UserSchema.index({ role: 1 });
 
 
 // Speeds up the default admin student list: newest students first.
-UserSchema.index({ role: 1, createdAt: -1 });
+UserSchema.index({ role: 1, createdAt: -1, _id: -1 });
 
 
 // Speeds up common single-filter admin views without forcing MongoDB to scan all students.

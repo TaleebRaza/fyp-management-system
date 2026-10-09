@@ -21,7 +21,8 @@ const DEFAULT_PAGINATION: StudentPagination = {
   totalPages: 0,
 };
 
-export function useAdminStudents(showDialog: ShowDialog) {
+export function useAdminStudents(showDialog: ShowDialog, enabled = true) {
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [students, setStudents] = useState<AdminStudent[]>([]);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -41,6 +42,7 @@ export function useAdminStudents(showDialog: ShowDialog) {
 
   const refreshStudents = useCallback(
     async (pageToFetch = page) => {
+      if (!enabled) return;
       try {
         setIsLoading(true);
         const data = await getAdminStudents({
@@ -53,8 +55,9 @@ export function useAdminStudents(showDialog: ShowDialog) {
           cursor: pageToFetch > 1 ? pageCursors.current.get(pageToFetch) : undefined,
         });
 
+        setHasLoaded(true);
         setStudents(Array.isArray(data.students) ? data.students : []);
-        if (data.pagination) setPagination(data.pagination);
+        if (data.pagination) setPagination((current) => ({ ...current, ...data.pagination }));
         if (Array.isArray(data.filterMeta?.batches)) {
           setBatches(data.filterMeta.batches);
         }
@@ -75,6 +78,7 @@ export function useAdminStudents(showDialog: ShowDialog) {
       }
     },
     [
+      enabled,
       batchFilter,
       debouncedSearch,
       page,
@@ -86,6 +90,7 @@ export function useAdminStudents(showDialog: ShowDialog) {
   );
 
   useEffect(() => {
+    if (search.trim() === debouncedSearch) return;
     const timer = window.setTimeout(() => {
       setIsLoading(true);
       setPage(1);
@@ -94,13 +99,15 @@ export function useAdminStudents(showDialog: ShowDialog) {
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [debouncedSearch, search]);
 
   useEffect(() => {
+    if (!enabled) return;
     let ignore = false;
 
     getAdminStudents({
       page,
+      includeMetadata: page === 1,
       limit: pagination.limit || 20,
       studentFilter,
       batchFilter,
@@ -111,8 +118,9 @@ export function useAdminStudents(showDialog: ShowDialog) {
       .then((data) => {
         if (ignore) return;
 
+        setHasLoaded(true);
         setStudents(Array.isArray(data.students) ? data.students : []);
-        if (data.pagination) setPagination(data.pagination);
+        if (data.pagination) setPagination((current) => ({ ...current, ...data.pagination }));
         if (Array.isArray(data.filterMeta?.batches)) {
           setBatches(data.filterMeta.batches);
         }
@@ -127,9 +135,10 @@ export function useAdminStudents(showDialog: ShowDialog) {
 
         console.error('Student fetch error:', error);
         showDialog({
-          title: 'Students could not load',
-          message:
-            'The student list could not be loaded. Please refresh or try again later.',
+          type: 'confirm',
+          title: 'Retry loading students?',
+          message: 'The student list could not be loaded. Try again?',
+          onConfirm: () => refreshStudents(),
         });
       })
       .finally(() => {
@@ -140,11 +149,13 @@ export function useAdminStudents(showDialog: ShowDialog) {
       ignore = true;
     };
   }, [
+    enabled,
     batchFilter,
     debouncedSearch,
     page,
     pagination.limit,
     programCodes,
+    refreshStudents,
     showDialog,
     studentFilter,
   ]);
@@ -360,6 +371,7 @@ export function useAdminStudents(showDialog: ShowDialog) {
 
   return {
     students,
+    hasLoaded,
     search,
     setSearch,
     page,

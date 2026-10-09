@@ -73,8 +73,7 @@ export function useStudentTeamActions({
       await resetProjectDraft();
       setInviteCodeInput('');
       resetTemplates();
-      await refreshDashboard();
-      await refreshSupervisors();
+      await Promise.all([refreshDashboard(), refreshSupervisors()]);
       showDialog({
         title: 'Team left',
         message:

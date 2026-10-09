@@ -130,12 +130,15 @@ export async function GET(req: NextRequest) {
       'createdAt',
     ].join(' ');
 
-    const filterMetaPromise = User.distinct('batch', {
+    const includeMetadata = searchParams.get('metadata') !== '0';
+    const filterMetaPromise = includeMetadata ? User.distinct('batch', {
       role: 'student',
       batch: { $nin: [null, ''] },
-    });
+    }) : Promise.resolve(undefined);
 
-    const activeTotalPromise = User.countDocuments({ role: 'student', isActive: { $ne: false } });
+    const activeTotalPromise = includeMetadata
+      ? User.countDocuments({ role: 'student', isActive: { $ne: false } })
+      : Promise.resolve(undefined);
 
     let students: Array<Record<string, unknown>>;
     let total: number;
@@ -257,12 +260,10 @@ export async function GET(req: NextRequest) {
           page,
           limit,
           total,
-          activeTotal,
+          ...(includeMetadata ? { activeTotal } : {}),
           totalPages,
         },
-        filterMeta: {
-          batches: batches.sort(),
-        },
+        ...(includeMetadata ? { filterMeta: { batches: batches?.sort() || [] } } : {}),
         nextCursor: students.length === limit
           ? createCursor(students.at(-1) as { createdAt?: Date; _id?: unknown })
           : null,

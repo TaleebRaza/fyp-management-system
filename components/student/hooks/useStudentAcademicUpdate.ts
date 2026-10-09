@@ -80,8 +80,7 @@ export function useStudentAcademicUpdate({
       closeAcademicEditor();
       await resetProjectDraft();
       resetTemplates();
-      await refreshDashboard();
-      await refreshSupervisors();
+      await Promise.all([refreshDashboard(), refreshSupervisors()]);
       showDialog({
         title: 'Academic info updated',
         message: response.message || 'Program and batch updated successfully.',

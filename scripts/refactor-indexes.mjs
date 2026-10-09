@@ -13,6 +13,7 @@ export const refactorIndexes = {
     { key: { createdAt: 1, _id: 1 } },
   ],
   users: [
+    { key: { role: 1, createdAt: -1, _id: -1 } },
     {
       key: { migrationCode: 1 },
       options: {

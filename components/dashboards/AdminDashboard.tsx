@@ -90,20 +90,28 @@ const AdminDashboard = ({
   onPortalPauseChange,
 }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [studentsOpened, setStudentsOpened] = useState(false);
+  const [supervisorsOpened, setSupervisorsOpened] = useState(false);
+  const openTab = (tab: AdminTab) => {
+    if (tab === 'students') setStudentsOpened(true);
+    if (tab === 'supervisors') setSupervisorsOpened(true);
+    setActiveTab(tab);
+  };
   const [hasOpenedReviews, setHasOpenedReviews] = useState(false);
   const [isVivaView, setIsVivaView] = useState(false);
   const [isUpdatingPortal, setIsUpdatingPortal] = useState(false);
   const headline = useAdminHeadline(showDialog);
-  const students = useAdminStudents(showDialog);
+  const students = useAdminStudents(showDialog, studentsOpened);
   const supervisors = useAdminSupervisors(
     showDialog,
-    students.refreshStudents
+    students.refreshStudents,
+    supervisorsOpened
   );
-  const reports = useAdminReports(showDialog);
+  const reports = useAdminReports(showDialog, activeTab === 'overview' && !isVivaView);
 
   const openReviews = () => {
     setHasOpenedReviews(true);
-    setActiveTab('reviews');
+    openTab('reviews');
   };
 
   const updatePortal = async (paused: boolean, reason = portalPauseReason) => {
@@ -156,7 +164,7 @@ const AdminDashboard = ({
       section: 'Workspace',
       icon: <LayoutDashboard size={18} />,
       active: activeTab === 'overview',
-      onClick: () => setActiveTab('overview'),
+      onClick: () => openTab('overview'),
     },
     {
       id: 'supervisors',
@@ -164,8 +172,8 @@ const AdminDashboard = ({
       section: 'People',
       icon: <Users size={18} />,
       active: activeTab === 'supervisors',
-      badge: supervisors.supervisors.length,
-      onClick: () => setActiveTab('supervisors'),
+      badge: supervisors.hasLoaded ? supervisors.supervisors.length : reports.summary?.supervisors,
+      onClick: () => openTab('supervisors'),
     },
     {
       id: 'students',
@@ -173,8 +181,8 @@ const AdminDashboard = ({
       section: 'People',
       icon: <GraduationCap size={18} />,
       active: activeTab === 'students',
-      badge: students.pagination.total || students.students.length,
-      onClick: () => setActiveTab('students'),
+      badge: students.hasLoaded ? students.pagination.total : reports.summary?.totalStudents,
+      onClick: () => openTab('students'),
     },
     {
       id: 'reviews',
@@ -198,7 +206,7 @@ const AdminDashboard = ({
       section: 'Communication',
       icon: <MessagesSquare size={18} />,
       active: activeTab === 'messages',
-      onClick: () => setActiveTab('messages'),
+      onClick: () => openTab('messages'),
     },
     {
       id: 'registration',
@@ -207,7 +215,7 @@ const AdminDashboard = ({
       icon: <LockKeyhole size={18} />,
       active: activeTab === 'registration',
       badge: registrationPolicy?.isOpen === false ? 'Closed' : 'Open',
-      onClick: () => setActiveTab('registration'),
+      onClick: () => openTab('registration'),
     },
     {
       id: 'fines',
@@ -215,7 +223,7 @@ const AdminDashboard = ({
       section: 'Operations',
       icon: <CircleDollarSign size={18} />,
       active: activeTab === 'fines',
-      onClick: () => setActiveTab('fines'),
+      onClick: () => openTab('fines'),
     },
     {
       id: 'portal',
@@ -223,7 +231,7 @@ const AdminDashboard = ({
       section: 'Operations',
       icon: <PauseCircle size={18} />,
       active: activeTab === 'portal',
-      onClick: () => setActiveTab('portal'),
+      onClick: () => openTab('portal'),
     },
     {
       id: 'reports',
@@ -238,7 +246,7 @@ const AdminDashboard = ({
       section: 'Insights & Audit',
       icon: <ScrollText size={18} />,
       active: activeTab === 'logs',
-      onClick: () => setActiveTab('logs'),
+      onClick: () => openTab('logs'),
     },
   ];
 
@@ -282,11 +290,11 @@ const AdminDashboard = ({
               reviewQueue={reports.summary?.reviewQueue}
               summaryLoading={reports.isSummaryLoading}
               summaryError={reports.summaryError}
-              onOpenSupervisors={() => setActiveTab('supervisors')}
-              onOpenStudents={() => setActiveTab('students')}
+              onOpenSupervisors={() => openTab('supervisors')}
+              onOpenStudents={() => openTab('students')}
               onOpenReviews={openReviews}
-              onOpenRegistration={() => setActiveTab('registration')}
-              onOpenPortal={() => setActiveTab('portal')}
+              onOpenRegistration={() => openTab('registration')}
+              onOpenPortal={() => openTab('portal')}
               onOpenReports={reports.openReports}
           />
         )}
@@ -303,7 +311,7 @@ const AdminDashboard = ({
               totalSupervisors={supervisors.supervisors.length}
               search={supervisors.search}
               onSearchChange={supervisors.setSearch}
-              onUpdateEmail={handleUpdateEmail}
+              onUpdateEmail={(id, email, name) => handleUpdateEmail(id, email, name, 'supervisor')}
               onEditSlots={supervisors.openSlotEditor}
               onToggleNotifications={supervisors.handleToggleNotifications}
               onDelete={supervisors.handleDeleteSupervisor}
@@ -328,7 +336,7 @@ const AdminDashboard = ({
               page={students.page}
               onPageChange={students.handlePageChange}
               onPromoteBatch={students.handlePromoteBatch}
-              onUpdateEmail={handleUpdateEmail}
+              onUpdateEmail={(id, email, name) => handleUpdateEmail(id, email, name, 'student')}
               onUpdateProgram={students.handleUpdateProgram}
               onUpdateBatch={students.handleUpdateBatch}
               onToggleStatus={students.handleToggleStatus}

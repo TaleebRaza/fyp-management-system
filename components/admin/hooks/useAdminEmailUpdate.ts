@@ -20,7 +20,7 @@ export function useAdminEmailUpdate({
   refreshSupervisors,
 }: UseAdminEmailUpdateOptions) {
   return useCallback(
-    (userId: string, currentEmail: string, name: string) => {
+    (userId: string, currentEmail: string, name: string, role: 'student' | 'supervisor') => {
       showDialog({
         type: 'prompt',
         inputType: 'email',
@@ -41,17 +41,15 @@ export function useAdminEmailUpdate({
               const updatedEmail =
                 result.data.user?.email || result.data.email || cleanedEmail;
 
-              updateStudentEmailLocally(userId, updatedEmail);
-              updateSupervisorEmailLocally(userId, updatedEmail);
+              if (role === 'student') updateStudentEmailLocally(userId, updatedEmail);
+              else updateSupervisorEmailLocally(userId, updatedEmail);
               showDialog({
                 title: 'Email updated',
                 message:
                   result.data.message || 'The email address has been updated.',
               });
-              await Promise.all([
-                refreshSupervisors(),
-                refreshStudents(studentPage),
-              ]);
+              if (role === 'student') await refreshStudents(studentPage);
+              else await refreshSupervisors();
               return;
             }
 

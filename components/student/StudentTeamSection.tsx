@@ -11,6 +11,9 @@ export default function StudentTeamSection({
   inviteCode,
   isUnassigned,
   supervisorName,
+  supervisorsLoading,
+  supervisorsError,
+  onRetrySupervisors,
   supervisorOptions,
   selectedSupervisorId,
   onSupervisorChange,
@@ -24,7 +27,6 @@ export default function StudentTeamSection({
   onCopyInviteCode,
   onOpenSupervisorChange,
   isSupervisorChangeLocked,
-  supervisorChangeOptions,
 }: {
   projectMembers: ProjectMember[];
   maxTeamSize: number;
@@ -32,6 +34,9 @@ export default function StudentTeamSection({
   inviteCode?: string;
   isUnassigned: boolean;
   supervisorName?: string;
+  supervisorsLoading: boolean;
+  supervisorsError: boolean;
+  onRetrySupervisors: () => void;
   supervisorOptions: SupervisorOption[];
   selectedSupervisorId: string;
   onSupervisorChange: (value: string) => void;
@@ -45,7 +50,6 @@ export default function StudentTeamSection({
   onCopyInviteCode: () => void;
   onOpenSupervisorChange: () => void;
   isSupervisorChangeLocked: boolean;
-  supervisorChangeOptions: SupervisorOption[];
 }) {
   return (
     <div className="portal-bento">
@@ -90,12 +94,13 @@ export default function StudentTeamSection({
           <form onSubmit={onAssignSupervisor} className="mt-3 space-y-3">
             <div>
               <label className="mb-2 block text-xs font-extrabold text-[var(--color-text)]">Available supervisors</label>
-              <select value={selectedSupervisorId} onChange={(event) => onSupervisorChange(event.target.value)} className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]">
-                <option value="">Select supervisor</option>
+              <select disabled={supervisorsLoading || supervisorsError || isSubmitting} value={selectedSupervisorId} onChange={(event) => onSupervisorChange(event.target.value)} className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]">
+                <option value="">{supervisorsLoading ? 'Loading supervisors...' : 'Select supervisor'}</option>
                 {supervisorOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
               </select>
             </div>
-            <Button type="submit" disabled={isSubmitting || supervisorOptions.length === 0} className="w-full">
+            {supervisorsError && <p role="alert" className="text-sm text-[var(--color-text-muted)]">Supervisors could not load. <button type="button" onClick={onRetrySupervisors} className="underline">Retry</button></p>}
+            <Button type="submit" disabled={isSubmitting || supervisorsLoading || supervisorsError || supervisorOptions.length === 0} className="w-full">
               {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <UserCheck size={16} />}Confirm assignment
             </Button>
           </form>
@@ -103,11 +108,10 @@ export default function StudentTeamSection({
           <>
             <p className="mt-2 text-sm font-extrabold text-[var(--color-text)]">{supervisorName || 'Supervisor assigned'}</p>
             <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">Changing supervisor is available only while the project policy permits it.</p>
-            <Button type="button" variant="outline" className="mt-4 w-full" onClick={onOpenSupervisorChange} disabled={isSubmitting || isSupervisorChangeLocked || supervisorChangeOptions.length === 0}>
+            <Button type="button" variant="outline" className="mt-4 w-full" onClick={onOpenSupervisorChange} disabled={isSubmitting || isSupervisorChangeLocked}>
               {isSupervisorChangeLocked ? <Lock size={16} /> : <UserCheck size={16} />}Change supervisor
             </Button>
             {isSupervisorChangeLocked && <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">Supervisor changes are locked after proposal approval or once the project moves beyond the proposal stage.</p>}
-            {!isSupervisorChangeLocked && supervisorChangeOptions.length === 0 && <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">No other supervisor currently has an available slot.</p>}
           </>
         )}
       </section>
