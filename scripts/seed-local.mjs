@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 
 import {
   DeleteObjectsCommand,
+  CreateBucketCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -26,11 +27,11 @@ const storageUrl = new URL(storageEndpoint);
 const mongoUrl = new URL(mongoUri);
 const loopbackHosts = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
-if (!loopbackHosts.has(mongoUrl.hostname) || mongoUrl.pathname !== '/fyp_local') {
-  throw new Error('Refusing to seed: MONGODB_URI must target local database fyp_local.');
+if (!loopbackHosts.has(mongoUrl.hostname) || !['/fyp_local', '/fyp_portal_stress_test'].includes(mongoUrl.pathname)) {
+  throw new Error('Refusing to seed: MONGODB_URI must target local database fyp_local or fyp_portal_stress_test.');
 }
-if (!loopbackHosts.has(storageUrl.hostname) || bucket !== 'fyp-local') {
-  throw new Error('Refusing to seed: storage must use a loopback endpoint and bucket fyp-local.');
+if (!loopbackHosts.has(storageUrl.hostname) || !['fyp-local', 'fyp-portal-stress-test'].includes(bucket)) {
+  throw new Error('Refusing to seed: storage must use a loopback endpoint and an approved local test bucket.');
 }
 
 const s3 = new S3Client({
@@ -128,6 +129,11 @@ async function emptyBucket() {
 }
 
 async function resetLocalState() {
+  try {
+    await s3.send(new CreateBucketCommand({ Bucket: bucket }));
+  } catch (error) {
+    if (!['BucketAlreadyOwnedByYou', 'BucketAlreadyExists'].includes(error?.name)) throw error;
+  }
   await Promise.all([mongoose.connection.dropDatabase(), emptyBucket()]);
   await Promise.all(Object.values(models).map((model) => model.createCollection()));
   await Promise.all(Object.values(models).map((model) => model.syncIndexes()));
@@ -452,6 +458,12 @@ async function seedPerformance(password) {
     1,
     Math.min(projectCount - Math.ceil(projectCount / 10), supervisorCount)
   );
+  const panelCount = envCount(
+    'M2_VIVA_PANEL_COUNT',
+    Math.min(Math.ceil(vivaSessionCount / 2), Math.floor(supervisorCount / 2)),
+    1,
+    Math.floor(supervisorCount / 2)
+  );
   const admin = baseUser({
     _id: objectId('1', 1),
     name: 'Performance Admin',
@@ -472,7 +484,7 @@ async function seedPerformance(password) {
     ...baseUser({
       _id: objectId('3', index + 1),
       name: `Performance Student ${String(index + 1).padStart(5, '0')}`,
-      email: `student${index + 1}@performance.example.test`,
+      email: `student${index + 1}@student.uoh.edu.pk`,
       rollNo: `F26-${String(index + 1).padStart(4, '0')}`,
       role: 'student',
       password,
@@ -495,7 +507,8 @@ async function seedPerformance(password) {
     return baseProject(
       index,
       studentsForProject,
-      index % 10 === 0 ? null : supervisors[index % supervisorCount]._id,
+      index % 10 === 0 ? null : supervisors[(index < vivaSessionCount + Math.ceil(vivaSessionCount / 10)
+        ? index + panelCount * 2 : index) % supervisorCount]._id,
       status,
       pdfUrl
     );
@@ -523,7 +536,6 @@ async function seedPerformance(password) {
   const vivaProjects = projects.filter(({ supervisorId }) => supervisorId).slice(0, vivaSessionCount);
   const studentsById = new Map(students.map((student) => [String(student._id), student]));
   const supervisorsById = new Map(supervisors.map((supervisor) => [String(supervisor._id), supervisor]));
-  const panelCount = Math.min(Math.ceil(vivaSessionCount / 2), Math.floor(supervisorCount / 2));
   const vivaSupervisors = supervisors.slice(0, panelCount * 2);
   const round = {
     _id: objectId('5', 1),

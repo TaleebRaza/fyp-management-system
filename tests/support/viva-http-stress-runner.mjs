@@ -84,7 +84,7 @@ export class HttpClient {
     headers.set('accept', 'application/json');
     if (this.ip) headers.set('x-vercel-forwarded-for', this.ip);
     if (this.cookies.size) headers.set('cookie', this.cookieHeader());
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) headers.set('origin', this.baseUrl);
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) headers.set('origin', process.env.VIVA_STRESS_ORIGIN || this.baseUrl);
     if (requestOptions.body && typeof requestOptions.body !== 'string') {
       headers.set('content-type', 'application/json');
       requestOptions.body = JSON.stringify(requestOptions.body);
