@@ -199,16 +199,14 @@ async function snapshotConfirmedSessions(
 
   const projectIds = [...new Set(sessions.map(({ projectId }) => String(projectId)))];
   const panelIds = [...new Set(sessions.map(({ panelId }) => String(panelId)))];
-  const [projects, panels] = await Promise.all([
-    Project.find({ _id: { $in: projectIds } })
-      .select('_id supervisorId members title description domains tools pdfUrl pdfSize')
-      .session(databaseSession)
-      .lean<ProjectRecord[]>(),
-    VivaPanel.find({ _id: { $in: panelIds }, roundId: round._id })
-      .select('_id examinerIds panelAdminId')
-      .session(databaseSession)
-      .lean<PanelRecord[]>(),
-  ]);
+  const projects = await Project.find({ _id: { $in: projectIds } })
+    .select('_id supervisorId members title description domains tools pdfUrl pdfSize')
+    .session(databaseSession)
+    .lean<ProjectRecord[]>();
+  const panels = await VivaPanel.find({ _id: { $in: panelIds }, roundId: round._id })
+    .select('_id examinerIds panelAdminId')
+    .session(databaseSession)
+    .lean<PanelRecord[]>();
   const projectsById = new Map(projects.map((project) => [String(project._id), project]));
   const panelsById = new Map(panels.map((panel) => [String(panel._id), panel]));
   const userIds = [...new Set([

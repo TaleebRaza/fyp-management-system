@@ -1,5 +1,7 @@
 'use client';
 
+import { refreshAfterSave } from '../../refreshAfterSave';
+
 import { useCallback, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
@@ -129,14 +131,16 @@ export function useStudentProjectSubmission({
           pdfUrl: upload.url,
           fileSize: upload.fileSize,
         });
-        await clearStoredProjectDraft();
-        await refreshDashboard();
         showDialog({
           title: 'Project submitted',
           message:
             response.message ||
             'Your project has been submitted for supervisor review.',
         });
+        await refreshAfterSave(async () => {
+          await clearStoredProjectDraft();
+          await refreshDashboard();
+        }, (title, message) => showDialog({ title, message }));
       } catch (error) {
         showDialog({
           title: 'Submission failed',

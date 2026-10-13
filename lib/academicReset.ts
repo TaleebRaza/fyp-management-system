@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { withTransaction } from './transaction';
 
 import connectToDatabase from './mongodb';
 import { PROGRAM_MAP } from '../config/appSettings';
@@ -78,10 +79,7 @@ export async function resetStudentAcademicInfo({
     throw new AcademicResetError('Program or Batch is required.', 400);
   }
 
-  const mongoSession = await mongoose.startSession();
-
-  try {
-    return await mongoSession.withTransaction(async () => {
+  return await withTransaction(async (mongoSession) => {
     const student = await User.findById(targetUserId).session(mongoSession);
 
     if (!student || student.role !== 'student') {
@@ -171,7 +169,7 @@ export async function resetStudentAcademicInfo({
 
     student.program = finalProgram;
     student.batch = finalBatch;
-if (actor === 'student') {
+    if (actor === 'student') {
       student.lastProgramBatchChangeAt = new Date();
     }
 
@@ -184,8 +182,6 @@ if (actor === 'student') {
           : 'Academic information updated. Your dashboard has been reset.',
       queuedDeletionBytes,
     };
-    });
-  } finally {
-    await mongoSession.endSession();
-  }
+  });
+
 }

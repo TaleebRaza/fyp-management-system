@@ -58,7 +58,7 @@ export async function enqueueNotificationEmail(target: EmailTarget, session: Cli
   );
 }
 
-export async function processEmailOutbox(limit = 25) {
+export async function processEmailOutbox(limit = 25, deadline = Infinity) {
   const batchSize = Math.min(Math.max(Math.trunc(limit), 1), MAX_BATCH_SIZE);
   let claimed = 0;
   let sent = 0;
@@ -66,7 +66,7 @@ export async function processEmailOutbox(limit = 25) {
   let deadLettered = 0;
   let maxJobLagMs = 0;
 
-  for (let index = 0; index < batchSize; index += 1) {
+  for (let index = 0; index < batchSize && Date.now() < deadline; index += 1) {
     const now = new Date();
     const lockToken = randomUUID();
     const target = await EmailOutbox.findOneAndUpdate(

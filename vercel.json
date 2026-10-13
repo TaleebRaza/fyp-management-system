@@ -3,10 +3,13 @@
     {
       "path": "/api/cron/voice-cleanup",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/storage-cleanup",
+      "schedule": "30 0 * * *"
     }
   ]
 }
-
 
 
 

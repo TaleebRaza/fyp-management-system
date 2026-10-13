@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import { withTransaction, TransactionBusyError } from '../../../../lib/transaction';
 import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
@@ -245,7 +246,7 @@ export async function POST(req: NextRequest) {
           { status: 200 }
         );
       } catch (error) {
-        if (error instanceof StorageProtocolError) {
+        if (error instanceof StorageProtocolError || error instanceof TransactionBusyError) {
           return NextResponse.json({ error: error.message }, { status: error.statusCode });
         }
         console.error('student_project_reset_failed');
@@ -268,106 +269,88 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid student or supervisor.' }, { status: 400 });
       }
 
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
-      let queuedDeletionBytes = 0;
-      let leftTeam = false;
-
       try {
-        const student = await User.findById(studentId).select('_id role').session(session);
+        const { queuedDeletionBytes, leftTeam } = await withTransaction(async (session) => {
+          let queuedDeletionBytes = 0;
+          let leftTeam = false;
+          const student = await User.findById(studentId).select('_id role').session(session);
 
-        if (!student || student.role !== 'student') {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
-        }
-
-        const oldProject = await Project.findOne({ members: student._id }).session(session);
-
-        if (String(oldProject?.supervisorId || '') === newSupervisorId) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'You are already assigned to this supervisor.' }, { status: 400 });
-        }
-
-        const targetSupervisor = await User.findOne({
-          _id: newSupervisorId,
-          role: 'supervisor',
-        })
-          .select('_id name')
-          .session(session);
-
-        if (!targetSupervisor) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
-        }
-
-        const reservation = await reserveSupervisorProjectSlot(targetSupervisor._id, session);
-        if (reservation !== 'reserved') {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: capacityReservationError(reservation) }, { status: reservation === 'missing' ? 404 : 409 });
-        }
-        if (oldProject) {
-          const projectIsLocked = oldProject.status === 'Approved' || oldProject.stage !== 'PROPOSAL';
-
-          if (projectIsLocked) {
-            await session.abortTransaction();
-            session.endSession();
-
-            return NextResponse.json(
-              {
-                error:
-                  'Supervisor change is blocked because this project has already been approved. Use migration instead.',
-              },
-              { status: 403 }
-            );
+          if (!student || student.role !== 'student') {
+            throw new StorageProtocolError('Student not found.', 404);
           }
 
-          const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
-          const isOnlyMember =
-            oldProjectMembers.length <= 1 ||
-            oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
+          const oldProject = await Project.findOne({ members: student._id }).session(session);
 
-          if (isOnlyMember) {
-            const cleanup = await enqueueDeletedProjectStorage({
-              project: oldProject,
-              extraPdfUrls: [oldProject.pdfUrl],
-              reason: 'supervisor-change',
-              session,
-            });
-            queuedDeletionBytes = cleanup.queuedDeletionBytes;
+          if (String(oldProject?.supervisorId || '') === newSupervisorId) {
+            throw new StorageProtocolError('You are already assigned to this supervisor.', 400);
+          }
 
-            if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
-              throw new Error('Unable to release the previous supervisor capacity.');
+          const targetSupervisor = await User.findOne({
+            _id: newSupervisorId,
+            role: 'supervisor',
+          })
+            .select('_id name')
+            .session(session);
+
+          if (!targetSupervisor) {
+            throw new StorageProtocolError('Selected supervisor was not found.', 404);
+          }
+
+          const reservation = await reserveSupervisorProjectSlot(targetSupervisor._id, session);
+          if (reservation !== 'reserved') {
+            throw new StorageProtocolError(capacityReservationError(reservation), reservation === 'missing' ? 404 : 409);
+          }
+          if (oldProject) {
+            const projectIsLocked = oldProject.status === 'Approved' || oldProject.stage !== 'PROPOSAL';
+
+            if (projectIsLocked) {
+              throw new StorageProtocolError(
+                'Supervisor change is blocked because this project has already been approved. Use migration instead.', 403
+              );
             }
-            await Project.findByIdAndDelete(oldProject._id, { session });
-          } else {
-            leftTeam = true;
 
-            await Project.findByIdAndUpdate(
-              oldProject._id,
-              { $pull: { members: student._id } },
-              { session }
-            );
+            const oldProjectMembers = Array.isArray(oldProject.members) ? oldProject.members : [];
+            const isOnlyMember =
+              oldProjectMembers.length <= 1 ||
+              oldProjectMembers.every((member: unknown) => String(member) === String(student._id));
+
+            if (isOnlyMember) {
+              const cleanup = await enqueueDeletedProjectStorage({
+                project: oldProject,
+                extraPdfUrls: [oldProject.pdfUrl],
+                reason: 'supervisor-change',
+                session,
+              });
+              queuedDeletionBytes = cleanup.queuedDeletionBytes;
+
+              if (oldProject.supervisorId && !await releaseSupervisorProjectSlot(oldProject.supervisorId, session)) {
+                throw new Error('Unable to release the previous supervisor capacity.');
+              }
+              await Project.findByIdAndDelete(oldProject._id, { session });
+            } else {
+              leftTeam = true;
+
+              await Project.findByIdAndUpdate(
+                oldProject._id,
+                { $pull: { members: student._id } },
+                { session }
+              );
+            }
           }
-        }
 
-        await createProjectWithUniqueInviteCode({
-          supervisorId: targetSupervisor._id,
-          members: [student._id],
-          stage: 'PROPOSAL',
-          status: 'Pending',
-          title: '',
-          titleFingerprint: '',
-          domains: [],
-          pdfUrl: '',
-          pdfSize: 0,
-        }, session);
-await session.commitTransaction();
-        session.endSession();
+          await createProjectWithUniqueInviteCode({
+            supervisorId: targetSupervisor._id,
+            members: [student._id],
+            stage: 'PROPOSAL',
+            status: 'Pending',
+            title: '',
+            titleFingerprint: '',
+            domains: [],
+            pdfUrl: '',
+            pdfSize: 0,
+          }, session);
+          return { queuedDeletionBytes, leftTeam };
+        });
 
         await recordCurrentUserActivity('student-supervisor-updated', currentUser);
 
@@ -381,9 +364,9 @@ await session.commitTransaction();
           { status: 200 }
         );
       } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
-
+        if (error instanceof StorageProtocolError) {
+          return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        }
         console.error('Supervisor Change Error:', error instanceof Error ? error.message : error);
         return NextResponse.json({ error: 'Failed to change supervisor.' }, { status: 500 });
       }
@@ -401,26 +384,15 @@ await session.commitTransaction();
         return NextResponse.json({ error: 'Invalid student or supervisor.' }, { status: 400 });
       }
 
-      // 1. Start an Atomic Transaction Session to prevent race conditions
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
-      try {
+      await withTransaction(async (session) => {
         const triggeringStudent = await User.findById(body.id).select('_id').session(session);
-        if (!triggeringStudent) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    if (!triggeringStudent) {
+          throw new StorageProtocolError('Student not found', 404);
         }
 
-                const existingProject = await Project.findOne({ members: triggeringStudent._id }).session(session);
+        const existingProject = await Project.findOne({ members: triggeringStudent._id }).session(session);
         if (existingProject?.supervisorId) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json(
-            { error: 'You already have a supervisor. Use the change supervisor option instead.' },
-            { status: 400 }
-          );
+          throw new StorageProtocolError('You already have a supervisor. Use the change supervisor option instead.', 400);
         }
 
         const supervisor = await User.findOne({ _id: body.supervisorId, role: 'supervisor' })
@@ -428,19 +400,15 @@ await session.commitTransaction();
           .session(session);
 
         if (!supervisor) {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: 'Selected supervisor was not found.' }, { status: 404 });
+          throw new StorageProtocolError('Selected supervisor was not found.', 404);
         }
 
         const reservation = await reserveSupervisorProjectSlot(supervisor._id, session);
         if (reservation !== 'reserved') {
-          await session.abortTransaction();
-          session.endSession();
-          return NextResponse.json({ error: capacityReservationError(reservation) }, { status: reservation === 'missing' ? 404 : 409 });
+          throw new StorageProtocolError(capacityReservationError(reservation), reservation === 'missing' ? 404 : 409);
         }
 
-                const supObjectId = new mongoose.Types.ObjectId(supervisor._id);
+        const supObjectId = new mongoose.Types.ObjectId(supervisor._id);
         // Project owns the student/project relationship.
         if (existingProject) {
           await Project.findByIdAndUpdate(
@@ -448,7 +416,7 @@ await session.commitTransaction();
             { $set: { supervisorId: supObjectId } },
             { session }
           );
-} else {
+        } else {
           await createProjectWithUniqueInviteCode({
             supervisorId: supObjectId,
             members: [triggeringStudent._id],
@@ -460,20 +428,11 @@ await session.commitTransaction();
             pdfUrl: '',
             pdfSize: 0,
           }, session);
-}
+        }
 
-        // 5. Commit the transaction ONLY if no other request modified the count during our process
-        await session.commitTransaction();
-        session.endSession();
-        await recordCurrentUserActivity('student-supervisor-updated', currentUser);
-        return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
-
-      } catch (transactionError) {
-        // Safe Fallback: Abort all changes if anything fails
-        await session.abortTransaction();
-        session.endSession();
-        throw transactionError;
-      }
+      });
+      await recordCurrentUserActivity('student-supervisor-updated', currentUser);
+      return NextResponse.json({ message: 'Supervisor successfully assigned to your team!' }, { status: 200 });
     }
 
     // ==========================================
@@ -501,11 +460,11 @@ await session.commitTransaction();
       _id: submissionStudentId,
       role: 'student',
     }).select('_id lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment');
-        if (!triggeringStudent) {
+    if (!triggeringStudent) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
     const triggeringProject = await Project.findOne({ members: triggeringStudent._id })
-      .select('_id')
+      .select('_id members')
       .lean();
     if (!triggeringProject) {
       return NextResponse.json({ error: 'Project record not found for this student.' }, { status: 409 });
@@ -519,9 +478,10 @@ await session.commitTransaction();
     }
 
     const submissionFineRestriction = buildFineRestriction(triggeringStudent);
-        const submissionTeamFineRestriction = await getTeamFineRestriction(
+    const submissionTeamFineRestriction = await getTeamFineRestriction(
       triggeringProject._id,
-      triggeringStudent._id
+      triggeringStudent._id,
+      triggeringProject.members
     );
     const fineRestrictions = submissionTeamFineRestriction
       ? serializeRegistrationPolicy(await getOrCreateRegistrationPolicy()).fineRestrictions
@@ -610,7 +570,7 @@ await session.commitTransaction();
           _id: submissionStudentId,
           role: 'student',
         }).select('_id name').session(session);
-                if (!studentInTransaction) {
+        if (!studentInTransaction) {
           throw new StorageProtocolError('Student record not found.', 409);
         }
         const project = await Project.findOne({
@@ -622,6 +582,20 @@ await session.commitTransaction();
         }
         if (isProjectSubmissionPendingReview(project)) {
           throw new StorageProtocolError(PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE, 409);
+        }
+
+        const acceptedSubmissionPolicy = await RegistrationPolicy.updateOne(
+          hasPreviousProjectSubmission(project)
+            ? { policyKey: REGISTRATION_POLICY_KEY }
+            : {
+                policyKey: REGISTRATION_POLICY_KEY,
+                projectSubmissionsOpen: { $ne: false },
+              },
+          { $inc: { projectSubmissionsAccepted: 1 } },
+          { session }
+        );
+        if (acceptedSubmissionPolicy.matchedCount !== 1) {
+          throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
         }
 
         const canEditProjectDetails = project.stage === 'PROPOSAL';
@@ -640,20 +614,6 @@ await session.commitTransaction();
               409
             );
           }
-        }
-
-        const acceptedSubmissionPolicy = await RegistrationPolicy.findOneAndUpdate(
-          hasPreviousProjectSubmission(project)
-            ? { policyKey: REGISTRATION_POLICY_KEY }
-            : {
-                policyKey: REGISTRATION_POLICY_KEY,
-                projectSubmissionsOpen: { $ne: false },
-              },
-          { $inc: { projectSubmissionsAccepted: 1 } },
-          { returnDocument: 'after', session }
-        );
-        if (!acceptedSubmissionPolicy) {
-          throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
         }
 
         const oldPdfKey = normalizeStorageKey(project.pdfUrl);
@@ -757,7 +717,7 @@ if (oldPdfKey && oldPdfKey !== uploadedObject.key) {
     return NextResponse.json({ message: 'Project Submitted!' }, { status: 200 });
   } catch (error) {
     console.error('student_dashboard_submission_failed');
-    if (error instanceof StorageProtocolError) {
+    if (error instanceof StorageProtocolError || error instanceof TransactionBusyError) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });

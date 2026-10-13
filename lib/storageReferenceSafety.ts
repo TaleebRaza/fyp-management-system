@@ -29,30 +29,36 @@ export async function findSharedStorageKeys({
   const candidateKeys = new Set(keys);
   if (candidateKeys.size === 0) return new Set<string>();
 
+  // Only noncanonical references need the legacy URL/encoded-path fallback.
+  const references = (field: string) => ({ $or: [
+    { [field]: { $in: [...candidateKeys] } },
+    { [field]: { $regex: /(^\s|\s$|^\/|^[a-zA-Z][a-zA-Z\d+.-]*:|%)/ } },
+  ] });
+
   // MongoDB sessions do not support parallel operations inside a transaction.
   const projects = await Project.find({
     ...excludingIds(excludedProjectIds),
-    pdfUrl: { $exists: true, $nin: ['', null] },
+    ...references('pdfUrl'),
   }).select('pdfUrl').session(session).lean();
   const voiceNotes = await VoiceNote.find({
     ...excludingIds(excludedVoiceNoteIds),
-    blobUrl: { $exists: true, $nin: ['', null] },
+    ...references('blobUrl'),
   }).select('blobUrl').session(session).lean();
   const supervisors = await User.find({
     ...excludingIds(excludedSupervisorIds),
     role: 'supervisor',
     broadcastType: 'audio',
-    broadcastContent: { $exists: true, $nin: ['', null] },
+    ...references('broadcastContent'),
   }).select('broadcastContent').session(session).lean();
   const students = await User.find({
     ...excludingIds(excludedStudentIds),
     role: 'student',
     studentMessageType: 'audio',
-    studentMessageContent: { $exists: true, $nin: ['', null] },
+    ...references('studentMessageContent'),
   }).select('studentMessageContent').session(session).lean();
   const vivaSessions = await VivaSession.find({
     ...excludingIds(excludedVivaSessionIds),
-    'projectSnapshot.pdfUrl': { $exists: true, $nin: ['', null] },
+    ...references('projectSnapshot.pdfUrl'),
   }).select('projectSnapshot.pdfUrl').session(session).lean();
 
   const referencedKeys = [

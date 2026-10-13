@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import { withSharedWriteTransaction, TransactionBusyError } from '../../../lib/transaction';
 import connectToDatabase from '../../../lib/mongodb';
 import User from '../../../models/User';
 import RollNumberClaim from '../../../models/RollNumberClaim';
@@ -145,76 +146,75 @@ export async function POST(req: NextRequest) {
     }
 
     const hashedPassword = await hashPassword(normalizedPassword);
-    const session = await mongoose.startSession();
-
     try {
-      session.startTransaction();
+      const { newStudent, registrationPunishment } = await withSharedWriteTransaction(async (session) => {
 
-      // Atomically claim permission to register inside the same transaction.
-      // Closing registration concurrently updates this document and prevents a stale form from succeeding.
-      const transactionPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
-        { policyKey: REGISTRATION_POLICY_KEY, isOpen: true },
-        { $inc: { registrationsAccepted: 1 } },
-        { returnDocument: 'after', session }
-      );
+        // Atomically claim permission to register inside the same transaction.
+        // Closing registration concurrently updates this document and prevents a stale form from succeeding.
+        const transactionPolicyDocument = await RegistrationPolicy.findOneAndUpdate(
+          { policyKey: REGISTRATION_POLICY_KEY, isOpen: true },
+          { $inc: { registrationsAccepted: 1 } },
+          { returnDocument: 'after', session }
+        );
 
-      if (!transactionPolicyDocument) {
-        const closedError = Object.assign(new Error('Registration is currently closed.'), {
-          code: 'REGISTRATION_CLOSED',
-        });
-        throw closedError;
-      }
-
-      const transactionPolicy = serializeRegistrationPolicy(transactionPolicyDocument);
-      const lateRegistrationAssessment = calculateLateRegistrationFine(
-        new Date(),
-        transactionPolicy.lateFineAccrual
-      );
-      const registrationPunishment = buildRegistrationPunishmentSnapshot(transactionPolicy);
-
-      if (supervisorId) {
-        const reservation = await reserveSupervisorProjectSlot(supervisorId, session);
-        if (reservation !== 'reserved') {
-          throw Object.assign(new Error(capacityReservationError(reservation)), {
-            code: `CAPACITY_${reservation.toUpperCase()}`,
+        if (!transactionPolicyDocument) {
+          const closedError = Object.assign(new Error('Registration is currently closed.'), {
+            code: 'REGISTRATION_CLOSED',
           });
+          throw closedError;
         }
-      }
 
-      const newStudent = new User({
-        name: normalizedName,
-        email: normalizedEmail,
-        rollNo: normalizedRollNo,
-        password: hashedPassword,
-        role: 'student',
-        program: normalizedProgram,
-        batch: normalizedBatch,
-        semester: '7th Semester',
-        supervisorId: supervisorId || null,
-        status: supervisorId ? 'Pending' : 'Unassigned',
-        remarks: '',
-        lateRegistrationDays: lateRegistrationAssessment.daysLate,
-        lateRegistrationFine: lateRegistrationAssessment.fineAmount,
-        registrationPunishment,
+        const transactionPolicy = serializeRegistrationPolicy(transactionPolicyDocument);
+        const lateRegistrationAssessment = calculateLateRegistrationFine(
+          new Date(),
+          transactionPolicy.lateFineAccrual
+        );
+        const registrationPunishment = buildRegistrationPunishmentSnapshot(transactionPolicy);
+
+        if (supervisorId) {
+          const reservation = await reserveSupervisorProjectSlot(supervisorId, session);
+          if (reservation !== 'reserved') {
+            throw Object.assign(new Error(capacityReservationError(reservation)), {
+              code: `CAPACITY_${reservation.toUpperCase()}`,
+            });
+          }
+        }
+
+        const newStudent = new User({
+          name: normalizedName,
+          email: normalizedEmail,
+          rollNo: normalizedRollNo,
+          password: hashedPassword,
+          role: 'student',
+          program: normalizedProgram,
+          batch: normalizedBatch,
+          semester: '7th Semester',
+          supervisorId: supervisorId || null,
+          status: supervisorId ? 'Pending' : 'Unassigned',
+          remarks: '',
+          lateRegistrationDays: lateRegistrationAssessment.daysLate,
+          lateRegistrationFine: lateRegistrationAssessment.fineAmount,
+          registrationPunishment,
+        });
+
+        // _id is always unique, so this is the database-level guarantee that two
+        // simultaneous requests cannot register the same normalized roll number.
+        await RollNumberClaim.create(
+          [{ _id: normalizedRollNo, studentId: newStudent._id }],
+          { session }
+        );
+
+        await newStudent.save({ session });
+
+        const newProject = await createProjectWithUniqueInviteCode({
+          supervisorId: supervisorId || null,
+          members: [newStudent._id],
+        }, session);
+
+        newStudent.projectId = newProject._id;
+        await newStudent.save({ session });
+        return { newStudent, registrationPunishment };
       });
-
-      // _id is always unique, so this is the database-level guarantee that two
-      // simultaneous requests cannot register the same normalized roll number.
-      await RollNumberClaim.create(
-        [{ _id: normalizedRollNo, studentId: newStudent._id }],
-        { session }
-      );
-
-      await newStudent.save({ session });
-
-      const newProject = await createProjectWithUniqueInviteCode({
-        supervisorId: supervisorId || null,
-        members: [newStudent._id],
-      }, session);
-
-      newStudent.projectId = newProject._id;
-      await newStudent.save({ session });
-      await session.commitTransaction();
 
       await recordPortalActivity({
         action: 'student-registered',
@@ -238,8 +238,6 @@ export async function POST(req: NextRequest) {
         { status: 201 }
       );
     } catch (transactionError) {
-      if (session.inTransaction()) await session.abortTransaction();
-
       const errorCode = (transactionError as { code?: unknown }).code;
       if (errorCode === 'REGISTRATION_CLOSED') {
         const latestPolicy = serializeRegistrationPolicy(await getOrCreateRegistrationPolicy());
@@ -280,10 +278,11 @@ export async function POST(req: NextRequest) {
       }
 
       throw transactionError;
-    } finally {
-      await session.endSession();
     }
   } catch (error) {
+    if (error instanceof TransactionBusyError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     console.error('Registration error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
   }

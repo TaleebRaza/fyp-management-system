@@ -31,6 +31,7 @@ async function connectToDatabase() {
       bufferCommands: false, // Disable Mongoose buffering; fail fast if not connected
       maxPoolSize: 10,       // Strict ceiling to protect Atlas M0 500-connection limit
       minPoolSize: 1,        // Maintain one active socket per warm lambda
+      waitQueueTimeoutMS: 5000, // Bound connection checkout under overload
       serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of hanging serverless threads
       socketTimeoutMS: 45000,         // Close inactive sockets cleanly
     };

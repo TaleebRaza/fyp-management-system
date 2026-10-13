@@ -1,5 +1,7 @@
 'use client';
 
+import { refreshAfterSave } from '../../refreshAfterSave';
+
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { updateStudentSupervisor } from '../api/studentWorkflowApi';
 import type {
@@ -72,16 +74,6 @@ export function useStudentSupervisorActions({
           id: userId,
           supervisorId: selectedSupervisorId,
         });
-
-        setSelectedSupervisorId('');
-        setIsSupervisorWarningOpen(false);
-
-        if (action === 'changeSupervisor') {
-          await resetProjectDraft();
-          resetTemplates();
-        }
-
-        await Promise.all([refreshDashboard(), refreshSupervisors()]);
         showDialog({
           title: action === 'changeSupervisor' ? 'Supervisor changed' : 'Supervisor assigned',
           message:
@@ -90,6 +82,17 @@ export function useStudentSupervisorActions({
               ? 'You have started fresh under the new supervisor.'
               : 'Your supervisor has been assigned.'),
         });
+        await refreshAfterSave(async () => {
+          setSelectedSupervisorId('');
+          setIsSupervisorWarningOpen(false);
+
+          if (action === 'changeSupervisor') {
+            await resetProjectDraft();
+            resetTemplates();
+          }
+
+          await Promise.all([refreshDashboard(), refreshSupervisors()]);
+        }, (title, message) => showDialog({ title, message }));
       } catch (error) {
         showDialog({
           title: action === 'changeSupervisor' ? 'Supervisor change failed' : 'Assignment failed',

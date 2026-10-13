@@ -1,5 +1,7 @@
 'use client';
 
+import { refreshAfterSave } from '../../refreshAfterSave';
+
 import { useCallback, useMemo, useState } from 'react';
 import { updateStudentAcademicInfo } from '../api/studentWorkflowApi';
 import type { AcademicForm, StudentDashboardProps } from '../studentDashboardTypes';
@@ -77,14 +79,16 @@ export function useStudentAcademicUpdate({
         program: academicForm.program,
         batch: academicForm.batch,
       });
-      closeAcademicEditor();
-      await resetProjectDraft();
-      resetTemplates();
-      await Promise.all([refreshDashboard(), refreshSupervisors()]);
       showDialog({
         title: 'Academic info updated',
         message: response.message || 'Program and batch updated successfully.',
       });
+      await refreshAfterSave(async () => {
+        closeAcademicEditor();
+        await resetProjectDraft();
+        resetTemplates();
+        await Promise.all([refreshDashboard(), refreshSupervisors()]);
+      }, (title, message) => showDialog({ title, message }));
     } catch (error) {
       showDialog({
         title: 'Update blocked',

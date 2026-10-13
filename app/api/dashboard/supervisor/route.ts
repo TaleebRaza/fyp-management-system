@@ -3,6 +3,8 @@ import connectToDatabase from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import mongoose from 'mongoose';
+import { withTransaction } from '../../../../lib/transaction';
+import { StorageProtocolError } from '../../../../lib/storageProtocol';
 import { normalizeProjectDomainIds } from '../../../../config/projectDomains';
 import { EXPANDED_TEAM_SIZE } from '../../../../config/appSettings';
 import { parseProjectRatingValues } from '../../../../config/projectRatings';
@@ -189,99 +191,93 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Migration code is required.' }, { status: 400 });
       }
 
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
-      const fail = async (message: string, statusCode: number) => {
-        await session.abortTransaction();
-        session.endSession();
-        return NextResponse.json({ error: message }, { status: statusCode });
-      };
-
       try {
-        const targetSup = await User.findOne({
-          role: 'supervisor',
-          migrationCode: requestedMigrationCode,
-        })
-          .select('_id name')
-          .session(session);
+        await withTransaction(async (session) => {
+          const fail = (message: string, statusCode: number): never => {
+            throw new StorageProtocolError(message, statusCode);
+          };
+          const targetSup = await User.findOne({
+            role: 'supervisor',
+            migrationCode: requestedMigrationCode,
+          })
+            .select('_id name')
+            .session(session);
 
-        if (!targetSup) {
-          return await fail('Invalid Migration Code!', 400);
-        }
-        if (String(targetSup._id) === String(currentUser.id)) {
-          return await fail('This project is already assigned to you.', 400);
-        }
-
-        const studentInTx = await User.findOne({
-          _id: requestedStudentId,
-          role: 'student',
-        }).session(session);
-
-        if (!studentInTx) {
-          return await fail('Student not found.', 404);
-        }
-
-        const oldProject = await Project.findOne({
-          members: studentInTx._id,
-          supervisorId: currentUser.id,
-        }).session(session);
-
-        if (!oldProject) {
-          return await fail('Project not found.', 404);
-        }
-
-        const reservation = await reserveSupervisorProjectSlot(targetSup._id, session);
-        if (reservation !== 'reserved') {
-          return await fail(
-            capacityReservationError(reservation),
-            reservation === 'missing' ? 404 : 409
-          );
-        }
-
-        const domainIds = normalizeProjectDomainIds(oldProject.domains);
-        const members = Array.isArray(oldProject.members) ? oldProject.members : [];
-        const isOnlyMember =
-          members.length <= 1 ||
-          members.every((member: unknown) => String(member) === String(studentInTx._id));
-
-        if (isOnlyMember) {
-          if (!await releaseSupervisorProjectSlot(currentUser.id, session)) {
-            return await fail('Unable to release the previous supervisor capacity.', 409);
+          if (!targetSup) {
+            return fail('Invalid Migration Code!', 400);
+          }
+          if (String(targetSup._id) === String(currentUser.id)) {
+            return fail('This project is already assigned to you.', 400);
           }
 
-          oldProject.supervisorId = targetSup._id;
-          oldProject.domains = domainIds;
-          await oldProject.save({ session });
-} else {
-          await Project.findByIdAndUpdate(
-            oldProject._id,
-            { $pull: { members: studentInTx._id } },
-            { session }
-          );
+          const studentInTx = await User.findOne({
+            _id: requestedStudentId,
+            role: 'student',
+          }).session(session);
 
-          await createProjectWithUniqueInviteCode(
-            {
-              supervisorId: targetSup._id,
-              members: [studentInTx._id],
-              stage: oldProject.stage || 'PROPOSAL',
-              status: oldProject.status || 'Pending',
-              title: oldProject.title || '',
-              description: oldProject.description || '',
-              titleFingerprint: oldProject.titleFingerprint || '',
-              domains: domainIds,
-              tools: oldProject.tools || '',
-              reviewRemarks: oldProject.reviewRemarks || '',
-              ratings: oldProject.ratings,
-              pdfUrl: '',
-              pdfSize: 0,
-            },
-            session
-          );
-}
+          if (!studentInTx) {
+            return fail('Student not found.', 404);
+          }
 
-        await session.commitTransaction();
-        session.endSession();
+          const oldProject = await Project.findOne({
+            members: studentInTx._id,
+            supervisorId: currentUser.id,
+          }).session(session);
+
+          if (!oldProject) {
+            return fail('Project not found.', 404);
+          }
+
+          const reservation = await reserveSupervisorProjectSlot(targetSup._id, session);
+          if (reservation !== 'reserved') {
+            return fail(
+              capacityReservationError(reservation),
+              reservation === 'missing' ? 404 : 409
+            );
+          }
+
+          const domainIds = normalizeProjectDomainIds(oldProject.domains);
+          const members = Array.isArray(oldProject.members) ? oldProject.members : [];
+          const isOnlyMember =
+            members.length <= 1 ||
+            members.every((member: unknown) => String(member) === String(studentInTx._id));
+
+          if (isOnlyMember) {
+            if (!await releaseSupervisorProjectSlot(currentUser.id, session)) {
+              return fail('Unable to release the previous supervisor capacity.', 409);
+            }
+
+            oldProject.supervisorId = targetSup._id;
+            oldProject.domains = domainIds;
+            await oldProject.save({ session });
+          } else {
+            await Project.findByIdAndUpdate(
+              oldProject._id,
+              { $pull: { members: studentInTx._id } },
+              { session }
+            );
+
+            await createProjectWithUniqueInviteCode(
+              {
+                supervisorId: targetSup._id,
+                members: [studentInTx._id],
+                stage: oldProject.stage || 'PROPOSAL',
+                status: oldProject.status || 'Pending',
+                title: oldProject.title || '',
+                description: oldProject.description || '',
+                titleFingerprint: oldProject.titleFingerprint || '',
+                domains: domainIds,
+                tools: oldProject.tools || '',
+                reviewRemarks: oldProject.reviewRemarks || '',
+                ratings: oldProject.ratings,
+                pdfUrl: '',
+                pdfSize: 0,
+              },
+              session
+            );
+          }
+
+        });
 
         await recordCurrentUserActivity('supervisor-student-migrated', currentUser);
         return NextResponse.json(
@@ -289,8 +285,9 @@ export async function POST(req: NextRequest) {
           { status: 200 }
         );
       } catch (error) {
-        if (session.inTransaction()) await session.abortTransaction();
-        session.endSession();
+        if (error instanceof StorageProtocolError) {
+          return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        }
         console.error('Migration transaction error:', error);
         return NextResponse.json(
           { error: 'Migration failed. Please try again.' },
@@ -304,49 +301,41 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid student selected.' }, { status: 400 });
       }
 
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
       try {
-        const triggerStudent = await User.findOne({
-          _id: requestedStudentId,
-          role: 'student',
-        }).session(session);
+        await withTransaction(async (session) => {
+          const triggerStudent = await User.findOne({
+            _id: requestedStudentId,
+            role: 'student',
+          }).session(session);
 
-        if (!triggerStudent) {
-          await session.abortTransaction();
-          return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
-        }
+          if (!triggerStudent) {
+            throw new StorageProtocolError('Student not found.', 404);
+          }
 
-        const project = await Project.findOne({
-          members: triggerStudent._id,
-          supervisorId: currentUser.id,
-        }).session(session);
+          const project = await Project.findOne({
+            members: triggerStudent._id,
+            supervisorId: currentUser.id,
+          }).session(session);
 
-        if (!project) {
-          await session.abortTransaction();
-          return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
-        }
+          if (!project) {
+            throw new StorageProtocolError('Project not found.', 404);
+          }
 
-        if (!await releaseSupervisorProjectSlot(currentUser.id, session)) {
-          await session.abortTransaction();
-          return NextResponse.json(
-            { error: 'Unable to release supervisor capacity.' },
-            { status: 409 }
-          );
-        }
+          if (!await releaseSupervisorProjectSlot(currentUser.id, session)) {
+            throw new StorageProtocolError('Unable to release supervisor capacity.', 409);
+          }
 
-        project.supervisorId = null;
-        await project.save({ session });
-await session.commitTransaction();
+          project.supervisorId = null;
+          await project.save({ session });
+        });
         await recordCurrentUserActivity('supervisor-team-removed', currentUser);
         return NextResponse.json({ message: 'Team removed successfully.' }, { status: 200 });
-      } catch {
-        if (session.inTransaction()) await session.abortTransaction();
+      } catch (error) {
+        if (error instanceof StorageProtocolError) {
+          return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        }
         console.error('supervisor_removal_failed');
         return NextResponse.json({ error: 'Failed to remove team.' }, { status: 500 });
-      } finally {
-        session.endSession();
       }
     }
     if (action === 'expandTeam') {

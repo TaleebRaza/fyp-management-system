@@ -3,7 +3,6 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BUCKET_NAME, getS3Client } from '../../../lib/s3-client';
 import connectToDatabase from '../../../lib/mongodb';
-import User from '../../../models/User';
 import Project from '../../../models/Project';
 import {
   buildFineRestriction,
@@ -35,12 +34,15 @@ import {
   StorageProtocolError,
 } from '../../../lib/storageProtocol';
 import { buildStorageStagingKey } from '../../../lib/storageValidation';
+import { TransactionBusyError } from '../../../lib/transaction';
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   try {
-    const currentUser = await requireCurrentUser(req);
+    const currentUser = await requireCurrentUser<NonNullable<Parameters<typeof buildFineRestriction>[0]>>(
+      req, undefined, 'lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
+    );
     if (!currentUser) {
       return NextResponse.json(
         { error: 'Unauthorized: Authentication token missing or invalid.' },
@@ -66,62 +68,53 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
 
     if (currentUser.role === 'student') {
-    const student = await User.findOne({ _id: currentUser.id, role: 'student' })
-      .select(
-        '_id lateRegistrationDays lateRegistrationFine lateRegistrationFineStatus registrationPunishment'
-      )
-      .lean();
-    if (!student) {
-      return NextResponse.json({ error: 'Student account not found.' }, { status: 404 });
-    }
+      const project = await Project.findOne({ members: currentUser.id })
+        .select('_id members version stage status')
+        .lean();
 
-    const project = await Project.findOne({ members: student._id })
-      .select('_id version stage status')
-      .lean();
-
-    if (isProjectComplete(project)) {
-      return NextResponse.json(
-        { code: PROJECT_COMPLETE_CODE, error: PROJECT_COMPLETE_MESSAGE },
-        { status: 403 }
-      );
-    }
-
-    if (isProjectSubmissionPendingReview(project)) {
-      return NextResponse.json(
-        { error: PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE },
-        { status: 409 }
-      );
-    }
-
-    if (!submissionsOpen) {
-      if (!hasPreviousProjectSubmission(project)) {
+      if (isProjectComplete(project)) {
         return NextResponse.json(
-          { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },
+          { code: PROJECT_COMPLETE_CODE, error: PROJECT_COMPLETE_MESSAGE },
+          { status: 403 }
+        );
+      }
+
+      if (isProjectSubmissionPendingReview(project)) {
+        return NextResponse.json(
+          { error: PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE },
+          { status: 409 }
+        );
+      }
+
+      if (!submissionsOpen) {
+        if (!hasPreviousProjectSubmission(project)) {
+          return NextResponse.json(
+            { code: PROJECT_SUBMISSIONS_CLOSED_CODE, error: PROJECT_SUBMISSIONS_CLOSED_MESSAGE },
+            { status: 403 }
+          );
+        }
+      }
+
+      const fineRestriction = buildFineRestriction(currentUser);
+      const teamFineRestriction = await getTeamFineRestriction(project?._id, currentUser.id, project?.members);
+      const fineRestrictions = teamFineRestriction
+        ? submissionPolicy.fineRestrictions
+        : null;
+      if (
+        teamFineRestriction &&
+        isFineRestrictionBlocking(teamFineRestriction, fineRestrictions?.proposalUpload)
+      ) {
+        return NextResponse.json(
+          {
+            code: FINE_RESTRICTION_CODE,
+            error: getTeamFineRestrictionMessage(teamFineRestriction, 'uploads'),
+            fineRestriction,
+            teamFineRestriction,
+          },
           { status: 403 }
         );
       }
     }
-
-    const fineRestriction = buildFineRestriction(student);
-    const teamFineRestriction = await getTeamFineRestriction(project?._id, student._id);
-    const fineRestrictions = teamFineRestriction
-      ? serializeRegistrationPolicy(await getOrCreateRegistrationPolicy()).fineRestrictions
-      : null;
-    if (
-      teamFineRestriction &&
-      isFineRestrictionBlocking(teamFineRestriction, fineRestrictions?.proposalUpload)
-    ) {
-      return NextResponse.json(
-        {
-          code: FINE_RESTRICTION_CODE,
-          error: getTeamFineRestrictionMessage(teamFineRestriction, 'uploads'),
-          fineRestriction,
-          teamFineRestriction,
-        },
-        { status: 403 }
-      );
-    }
-  }
 
     const json = await readBoundedJson(req, JSON_BODY_LIMITS.metadata);
     if (!json.ok) return json.response;
@@ -176,7 +169,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ uploadUrl, url: key, reservationId: String(reservation._id) });
   } catch (error) {
     console.error('pdf_upload_url_failed');
-    if (error instanceof StorageProtocolError) {
+    if (error instanceof StorageProtocolError || error instanceof TransactionBusyError) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
     return NextResponse.json(

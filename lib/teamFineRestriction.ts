@@ -47,14 +47,15 @@ export function getTeamFineRestrictionFromMembers(
 
 export async function getTeamFineRestriction(
   projectId: unknown,
-  currentStudentId: unknown
+  currentStudentId: unknown,
+  knownMemberIds?: unknown[]
 ): Promise<TeamFineRestriction | null> {
   const currentId = String(currentStudentId || '');
   let memberScope: Record<string, unknown> = { _id: currentId };
 
-  if (projectId) {
-    const project = await Project.findById(projectId).select('members').lean();
-    const memberIds = Array.isArray(project?.members) ? project.members : [];
+  if (projectId || knownMemberIds) {
+    const projectMembers = knownMemberIds ?? (await Project.findById(projectId).select('members').lean())?.members;
+    const memberIds = Array.isArray(projectMembers) ? projectMembers : [];
     if (memberIds.length === 0) return null;
     memberScope = { _id: { $in: memberIds } };
   }

@@ -12,7 +12,8 @@ test('project invite-code creation is centralized', async () => {
     readFile(new URL('../app/api/register/route.ts', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(projectCreation, /for \(let attempt = 0; attempt < 5; attempt\+\+\)/);
+  assert.match(projectCreation, /await project\.save\(\{ session \}\)/);
+  assert.doesNotMatch(projectCreation, /catch|for \(let attempt/);
   assert.match(projectCreation, /createInviteCode/);
 
   for (const caller of callers) {

@@ -37,6 +37,7 @@ import { useStudentAcademicUpdate } from '../student/hooks/useStudentAcademicUpd
 import { useStudentFineRefresh } from '../student/hooks/useStudentFineRefresh';
 import { useStudentSupervisorActions } from '../student/hooks/useStudentSupervisorActions';
 import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
+import { refreshAfterSave } from '../refreshAfterSave';
 import { updateStudentName } from '../student/api/studentWorkflowApi';
 import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
 const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDialog }: StudentDashboardProps) => {
@@ -229,8 +230,8 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
       onConfirm: async (name = '') => {
         try {
           const response = await updateStudentName(name.trim());
-          await fetchData();
           showDialog({ title: 'Name updated', message: response.message || 'Your name was updated.' });
+          await refreshAfterSave(fetchData, (title, message) => showDialog({ title, message }));
         } catch (error) {
           showDialog({
             title: 'Name update blocked',

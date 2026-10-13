@@ -4,7 +4,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
-import mongoose, { ClientSession } from 'mongoose';
+import { type ClientSession } from 'mongoose';
 import { randomUUID } from 'node:crypto';
 
 import StorageDeletionOutbox from '../models/StorageDeletionOutbox';
@@ -12,6 +12,7 @@ import SystemConfig from '../models/SystemConfig';
 import UploadReservation from '../models/UploadReservation';
 import { APP_SETTINGS } from '../config/appSettings';
 import { BUCKET_NAME, getS3Client, MAX_STORAGE_BYTES } from './s3-client';
+import { withTransaction, withSharedWriteTransaction } from './transaction';
 import {
   buildStorageKey,
   getStorageObjectKind,
@@ -57,26 +58,26 @@ type FinalizedUpload<T> =
   | { finalizedNow: false; finalKey: string }
   | { finalizedNow: true; finalKey: string; result: T };
 
-export async function withStorageTransaction<T>(operation: (session: ClientSession) => Promise<T>) {
-  const session = await mongoose.startSession();
+export const withStorageTransaction = withTransaction;
 
-  try {
-    let value!: T;
-    await session.withTransaction(async () => {
-      value = await operation(session);
-    });
+// Reject corrupt counters in the write itself, without a preceding transactional read.
+const validLedger = {
+  $cond: [
+    { $and: [{ $isNumber: '$usedBytes' }, { $isNumber: '$reservedBytes' }] },
+    { $and: ['usedBytes', 'reservedBytes'].flatMap((field) => [
+      { $gte: [`$${field}`, 0] },
+      { $lte: [`$${field}`, Number.MAX_SAFE_INTEGER] },
+      { $eq: [`$${field}`, { $floor: `$${field}` }] },
+    ]) },
+    false,
+  ],
+};
 
-    return value;
-  } finally {
-    await session.endSession();
-  }
-}
-
-export async function assertStorageLedgerReady(session: ClientSession) {
+export async function assertStorageLedgerReady(session?: ClientSession) {
   const configs = await SystemConfig.find({ configKey: 'storage' })
     .select('usedBytes reservedBytes')
     .limit(2)
-    .session(session)
+    .session(session ?? null)
     .lean();
   const config = configs[0];
   if (
@@ -142,6 +143,7 @@ export async function reserveUpload(input: ReserveUploadInput) {
   if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes <= 0) {
     throw new StorageProtocolError('A valid upload size is required.', 400);
   }
+  await assertStorageLedgerReady();
 
   if (input.kind === 'student-message') {
     const expired = await UploadReservation.findOne({
@@ -156,8 +158,7 @@ export async function reserveUpload(input: ReserveUploadInput) {
   }
 
   try {
-    return await withStorageTransaction(async (session) => {
-      await assertStorageLedgerReady(session);
+    return await withSharedWriteTransaction(async (session) => {
       const existing = await UploadReservation.findOne({
         ownerId: input.ownerId,
         idempotencyKey: input.idempotencyKey,
@@ -177,27 +178,13 @@ export async function reserveUpload(input: ReserveUploadInput) {
         return existing;
       }
 
-      if (input.kind === 'student-message') {
-        const pending = await UploadReservation.findOne({
-          ownerId: input.ownerId,
-          kind: 'student-message',
-          state: 'pending',
-        }).session(session);
-        if (pending) {
-          if (pending.expiresAt.getTime() > Date.now()) {
-            throw new StorageProtocolError('Another message upload is already in progress.', 409);
-          }
-          throw new StorageProtocolError('The previous upload expired. Try again.', 409);
-        }
-      }
-
       const key = typeof input.key === 'function' ? input.key(randomUUID()) : input.key;
       assertReservationInput(input, key);
 
       const capacity = await SystemConfig.updateOne(
         {
           configKey: 'storage',
-          $expr: {
+          $expr: { $cond: [validLedger, {
             $lte: [
               {
                 $add: [
@@ -208,13 +195,28 @@ export async function reserveUpload(input: ReserveUploadInput) {
               },
               MAX_STORAGE_BYTES,
             ],
-          },
+          }, false] },
         },
         { $inc: { reservedBytes: input.expectedBytes } },
         { session }
       );
       if (capacity.modifiedCount !== 1) {
+        await assertStorageLedgerReady(session);
         throw new StorageProtocolError('System storage capacity reached.', 403);
+      }
+
+      if (input.kind === 'student-message') {
+        const pending = await UploadReservation.findOne({
+          ownerId: input.ownerId, kind: 'student-message', state: 'pending',
+        }).session(session);
+        if (pending) {
+          throw new StorageProtocolError(
+            pending.expiresAt.getTime() > Date.now()
+              ? 'Another message upload is already in progress.'
+              : 'The previous upload expired. Try again.',
+            409
+          );
+        }
       }
 
       const reservation = new UploadReservation({ ...input, key });
@@ -363,6 +365,7 @@ export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>
     await cancelUploadReservation(input.key, input.ownerId, 'expired-upload');
     throw new StorageProtocolError('Upload reservation has expired. Upload the file again.', 409);
   }
+  await assertStorageLedgerReady();
 
   let verified: { actualBytes: number; actualContentType: string; etag: string };
   try {
@@ -395,10 +398,19 @@ export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>
   }
 
   try {
-    return await withStorageTransaction(async (session) => {
-      await assertStorageLedgerReady(session);
+    return await withSharedWriteTransaction(async (session) => {
+      const converted = await SystemConfig.updateOne(
+        { configKey: 'storage', reservedBytes: { $gte: reservation.expectedBytes }, $expr: validLedger },
+        { $inc: { reservedBytes: -reservation.expectedBytes, usedBytes: verified.actualBytes } },
+        { session }
+      );
+      if (converted.modifiedCount !== 1) {
+        await assertStorageLedgerReady(session);
+        throw new Error('Storage reservation ledger is inconsistent.');
+      }
       const activeReservation = await UploadReservation.findOne({
         _id: reservation._id,
+        expectedBytes: reservation.expectedBytes,
         state: 'pending',
         expiresAt: { $gt: new Date() },
       }).session(session);
@@ -408,17 +420,6 @@ export async function finalizeUploadReservation<T>(input: FinalizeUploadInput<T>
 
       const uploadedObject = { ...verified, key: finalKey };
       const result = await input.commit(session, uploadedObject);
-      const converted = await SystemConfig.updateOne(
-        { configKey: 'storage', reservedBytes: { $gte: activeReservation.expectedBytes } },
-        {
-          $inc: {
-            reservedBytes: -activeReservation.expectedBytes,
-            usedBytes: verified.actualBytes,
-          },
-        },
-        { session }
-      );
-      if (converted.modifiedCount !== 1) throw new Error('Storage reservation ledger is inconsistent.');
 
       await enqueueStorageDeletion({
         key: activeReservation.key,
@@ -505,7 +506,7 @@ async function getDeletionBytes(target: {
   return verifiedBytes;
 }
 
-export async function processStorageDeletionOutbox(limit = 25) {
+export async function processStorageDeletionOutbox(limit = 25, deadline = Infinity) {
   await withStorageTransaction(async (session) => {
     await assertStorageLedgerReady(session);
     const duplicateKeys = await StorageDeletionOutbox.aggregate([
@@ -528,7 +529,7 @@ export async function processStorageDeletionOutbox(limit = 25) {
   let deadLettered = 0;
   let maxJobLagMs = 0;
 
-  for (let index = 0; index < batchSize; index += 1) {
+  for (let index = 0; index < batchSize && Date.now() < deadline; index += 1) {
     const now = new Date();
     const lockToken = randomUUID();
     const target = await StorageDeletionOutbox.findOneAndUpdate(
@@ -635,7 +636,7 @@ export async function processStorageDeletionOutbox(limit = 25) {
   };
 }
 
-export async function expireUploadReservations(limit = 25) {
+export async function expireUploadReservations(limit = 25, deadline = Infinity) {
   const reservations = await UploadReservation.find({
     state: 'pending',
     expiresAt: { $lte: new Date() },
@@ -646,11 +647,14 @@ export async function expireUploadReservations(limit = 25) {
     .lean();
 
   let cancelled = 0;
+  let processed = 0;
   for (const reservation of reservations) {
+    if (Date.now() >= deadline) break;
+    processed++;
     if (await cancelUploadReservation(reservation.key, String(reservation.ownerId), 'expired-upload')) {
       cancelled += 1;
     }
   }
 
-  return { processed: reservations.length, cancelled };
+  return { processed, cancelled };
 }

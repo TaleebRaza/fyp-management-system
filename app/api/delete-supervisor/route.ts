@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import { withTransaction } from '../../../lib/transaction';
 import User from '../../../models/User';
 import Project from '../../../models/Project';
 import { requireCurrentUser } from '../../../lib/security/auth';
@@ -31,18 +32,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid supervisor ID.' }, { status: 400 });
     }
 
-    // 1. Establish an Atomic Transaction Session
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
+    await withTransaction(async (session) => {
       // 2. Delete the supervisor
       const deletedSupervisor = await User.findOneAndDelete({ _id: id, role: 'supervisor' }, { session });
 
       if (!deletedSupervisor) {
-        await session.abortTransaction();
-        session.endSession();
-        return NextResponse.json({ error: 'Supervisor not found' }, { status: 404 });
+        throw new StorageProtocolError('Supervisor not found', 404);
       }
 
       if (deletedSupervisor.broadcastType === 'audio') {
@@ -73,25 +68,17 @@ export async function POST(req: NextRequest) {
         { session }
       );
 
-      // 5. Commit Transaction
-      await session.commitTransaction();
-      session.endSession();
-      invalidatePublicContent(PUBLIC_SUPERVISORS_TAG);
+    });
+    invalidatePublicContent(PUBLIC_SUPERVISORS_TAG);
 
-      await recordPortalActivity({
-        action: 'admin-supervisor-deleted',
-        actorId: currentUser.id,
-        actorRole: currentUser.role,
-      });
+    await recordPortalActivity({
+      action: 'admin-supervisor-deleted',
+      actorId: currentUser.id,
+      actorRole: currentUser.role,
+    });
 
-      return NextResponse.json({ message: 'Supervisor deleted successfully' }, { status: 200 });
+    return NextResponse.json({ message: 'Supervisor deleted successfully' }, { status: 200 });
 
-    } catch (transactionError) {
-      // Emergency Rollback
-      await session.abortTransaction();
-      session.endSession();
-      throw transactionError;
-    }
   } catch (error) {
     console.error('delete_supervisor_failed');
     if (error instanceof StorageProtocolError) {

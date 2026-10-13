@@ -31,7 +31,7 @@ test('storage reservations keep pending bytes and atomically claimed deletion wo
 });
 
 test('storage transactions allow callbacks that only write state', async () => {
-  const protocol = await read('lib/storageProtocol.ts');
+  const protocol = await read('lib/transaction.ts');
 
   assert.match(protocol, /let value!: T;/);
   assert.doesNotMatch(protocol, /Storage transaction returned no result/);
@@ -78,7 +78,7 @@ test('academic reset and team changes use transaction callbacks with durable cle
     read('app/api/project/leave/route.ts'),
   ]);
 
-  assert.match(academicReset, /mongoSession\.withTransaction/);
+  assert.match(academicReset, /withTransaction\(async \(mongoSession\)/);
   assert.match(academicReset, /enqueueDeletedProjectStorage/);
   assert.match(projectCleanup, /enqueueStorageDeletion/);
   assert.match(projectCleanup, /VoiceNote\.deleteMany/);
@@ -87,7 +87,7 @@ test('academic reset and team changes use transaction callbacks with durable cle
   assert.match(join, /enqueueDeletedProjectStorage/);
   assert.match(join, /User\.findOne\(\{ _id: currentUser\.id, role: 'student' \}\)\.session\(session\)/);
   assert.doesNotMatch(join, /withTransactionRetry/);
-  assert.match(leave, /session\.withTransaction/);
+  assert.match(leave, /withTransaction\(async \(session\)/);
   assert.doesNotMatch(leave, /withTransactionRetry/);
 });
 

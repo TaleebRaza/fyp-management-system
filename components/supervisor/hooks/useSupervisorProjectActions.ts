@@ -83,7 +83,7 @@ export function useSupervisorProjectActions({
               ratings: ratings || approval.ratings,
             });
             closeProject();
-            await refreshProjects();
+            void refreshProjects();
             notify('Rating updated', 'The saved rating was revised successfully.');
             return;
           }
@@ -103,7 +103,7 @@ export function useSupervisorProjectActions({
               version: Number(project.version || 0) + 1,
             };
             setSelectedProject(approvedProject);
-            await refreshProjects();
+            void refreshProjects();
             requestConfirmation(
               'Document approved',
               project.stage === 'FINAL_DELIVERABLES'
@@ -121,7 +121,7 @@ export function useSupervisorProjectActions({
             return;
           }
           closeProject();
-          await refreshProjects();
+          void refreshProjects();
           notify(
             'Project updated',
             `The project has been marked as ${newStatus}.`
@@ -167,7 +167,7 @@ export function useSupervisorProjectActions({
         ...(progression?.ratings ? { ratings: progression.ratings } : {}),
       });
       closeProject();
-      await refreshProjects();
+      void refreshProjects();
       notify(
         response.completed ? 'Project completed' : 'Stage progressed',
         typeof response.message === 'string' ? response.message : 'The project workflow was updated.'
@@ -212,7 +212,7 @@ export function useSupervisorProjectActions({
         [selectedProject._id]: '',
       }));
       closeProject();
-      await refreshProjects();
+      void refreshProjects();
       notify(
         'Student migrated',
         typeof json.message === 'string'
@@ -250,7 +250,7 @@ export function useSupervisorProjectActions({
         try {
           const json = await expandSupervisorTeam(selectedProject._id);
           closeProject();
-          await refreshProjects();
+          void refreshProjects();
           notify(
             'Three-member team approved',
             typeof json.message === 'string'
@@ -291,7 +291,7 @@ export function useSupervisorProjectActions({
             selectedProject.triggerStudentId
           );
           closeProject();
-          await refreshProjects();
+          void refreshProjects();
           notify(
             'Team removed',
             typeof json.message === 'string'

@@ -13,6 +13,7 @@ import {
 } from '../../../../lib/storageProtocol';
 import { buildStorageStagingKey } from '../../../../lib/storageValidation';
 import { APP_SETTINGS } from '../../../../config/appSettings';
+import { TransactionBusyError } from '../../../../lib/transaction';
 import { isRecord } from '../../../../lib/security/input';
 import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ uploadUrl, key: reservation.key, reservationId: String(reservation._id) });
   } catch (error) {
     console.error('voice_upload_url_failed');
-    if (error instanceof StorageProtocolError) {
+    if (error instanceof StorageProtocolError || error instanceof TransactionBusyError) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
     return NextResponse.json({ error: 'Failed to generate secure upload route' }, { status: 500 });

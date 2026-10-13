@@ -77,15 +77,11 @@ export function useStudentDashboardData({
       await applyDashboard(await getStudentDashboard(userId));
     } catch (error) {
       console.error('Dashboard fetch error:', error);
-      showDialog({
-        title: 'Dashboard unavailable',
-        message: 'Unable to load your dashboard right now. Please refresh and try again.',
-      });
       throw new Error('The dashboard refresh failed. Your change may already be saved; refresh before retrying.');
     } finally {
       setIsLoading(false);
     }
-  }, [applyDashboard, showDialog, userId]);
+  }, [applyDashboard, userId]);
 
   const loadSupervisors = useCallback((): Promise<void> => {
     if (supervisorRequest.current) return supervisorRequest.current;

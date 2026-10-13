@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import connectToDatabase from '../../../../lib/mongodb';
+import { drainBatches } from '../../../../lib/drainBatches';
 import { hasValidCronAuthorization } from '../../../../lib/security/cron';
 import {
   expireUploadReservations,
@@ -8,6 +9,7 @@ import {
 } from '../../../../lib/storageProtocol';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function GET(req: Request) {
   if (!hasValidCronAuthorization(req.headers.get('authorization'), process.env.CRON_SECRET)) {
@@ -16,10 +18,13 @@ export async function GET(req: Request) {
 
   try {
     await connectToDatabase();
-    const [reservations, deletions] = await Promise.all([
-      expireUploadReservations(),
-      processStorageDeletionOutbox(),
-    ]);
+    const deadline = Date.now() + 40_000;
+    const reservations = await drainBatches(
+      () => expireUploadReservations(25, deadline), (batch) => batch.processed === 25, deadline
+    );
+    const deletions = await drainBatches(
+      () => processStorageDeletionOutbox(25, deadline), (batch) => batch.claimed === 25, deadline
+    );
     return NextResponse.json({ reservations, deletions });
   } catch {
     console.error('storage_cleanup_failed');

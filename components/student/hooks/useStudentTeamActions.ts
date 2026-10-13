@@ -1,5 +1,7 @@
 'use client';
 
+import { refreshAfterSave } from '../../refreshAfterSave';
+
 import { useCallback, useState, type FormEvent } from 'react';
 import {
   joinStudentTeam,
@@ -49,12 +51,14 @@ export function useStudentTeamActions({
       setIsSubmitting(true);
       try {
         const response = await joinStudentTeam(normalizedInviteCode);
-        setInviteCodeInput('');
-        await refreshDashboard();
         showDialog({
           title: 'Team joined',
           message: response.message || 'You have joined the team successfully.',
         });
+        await refreshAfterSave(async () => {
+          setInviteCodeInput('');
+          await refreshDashboard();
+        }, (title, message) => showDialog({ title, message }));
       } catch (error) {
         showDialog({
           title: 'Join failed',
@@ -70,16 +74,18 @@ export function useStudentTeamActions({
     setIsSubmitting(true);
     try {
       const response = await leaveStudentTeam();
-      await resetProjectDraft();
-      setInviteCodeInput('');
-      resetTemplates();
-      await Promise.all([refreshDashboard(), refreshSupervisors()]);
       showDialog({
         title: 'Team left',
         message:
           response.message ||
           'You left the team successfully. A new project and invite code have been created for you.',
       });
+      await refreshAfterSave(async () => {
+        await resetProjectDraft();
+        setInviteCodeInput('');
+        resetTemplates();
+        await Promise.all([refreshDashboard(), refreshSupervisors()]);
+      }, (title, message) => showDialog({ title, message }));
     } catch (error) {
       showDialog({
         title: 'Leave team failed',
@@ -117,14 +123,16 @@ export function useStudentTeamActions({
     setIsSubmitting(true);
     try {
       const response = await resetStudentProject();
-      await resetProjectDraft();
-      setInviteCodeInput('');
-      resetTemplates();
-      await refreshDashboard();
       showDialog({
         title: 'Project reset',
         message: response.message || 'Your project is back at the proposal stage.',
       });
+      await refreshAfterSave(async () => {
+        await resetProjectDraft();
+        setInviteCodeInput('');
+        resetTemplates();
+        await refreshDashboard();
+      }, (title, message) => showDialog({ title, message }));
     } catch (error) {
       showDialog({
         title: 'Project reset failed',

@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "UV_THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-8} next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "UV_THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-8} next start",
     "lint": "eslint",
     "test:unit": "node tests/run-unit-tests.mjs",
     "test:viva:persistence": "node --test tests/viva-persistence.integration.test.mjs",

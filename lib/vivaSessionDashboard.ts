@@ -523,11 +523,17 @@ async function readCurrentContext(
     panelQuery.session(databaseSession);
     projectQuery.session(databaseSession);
   }
-  const [round, panel, project] = await Promise.all([
-    roundQuery.lean<VivaRoundRecord | null>(),
-    panelQuery.lean<VivaPanelRecord | null>(),
-    projectQuery.lean<VivaProjectRecord | null>(),
-  ]);
+  const [round, panel, project] = databaseSession
+    ? [
+        await roundQuery.lean<VivaRoundRecord | null>(),
+        await panelQuery.lean<VivaPanelRecord | null>(),
+        await projectQuery.lean<VivaProjectRecord | null>(),
+      ] as const
+    : await Promise.all([
+        roundQuery.lean<VivaRoundRecord | null>(),
+        panelQuery.lean<VivaPanelRecord | null>(),
+        projectQuery.lean<VivaProjectRecord | null>(),
+      ]);
   if (!round || !panel || !project) {
     return { success: false, reason: 'invalid', error: 'The scheduled Viva round, panel, or team no longer exists.' };
   }
@@ -976,70 +982,79 @@ export async function getVivaPanelSessions(actorId: string, preview = false): Pr
     .lean<VivaPanelRecord[]>();
   if (panels.length === 0) return [];
 
-  const sessions = await VivaSession.find({
-    panelId: { $in: panels.map((panel) => panel._id) },
-    cancelledAt: null,
-    ...(preview ? { completedAt: null } : {}),
-  })
-    .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel result version roundSnapshot projectSnapshot panelSnapshot')
-    .sort({ scheduledAt: 1, _id: 1 })
-    .lean<VivaSessionRecord[]>();
-  if (sessions.length === 0) return [];
-
-  const scheduledSessions = sessions.filter((vivaSession) => sessionPhase(vivaSession) === 'scheduled');
-  const scheduledPanelIds = new Set(scheduledSessions.map((session) => String(session.panelId)));
-  const roundIds = [...new Set(scheduledSessions.flatMap((session) => asId(session.roundId) || []))];
-  const projectIds = [...new Set(scheduledSessions.flatMap((session) => asId(session.projectId) || []))];
-  const [rounds, projects] = await Promise.all([
-    roundIds.length === 0
-      ? []
-      : VivaRound.find({ _id: { $in: roundIds }, confirmedAt: { $type: 'date' } })
-        .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes frozenAt')
-        .lean<VivaRoundRecord[]>(),
-    projectIds.length === 0
-      ? []
-      : Project.find({ _id: { $in: projectIds } })
-        .select('_id supervisorId members title description domains tools pdfUrl pdfSize')
-        .lean<VivaProjectRecord[]>(),
-  ]);
   const panelsById = new Map(panels.map((panel) => [String(panel._id), panel]));
-  const roundsById = new Map(rounds.map((round) => [String(round._id), round]));
-  const projectsById = new Map(projects.map((project) => [String(project._id), project]));
-  const participantIds = [...new Set([
-    ...panels
-      .filter((panel) => scheduledPanelIds.has(String(panel._id)))
-      .flatMap((panel) => asIdList(panel.examinerIds) || []),
-    ...projects.flatMap((project) => asIdList(project.members) || []),
-    ...projects.flatMap((project) => asId(project.supervisorId) || []),
-  ])];
-  const people = participantIds.length === 0
-    ? []
-    : await User.find({ _id: { $in: participantIds } })
-      .select('_id name rollNo role isActive')
-      .lean<VivaUserRecord[]>();
-  const peopleById = new Map(people.map((person) => [String(person._id), person]));
+  const workspaces: VivaSessionWorkspaceDto[] = [];
+  let cursor: VivaSessionRecord | undefined;
+  do {
+    const sessions = await VivaSession.find({
+      panelId: { $in: panels.map((panel) => panel._id) },
+      cancelledAt: null,
+      ...(preview ? { completedAt: null, scheduledAt: { $type: 'date' } } : {}),
+      ...(cursor ? { $or: [
+        { scheduledAt: { $gt: cursor.scheduledAt } },
+        { scheduledAt: cursor.scheduledAt, _id: { $gt: cursor._id } },
+      ] } : {}),
+    })
+      .select('roundId panelId projectId scheduledAt startedAt vivaEndsAt completedAt cancelledAt locationLabel result version roundSnapshot projectSnapshot panelSnapshot')
+      .sort({ scheduledAt: 1, _id: 1 })
+      .limit(preview ? 6 : 0)
+      .lean<VivaSessionRecord[]>();
+    if (sessions.length === 0) break;
+    cursor = sessions.at(-1);
 
-  const workspaces = sessions.map((vivaSession) => {
-    const phase = sessionPhase(vivaSession);
-    if (phase === 'running' || phase === 'completed') {
-      const workspace = workspaceFromSnapshot(vivaSession);
-      return workspace ? { ...workspace, canManage: workspace.panel.admin.id === actorId } : null;
+    const scheduledSessions = sessions.filter((vivaSession) => sessionPhase(vivaSession) === 'scheduled');
+    const scheduledPanelIds = new Set(scheduledSessions.map((session) => String(session.panelId)));
+    const roundIds = [...new Set(scheduledSessions.flatMap((session) => asId(session.roundId) || []))];
+    const projectIds = [...new Set(scheduledSessions.flatMap((session) => asId(session.projectId) || []))];
+    const [rounds, projects] = await Promise.all([
+      roundIds.length === 0
+        ? []
+        : VivaRound.find({ _id: { $in: roundIds }, confirmedAt: { $type: 'date' } })
+          .select('_id name targetPanelSize minimumPanelSize vivaDurationMinutes frozenAt')
+          .lean<VivaRoundRecord[]>(),
+      projectIds.length === 0
+        ? []
+        : Project.find({ _id: { $in: projectIds } })
+          .select('_id supervisorId members title description domains tools pdfUrl pdfSize')
+          .lean<VivaProjectRecord[]>(),
+    ]);
+    const roundsById = new Map(rounds.map((round) => [String(round._id), round]));
+    const projectsById = new Map(projects.map((project) => [String(project._id), project]));
+    const participantIds = [...new Set([
+      ...panels
+        .filter((panel) => scheduledPanelIds.has(String(panel._id)))
+        .flatMap((panel) => asIdList(panel.examinerIds) || []),
+      ...projects.flatMap((project) => asIdList(project.members) || []),
+      ...projects.flatMap((project) => asId(project.supervisorId) || []),
+    ])];
+    const people = participantIds.length === 0
+      ? []
+      : await User.find({ _id: { $in: participantIds } })
+        .select('_id name rollNo role isActive')
+        .lean<VivaUserRecord[]>();
+    const peopleById = new Map(people.map((person) => [String(person._id), person]));
+
+    for (const vivaSession of sessions) {
+      if (preview && workspaces.length === 3) break;
+      const phase = sessionPhase(vivaSession);
+      let workspace: VivaSessionWorkspaceDto | null;
+      if (phase === 'running' || phase === 'completed') {
+        workspace = workspaceFromSnapshot(vivaSession);
+      } else if (phase === 'scheduled') {
+        const context = assembleCurrentContext(
+          vivaSession,
+          roundsById.get(String(vivaSession.roundId)),
+          panelsById.get(String(vivaSession.panelId)),
+          projectsById.get(String(vivaSession.projectId)),
+          peopleById
+        );
+        if (!context.success) continue;
+        workspace = workspaceFromCurrentContext(vivaSession, context.context);
+      } else continue;
+      if (workspace) workspaces.push({ ...workspace, canManage: workspace.panel.admin.id === actorId });
     }
-    if (phase !== 'scheduled') return null;
-
-    const context = assembleCurrentContext(
-      vivaSession,
-      roundsById.get(String(vivaSession.roundId)),
-      panelsById.get(String(vivaSession.panelId)),
-      projectsById.get(String(vivaSession.projectId)),
-      peopleById
-    );
-    if (!context.success) return null;
-    const workspace = workspaceFromCurrentContext(vivaSession, context.context);
-    return workspace ? { ...workspace, canManage: workspace.panel.admin.id === actorId } : null;
-  });
-
-  return workspaces.filter((workspace): workspace is VivaSessionWorkspaceDto => Boolean(workspace));
+  } while (preview && workspaces.length < 3);
+  return workspaces;
 }
 
 export const getPanelAdminVivaSessions = getVivaPanelSessions;

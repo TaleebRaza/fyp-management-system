@@ -21,7 +21,6 @@ export function useSupervisorProjects({
         throw new Error('Supervisor session is missing. Please sign in again.');
       }
 
-      setIsLoading(true);
       const dashboard = await loadSupervisorDashboard();
       setProjects(dashboard.projects);
       setMigrationCode(dashboard.migrationCode);
