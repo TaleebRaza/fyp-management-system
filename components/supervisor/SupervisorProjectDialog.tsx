@@ -124,6 +124,7 @@ export default function SupervisorProjectDialog({
   };
 
   const handleClose = () => {
+    if (isProcessingAction) return;
     setView('actions');
     setRatingProjectId(null);
     setRatingFormMode(null);
@@ -161,7 +162,7 @@ export default function SupervisorProjectDialog({
   return (
     <Dialog
       open={!!project}
-      onClose={isProcessingAction ? () => undefined : handleClose}
+      onClose={handleClose}
       title={isRatingFormOpen ? (isProgressionForm ? 'Progress project stage' : 'Review rating') : (project?.projectTitle || getMemberNames(project))}
       description={isRatingFormOpen ? getMemberNames(project) : (project ? `${getMemberNames(project)} · ${getMemberRollNumbers(project)}` : '')}
       size="xl"
@@ -176,7 +177,7 @@ export default function SupervisorProjectDialog({
               </Button>
             </>
           ) : (
-            <Button variant="outline" onClick={handleClose}>Close</Button>
+            <Button variant="outline" disabled={isProcessingAction} onClick={handleClose}>Close</Button>
           )
         ) : null
       }

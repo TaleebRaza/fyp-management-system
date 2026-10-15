@@ -166,8 +166,8 @@ export function useSupervisorProjectActions({
         expectedVersion: Number(project.version || 0),
         ...(progression?.ratings ? { ratings: progression.ratings } : {}),
       });
+      await refreshProjects();
       closeProject();
-      void refreshProjects();
       notify(
         response.completed ? 'Project completed' : 'Stage progressed',
         typeof response.message === 'string' ? response.message : 'The project workflow was updated.'

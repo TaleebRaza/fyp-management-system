@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { REVIEWED_PROJECT_STATUSES } from '../../../../lib/projectReviewPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import Project from '../../../../models/Project';
 import User from '../../../../models/User';
@@ -26,7 +25,7 @@ export async function GET(req: NextRequest) {
       Project.countDocuments(),
       Project.countDocuments({
         pdfUrl: { $type: 'string', $ne: '' },
-        status: { $nin: REVIEWED_PROJECT_STATUSES },
+        status: 'Submitted For Review',
       }),
     ]);
 

@@ -9,10 +9,7 @@ import {
   OUTSTANDING_STUDENT_FINE_FILTER,
   type FineRestrictedUser,
 } from '../../../../lib/fineRestriction';
-import {
-  APPROVED_PROJECT_STAGES,
-  REVIEWED_PROJECT_STATUSES,
-} from '../../../../lib/projectReviewPolicy';
+import { APPROVED_PROJECT_STAGES } from '../../../../lib/projectReviewPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import Project from '../../../../models/Project';
 import User from '../../../../models/User';
@@ -351,7 +348,7 @@ export async function GET(req: NextRequest) {
             waitingForReview: {
               $sum: {
                 $cond: [
-                  { $and: ['$hasPdf', { $not: [{ $in: ['$status', REVIEWED_PROJECT_STATUSES] }] }] },
+                  { $and: ['$hasPdf', { $eq: ['$status', 'Submitted For Review'] }] },
                   1,
                   0,
                 ],

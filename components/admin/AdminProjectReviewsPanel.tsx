@@ -266,8 +266,8 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Failed to progress the project stage.');
 
-      setSelectedProject(null);
       await fetchProjects({ showLoading: false, forceRefresh: true });
+      setSelectedProject(null);
       showDialog({
         title: data.completed ? 'Project completed' : 'Stage progressed',
         message: data.message || 'The project workflow was updated.',
