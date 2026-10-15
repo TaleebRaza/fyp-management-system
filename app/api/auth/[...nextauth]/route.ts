@@ -184,6 +184,7 @@ const handler = NextAuth({
                       ],
                     },
                     lastLoginMonth: currentMonth,
+                    lastLoginAt: '$$NOW',
                   },
                 }],
                 { updatePipeline: true }

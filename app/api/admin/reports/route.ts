@@ -13,6 +13,7 @@ import { APPROVED_PROJECT_STAGES } from '../../../../lib/projectReviewPolicy';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import Project from '../../../../models/Project';
 import User from '../../../../models/User';
+import { buildSupervisorLoginReport, type SupervisorLoginRow } from '../../../../lib/supervisorLoginReport';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,14 +42,6 @@ type StudentTotals = {
   deactivatedStudents?: number;
   assignedStudents?: number;
   unassignedStudents?: number;
-};
-
-type SupervisorLoginRow = {
-  _id: unknown;
-  name?: string;
-  rollNo?: string;
-  monthlyLoginCount?: number;
-  lastLoginMonth?: string;
 };
 
 type UserReportFacets = {
@@ -321,7 +314,7 @@ export async function GET(req: NextRequest) {
         (stage) => !('$lookup' in stage) && !('$set' in stage)
       )),
       needsSupervisors ? User.find({ role: 'supervisor' })
-        .select('_id name rollNo monthlyLoginCount lastLoginMonth')
+        .select('_id name rollNo monthlyLoginCount lastLoginMonth lastLoginAt')
         .lean<SupervisorLoginRow[]>() : Promise.resolve([] as SupervisorLoginRow[]),
       needsSupervisors ? Promise.resolve(null) : User.countDocuments({ role: 'supervisor' }),
       Project.aggregate<ProjectReportRow>([
@@ -493,21 +486,7 @@ export async function GET(req: NextRequest) {
       },
     ];
 
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const supervisorLoginCounts = [...supervisors]
-      .sort((first, second) => (
-        Number(second.monthlyLoginCount || 0) - Number(first.monthlyLoginCount || 0)
-        || String(first.name || '').localeCompare(String(second.name || ''))
-      ))
-      .map((row) => ({
-        label: row.name || row.rollNo || 'Unknown Supervisor',
-        total: Number(row.monthlyLoginCount || 0),
-        note: row.lastLoginMonth === currentMonth
-          ? 'Logged in this month'
-          : row.lastLoginMonth
-            ? `Last active ${row.lastLoginMonth}`
-            : 'No recorded logins',
-      }));
+    const supervisorLoginCounts = buildSupervisorLoginReport(supervisors);
 
     const responseData = {
       generatedAt: new Date().toISOString(),

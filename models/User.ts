@@ -31,6 +31,7 @@ const UserSchema = new Schema({
 
   monthlyLoginCount: { type: Number, default: 0 },
   lastLoginMonth: { type: String, default: '' },
+  lastLoginAt: { type: Date },
 
   resetCode: { type: String, required: false, select: false },
   resetCodeExpiry: { type: Date, required: false, select: false },

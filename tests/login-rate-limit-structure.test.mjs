@@ -23,6 +23,7 @@ test('login keeps throttling and writes ordered around password verification', a
   assert.match(authRoute, /\$eq: \['\$lastLoginMonth', currentMonth\]/);
   assert.match(authRoute, /\$add: \[\{ \$ifNull: \['\$monthlyLoginCount', 0\] \}, 1\]/);
   assert.match(authRoute, /\{ updatePipeline: true \}/);
+  assert.match(authRoute, /lastLoginAt: '\$\$NOW'/);
   assert.match(authRoute, /select\('_id \+password role isActive name rollNo sessionVersion'\)/);
   assert.match(authRoute, /password: verifiedPasswordHash,[\s\S]*?sessionVersion: verifiedSessionVersion/);
   assert.match(authRoute, /LOGIN_PHASE_TIMINGS !== '1'/);

@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { importTypeScriptModule } from './support/importTypeScript.mjs';
+
+const supervisorLoginReport = await importTypeScriptModule('lib/supervisorLoginReport.ts');
 
 async function loadModule(path, modules) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -39,6 +42,7 @@ test('scoped reports retain matching rows and summary counts while skipping unre
     '/security/auth': { requireCurrentUser: async () => authenticated ? { id: 'admin-1' } : null },
     '/fineRestriction': { buildFineRestriction: () => null, buildCollectedFineSummary: () => null },
     '/projectReviewPolicy': { APPROVED_PROJECT_STAGES: [], REVIEWED_PROJECT_STATUSES: [] },
+    '/supervisorLoginReport': supervisorLoginReport,
     '/models/User': {
       aggregate: async (pipeline) => {
         pipelines.push(plain(pipeline));
