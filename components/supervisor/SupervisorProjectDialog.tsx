@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArrowRight,
   ArrowRightLeft,
   CheckCircle,
   ExternalLink,
   FileText,
+  Flag,
   Globe,
   Loader2,
   Milestone,
@@ -12,6 +14,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { EXPANDED_TEAM_SIZE, getTeamCapacity } from '../../config/appSettings';
+import { getProjectProgressionState } from '../../lib/projectReviewPolicy';
 import {
   getProjectRatingRound,
   parseProjectRatingValues,
@@ -92,6 +95,9 @@ export default function SupervisorProjectDialog({
   const completeRatings = parseProjectRatingValues(approvalRatings);
   const isSubmittedForReview = project?.status === 'Submitted For Review';
   const isProgressable = project?.status === 'Document Approved';
+  const currentStageLabel = getProjectStageLabel(project?.stage || 'PROPOSAL');
+  const progression = getProjectProgressionState(project?.stage || 'PROPOSAL');
+  const nextStageLabel = progression?.completed ? 'Project completed' : getProjectStageLabel(progression?.newStage);
 
   const handleApprove = () => {
     if (!project) return;
@@ -173,7 +179,7 @@ export default function SupervisorProjectDialog({
               <Button variant="outline" disabled={isProcessingAction} onClick={() => setRatingProjectId(null)}>Cancel</Button>
               <Button type="submit" form="project-approval-rating-form" variant="success" disabled={!completeRatings || isProcessingAction}>
                 {isProcessingAction ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                {isProcessingAction ? (isProgressionForm ? 'Progressing...' : 'Updating rating...') : (isProgressionForm ? 'Save ratings and progress' : 'Update rating')}
+                {isProcessingAction ? (isProgressionForm ? 'Progressing...' : 'Updating rating...') : (isProgressionForm ? `Save ratings and progress to ${nextStageLabel}` : 'Update rating')}
               </Button>
             </>
           ) : (
@@ -201,6 +207,26 @@ export default function SupervisorProjectDialog({
             }
           }}
         >
+          {isProgressionForm && (
+            <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+              <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                <dl className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                  <dt className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-muted)]">
+                    <Milestone size={18} aria-hidden="true" />From · Current stage
+                  </dt>
+                  <dd className="mt-2 text-lg font-extrabold text-[var(--color-text)]">{currentStageLabel}</dd>
+                </dl>
+                <ArrowRight size={28} className="justify-self-center rotate-90 text-[var(--color-primary)] sm:rotate-0" aria-hidden="true" />
+                <dl className="rounded-xl border-2 border-[var(--color-primary)] bg-[var(--color-primary)]/10 p-4">
+                  <dt className="flex items-center gap-2 text-xs font-bold text-[var(--color-primary)]">
+                    <Flag size={18} aria-hidden="true" />To · Next stage
+                  </dt>
+                  <dd className="mt-2 text-lg font-extrabold text-[var(--color-primary)]">{nextStageLabel}</dd>
+                </dl>
+              </div>
+              <p className="mt-3 text-xs text-[var(--color-text-muted)]">Saving these ratings will move the project from {currentStageLabel} to {nextStageLabel}.</p>
+            </div>
+          )}
           <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-muted)] p-3">
             <div>
               <p className="text-xs font-extrabold text-[var(--color-text)]">{getProjectStageLabel(project.stage || 'PROPOSAL')}</p>
