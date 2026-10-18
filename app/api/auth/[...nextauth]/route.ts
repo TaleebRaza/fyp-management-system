@@ -61,11 +61,6 @@ const handler = NextAuth({
         const phases: Record<string, number> = {};
         let outcome = 'rejected';
         try {
-          const [portal] = await measureLoginPhase(phases, 'statusConnection', () => Promise.all([
-            getPortalPause(),
-            connectToDatabase(),
-          ]));
-
           const normalizedRollNo = normalizeRollNo(credentials?.rollNo);
           const password = credentials?.password || "";
 
@@ -78,6 +73,7 @@ const handler = NextAuth({
             ? `login:ip:${hashRateLimitIdentifier(clientIp)}`
             : null;
 
+          await measureLoginPhase(phases, 'connection', connectToDatabase);
           const rateLimitStatus = await measureLoginPhase(phases, 'limits', () =>
             getLoginRateLimitStatus(
               loginRateLimitIdentifier,
@@ -105,17 +101,19 @@ const handler = NextAuth({
             throw new Error('Invalid roll number or password.');
           };
 
-          const user = await measureLoginPhase(phases, 'userLookup', async () => {
-            let matchedUser = await User.findOne({ rollNo: normalizedRollNo })
-              .select('_id +password role isActive name rollNo sessionVersion');
-
-            // ponytail: fallback supports legacy rows that were saved with trailing spaces or mixed case.
-            if (!matchedUser) {
-              matchedUser = await User.findOne({ rollNo: buildRollNoRegex(normalizedRollNo) })
-                .select('_id +password role isActive name rollNo sessionVersion');
-            }
-            return matchedUser;
-          });
+          const [portal, user] = await Promise.all([
+            measureLoginPhase(phases, 'portalStatus', getPortalPause),
+            measureLoginPhase(phases, 'userLookup', async () => {
+              let matchedUser = await User.findOne({ rollNo: normalizedRollNo })
+                .select('_id +password role isActive name rollNo sessionVersion').lean().exec();
+              // Legacy lookup stays behind throttling because its regex can scan unrelated accounts.
+              if (!matchedUser) {
+                matchedUser = await User.findOne({ rollNo: buildRollNoRegex(normalizedRollNo) })
+                  .select('_id +password role isActive name rollNo sessionVersion').lean().exec();
+              }
+              return matchedUser;
+            }),
+          ]);
 
           if (!user) {
             await denyLogin();

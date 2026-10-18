@@ -101,6 +101,9 @@ export class HttpClient {
         redirect: 'manual',
       });
     } catch (error) {
+      if (error instanceof Error && typeof error.cause?.code === 'string') {
+        error.message += ` (${error.cause.code})`;
+      }
       metrics.record(path, 0, performance.now() - startedAt, {
         ...metric,
         error: error instanceof Error ? error.message : 'network error',
@@ -498,6 +501,12 @@ async function runLoginScenario({
     expectedOutcome,
   };
   const client = new HttpClient(baseUrl, ip);
+  const startedAt = performance.now();
+  const providers = await client.request('/api/auth/providers', {
+    expectedStatuses: [200],
+    metric: { ...labels, metricName: 'providers' },
+  });
+  assert.equal(providers.status, 200, 'Provider discovery must succeed.');
   const login = await client.loginAttempt({ rollNo: rollNo || user?.rollNo || 'HTTP-MISSING', password, labels });
   const session = await client.request('/api/auth/session', {
     expectedStatuses: [200],
@@ -506,7 +515,7 @@ async function runLoginScenario({
   assert.equal(session.status, 200, `${scenario} session lookup must succeed.`);
 
   if (expectedOutcome === 'authenticated') {
-    assert.equal(login.authenticated, true, `${scenario} must issue an authenticated session.`);
+    assert.equal(login.authenticated, true, `${scenario} must issue an authenticated session: ${callbackError(login.callback, baseUrl)}`);
     assert.equal(String(session.body?.user?.id), String(user.id), `${scenario} must authenticate the expected user.`);
     assert.equal(session.body?.user?.role, user.role, `${scenario} must preserve the expected role.`);
     const dashboard = await client.request(dashboardPath(user.role), {
@@ -514,6 +523,11 @@ async function runLoginScenario({
       metric: { ...labels, metricName: 'dashboard-readiness' },
     });
     assert.equal(dashboard.status, 200, `${scenario} dashboard must be ready.`);
+    metrics.record('login-to-dashboard', dashboard.status, performance.now() - startedAt, {
+      ...labels,
+      metricName: 'login-to-dashboard',
+      expected: true,
+    });
   } else {
     assert.equal(login.authenticated, false, `${scenario} must not issue an authenticated session.`);
     assert.equal(session.body?.user, undefined, `${scenario} must not expose an authenticated session.`);
@@ -621,7 +635,7 @@ async function runLoginBenchmark(models, fixture, baseUrl) {
   const waves = [];
   for (const concurrency of STAGES) {
     const startedAt = performance.now();
-    await Promise.all(fixture.panelAdmins.slice(0, concurrency).map((user, index) => runLoginScenario({
+    const results = await Promise.allSettled(fixture.panelAdmins.slice(0, concurrency).map((user, index) => runLoginScenario({
       baseUrl,
       user: { ...user, role: 'supervisor' },
       ip: `198.51.${120 + concurrency}.${index + 1}`,
@@ -631,6 +645,8 @@ async function runLoginBenchmark(models, fixture, baseUrl) {
       hashFormat: 'scrypt',
       expectedOutcome: 'authenticated',
     })));
+    const failures = results.filter((result) => result.status === 'rejected');
+    assert.equal(failures.length, 0, failures.map((result) => String(result.reason)).join('; '));
     const durationMs = performance.now() - startedAt;
     waves.push({
       concurrency,
@@ -687,6 +703,14 @@ async function runLoginBenchmark(models, fixture, baseUrl) {
     });
   }
   await resetSessions(models, fixture);
+
+  const [loginCounts] = await models.User.aggregate([
+    { $group: { _id: null, count: { $sum: '$monthlyLoginCount' } } },
+  ]);
+  const activity = await mongoose.connection.collection('portalactivitylogs')
+    .findOne({ _id: 'recent-portal-activity' });
+  assert.equal(loginCounts?.count, 93, 'Every accepted benchmark login must update its counter.');
+  assert.equal(activity?.entries?.filter((entry) => entry.action === 'login').length, 93, 'Every accepted benchmark login must retain its activity record.');
 
   return { waves };
 }

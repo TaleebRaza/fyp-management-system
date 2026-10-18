@@ -2,6 +2,7 @@
   "name": "fyp-management-system",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.19.0",
   "scripts": {
     "dev": "UV_THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-8} next dev",
     "build": "next build",

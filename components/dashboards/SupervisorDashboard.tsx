@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { signOut } from 'next-auth/react';
 import {
   ClipboardList,
@@ -14,8 +15,6 @@ import BroadcastWidget from './BroadcastWidget';
 import SupervisorOverviewSection from '../supervisor/SupervisorOverviewSection';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
-import StudentMessagesPanel from '../messages/StudentMessagesPanel';
-import VivaSessionWorkspace from '../supervisor/VivaSessionWorkspace';
 import SupervisorHelpPanel from '../supervisor/SupervisorHelpPanel';
 import {
   useSupervisorExport,
@@ -28,6 +27,13 @@ import {
 import type { SupervisorDashboardProps } from '../supervisor/supervisorDashboardTypes';
 import { DashboardShell } from '../ui';
 import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
+
+const StudentMessagesPanel = dynamic(() => import('../messages/StudentMessagesPanel'), {
+  loading: () => <p role="status">Loading messages...</p>,
+});
+const VivaSessionWorkspace = dynamic(() => import('../supervisor/VivaSessionWorkspace'), {
+  loading: () => <p role="status">Loading Viva workspace...</p>,
+});
 
 const SupervisorDashboard = ({
   isDarkMode = false,

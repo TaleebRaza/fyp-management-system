@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { signOut } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
 
@@ -13,8 +14,6 @@ import StudentOverviewSection from '../student/StudentOverviewSection';
 import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';
 import StudentResourcesSection from '../student/StudentResourcesSection';
 import StudentTeamSection from '../student/StudentTeamSection';
-import StudentCommunicationSection from '../student/StudentCommunicationSection';
-import StudentVivaWorkspace from '../student/StudentVivaWorkspace';
 import {
   AcademicUpdateDialog,
   SupervisorChangeDialog,
@@ -40,6 +39,14 @@ import { useStudentTeamActions } from '../student/hooks/useStudentTeamActions';
 import { refreshAfterSave } from '../refreshAfterSave';
 import { updateStudentName } from '../student/api/studentWorkflowApi';
 import { useVivaAccessRestriction } from '../ui/dashboard/useVivaAccessRestriction';
+
+const StudentCommunicationSection = dynamic(() => import('../student/StudentCommunicationSection'), {
+  loading: () => <p role="status">Loading messages...</p>,
+});
+const StudentVivaWorkspace = dynamic(() => import('../student/StudentVivaWorkspace'), {
+  loading: () => <p role="status">Loading Viva workspace...</p>,
+});
+
 const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDialog }: StudentDashboardProps) => {
   const [isVivaView, setIsVivaView] = useState(false);
 
