@@ -97,6 +97,7 @@ export type StudentDashboardData = {
   teamFineRestriction?: FineRestriction | null;
   fineRestrictions?: FineRestrictionPolicy;
   projectSubmissionsOpen?: boolean;
+  projectResetEnabled?: boolean;
   vivaResults?: VivaStudentResultDto[];
   vivaSessions?: VivaStudentSessionDto[];
 };

@@ -129,6 +129,7 @@ export async function getStudentDashboard(student: StudentDashboardUser) {
     teamFineRestriction,
     fineRestrictions: fineRestriction || teamFineRestriction ? policy.fineRestrictions : undefined,
     projectSubmissionsOpen: policy.projectSubmissionsOpen,
+    projectResetEnabled: policy.projectResetEnabled,
     vivaResults,
     vivaSessions,
   };

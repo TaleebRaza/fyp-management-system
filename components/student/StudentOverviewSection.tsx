@@ -16,7 +16,7 @@ export default function StudentOverviewSection({
   onOpenUpdates,
   onResetProject,
   isSubmitting,
-  projectSubmissionsOpen,
+  projectResetEnabled,
 }: {
   me?: StudentSummary;
   supervisor?: SupervisorSummary;
@@ -28,7 +28,7 @@ export default function StudentOverviewSection({
   onOpenUpdates: () => void;
   onResetProject: () => void;
   isSubmitting: boolean;
-  projectSubmissionsOpen: boolean;
+  projectResetEnabled: boolean;
 }) {
   const projectStatusPill = getStudentProjectStatusPill(projectStatus, currentStage);
   const documentStatus = getStudentDocumentStatusLabel(me?.status, currentStage);
@@ -72,7 +72,7 @@ export default function StudentOverviewSection({
         </section>
       </div>
       <div className="flex justify-end">
-        <button type="button" onClick={onResetProject} disabled={isSubmitting || !projectSubmissionsOpen} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--color-warning)] px-4 py-2 text-sm font-semibold text-[var(--color-warning)] hover:bg-[var(--color-warning-soft)] disabled:opacity-55"><RotateCcw size={16} />Reset Project</button>
+        <button type="button" onClick={onResetProject} disabled={isSubmitting || !projectResetEnabled} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--color-warning)] px-4 py-2 text-sm font-semibold text-[var(--color-warning)] hover:bg-[var(--color-warning-soft)] disabled:opacity-55"><RotateCcw size={16} />Reset Project</button>
       </div>
     </div>
   );

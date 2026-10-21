@@ -19,6 +19,7 @@ export async function getOrCreateRegistrationPolicy() {
         isOpen: DEFAULT_REGISTRATION_POLICY.isOpen,
         closedMessage: DEFAULT_REGISTRATION_POLICY.closedMessage,
         projectSubmissionsOpen: DEFAULT_REGISTRATION_POLICY.projectSubmissionsOpen,
+        projectResetEnabled: DEFAULT_REGISTRATION_POLICY.projectResetEnabled,
         punishment: DEFAULT_REGISTRATION_POLICY.punishment,
         finePayment: DEFAULT_REGISTRATION_POLICY.finePayment,
         lateFineAccrual: DEFAULT_REGISTRATION_POLICY.lateFineAccrual,
@@ -40,6 +41,7 @@ type RegistrationPolicyRecord = {
   isOpen?: boolean;
   closedMessage?: unknown;
   projectSubmissionsOpen?: unknown;
+  projectResetEnabled?: unknown;
   punishment?: Record<string, unknown> | null;
   finePayment?: Record<string, unknown> | null;
   lateFineAccrual?: Record<string, unknown> | null;
@@ -63,6 +65,7 @@ export function serializeRegistrationPolicy(policy: RegistrationPolicyRecord | n
     closedMessage:
       String(policy.closedMessage || '').trim() || DEFAULT_REGISTRATION_POLICY.closedMessage,
     projectSubmissionsOpen: policy.projectSubmissionsOpen !== false,
+    projectResetEnabled: policy.projectResetEnabled !== false,
     punishment: {
       enabled: punishment.enabled === true,
       category: punishment.category === 'other' ? 'other' : 'fine',

@@ -57,6 +57,7 @@ const RegistrationPolicySchema = new Schema(
         'Student registration is currently closed. Please contact the FYP administration for assistance.',
     },
     projectSubmissionsOpen: { type: Boolean, default: true },
+    projectResetEnabled: { type: Boolean, default: true },
     projectSubmissionsAccepted: { type: Number, min: 0, default: 0 },
     punishment: {
       type: RegistrationPunishmentPolicySchema,

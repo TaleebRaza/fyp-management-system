@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
       pagination: result.pagination,
       nextCursor: result.nextCursor,
       projectSubmissionsOpen: policy.projectSubmissionsOpen,
+      projectResetEnabled: policy.projectResetEnabled,
     }, { status: 200 });
 
     response.headers.set(
@@ -195,8 +196,11 @@ export async function PATCH(req: NextRequest) {
     if (!json.ok) return json.response;
     const body = json.value;
 
-    if (!isRecord(body) || typeof body.projectSubmissionsOpen !== 'boolean') {
-      return NextResponse.json({ error: 'Submission status must be open or closed.' }, { status: 400 });
+    if (!isRecord(body) ||
+      (!('projectSubmissionsOpen' in body) && !('projectResetEnabled' in body)) ||
+      ('projectSubmissionsOpen' in body && typeof body.projectSubmissionsOpen !== 'boolean') ||
+      ('projectResetEnabled' in body && typeof body.projectResetEnabled !== 'boolean')) {
+      return NextResponse.json({ error: 'Provide a boolean submission or reset setting.' }, { status: 400 });
     }
 
     await connectToDatabase();
@@ -204,7 +208,10 @@ export async function PATCH(req: NextRequest) {
       { policyKey: REGISTRATION_POLICY_KEY },
       {
         $set: {
-          projectSubmissionsOpen: body.projectSubmissionsOpen,
+          ...(typeof body.projectSubmissionsOpen === 'boolean'
+            ? { projectSubmissionsOpen: body.projectSubmissionsOpen } : {}),
+          ...(typeof body.projectResetEnabled === 'boolean'
+            ? { projectResetEnabled: body.projectResetEnabled } : {}),
           updatedBy: currentUser.id,
         },
         $setOnInsert: { policyKey: REGISTRATION_POLICY_KEY },
@@ -222,10 +229,9 @@ export async function PATCH(req: NextRequest) {
     });
 
     return NextResponse.json({
-      message: policy.projectSubmissionsOpen
-        ? 'Project submissions are open.'
-        : 'Project submissions are closed for all students.',
+      message: 'Project controls updated.',
       projectSubmissionsOpen: policy.projectSubmissionsOpen,
+      projectResetEnabled: policy.projectResetEnabled,
     });
   } catch (error) {
     console.error('Admin project submission control error:', error);

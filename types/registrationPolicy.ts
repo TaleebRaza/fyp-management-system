@@ -43,6 +43,7 @@ export interface RegistrationPolicyDto {
   isOpen: boolean;
   closedMessage: string;
   projectSubmissionsOpen: boolean;
+  projectResetEnabled: boolean;
   punishment: RegistrationPunishmentPolicy;
   finePayment: FinePaymentPolicy;
   lateFineAccrual: LateFineAccrualPolicy;
@@ -60,6 +61,7 @@ export const DEFAULT_REGISTRATION_POLICY: RegistrationPolicyDto = {
   isOpen: true,
   closedMessage: DEFAULT_REGISTRATION_CLOSED_MESSAGE,
   projectSubmissionsOpen: true,
+  projectResetEnabled: true,
   punishment: {
     enabled: false,
     category: 'fine',

@@ -48,7 +48,7 @@ test('post-proposal submissions keep project details locked and require a new PD
   assert.match(submissionSection, /type="file"[\s\S]*disabled=\{!canSubmit\}/);
 });
 
-test('closing submissions disables reset and gates its transaction before project changes', async () => {
+test('the independent reset control gates the button and transaction before project changes', async () => {
   const [route, dashboard, overview] = await Promise.all([
     read('app/api/dashboard/student/route.ts'),
     read('components/dashboards/StudentDashboard.tsx'),
@@ -58,10 +58,10 @@ test('closing submissions disables reset and gates its transaction before projec
     route.indexOf("if (action === 'resetProject')"),
     route.indexOf('// ACTION: CHANGE SUPERVISOR')
   );
-  assert.match(dashboard, /projectSubmissionsOpen=\{data\?\.projectSubmissionsOpen !== false\}/);
-  assert.match(overview, /disabled=\{isSubmitting \|\| !projectSubmissionsOpen\}/);
+  assert.match(dashboard, /projectResetEnabled=\{data\?\.projectResetEnabled !== false\}/);
+  assert.match(overview, /disabled=\{isSubmitting \|\| !projectResetEnabled\}/);
   assert.match(resetAction, /await getOrCreateRegistrationPolicy\(\)/);
-  assert.match(resetAction, /RegistrationPolicy\.updateOne\([\s\S]*projectSubmissionsOpen: \{ \$ne: false \}[\s\S]*\$inc: \{ version: 1 \}[\s\S]*\{ session \}/);
-  assert.match(resetAction, /if \(resetPolicy\.matchedCount !== 1\) \{\s*throw new StorageProtocolError\(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403\)/);
+  assert.match(resetAction, /RegistrationPolicy\.updateOne\([\s\S]*projectResetEnabled: \{ \$ne: false \}[\s\S]*\$inc: \{ version: 1 \}[\s\S]*\{ session \}/);
+  assert.match(resetAction, /if \(resetPolicy\.matchedCount !== 1\) \{\s*throw new StorageProtocolError\('Project reset is currently disabled by the administrator.', 403\)/);
   assert.ok(resetAction.indexOf('resetPolicy.matchedCount') < resetAction.indexOf('Project.findOne'));
 });

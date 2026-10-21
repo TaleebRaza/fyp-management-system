@@ -46,6 +46,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [progressionRequestId, setProgressionRequestId] = useState(0);
   const [projectSubmissionsOpen, setProjectSubmissionsOpen] = useState(true);
+  const [projectResetEnabled, setProjectResetEnabled] = useState(true);
   const [isUpdatingSubmissionControl, setIsUpdatingSubmissionControl] = useState(false);
   const latestRequestId = useRef(0);
   const pageCursors = useRef<Record<number, string>>({});
@@ -88,6 +89,7 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
 
       setProjects(Array.isArray(data.projects) ? data.projects : []);
       setProjectSubmissionsOpen(data.projectSubmissionsOpen !== false);
+      setProjectResetEnabled(data.projectResetEnabled !== false);
       if (typeof data.nextCursor === 'string') {
         pageCursors.current[page + 1] = data.nextCursor;
       } else {
@@ -282,14 +284,14 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
     }
   };
 
-  const updateSubmissionControl = async () => {
+  const updateSubmissionControl = async (key: 'projectSubmissionsOpen' | 'projectResetEnabled', enabled: boolean) => {
     setIsUpdatingSubmissionControl(true);
 
     try {
       const response = await fetch('/api/admin/project-reviews', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectSubmissionsOpen: !projectSubmissionsOpen }),
+        body: JSON.stringify({ [key]: !enabled }),
       });
       const data = await response.json().catch(() => ({}));
 
@@ -298,8 +300,9 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
       }
 
       setProjectSubmissionsOpen(data.projectSubmissionsOpen !== false);
+      setProjectResetEnabled(data.projectResetEnabled !== false);
       showDialog({
-        title: data.projectSubmissionsOpen === false ? 'Submissions closed' : 'Submissions opened',
+        title: 'Project controls updated',
         message: data.message || 'Project submission control updated.',
       });
     } catch (error) {
@@ -346,24 +349,23 @@ export default function AdminProjectReviewsPanel({ showDialog }: { showDialog: S
             }}
             compactCards
             headerActions={
-              <Button
-                variant={projectSubmissionsOpen ? 'danger' : 'success'}
-                disabled={isUpdatingSubmissionControl}
-                onClick={() => void updateSubmissionControl()}
-              >
-                {isUpdatingSubmissionControl ? (
-                  <Loader2 className="animate-spin" size={16} />
-                ) : projectSubmissionsOpen ? (
-                  <LockKeyhole size={16} />
-                ) : (
-                  <UnlockKeyhole size={16} />
-                )}
-                {isUpdatingSubmissionControl
-                  ? 'Updating...'
-                  : projectSubmissionsOpen
-                    ? 'Close Submissions'
-                    : 'Open Submissions'}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { key: 'projectSubmissionsOpen', enabled: projectSubmissionsOpen, label: 'Submissions', disable: 'Close', enable: 'Open' },
+                  { key: 'projectResetEnabled', enabled: projectResetEnabled, label: 'Project Reset', disable: 'Disable', enable: 'Enable' },
+                ] as const).map(({ key, enabled, label, disable, enable }) => (
+                  <Button
+                    key={key}
+                    variant={enabled ? 'danger' : 'success'}
+                    disabled={isUpdatingSubmissionControl}
+                    onClick={() => void updateSubmissionControl(key, enabled)}
+                  >
+                    {isUpdatingSubmissionControl ? <Loader2 className="animate-spin" size={16} />
+                      : enabled ? <LockKeyhole size={16} /> : <UnlockKeyhole size={16} />}
+                    {enabled ? disable : enable} {label}
+                  </Button>
+                ))}
+              </div>
             }
           />
         </div>

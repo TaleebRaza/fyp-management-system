@@ -196,12 +196,12 @@ export async function POST(req: NextRequest) {
         await getOrCreateRegistrationPolicy();
         const queuedDeletionBytes = await withStorageTransaction(async (session) => {
           const resetPolicy = await RegistrationPolicy.updateOne(
-            { policyKey: REGISTRATION_POLICY_KEY, projectSubmissionsOpen: { $ne: false } },
+            { policyKey: REGISTRATION_POLICY_KEY, projectResetEnabled: { $ne: false } },
             { $inc: { version: 1 } },
             { session }
           );
           if (resetPolicy.matchedCount !== 1) {
-            throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
+            throw new StorageProtocolError('Project reset is currently disabled by the administrator.', 403);
           }
 
           const project = await Project.findOne({ members: currentUser.id }).session(session);
