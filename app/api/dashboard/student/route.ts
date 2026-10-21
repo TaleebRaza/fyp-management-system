@@ -193,7 +193,17 @@ export async function POST(req: NextRequest) {
       }
 
       try {
+        await getOrCreateRegistrationPolicy();
         const queuedDeletionBytes = await withStorageTransaction(async (session) => {
+          const resetPolicy = await RegistrationPolicy.updateOne(
+            { policyKey: REGISTRATION_POLICY_KEY, projectSubmissionsOpen: { $ne: false } },
+            { $inc: { version: 1 } },
+            { session }
+          );
+          if (resetPolicy.matchedCount !== 1) {
+            throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
+          }
+
           const project = await Project.findOne({ members: currentUser.id }).session(session);
           if (!project) {
             throw new StorageProtocolError('Your current project record could not be found.', 404);

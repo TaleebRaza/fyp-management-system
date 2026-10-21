@@ -312,6 +312,7 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
             onOpenProject={() => setActiveTab('project')}
             onOpenTeam={() => setActiveTab('team')}
             onOpenUpdates={() => setActiveTab('messages')}
+            projectSubmissionsOpen={data?.projectSubmissionsOpen !== false}
             onResetProject={handleResetProject}
             isSubmitting={isSubmitting}
           />
