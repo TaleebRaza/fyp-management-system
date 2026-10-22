@@ -1,3 +1,4 @@
+import { isProjectGraded, GRADED_PROJECT_LOCK_MESSAGE } from '../../../../lib/gradedProject';
 // app/api/project/join/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
@@ -64,6 +65,10 @@ export async function POST(req: NextRequest) {
         if (!targetProject) {
           return NextResponse.json({ error: 'Invalid Invite Code! Please check the code and try again.' }, { status: 404 });
         }
+
+      if (await isProjectGraded(currentProject?._id, session) || await isProjectGraded(targetProject._id, session)) {
+        return NextResponse.json({ error: GRADED_PROJECT_LOCK_MESSAGE }, { status: 403 });
+      }
 
         const teamCapacity = getTeamCapacity(targetProject.maxTeamSize);
 

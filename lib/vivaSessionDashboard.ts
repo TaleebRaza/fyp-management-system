@@ -677,6 +677,8 @@ export async function saveVivaGrade(
       };
     }
 
+    await Project.updateOne({ _id: updatedSession.projectId }, { $inc: { version: 1 } }, { session: databaseSession });
+
     await recordVivaAuditEvent(
       {
         roundId: String(updatedSession.roundId),

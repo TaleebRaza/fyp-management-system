@@ -30,16 +30,16 @@ test('submitted projects remain locked until a review decision is recorded', () 
   assert.equal(policy.isProjectSubmissionPendingReview(), false);
 });
 
-test('upload signing and project submission both enforce project completion', async () => {
+test('upload signing and project submission both enforce project completion except for graded document replacements', async () => {
   const [uploadRoute, studentRoute] = await Promise.all([
     read('app/api/upload/route.ts'),
     read('app/api/dashboard/student/route.ts'),
   ]);
 
-  assert.match(uploadRoute, /if \(isProjectComplete\(project\)\)/);
-  assert.match(studentRoute, /if \(isProjectComplete\(project\)\)/);
-  assert.match(uploadRoute, /if \(isProjectSubmissionPendingReview\(project\)\)/);
-  assert.match(studentRoute, /if \(isProjectSubmissionPendingReview\(project\)\)/);
+  assert.match(uploadRoute, /if \(!vivaGraded && isProjectComplete\(project\)\)/);
+  assert.match(studentRoute, /if \(!vivaGraded && isProjectComplete\(project\)\)/);
+  assert.match(uploadRoute, /if \(!vivaGraded && isProjectSubmissionPendingReview\(project\)\)/);
+  assert.match(studentRoute, /if \(!vivaGraded && isProjectSubmissionPendingReview\(project\)\)/);
   assert.match(uploadRoute, /PROJECT_COMPLETE_CODE/);
   assert.match(studentRoute, /PROJECT_COMPLETE_MESSAGE/);
 });

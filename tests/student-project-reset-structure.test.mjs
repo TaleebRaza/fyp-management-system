@@ -40,7 +40,7 @@ test('post-proposal submissions keep project details locked and require a new PD
     read('components/student/StudentProjectSubmissionSection.tsx'),
   ]);
 
-  assert.match(route, /const canEditProjectDetails = project\.stage === 'PROPOSAL'/);
+  assert.match(route, /const canEditProjectDetails = !vivaGraded && project\.stage === 'PROPOSAL'/);
   assert.match(route, /\.\.\.\(canEditProjectDetails\s*\? \{[\s\S]*title,[\s\S]*description,[\s\S]*domains: selectedDomainIds,[\s\S]*tools,/);
   assert.match(route, /!canEditProjectDetails && oldPdfKey === uploadedObject\.key/);
   assert.match(dashboard, /useStudentDashboardNavigation\(Boolean\(fineRestriction\)/);
@@ -58,7 +58,7 @@ test('the independent reset control gates the button and transaction before proj
     route.indexOf("if (action === 'resetProject')"),
     route.indexOf('// ACTION: CHANGE SUPERVISOR')
   );
-  assert.match(dashboard, /projectResetEnabled=\{data\?\.projectResetEnabled !== false\}/);
+  assert.match(dashboard, /projectResetEnabled=\{!data\?\.project\?\.vivaGraded && data\?\.projectResetEnabled !== false\}/);
   assert.match(overview, /disabled=\{isSubmitting \|\| !projectResetEnabled\}/);
   assert.match(resetAction, /await getOrCreateRegistrationPolicy\(\)/);
   assert.match(resetAction, /RegistrationPolicy\.updateOne\([\s\S]*projectResetEnabled: \{ \$ne: false \}[\s\S]*\$inc: \{ version: 1 \}[\s\S]*\{ session \}/);

@@ -275,6 +275,7 @@ export default function AdminVivaSection() {
   const [draft, setDraft] = useState<VivaRoundDraft>(EMPTY_DRAFT);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
@@ -398,6 +399,29 @@ export default function AdminVivaSection() {
     }
   };
 
+  const resetProjects = async () => {
+    if (!selectedRound || isSaving) return;
+    setIsSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/viva', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset-projects', roundId: selectedRound.id }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(body, 'Unable to reset projects.'));
+      setIsResetDialogOpen(false);
+      setDraft((current) => ({ ...current, projectIds: [] }));
+      await loadConfiguration(undefined, true);
+      setSavedMessage('Projects reset to proposal stage. Viva records and documents removed.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to reset projects.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const deleteRound = async () => {
     if (!selectedRound || selectedRound.frozenAt || isSaving) return;
 
@@ -459,6 +483,7 @@ export default function AdminVivaSection() {
           <Button variant="outline" className="min-h-10 shrink-0 px-3" onClick={startNewRound} disabled={isSaving}>
             <Plus size={16} />New
           </Button>
+          {selectedRound && <Button variant="danger" disabled={isSaving || selectedRound.projectIds.length === 0} onClick={() => setIsResetDialogOpen(true)}>Reset Projects</Button>}
           {VIVA_WORKSPACE_SECTIONS.map((section) => {
             const isActive = activeWorkspaceSection === section.id;
             const isAvailable = !section.requiresRound || Boolean(selectedRound);
@@ -656,6 +681,13 @@ export default function AdminVivaSection() {
           }}
         />
       )}
+      <Dialog open={isResetDialogOpen} onClose={() => setIsResetDialogOpen(false)} closeDisabled={isSaving}
+        title="Reset this round's projects?" size="sm"
+        description={`${selectedRound?.projectIds.length || 0} teams in ${selectedRound?.name || 'this round'}`}
+        footer={<><Button variant="outline" disabled={isSaving} onClick={() => setIsResetDialogOpen(false)}>Cancel</Button><Button variant="danger" disabled={isSaving} onClick={() => void resetProjects()}>{isSaving ? 'Resetting...' : 'Reset Projects'}</Button></>}
+      >
+        <p className="text-sm leading-6">This returns every participating team to proposal stage and permanently removes their Viva marks, sessions and session history across all rounds, project ratings, and uploaded project documents. Team membership, supervisors, project details, messages and voice notes are kept. Teams are removed from existing Viva rounds. This cannot be undone.</p>
+      </Dialog>
       <Dialog
         open={isDeleteDialogOpen}
         onClose={() => setIsDeleteDialogOpen(false)}

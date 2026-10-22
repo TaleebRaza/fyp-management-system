@@ -120,8 +120,8 @@ export function buildStudentDashboardViewModel(
   );
   const isUnassigned = !me?.supervisorId || me?.status === 'Unassigned';
   const hasAssignedSupervisor = Boolean(me?.supervisorId);
-  const projectSubmissionComplete = isProjectComplete(project);
-  const projectSubmissionPendingReview = isProjectSubmissionPendingReview(project);
+  const projectSubmissionComplete = !project?.vivaGraded && isProjectComplete(project);
+  const projectSubmissionPendingReview = !project?.vivaGraded && isProjectSubmissionPendingReview(project);
   const projectSubmissionsOpen =
     data?.projectSubmissionsOpen !== false || Number(project?.version || 0) > 0;
 
@@ -133,8 +133,8 @@ export function buildStudentDashboardViewModel(
     projectMembers,
     maxTeamSize,
     canShareInviteCode:
-      Boolean(project?.inviteCode) && projectMembers.length < maxTeamSize,
-    canLeaveTeam: projectMembers.length > 1,
+      !project?.vivaGraded && Boolean(project?.inviteCode) && projectMembers.length < maxTeamSize,
+    canLeaveTeam: !project?.vivaGraded && projectMembers.length > 1,
     currentStage,
     currentProgramName: getStudentProgramName(me?.program),
     toolsList: splitStudentTools(me?.tools || draftTools),
@@ -150,7 +150,7 @@ export function buildStudentDashboardViewModel(
     projectSubmissionComplete,
     projectSubmissionPendingReview,
     projectSubmissionsOpen,
-    canEditProjectDetails: currentStage === 'PROPOSAL',
+    canEditProjectDetails: !project?.vivaGraded && currentStage === 'PROPOSAL',
     canSubmit:
       hasAssignedSupervisor &&
       !projectSubmissionComplete &&
@@ -159,7 +159,7 @@ export function buildStudentDashboardViewModel(
       !fineState.isFineRestricted,
     isSupervisorChangeLocked:
       !isUnassigned &&
-      (project?.status === 'Document Approved' || project?.status === 'Approved' || currentStage !== 'PROPOSAL'),
+      (project?.vivaGraded || project?.status === 'Document Approved' || project?.status === 'Approved' || currentStage !== 'PROPOSAL'),
     announcementItems: getStudentAnnouncementItems(data, headline),
   };
 }

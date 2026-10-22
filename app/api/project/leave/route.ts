@@ -1,3 +1,4 @@
+import { isProjectGraded, GRADED_PROJECT_LOCK_MESSAGE } from '../../../../lib/gradedProject';
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { withTransaction } from '../../../../lib/transaction';
@@ -39,6 +40,10 @@ export async function POST(req: NextRequest) {
           { error: 'Your current project record could not be found.' },
           { status: 404 }
         );
+      }
+
+      if (await isProjectGraded(currentProject._id, session)) {
+        return NextResponse.json({ error: GRADED_PROJECT_LOCK_MESSAGE }, { status: 403 });
       }
 
       const studentId = String(student._id);

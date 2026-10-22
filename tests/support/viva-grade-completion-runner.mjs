@@ -16,6 +16,8 @@ const [
   { completeVivaSession, getPanelAdminVivaSessions, saveVivaGrade, startVivaSession },
   { isVivaPanelMemberAccessRestricted },
   { VIVA_GRADE_SCALE },
+  { isProjectGraded },
+  { resetVivaProjects },
 ] = await Promise.all([
   importTypeScriptModuleWithDependencies('models/User.ts'),
   importTypeScriptModuleWithDependencies('models/Project.ts'),
@@ -28,6 +30,8 @@ const [
   importTypeScriptModuleWithDependencies('lib/vivaSessionDashboard.ts'),
   importTypeScriptModuleWithDependencies('lib/vivaAccessRestriction.ts'),
   importTypeScriptModuleWithDependencies('lib/viva.ts'),
+  importTypeScriptModuleWithDependencies('lib/gradedProject.ts'),
+  importTypeScriptModuleWithDependencies('lib/vivaProjectReset.ts'),
 ]);
 
 function actor(user) {
@@ -96,6 +100,7 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
     assert.equal(scheduled.success, true, scheduled.success ? '' : scheduled.error);
     await VivaRound.updateOne({ _id: round._id }, { $set: { confirmedAt: new Date('2026-10-10T09:00:00.000Z') } });
 
+    assert.equal(await isProjectGraded(project._id), false);
     const started = await startVivaSession(
       scheduled.schedule.id,
       actor(panelAdmin),
@@ -203,6 +208,7 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
     }
     assert.ok(completed?.success && 'completedAt' in completed);
 
+    assert.equal(await isProjectGraded(project._id), true);
     const completedSession = await VivaSession.findById(scheduled.schedule.id).lean();
     assert.ok(completedSession.completedAt);
     assert.equal(completed.workspace.phase, 'completed');
@@ -226,6 +232,29 @@ export async function runVivaGradeCompletionIntegration(testDatabaseUri) {
     assert.equal(completedAgenda[0].phase, 'completed');
     assert.equal(completedAgenda[0].canManage, true);
     assert.equal(await VivaAuditEvent.countDocuments({ sessionId: scheduled.schedule.id, event: 'session-finalized' }), 1);
+
+    const otherProject = await Project.create({ members: [], inviteCode: 'OTHER901', title: 'Unrelated team' });
+    const otherRound = await VivaRound.create({
+      name: 'Other round', targetPanelSize: 2, minimumPanelSize: 2, vivaDurationMinutes: 30,
+      projectIds: [project._id, otherProject._id], heldProjectIds: [project._id],
+    });
+    await Project.updateOne({ _id: project._id }, { $set: { stage: 'FINAL_DELIVERABLES', status: 'Approved' } });
+    const reset = await resetVivaProjects(String(round._id));
+    assert.equal(reset.resetProjects, 1);
+    const resetProject = await Project.findById(project._id).lean();
+    assert.equal(resetProject.stage, 'PROPOSAL');
+    assert.equal(resetProject.status, 'Pending');
+    assert.equal(resetProject.title, project.title);
+    assert.equal(String(resetProject.supervisorId), String(project.supervisorId));
+    assert.deepEqual(resetProject.members.map(String), project.members.map(String));
+    assert.equal(await isProjectGraded(project._id), false);
+    assert.equal(await VivaSession.countDocuments({ projectId: project._id }), 0);
+    assert.equal(await VivaAuditEvent.countDocuments({ sessionId: scheduled.schedule.id }), 0);
+    assert.equal(await VivaParticipantLock.countDocuments({ sessionId: scheduled.schedule.id }), 0);
+    const remainingRound = await VivaRound.findById(otherRound._id).lean();
+    assert.deepEqual(remainingRound.projectIds.map(String), [String(otherProject._id)]);
+    assert.equal(remainingRound.heldProjectIds.length, 0);
+    assert.equal((await Project.findById(otherProject._id).lean()).title, 'Unrelated team');
 
     console.log(JSON.stringify({
       database: testDatabase.pathname.slice(1),

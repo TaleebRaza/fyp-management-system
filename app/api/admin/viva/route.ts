@@ -1,3 +1,5 @@
+import { resetVivaProjects } from '../../../../lib/vivaProjectReset';
+import { StorageProtocolError } from '../../../../lib/storageProtocol';
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -153,6 +155,17 @@ export async function PATCH(req: NextRequest) {
   const json = await readBoundedJson(req, JSON_BODY_LIMITS.bulk);
   if (!json.ok) return json.response;
   const body = json.value;
+
+  if (isRecord(body) && body.action === 'reset-projects') {
+    if (typeof body.roundId !== 'string') return NextResponse.json({ error: 'Choose a valid Viva round.' }, { status: 400 });
+    try {
+      return NextResponse.json(await resetVivaProjects(body.roundId));
+    } catch (error) {
+      if (error instanceof StorageProtocolError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
+      console.error('Admin Viva project reset error:', error);
+      return NextResponse.json({ error: 'Failed to reset Viva projects.' }, { status: 500 });
+    }
+  }
 
   if (isRecord(body) && body.action === 'confirm-round') {
     if (typeof body.roundId !== 'string') {

@@ -302,6 +302,7 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
         }}
         showHomeSignOut={activeTab === 'overview'}
       >
+        {data?.project?.vivaGraded && <p role="status" className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-[var(--color-text)]">Your Viva grade has been saved. You can upload a new document. Project details, team membership, supervisor changes and project reset are locked until an administrator resets the project.</p>}
         {activeTab === 'overview' && (
           <StudentOverviewSection
             me={me}
@@ -312,7 +313,7 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
             onOpenProject={() => setActiveTab('project')}
             onOpenTeam={() => setActiveTab('team')}
             onOpenUpdates={() => setActiveTab('messages')}
-            projectResetEnabled={data?.projectResetEnabled !== false}
+            projectResetEnabled={!data?.project?.vivaGraded && data?.projectResetEnabled !== false}
             onResetProject={handleResetProject}
             isSubmitting={isSubmitting}
           />
@@ -397,6 +398,7 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
             onOpenTemplate={handleOpenTemplate}
             currentProgramName={currentProgramName}
             batch={me?.batch}
+            academicChangesLocked={Boolean(data?.project?.vivaGraded)}
             onOpenAcademicEditor={openAcademicEditor}
             onOpenNameEditor={openNameEditor}
           />

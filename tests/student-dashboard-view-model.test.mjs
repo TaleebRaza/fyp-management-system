@@ -208,3 +208,23 @@ test('project details stay locked after proposal progression until project reset
   assert.equal(approved.canEditProjectDetails, false);
   assert.equal(proposal.canEditProjectDetails, true);
 });
+
+
+test('saved Viva grades lock team and details while allowing document replacements at every stage', () => {
+  for (const stage of ['PROPOSAL', 'THESIS_DRAFT', 'FINAL_DELIVERABLES']) {
+    for (const status of ['Pending', 'Approved', 'Submitted For Review']) {
+      const result = selectors.buildStudentDashboardViewModel({
+        student: { supervisorId: 'sup-1', status },
+        project: {
+          vivaGraded: true, stage, status, version: 1, inviteCode: 'ABC123',
+          members: [{ _id: 's1' }, { _id: 's2' }], maxTeamSize: 3,
+        },
+      }, '', '');
+      assert.equal(result.canEditProjectDetails, false);
+      assert.equal(result.canShareInviteCode, false);
+      assert.equal(result.canLeaveTeam, false);
+      assert.equal(result.isSupervisorChangeLocked, true);
+      assert.equal(result.canSubmit, true);
+    }
+  }
+});

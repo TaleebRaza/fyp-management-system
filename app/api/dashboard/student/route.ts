@@ -1,3 +1,4 @@
+import { isProjectGraded, GRADED_PROJECT_LOCK_MESSAGE } from '../../../../lib/gradedProject';
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { withTransaction, TransactionBusyError } from '../../../../lib/transaction';
@@ -209,6 +210,10 @@ export async function POST(req: NextRequest) {
             throw new StorageProtocolError('Your current project record could not be found.', 404);
           }
 
+          if (await isProjectGraded(project._id, session)) {
+            throw new StorageProtocolError(GRADED_PROJECT_LOCK_MESSAGE, 403);
+          }
+
           const pdfKey = project.pdfUrl ? normalizeStorageKey(project.pdfUrl) : null;
           if (project.pdfUrl && !pdfKey) {
             throw new StorageProtocolError(
@@ -290,6 +295,10 @@ export async function POST(req: NextRequest) {
           }
 
           const oldProject = await Project.findOne({ members: student._id }).session(session);
+
+          if (await isProjectGraded(oldProject?._id, session)) {
+            throw new StorageProtocolError(GRADED_PROJECT_LOCK_MESSAGE, 403);
+          }
 
           if (String(oldProject?.supervisorId || '') === newSupervisorId) {
             throw new StorageProtocolError('You are already assigned to this supervisor.', 400);
@@ -401,6 +410,9 @@ export async function POST(req: NextRequest) {
         }
 
         const existingProject = await Project.findOne({ members: triggeringStudent._id }).session(session);
+        if (await isProjectGraded(existingProject?._id, session)) {
+          throw new StorageProtocolError(GRADED_PROJECT_LOCK_MESSAGE, 403);
+        }
         if (existingProject?.supervisorId) {
           throw new StorageProtocolError('You already have a supervisor. Use the change supervisor option instead.', 400);
         }
@@ -587,10 +599,11 @@ export async function POST(req: NextRequest) {
           members: studentInTransaction._id,
         }).session(session);
         if (!project) throw new StorageProtocolError('Project membership changed. Refresh and try again.', 409);
-        if (isProjectComplete(project)) {
+        const vivaGraded = await isProjectGraded(project._id, session);
+        if (!vivaGraded && isProjectComplete(project)) {
           throw new StorageProtocolError(PROJECT_COMPLETE_MESSAGE, 403);
         }
-        if (isProjectSubmissionPendingReview(project)) {
+        if (!vivaGraded && isProjectSubmissionPendingReview(project)) {
           throw new StorageProtocolError(PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE, 409);
         }
 
@@ -608,7 +621,7 @@ export async function POST(req: NextRequest) {
           throw new StorageProtocolError(PROJECT_SUBMISSIONS_CLOSED_MESSAGE, 403);
         }
 
-        const canEditProjectDetails = project.stage === 'PROPOSAL';
+        const canEditProjectDetails = !vivaGraded && project.stage === 'PROPOSAL';
         if (canEditProjectDetails) {
           const duplicateProject = await Project.findOne({
             titleFingerprint: fingerprint,
@@ -662,7 +675,7 @@ export async function POST(req: NextRequest) {
                 : {}),
               pdfUrl: uploadedObject.key,
               pdfSize: uploadedObject.actualBytes,
-              status: 'Submitted For Review',
+              ...(!vivaGraded ? { status: 'Submitted For Review' } : {}),
             },
             $inc: { version: 1 },
           },

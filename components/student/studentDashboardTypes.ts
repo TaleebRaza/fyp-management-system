@@ -44,6 +44,7 @@ export type ProjectMember = {
 };
 
 type StudentProjectSummary = {
+  vivaGraded?: boolean;
   _id?: string;
   version?: number;
   status?: string;

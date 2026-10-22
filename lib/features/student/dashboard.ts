@@ -1,3 +1,4 @@
+import { isProjectGraded } from '../../gradedProject';
 import { formatProjectDomainLabels, normalizeProjectDomainIds } from '../../../config/projectDomains';
 import { getSafeProjectRatings } from '../../../config/projectRatings';
 import User from '../../../models/User';
@@ -116,6 +117,7 @@ export async function getStudentDashboard(student: StudentDashboardUser) {
     project: projectRecord
       ? {
           ...projectRecord,
+          vivaGraded: await isProjectGraded(projectRecord._id),
           members: safeProjectMembers,
           domains: normalizedDomains,
           domain: normalizedDomainText,

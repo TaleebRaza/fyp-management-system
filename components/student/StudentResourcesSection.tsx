@@ -13,6 +13,7 @@ export default function StudentResourcesSection({
   onOpenTemplate,
   currentProgramName,
   batch,
+  academicChangesLocked,
   onOpenAcademicEditor,
   onOpenNameEditor,
   email,
@@ -25,6 +26,7 @@ export default function StudentResourcesSection({
   onOpenTemplate: (template: WordTemplate) => void;
   currentProgramName: string;
   batch?: string;
+  academicChangesLocked?: boolean;
   onOpenAcademicEditor: () => void;
   onOpenNameEditor: () => void;
   email?: string;
@@ -71,7 +73,7 @@ export default function StudentResourcesSection({
         <div className="mt-5 space-y-2">
           <StudentEmailChange currentEmail={email} showDialog={showDialog} />
           <Button variant="outline" className="w-full" onClick={onOpenNameEditor}><Pencil size={15} />Edit name</Button>
-          <Button variant="outline" className="w-full" onClick={onOpenAcademicEditor}><Settings size={15} />Program / batch</Button>
+          <Button variant="outline" className="w-full" disabled={academicChangesLocked} onClick={onOpenAcademicEditor}><Settings size={15} />Program / batch</Button>
         </div>
         <p className="mt-3 text-xs leading-5 text-[var(--color-text-muted)]">Academic changes can reset workflow data, so these controls stay out of the main dashboard.</p>
       </section>

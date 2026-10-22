@@ -1,3 +1,4 @@
+import { isProjectGraded, GRADED_PROJECT_LOCK_MESSAGE } from './gradedProject';
 import mongoose from 'mongoose';
 import { withTransaction } from './transaction';
 
@@ -122,6 +123,10 @@ export async function resetStudentAcademicInfo({
     }
 
     const oldProject = await Project.findOne({ members: student._id }).session(mongoSession);
+
+    if (actor === 'student' && await isProjectGraded(oldProject?._id, mongoSession)) {
+      throw new AcademicResetError(GRADED_PROJECT_LOCK_MESSAGE, 403);
+    }
 
     let queuedDeletionBytes = 0;
 

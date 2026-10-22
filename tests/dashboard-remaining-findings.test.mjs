@@ -125,6 +125,7 @@ test('student dashboard keeps text/audio broadcasts once and limits supervisor f
     '/fineRestriction': { buildFineRestriction: () => null },
     '/registrationPolicy': { getOrCreateRegistrationPolicy: async () => ({}), serializeRegistrationPolicy: () => ({}) },
     '/teamFineRestriction': { getTeamFineRestrictionFromMembers: () => null },
+    '/gradedProject': { isProjectGraded: async () => false },
     '/vivaResults': { getCompletedVivaResultsForStudent: async () => [] },
     '/vivaScheduling': { getConfirmedVivaSchedulesForStudent: async () => [] },
   });

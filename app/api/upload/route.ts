@@ -1,3 +1,4 @@
+import { isProjectGraded } from '../../../lib/gradedProject';
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -72,14 +73,15 @@ export async function POST(req: NextRequest) {
         .select('_id members version stage status')
         .lean();
 
-      if (isProjectComplete(project)) {
+      const vivaGraded = await isProjectGraded(project?._id);
+      if (!vivaGraded && isProjectComplete(project)) {
         return NextResponse.json(
           { code: PROJECT_COMPLETE_CODE, error: PROJECT_COMPLETE_MESSAGE },
           { status: 403 }
         );
       }
 
-      if (isProjectSubmissionPendingReview(project)) {
+      if (!vivaGraded && isProjectSubmissionPendingReview(project)) {
         return NextResponse.json(
           { error: PROJECT_SUBMISSION_PENDING_REVIEW_MESSAGE },
           { status: 409 }
