@@ -1,6 +1,4 @@
-import { ExternalLink, FileText, Loader2, Pencil, RefreshCcw, Settings } from 'lucide-react';
-import StudentEmailChange from './StudentEmailChange';
-import type { StudentDashboardProps } from './studentDashboardTypes';
+import { ExternalLink, FileText, Loader2, RefreshCcw } from 'lucide-react';
 import { Button } from '../ui';
 import { getProjectStageLabel } from '../ui/Timeline';
 import type { WordTemplate } from './studentDashboardTypes';
@@ -11,30 +9,16 @@ export default function StudentResourcesSection({
   onFetchTemplates,
   visibleTemplates,
   onOpenTemplate,
-  currentProgramName,
-  batch,
-  academicChangesLocked,
-  onOpenAcademicEditor,
-  onOpenNameEditor,
-  email,
-  showDialog,
 }: {
   currentStage: string;
   isFetchingTemplates: boolean;
   onFetchTemplates: () => void;
   visibleTemplates: WordTemplate[];
   onOpenTemplate: (template: WordTemplate) => void;
-  currentProgramName: string;
-  batch?: string;
-  academicChangesLocked?: boolean;
-  onOpenAcademicEditor: () => void;
-  onOpenNameEditor: () => void;
-  email?: string;
-  showDialog: StudentDashboardProps['showDialog'];
 }) {
   return (
     <div className="portal-bento">
-      <section className="portal-bento-tile p-5 md:col-span-8">
+      <section className="portal-bento-tile p-5 md:col-span-12">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="portal-eyebrow">{getProjectStageLabel(currentStage)} templates</p>
@@ -64,18 +48,6 @@ export default function StudentResourcesSection({
             </button>
           ))}
         </div>
-      </section>
-
-      <section className="portal-bento-tile portal-bento-soft p-5 md:col-span-4">
-        <p className="portal-eyebrow">Academic profile</p>
-        <h2 className="mt-1 text-lg font-black text-[var(--color-text)]">{currentProgramName}</h2>
-        <p className="mt-1 text-sm font-bold text-[var(--color-text-muted)]">{batch || 'No batch'}</p>
-        <div className="mt-5 space-y-2">
-          <StudentEmailChange currentEmail={email} showDialog={showDialog} />
-          <Button variant="outline" className="w-full" onClick={onOpenNameEditor}><Pencil size={15} />Edit name</Button>
-          <Button variant="outline" className="w-full" disabled={academicChangesLocked} onClick={onOpenAcademicEditor}><Settings size={15} />Program / batch</Button>
-        </div>
-        <p className="mt-3 text-xs leading-5 text-[var(--color-text-muted)]">Academic changes can reset workflow data, so these controls stay out of the main dashboard.</p>
       </section>
     </div>
   );

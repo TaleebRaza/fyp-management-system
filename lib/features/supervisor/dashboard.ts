@@ -24,6 +24,7 @@ type SupervisorProjectRow = {
   version?: number;
   ratings?: unknown;
   maxTeamSize?: number;
+  supervisorNotifications?: { _id: unknown; message: string; createdAt: Date }[];
 };
 
 type SupervisorStudentRow = {
@@ -38,7 +39,7 @@ type SupervisorStudentRow = {
 
 export async function getSupervisorDashboard(supervisor: SupervisorDashboardUser) {
   const projects = await Project.find({ supervisorId: supervisor.id })
-    .select('_id members title description domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize')
+    .select('_id members title description domains tools pdfUrl status reviewRemarks stage version ratings maxTeamSize +supervisorNotifications')
     .lean();
   const projectRows = projects as unknown as SupervisorProjectRow[];
   const memberIds = Array.from(new Set(
@@ -56,6 +57,12 @@ export async function getSupervisorDashboard(supervisor: SupervisorDashboardUser
   );
 
   return {
+    notifications: projectRows.flatMap((project) => (project.supervisorNotifications || []).map((notification) => ({
+      _id: String(notification._id),
+      projectId: String(project._id),
+      message: notification.message,
+      createdAt: notification.createdAt,
+    }))),
     projects: projectRows.flatMap((project) => {
       const members = (project.members || []).flatMap((memberId) => {
         const student = studentsById.get(String(memberId));

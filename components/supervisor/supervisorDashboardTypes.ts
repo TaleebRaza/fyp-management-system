@@ -19,6 +19,13 @@ export type SupervisorDashboardProps = {
 
 export type SupervisorProject = ProjectReviewProject;
 
+export type SupervisorJoinNotification = {
+  _id: string;
+  projectId: string;
+  message: string;
+  createdAt: string;
+};
+
 export type ProjectQueueFilter = 'all' | 'submitted' | 'review' | 'approved';
 
 export type SupervisorDashboardStats = {

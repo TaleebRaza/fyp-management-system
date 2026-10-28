@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { loadSupervisorDashboard } from '../api/supervisorDashboardApi';
-import type { SupervisorProject } from '../supervisorDashboardTypes';
+import type { SupervisorJoinNotification, SupervisorProject } from '../supervisorDashboardTypes';
 import { getSupervisorErrorMessage } from '../utils/supervisorErrors';
 import type { SupervisorNotify } from './useSupervisorFeedback';
 
@@ -12,6 +12,7 @@ export function useSupervisorProjects({
   notify: SupervisorNotify;
 }) {
   const [projects, setProjects] = useState<SupervisorProject[]>([]);
+  const [notifications, setNotifications] = useState<SupervisorJoinNotification[]>([]);
   const [migrationCode, setMigrationCode] = useState('Loading...');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -23,6 +24,7 @@ export function useSupervisorProjects({
 
       const dashboard = await loadSupervisorDashboard();
       setProjects(dashboard.projects);
+      setNotifications(dashboard.notifications);
       setMigrationCode(dashboard.migrationCode);
     } catch (error) {
       console.error('Supervisor dashboard fetch error:', error);
@@ -44,6 +46,7 @@ export function useSupervisorProjects({
 
   return {
     projects,
+    notifications,
     migrationCode,
     isLoading,
     refreshProjects,

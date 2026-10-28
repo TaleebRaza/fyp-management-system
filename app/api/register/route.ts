@@ -25,6 +25,7 @@ import {
   normalizeText,
 } from '../../../lib/security/input';
 import { createProjectWithUniqueInviteCode } from '../../../lib/projectCreation';
+import { createSupervisorJoinNotification } from '../../../lib/supervisorJoinNotification';
 import { consumeRateLimitDimensions } from '../../../lib/rateLimit';
 import {
   capacityReservationError,
@@ -206,9 +207,13 @@ export async function POST(req: NextRequest) {
 
         await newStudent.save({ session });
 
+        const supervisor = supervisorId
+          ? await User.findOne({ _id: supervisorId, role: 'supervisor' }).select('email notificationsEnabled').session(session)
+          : null;
         const newProject = await createProjectWithUniqueInviteCode({
           supervisorId: supervisorId || null,
           members: [newStudent._id],
+          ...(supervisor ? { supervisorNotifications: [await createSupervisorJoinNotification(newStudent, supervisor, session)] } : {}),
         }, session);
 
         newStudent.projectId = newProject._id;

@@ -14,6 +14,7 @@ import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/requ
 import { releaseSupervisorProjectSlot } from '../../../../lib/supervisorCapacity';
 import { enqueueDeletedProjectStorage } from '../../../../lib/projectStorageCleanup';
 import { recordCurrentUserActivity } from '../../../../lib/portalActivityLog';
+import { createSupervisorJoinNotification } from '../../../../lib/supervisorJoinNotification';
 export async function POST(req: NextRequest) {
   const currentUser = await requireCurrentUser(req, ['student']);
   if (!currentUser) {
@@ -124,6 +125,19 @@ export async function POST(req: NextRequest) {
             },
             { status: 409 }
           );
+        }
+
+        if (targetProject.supervisorId) {
+          const supervisor = await User.findOne({ _id: targetProject.supervisorId, role: 'supervisor' })
+            .select('email notificationsEnabled').session(session);
+          if (supervisor) {
+            const notification = await createSupervisorJoinNotification(student, supervisor, session);
+            await Project.updateOne(
+              { _id: targetProject._id },
+              { $push: { supervisorNotifications: notification } },
+              { session }
+            );
+          }
         }
 
         // 5. Ghost Data Purge

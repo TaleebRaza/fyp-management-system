@@ -7,6 +7,7 @@ import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
 import { enqueueNotificationEmail } from '../../../../lib/emailOutbox';
+import { createSupervisorJoinNotification } from '../../../../lib/supervisorJoinNotification';
 import {
   formatProjectDomainLabels,
   normalizeProjectDomainIds,
@@ -288,7 +289,7 @@ export async function POST(req: NextRequest) {
         const { queuedDeletionBytes, leftTeam } = await withTransaction(async (session) => {
           let queuedDeletionBytes = 0;
           let leftTeam = false;
-          const student = await User.findById(studentId).select('_id role').session(session);
+          const student = await User.findById(studentId).select('_id role name rollNo program batch').session(session);
 
           if (!student || student.role !== 'student') {
             throw new StorageProtocolError('Student not found.', 404);
@@ -308,7 +309,7 @@ export async function POST(req: NextRequest) {
             _id: newSupervisorId,
             role: 'supervisor',
           })
-            .select('_id name')
+            .select('_id name email notificationsEnabled')
             .session(session);
 
           if (!targetSupervisor) {
@@ -360,6 +361,7 @@ export async function POST(req: NextRequest) {
           await createProjectWithUniqueInviteCode({
             supervisorId: targetSupervisor._id,
             members: [student._id],
+            supervisorNotifications: [await createSupervisorJoinNotification(student, targetSupervisor, session)],
             stage: 'PROPOSAL',
             status: 'Pending',
             title: '',
@@ -404,7 +406,7 @@ export async function POST(req: NextRequest) {
       }
 
       await withTransaction(async (session) => {
-        const triggeringStudent = await User.findById(body.id).select('_id').session(session);
+        const triggeringStudent = await User.findById(body.id).select('_id name rollNo program batch').session(session);
     if (!triggeringStudent) {
           throw new StorageProtocolError('Student not found', 404);
         }
@@ -418,7 +420,7 @@ export async function POST(req: NextRequest) {
         }
 
         const supervisor = await User.findOne({ _id: body.supervisorId, role: 'supervisor' })
-          .select('_id')
+          .select('_id email notificationsEnabled')
           .session(session);
 
         if (!supervisor) {
@@ -431,17 +433,19 @@ export async function POST(req: NextRequest) {
         }
 
         const supObjectId = new mongoose.Types.ObjectId(supervisor._id);
+        const notification = await createSupervisorJoinNotification(triggeringStudent, supervisor, session);
         // Project owns the student/project relationship.
         if (existingProject) {
           await Project.findByIdAndUpdate(
             existingProject._id,
-            { $set: { supervisorId: supObjectId } },
+            { $set: { supervisorId: supObjectId, supervisorNotifications: [notification] } },
             { session }
           );
         } else {
           await createProjectWithUniqueInviteCode({
             supervisorId: supObjectId,
             members: [triggeringStudent._id],
+            supervisorNotifications: [notification],
             stage: 'PROPOSAL',
             status: 'Pending',
             title: '',

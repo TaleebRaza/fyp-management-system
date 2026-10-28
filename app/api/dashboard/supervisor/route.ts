@@ -10,6 +10,7 @@ import { EXPANDED_TEAM_SIZE } from '../../../../config/appSettings';
 import { parseProjectRatingValues } from '../../../../config/projectRatings';
 import { requireCurrentUser } from '../../../../lib/security/auth';
 import { createProjectWithUniqueInviteCode } from '../../../../lib/projectCreation';
+import { createSupervisorJoinNotification } from '../../../../lib/supervisorJoinNotification';
 import { isRecord, normalizeText } from '../../../../lib/security/input';
 import { JSON_BODY_LIMITS, readBoundedJson } from '../../../../lib/security/request';
 import { progressProjectStage, reviewProject } from '../../../../lib/projectReview';
@@ -63,8 +64,23 @@ export async function POST(req: NextRequest) {
     const body = json.value;
     if (!isRecord(body)) return NextResponse.json({ error: 'Invalid supervisor action.' }, { status: 400 });
     const { action, studentId, status, remarks, expectedStage, expectedVersion, ratings, migrationCode, projectId, ratingRound } = body;
-    if (!['updateStatus', 'progressStage', 'updateRating', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
+    if (!['dismissNotification', 'updateStatus', 'progressStage', 'updateRating', 'migrate', 'removeStudent', 'expandTeam'].includes(String(action))) {
       return NextResponse.json({ error: 'Unknown supervisor action.' }, { status: 400 });
+    }
+
+    if (action === 'dismissNotification') {
+      if (typeof projectId !== 'string' || !mongoose.Types.ObjectId.isValid(projectId)
+        || typeof body.notificationId !== 'string' || !mongoose.Types.ObjectId.isValid(body.notificationId)) {
+        return NextResponse.json({ error: 'Invalid notification.' }, { status: 400 });
+      }
+      const result = await Project.updateOne(
+        { _id: projectId, supervisorId: currentUser.id },
+        { $pull: { supervisorNotifications: { _id: body.notificationId } } }
+      );
+      if (result.matchedCount !== 1) {
+        return NextResponse.json({ error: 'Assigned project not found.' }, { status: 404 });
+      }
+      return NextResponse.json({ message: 'Notification dismissed.' });
     }
 
     if (action === 'updateRating') {
@@ -200,7 +216,7 @@ export async function POST(req: NextRequest) {
             role: 'supervisor',
             migrationCode: requestedMigrationCode,
           })
-            .select('_id name')
+            .select('_id name email notificationsEnabled')
             .session(session);
 
           if (!targetSup) {
@@ -248,6 +264,7 @@ export async function POST(req: NextRequest) {
             }
 
             oldProject.supervisorId = targetSup._id;
+            oldProject.supervisorNotifications = [await createSupervisorJoinNotification(studentInTx, targetSup, session)];
             oldProject.domains = domainIds;
             await oldProject.save({ session });
           } else {
@@ -261,6 +278,7 @@ export async function POST(req: NextRequest) {
               {
                 supervisorId: targetSup._id,
                 members: [studentInTx._id],
+                supervisorNotifications: [await createSupervisorJoinNotification(studentInTx, targetSup, session)],
                 stage: oldProject.stage || 'PROPOSAL',
                 status: oldProject.status || 'Pending',
                 title: oldProject.title || '',
@@ -326,6 +344,7 @@ export async function POST(req: NextRequest) {
           }
 
           project.supervisorId = null;
+          project.supervisorNotifications = undefined;
           await project.save({ session });
         });
         await recordCurrentUserActivity('supervisor-team-removed', currentUser);

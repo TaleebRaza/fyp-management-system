@@ -16,6 +16,7 @@ import SupervisorOverviewSection from '../supervisor/SupervisorOverviewSection';
 import SupervisorProjectsSection from '../supervisor/SupervisorProjectsSection';
 import SupervisorProjectDialog from '../supervisor/SupervisorProjectDialog';
 import SupervisorHelpPanel from '../supervisor/SupervisorHelpPanel';
+import SupervisorJoinNotifications from '../supervisor/SupervisorJoinNotifications';
 import {
   useSupervisorExport,
   useSupervisorFeedback,
@@ -51,7 +52,7 @@ const SupervisorDashboard = ({
   useVivaAccessRestriction(showDialog);
 
   const { notify, requestConfirmation, requestRemarks } = useSupervisorFeedback(showDialog);
-  const { projects, migrationCode: myMigrationCode, isLoading, refreshProjects } = useSupervisorProjects({ supervisorId, notify });
+  const { projects, notifications, migrationCode: myMigrationCode, isLoading, refreshProjects } = useSupervisorProjects({ supervisorId, notify });
   const filters = useSupervisorProjectFilters({ projects, activeTab, setActiveTab });
   const { isExporting, exportProjects } = useSupervisorExport({
     projects,
@@ -193,6 +194,7 @@ const SupervisorDashboard = ({
         </div>}
         {activeTab === 'viva' && <VivaSessionWorkspace />}
       </DashboardShell>
+      <SupervisorJoinNotifications notifications={notifications} />
 
       <SupervisorProjectDialog
         key={`${actions.selectedProject?._id || 'closed'}-${actions.progressionRequestId}`}

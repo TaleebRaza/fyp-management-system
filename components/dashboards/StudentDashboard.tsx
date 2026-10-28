@@ -13,6 +13,7 @@ import FinePaymentPanel from '../student/FinePaymentPanel';
 import StudentOverviewSection from '../student/StudentOverviewSection';
 import StudentProjectSubmissionSection from '../student/StudentProjectSubmissionSection';
 import StudentResourcesSection from '../student/StudentResourcesSection';
+import StudentProfileSection from '../student/StudentProfileSection';
 import StudentTeamSection from '../student/StudentTeamSection';
 import {
   AcademicUpdateDialog,
@@ -300,7 +301,7 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
             void signOut({ redirect: false });
           });
         }}
-        showHomeSignOut={activeTab === 'overview'}
+        onOpenProfile={() => setActiveTab('profile')}
       >
         {data?.project?.vivaGraded && <p role="status" className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-[var(--color-text)]">Your Viva grade has been saved. You can upload a new document. Project details, team membership, supervisor changes and project reset are locked until an administrator resets the project.</p>}
         {activeTab === 'overview' && (
@@ -389,13 +390,18 @@ const StudentDashboard = ({ isDarkMode = false, onToggleTheme, session, showDial
         )}
         {activeTab === 'resources' && (
           <StudentResourcesSection
-            email={me?.email}
-            showDialog={showDialog}
             currentStage={currentStage}
             isFetchingTemplates={isFetchingTemplates}
             onFetchTemplates={loadTemplates}
             visibleTemplates={visibleTemplates}
             onOpenTemplate={handleOpenTemplate}
+          />
+        )}
+        {activeTab === 'profile' && (
+          <StudentProfileSection
+            name={me?.name}
+            email={me?.email}
+            showDialog={showDialog}
             currentProgramName={currentProgramName}
             batch={me?.batch}
             academicChangesLocked={Boolean(data?.project?.vivaGraded)}

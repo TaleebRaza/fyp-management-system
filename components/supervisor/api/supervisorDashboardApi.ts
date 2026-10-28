@@ -1,5 +1,5 @@
 import type { ProjectRatingValues } from '../../../config/projectRatings';
-import type { SupervisorProject } from '../supervisorDashboardTypes';
+import type { SupervisorJoinNotification, SupervisorProject } from '../supervisorDashboardTypes';
 
 export type SupervisorFetch = typeof fetch;
 
@@ -12,6 +12,7 @@ type SupervisorActionResponse = JsonObject & {
 export type SupervisorDashboardResponse = {
   projects: SupervisorProject[];
   migrationCode: string;
+  notifications: SupervisorJoinNotification[];
 };
 
 
@@ -58,6 +59,9 @@ export async function loadSupervisorDashboard(
   }
 
   return {
+    notifications: Array.isArray(json.notifications)
+      ? (json.notifications as SupervisorJoinNotification[])
+      : [],
     projects: Array.isArray(json.projects)
       ? (json.projects as SupervisorProject[])
       : [],
@@ -66,6 +70,18 @@ export async function loadSupervisorDashboard(
         ? json.migrationCode
         : 'N/A',
   };
+}
+
+export function dismissSupervisorNotification(
+  projectId: string,
+  notificationId: string,
+  fetchImpl: SupervisorFetch = fetch
+) {
+  return postSupervisorAction(
+    { action: 'dismissNotification', projectId, notificationId },
+    'Could not dismiss the notification. Please try again.',
+    fetchImpl
+  );
 }
 
 export function updateSupervisorProjectRating(

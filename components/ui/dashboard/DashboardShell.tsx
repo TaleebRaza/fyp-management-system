@@ -2,7 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
-import { LogOut, Moon, MoreHorizontal, Sun, X } from "lucide-react";
+import { LogOut, Moon, MoreHorizontal, Sun, UserRound, X } from "lucide-react";
 import { cn } from "../shared/cn";
 import { AvatarBadge } from "./AvatarBadge";
 
@@ -32,6 +32,7 @@ export type DashboardShellProps = {
   children: React.ReactNode;
   user?: DashboardUser;
   onSignOut?: () => void;
+  onOpenProfile?: () => void;
   showHomeSignOut?: boolean;
   isDarkMode?: boolean;
   onToggleTheme?: () => void;
@@ -48,6 +49,7 @@ export const DashboardShell = ({
   children,
   user,
   onSignOut,
+  onOpenProfile,
   showHomeSignOut = false,
   isDarkMode,
   onToggleTheme,
@@ -58,6 +60,7 @@ export const DashboardShell = ({
 }: DashboardShellProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const mobileMenuId = React.useId();
+  const profileMenuId = React.useId();
   const navSections = [...new Set(navItems.map((item) => item.section))];
   const primaryItems = mobilePrimaryIds.map((id) => navItems.find((item) => item.id === id)).filter((item): item is DashboardNavItem => Boolean(item));
 
@@ -131,10 +134,19 @@ export const DashboardShell = ({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {onToggleTheme && <button type="button" onClick={onToggleTheme} className="grid h-10 w-10 place-items-center rounded-xl text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]" aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>}
-              {user && <div className="flex min-h-10 items-center gap-2 px-1.5">
+              {user && (onOpenProfile ? <>
+                <button type="button" popoverTarget={profileMenuId} aria-label="Open profile options" className="flex min-h-10 items-center gap-2 rounded-xl px-1.5 hover:bg-[var(--color-surface-muted)]">
+                  <AvatarBadge name={user.name} initials={user.initials} className="h-8 w-8 rounded-full text-xs" />
+                  <span className="hidden max-w-28 truncate text-xs font-medium sm:block">{user.name}</span>
+                </button>
+                <div id={profileMenuId} popover="auto" className="fixed left-auto right-4 top-16 m-0 w-52 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[var(--color-text)] shadow-[var(--shadow-dialog)]" aria-label="Profile options">
+                  <button type="button" popoverTarget={profileMenuId} popoverTargetAction="hide" onClick={onOpenProfile} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm hover:bg-[var(--color-surface-muted)]"><UserRound size={16} />Update profile</button>
+                  {onSignOut && <button type="button" popoverTarget={profileMenuId} popoverTargetAction="hide" onClick={onSignOut} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)]"><LogOut size={16} />Log out</button>}
+                </div>
+              </> : <div className="flex min-h-10 items-center gap-2 px-1.5">
                   <AvatarBadge name={user.name} initials={user.initials} className="h-8 w-8 rounded-lg text-xs" />
                   <span className="hidden max-w-28 truncate text-xs font-medium sm:block">{user.name}</span>
-              </div>}
+              </div>)}
             </div>
           </div>
         </header>

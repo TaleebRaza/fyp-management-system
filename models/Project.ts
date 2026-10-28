@@ -35,6 +35,14 @@ const ProjectRatingsSchema = new Schema({
 const ProjectSchema = new Schema({
   supervisorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  supervisorNotifications: {
+    type: [new Schema({
+      message: { type: String, required: true, maxlength: 700 },
+      createdAt: { type: Date, required: true },
+    })],
+    default: undefined,
+    select: false,
+  },
   inviteCode: { type: String, required: true, unique: true },
 
     title: { type: String, default: '' },

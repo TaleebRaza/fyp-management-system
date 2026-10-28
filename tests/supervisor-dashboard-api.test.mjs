@@ -8,6 +8,7 @@ const supervisorApi = await importTypeScriptModule(
 );
 const {
   expandSupervisorTeam,
+  dismissSupervisorNotification,
   loadSupervisorDashboard,
   migrateSupervisorStudent,
   progressSupervisorProjectStage,
@@ -36,7 +37,24 @@ test('dashboard loading keeps the existing endpoint and normalizes its response'
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], '/api/dashboard/supervisor');
   assert.equal(calls[0][1], undefined);
-  assert.deepEqual(result, { projects, migrationCode: 'ABC123' });
+  assert.deepEqual(result, { projects, migrationCode: 'ABC123', notifications: [] });
+});
+
+test('notifications are returned and dismissal uses the assigned project and notification IDs', async () => {
+  const notification = { _id: 'n1', projectId: 'p1', message: 'A student joined', createdAt: '2026-01-01T00:00:00.000Z' };
+  const dashboard = await loadSupervisorDashboard(async () => jsonResponse({ notifications: [notification] }));
+  assert.deepEqual(dashboard.notifications, [notification]);
+
+  let request;
+  await dismissSupervisorNotification('p1', 'n1', async (_url, init) => {
+    request = JSON.parse(init.body);
+    return jsonResponse({ message: 'Dismissed' });
+  });
+  assert.deepEqual(request, { action: 'dismissNotification', projectId: 'p1', notificationId: 'n1' });
+  await assert.rejects(
+    () => dismissSupervisorNotification('p1', 'n1', async () => jsonResponse({ error: 'Try again' }, { ok: false })),
+    /Try again/
+  );
 });
 
 test('document reviews and stage progression use separate action payloads', async () => {

@@ -9,10 +9,11 @@ import {
   LayoutDashboard,
   MessagesSquare,
   Users,
+  UserRound,
 } from 'lucide-react';
 import type { DashboardNavItem } from '../../ui/dashboard/DashboardShell';
 
-export type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources' | 'messages';
+export type StudentTab = 'overview' | 'project' | 'fine' | 'team' | 'resources' | 'messages' | 'profile';
 
 export function useStudentDashboardNavigation(hasFineRestriction: boolean, onOpenViva: () => void) {
   const [requestedTab, setRequestedTab] = useState<StudentTab>('overview');
@@ -60,6 +61,14 @@ export function useStudentDashboardNavigation(hasFineRestriction: boolean, onOpe
         icon: <Download size={16} />,
         active: activeTab === 'resources',
         onClick: () => setRequestedTab('resources'),
+      },
+      {
+        id: 'profile',
+        label: 'Profile',
+        section: 'Support',
+        icon: <UserRound size={16} />,
+        active: activeTab === 'profile',
+        onClick: () => setRequestedTab('profile'),
       },
       ...(hasFineRestriction
         ? [{

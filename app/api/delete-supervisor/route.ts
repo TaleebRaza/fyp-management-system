@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       // 3. Unassign the supervisor from canonical Project records.
       await Project.updateMany(
         { supervisorId: id },
-        { $set: { supervisorId: null } },
+        { $set: { supervisorId: null }, $unset: { supervisorNotifications: 1 } },
         { session }
       );
 
