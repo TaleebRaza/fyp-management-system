@@ -1,0 +1,23 @@
+# Local browser tests and generated diagnostics
+/testing/
+/playwright.config.*
+/tsconfig.testing.json
+/tsconfig.testing.tsbuildinfo
+/.zed/
+/.mcp.json
+/.playwright-mcp/
+/.chrome-devtools-mcp/
+/.local-tools/
+/.local-bench/
+/tools/bin/
+/playwright-report/
+/test-results/
+/blob-report/
+/coverage/
+/repomix-output.*
+
+# Local credentials and environment files
+/.aws/
+/.env*
+*.pem
+*.key

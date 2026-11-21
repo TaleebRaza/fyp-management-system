@@ -2,6 +2,10 @@ import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  ...(process.env.FYP_TEST_DIST_DIR ? {
+    distDir: process.env.FYP_TEST_DIST_DIR,
+    typescript: { tsconfigPath: 'tsconfig.testing.json' },
+  } : {}),
   compress: true,
   experimental: {
     optimizePackageImports: ['lucide-react'],

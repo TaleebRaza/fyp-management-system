@@ -11,6 +11,8 @@ const eslintConfig = defineConfig([
     ".next/**",
     ".local-bench/**",
     ".local-tools/**",
+    "testing/reports/**",
+    ".playwright-mcp/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

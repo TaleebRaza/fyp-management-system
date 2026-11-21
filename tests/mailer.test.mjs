@@ -23,6 +23,7 @@ function load(env = {}, result = { accepted: ['recipient@example.com'], rejected
     console: Object.fromEntries(['info', 'warn', 'error'].map((level) => [level, (...args) => logs.push([level, ...args])])),
     require: (name) => {
       if (name === './security/input') return validation;
+      if (name === "./testTimings") return { testTimingsEnabled: false };
       assert.equal(name, 'nodemailer');
       return { createTransport: (config) => {
         transports.push(config);

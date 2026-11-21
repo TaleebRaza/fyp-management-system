@@ -27,7 +27,6 @@
     "test:viva:stress:mixed": "node tests/support/viva-mixed-stress-runner.mjs",
     "test:portal:stress": "node tests/support/portal-load-baseline-runner.mjs",
     "test:viva:stress:soak": "VIVA_STRESS_STAGE=soak node tests/support/viva-http-stress-runner.mjs",
-    "browser:install": "playwright install --only-shell chromium",
     "test:portal-pause:cache": "node --test tests/portal-pause-cache.integration.test.mjs",
     "capacity:reconcile": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs",
     "capacity:repair": "node --env-file-if-exists=.env.local scripts/reconcile-supervisor-capacity.mjs --repair",
@@ -47,7 +46,16 @@
     "seed:local:reset": "node --env-file-if-exists=.env.local scripts/seed-local.mjs reset",
     "deploy:preflight": "npm run indexes:refactor:audit && npm run rate-limit:ttl:audit && npm run passwords:audit",
     "verify:refactor": "npm run lint && npm run test:unit && npm run build",
-    "test": "npm run test:unit"
+    "test": "npm run test:unit",
+    "test:e2e": "playwright test",
+    "test:e2e:portal": "bash testing/local-portal.sh node_modules/.bin/playwright test portal",
+    "test:load": "node testing/load/run.mjs",
+    "test:metrics": "bash testing/metrics.sh",
+    "test:bottleneck": "node testing/report.mjs",
+    "test:build": "bash testing/build.sh",
+    "test:mcp": "node testing/verify-mcp.mjs",
+    "test:zed": "node testing/configure-zed.mjs",
+    "test:load:portal": "bash testing/local-portal.sh node testing/load/run.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1079.0",
@@ -65,15 +73,20 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@playwright/mcp": "^0.0.86",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "chrome-devtools-mcp": "^1.13.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "playwright": "^1.63.0",
     "repomix": "^1.18.0",
+    "smtp-server": "^3.21.7",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -42,3 +42,15 @@ Thumbs.db
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Local browser tooling, test harnesses, and diagnostics
+/testing/
+/playwright.config.*
+/tools/bin/
+/.zed/
+/.mcp.json
+/.playwright-mcp/
+/.chrome-devtools-mcp/
+/tsconfig.testing.json
+/tsconfig.testing.tsbuildinfo
+/repomix-output.*

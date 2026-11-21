@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { recordTestTiming, testTimingsEnabled } from './testTimings';
 
 // Grab the secret connection string from our .env.local file
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -28,6 +29,7 @@ async function connectToDatabase() {
   // If we aren't connected yet, create a new connection with strict pooling guardrails
   if (!cached.promise) {
     const opts = {
+      monitorCommands: testTimingsEnabled,
       bufferCommands: false, // Disable Mongoose buffering; fail fast if not connected
       maxPoolSize: 10,       // Strict ceiling to protect Atlas M0 500-connection limit
       minPoolSize: 1,        // Maintain one active socket per warm lambda
@@ -37,6 +39,11 @@ async function connectToDatabase() {
     };
 
     cached.promise = mongoose.connect(MONGODB_URI as string, opts).then((mongoose) => {
+      if (testTimingsEnabled) {
+        const client = mongoose.connection.getClient();
+        client.on('commandSucceeded', event => recordTestTiming('mongo', event.duration));
+        client.on('commandFailed', event => recordTestTiming('mongo', event.duration));
+      }
       console.log("✅ Successfully connected to MongoDB with optimized serverless pooling!");
       return mongoose;
     }).catch((error) => {

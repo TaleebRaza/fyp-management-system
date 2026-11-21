@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { recordTestTiming, testTimingsEnabled } from './testTimings';
 import { isValidEmailAddress, normalizeEmailAddress } from './security/input';
 
 type SendMailOptions = {
@@ -73,6 +74,7 @@ export const sendNotificationEmail = async (
     return false;
   }
 
+  const started = testTimingsEnabled ? performance.now() : 0;
   try {
     const info = await transporter.sendMail({
       from: { name: fromName, address: fromAddress },
@@ -105,5 +107,7 @@ export const sendNotificationEmail = async (
         .find((command) => command === metadata?.command),
     });
     return false;
+  } finally {
+    if (testTimingsEnabled) recordTestTiming('smtp', performance.now() - started);
   }
 };

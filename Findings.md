@@ -1,3 +1,89 @@
+# FYP portal performance findings
+
+**Test date** 21 November 2026, Asia/Karachi.
+
+All 301 students signed in when login ran alone. With login, uploads, and Viva starts released together, 287 signed in, 201 files reached storage, 144 proposals were saved, and 20 Vivas started. All 201 student changes succeeded in a separate wave. A Viva-only comparison reached **50 active sessions**, the maximum with 100 supervisors under the portal's two-examiner minimum and participant locks.
+
+## Timings
+
+Times are in seconds. Minimum, average, and maximum include successful attempts only. Each row represents a single local wave. The upload-only row that starts at reservation includes the entire proposal submission, while the synchronized rows start at the PUT after advance reservation.
+
+| Wave and operation | Success / attempts | Min | Avg | Max | Other outcomes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Login only, CSRF through verified session | 301 / 301 | 55.98 | 57.14 | 57.46 | |
+| Mixed, CSRF through verified session | 287 / 301 | 52.36 | 52.53 | 52.73 | 14 HTTP 401 |
+| Viva only, start | 50 / 101 | 2.04 | 2.12 | 2.19 | 51 active-participant conflicts, HTTP 400 |
+| Mixed, Viva start | 20 / 101 | 0.71 | 12.36 | 24.09 | 81 HTTP 500 |
+| Upload only, reserve through saved proposal | 201 / 201 | 10.44 | 13.51 | 16.32 | |
+| Upload only, reserve | 201 / 201 | 2.81 | 6.62 | 10.23 | |
+| Upload only, staggered object PUT | 201 / 201 | 0.007 | 0.008 | 0.023 | PUTs followed individual reservations |
+| Upload only, synchronized object PUT | 201 / 201 | 0.210 | 0.489 | 0.580 | |
+| Upload only, synchronized PUT through saved proposal | 201 / 201 | 5.19 | 8.31 | 11.64 | |
+| Mixed preparation, reserve before burst | 201 / 201 | 2.19 | 3.25 | 4.28 | |
+| Mixed, synchronized object PUT | 201 / 201 | 0.646 | 0.664 | 0.673 | |
+| Mixed, proposal save after PUT | 144 / 201 | 23.63 | 34.52 | 45.14 | 57 HTTP 500 |
+| Mixed, PUT through saved proposal | 144 / 201 | 24.34 | 35.22 | 45.90 | 57 failed at proposal save |
+| Mixed, student dashboard GET | 10 / 10 | 13.07 | 13.18 | 13.30 | |
+| Student changes, join another team | 51 / 51 | 12.57 | 14.60 | 15.75 | |
+| Student changes, reset project | 50 / 50 | 9.04 | 16.39 | 18.18 | |
+| Student changes, change supervisor | 50 / 50 | 12.00 | 13.78 | 15.82 | |
+| Student changes, password reset through local OTP | 50 / 50 | 6.16 | 9.48 | 12.14 | |
+
+In the mixed wave, unsuccessful attempts took **20.36 / 20.74 / 21.20 s** for login, **21.39 / 22.13 / 22.81 s** for Viva start, and **18.53 / 18.85 / 19.17 s** for proposal save (min / avg / max).
+
+The four main waves took **57.53 s** for login only, **16.34 s** for uploads only, **52.76 s** for mixed traffic, and **18.19 s** for student changes. The Viva-only wave took **2.81 s** overall. Browser sign-in took **2.01 s** from button click to dashboard profile controls in one quiet sample.
+
+## Faults and what to optimize
+
+| Finding and evidence | In plain English | Improvement to test |
+| --- | --- | --- |
+| **Viva starts exhausted the app's MongoDB pool.** All 81 mixed-wave Viva 500s logged a connection checkout timeout. The app allows 10 pooled connections per process and a 5 s checkout wait. The Viva-only wave returned 50 starts and 51 expected participant conflicts with zero 500s. [App pool](lib/mongodb.ts#L34) · [Viva start](lib/vivaSessionDashboard.ts#L1061) | Other traffic used the same database connections, so many Viva starts ran out of time waiting. | Measure checkout wait by route. Bound the number of simultaneous transactions and return an explicit retryable response when capacity is temporarily exhausted. Retest before raising the pool size. |
+| **Saving proposals was slower and less reliable during mixed load.** All 201 mixed PUTs succeeded. PUT-to-save averaged 35.22 s on successes, versus 8.31 s in the synchronized upload-only control. There were 57 failed saves. Finalization checks and copies the object, then updates a shared storage ledger inside a serialized per-process transaction. Generic submission logs leave the exact cause of each save failure undetermined. The control used fresh proposals and the mixed wave reused projects with PDFs from the prior wave, so the comparison combines traffic and record-state differences. [Finalization](lib/storageProtocol.ts#L352) · [Shared write queue](lib/transaction.ts#L30) | The file arrived, but the portal was slow or failed while attaching it to the project. | Record timings for verification, commit-queue wait and transaction retries. Test resumed saves and compare fresh proposals against replacements with the same traffic. |
+| **Password verification dominated login-only credential work.** Server telemetry averaged 27.43 s inside authorization, including 23.71 s in password verification and its wait. The quiet browser sample spent about 194 ms in that phase. The 14 mixed 401s had no recorded reason. Only three login actors belonged to Viva projects, so the active-Viva login restriction could explain at most three of the 14. [Credential flow](app/api/auth/%5B...nextauth%5D/route.ts#L104) · [Hashing](lib/security/password.ts) | Hundreds of password checks queued behind each other, and some mixed-load sign-ins were rejected. | Preserve the password hashing cost. Measure the password-work queue, test admission control and additional compute, and record internal rejection categories without logging passwords. |
+| **Reset transactions all update the same policy record.** All 50 succeeded and averaged 16.39 s in the student-change wave. The reset increments the same policy version inside each project's transaction. This test did not isolate how much delay came from that update. [Reset transaction](app/api/dashboard/student/route.ts#L192) | Students resetting different projects still write to the same shared record. | Measure transaction retries by action. Test whether the admin's reset policy can be enforced with less shared write contention. |
+| **Dashboard reads slowed in the mixed wave.** The client measured 13.18 s on average for 10 reads. The quiet browser probe's one dashboard request logged about 0.62 s of server time. These are different timing boundaries, so the comparison is directional. The combined wave does not isolate login, upload, and Viva effects from each other. | Opening a dashboard took longer while other students were signing in, uploading, and starting Vivas. | Compare identical dashboard probes while adding one workload at a time. Prioritize keeping read requests responsive during large write waves. |
+
+## Data and requests
+
+| Finding and evidence | In plain English | Improvement to test |
+| --- | --- | --- |
+| A fresh student browser run used **32 local requests**, **10 to API routes**, and about **0.97 MiB** of DevTools-reported transfer from initial navigation through the dashboard. Two raw logo responses accounted for about **626 KiB** with Playwright request interception and HTTP caching disabled. The separate DevTools MCP page-open saw the second raw logo request return 304. | The logo was the biggest download in the cache-disabled run. With caching on, the second request reused the image. | Consolidate the splash and login logo sources, then check actual cold and warm transfer sizes. |
+| Login used three benchmark requests per user. A browser also asked for providers, portal status, registration policy, Viva access, headline and the dashboard. The credential response was **31 B** in the login-only wave, with **5.9 Mongo driver commands** on average across 653 callbacks including setup. [Login-side writes](app/api/auth/%5B...nextauth%5D/route.ts#L147) | Login returned very little data, but it still made several trips and wrote counters and activity records. | Review repeated initial reads and measure deferring nonessential counters. Keep required access checks and audit behavior. |
+| The mixed student dashboard averaged **1,645 B** of decoded response data. Across 11 recorded dashboard reads, each used **10 to 44** Mongo driver commands. Upload reservations returned **659 B** and averaged **12** driver commands, followed by the direct PUT and a separate save. Driver counts can include transaction commands and retries. [Upload route](app/api/upload/route.ts#L45) | The database did a lot of work to send back small answers. | Profile repeated queries by route, reuse verified data within a request, and keep file bytes on the direct-to-storage path. |
+| The Viva overview asks for a preview capped at three entries. The full Viva workspace reads the whole assigned agenda with full workspace data. The student supervisor picker already loads on demand and caches its public data for 60 seconds. These lists were not measured at their largest sizes. [Viva agenda](lib/vivaSessionDashboard.ts#L972) · [Supervisor cache](lib/publicContentCache.ts#L42) | The Viva preview is small, but a long agenda can still load a lot at once. | Measure a large agenda before adding pagination. Keep the on-demand supervisor picker. |
+
+The driver counts show where to investigate extra work. They do not measure database result bytes or the number of records scanned. The generic failure messages also gave the client too little information to distinguish a safe retry from a rejected operation.
+
+## Fixed limits and local approximations
+
+| Boundary | Limit and test treatment | In plain English |
+| --- | --- | --- |
+| Vercel Hobby | Node function memory is **2 GB**, with **1 vCPU** and a **300 s** maximum duration with Fluid compute. Function requests and responses are capped at **4.5 MB**. Next.js ran on one pinned logical CPU with a **1,536 MiB V8 old-space cap**. That cap applies to part of Node's memory. Peak sampled RSS was **628 MiB**. Sampled Next.js cumulative CPU utilization reached **85.9%** of one core. The test did not emulate platform autoscaling, edge routing or the deployed container limit. [Vercel function limits](https://vercel.com/docs/functions/limitations) | Optimizing the portal can save resources, but it cannot raise Vercel's limits. |
+| MongoDB Atlas Free | **100 operations/s**, **500 connections**, **0.5 GB** for data and indexes, and **10 GB inbound plus 10 GB outbound** per rolling seven days. Local MongoDB used a one-node replica set, **500** configured max connections and a **256 MiB** WiredTiger cache. Atlas throttling, storage accounting, latency and shared-host behavior were unmodeled. [Atlas Free limits](https://www.mongodb.com/docs/atlas/reference/free-shared-limitations/) | The cloud database can throttle traffic even when the portal runs well locally. |
+| Cloudflare R2 Standard | The monthly included usage is **10 GB-month**, **1 million Class A** requests and **10 million Class B** requests. The local S3-compatible service validated signing and object writes. It did not model R2 network behavior or billing. The simultaneous uploads used different object keys. [R2 pricing](https://developers.cloudflare.com/r2/pricing/) · [R2 limits](https://developers.cloudflare.com/r2/platform/limits/) | Local uploads do not measure Internet speed, and using more than the free allowance can cost money. |
+| Portal Viva rules | Each panel needs **at least two examiners**, and each examiner can be locked to one active session. **101** simultaneous sessions require at least **202** eligible examiners. The 101 attempts shared 50 panels. [Panel minimum](models/VivaRound.ts#L19) · [Participant lock](models/VivaParticipantLock.ts) | With 100 supervisors, the portal can run at most 50 Vivas at once, regardless of hardware. |
+
+The observed mixed-load limit was local application connection checkout. This run does not establish a hosted capacity number or show that upgrading one provider alone will meet a latency target.
+
+## Setup and reproduction
+
+1. Start from [the local test launcher](testing/local-portal.sh) and [testing instructions](testing/README.md). Use disposable MongoDB, S3-compatible storage and the local SMTP sink on loopback. Pin the Next.js process with **taskset -c 2** and launch Node with **--max-old-space-size=1536** and **UV_THREADPOOL_SIZE=4**. This host had an Intel i5-8250U, eight logical CPUs and about 7.6 GiB RAM. Record route timings, login phase timings, vmstat at one-second intervals and process CPU and RSS at two-second intervals.
+2. Run **node scripts/seed-local.mjs performance** with student, supervisor, project, session and panel counts of **500, 100, 250, 100, 50** using M2_STUDENT_COUNT, M2_SUPERVISOR_COUNT, M2_PROJECT_COUNT, M2_VIVA_SESSION_COUNT and M2_VIVA_PANEL_COUNT. Add one scheduled record for an unused assigned project on an existing panel. Make all sessions due and give the 298 non-Viva students individual eligible proposal projects. Clear synthetic fines, set students active and provide spare supervisor capacity.
+3. Use one Playwright APIRequestContext per actor. Release 301 CSRF, credential, and session-verification flows together. Run 201 PDF reservation, signed PUT and proposal save flows using 64 KiB files. Reserve 201 new uploads before the mixed wave. Release 201 PUTs and their subsequent saves together with another 301 login flows, 101 Viva starts and 10 student dashboard reads.
+4. Release 51 team joins, 50 project resets, 50 supervisor changes and 50 password resets together. Fetch reset codes from the loopback mailbox. For the control, start with a fresh equivalent fixture, pre-reserve 201 uploads before releasing PUTs and saves together, then run the 101 Viva start attempts separately.
+5. Keep browser and scale results distinct. Playwright ran one sandboxed headless Brave browser at a time. DevTools MCP opened the portal and reported two form fields without associated labels. Playwright's DevTools Protocol session captured the successful browser login and its network traffic. The concurrency waves used API contexts with real cookies. Wave sizes describe client releases, with sequential steps inside each flow. This test did not render hundreds of tabs or measure sustained active-Viva traffic, grading, or hosted-provider behavior.
+
+The fresh Turbopack build failed on sandbox port binding and a Google Fonts fetch. The measured target used the existing **20 November 2026** production test build in the local reports directory. The first smoke attempt passed five API-backed tests and hit three Brave launch errors with a custom temporary path. The retry with the default temporary path passed **all eight** Playwright smoke tests in **22.1 s**.
+
+A browser upload received a signed URL from the HTTP storage fixture, but the page's HTTPS-only external connection policy blocked the PUT. The HTTPS loopback retry used a disposable certificate scoped to the test browser and saved the proposal in **0.29 s** from the submit click to the save response. The portal's content security policy stayed active. In plain English, browser upload needs HTTPS storage even on this local test. [Content security policy](lib/contentSecurityPolicy.ts#L11)
+
+Browser UI checks also saved a team join in **0.16 s**, a project reset in **0.42 s**, and a supervisor change in **0.46 s** from the relevant confirmation or action click to the response. The browser password reset completed all three requests through the local mailbox and signed in with the new password. A panel admin started a Viva in **1.03 s** from click to response on a fixture with a scheduled end time, and Brave showed the active session controls. These are individual workflow checks outside the load waves.
+
+The disposable MongoDB files, object storage, mailbox, test scripts, certificates, browser profiles, and run artifacts were cleaned up after verification. The earlier audit is preserved below.
+
+<details>
+<summary>Previous dashboard audit, 9 October 2026</summary>
+
 # Complete dashboard performance audit — 9 October 2026
 
 This report records what the current portal does and proposes improvements. No performance fix has been applied to the application. The strongest proven opportunity is the student-list sorting index. Other clear savings come from delaying unused lists and avoiding repeated counts and refreshes.
@@ -650,3 +736,5 @@ Implementation reuses the current routes, Mongoose pipelines, React hooks and na
 Implementation checks: **29 focused checks passed** across the admin API/navigation, backend structure, report selector/export and new remaining-findings tests. TypeScript, changed-file ESLint and whitespace checks had been run before the user's instruction to begin testing. For this testing request, build and lint were not run. Local timing numbers are fixture measurements, not production performance claims.
 
 Suggested commit message: `perf: scope dashboard reports and reuse viva data`
+
+</details>

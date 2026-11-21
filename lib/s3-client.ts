@@ -1,4 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { recordTestTiming, testTimingsEnabled } from './testTimings';
 
 const accountId = process.env.R2_ACCOUNT_ID;
 const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -22,6 +23,17 @@ const storageClient = new S3Client({
   },
   forcePathStyle: true,
 });
+
+if (testTimingsEnabled) {
+  storageClient.middlewareStack.add(next => async args => {
+    const started = performance.now();
+    try {
+      return await next(args);
+    } finally {
+      recordTestTiming('storage', performance.now() - started);
+    }
+  }, { step: 'initialize', name: 'fypTestTiming' });
+}
 
 const s3Client = new Proxy(storageClient, {
   get(target, property, receiver) {
