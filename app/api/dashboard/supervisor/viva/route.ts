@@ -1,3 +1,4 @@
+import { isCheckoutTimeout } from '../../../../../lib/workAdmission';
 import { NextRequest, NextResponse } from 'next/server';
 
 import {
@@ -25,12 +26,12 @@ function isVersion(value: unknown): value is number {
 }
 
 export async function GET(req: NextRequest) {
-  const currentUser = await requireCurrentUser(req, ['supervisor']);
-  if (!currentUser) {
-    return NextResponse.json({ error: 'Unauthorized Viva session request.' }, { status: 401 });
-  }
-
   try {
+    const currentUser = await requireCurrentUser(req, ['supervisor']);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Unauthorized Viva session request.' }, { status: 401 });
+    }
+
     const preview = req.nextUrl.searchParams.get('preview') === '1';
     const sessions = await getVivaPanelSessions(currentUser.id, preview);
     return NextResponse.json({ sessions: preview
@@ -43,25 +44,28 @@ export async function GET(req: NextRequest) {
       : sessions,
     }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error) {
+    if (isCheckoutTimeout(error)) {
+      return NextResponse.json({ error: 'The portal is busy. Please try again shortly.' }, { status: 503 });
+    }
     console.error('Supervisor Viva session fetch error:', error);
     return NextResponse.json({ error: 'Failed to load Viva sessions.' }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
-  const currentUser = await requireCurrentUser(req, ['supervisor']);
-  if (!currentUser) {
-    return NextResponse.json({ error: 'Unauthorized Viva session request.' }, { status: 401 });
-  }
-
-  const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
-  if (!json.ok) return json.response;
-  const body = json.value;
-  if (!isRecord(body) || typeof body.sessionId !== 'string') {
-    return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });
-  }
-
   try {
+    const currentUser = await requireCurrentUser(req, ['supervisor']);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Unauthorized Viva session request.' }, { status: 401 });
+    }
+
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (!json.ok) return json.response;
+    const body = json.value;
+    if (!isRecord(body) || typeof body.sessionId !== 'string') {
+      return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });
+    }
+
     const action = typeof body.action === 'string' ? body.action : 'start';
     if (action === 'start') {
       const result = await startVivaSession(body.sessionId, currentUser);
@@ -111,6 +115,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid Viva session request.' }, { status: 400 });
   } catch (error) {
+    if (isCheckoutTimeout(error)) {
+      return NextResponse.json({ error: 'The portal is busy. Please try again shortly.' }, { status: 503 });
+    }
     console.error('Supervisor Viva session request error:', error);
     return NextResponse.json({ error: 'Failed to process the Viva session request.' }, { status: 500 });
   }

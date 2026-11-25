@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { importTypeScriptModule } from './support/importTypeScript.mjs';
 
+const admission = await importTypeScriptModule('lib/workAdmission.ts');
 const supervisorLoginReport = await importTypeScriptModule('lib/supervisorLoginReport.ts');
 
 async function loadModule(path, modules) {
@@ -79,6 +80,8 @@ test('scoped reports retain matching rows and summary counts while skipping unre
 
 test('Home Viva preview returns only three upcoming titles and preserves full workspace access', async () => {
   let authenticated = true;
+  let authError;
+  let mutationError;
   const calls = [];
   const sessions = [
     { id: 'completed', phase: 'completed', scheduledAt: '2026-01-01', project: { title: 'Completed', description: 'private detail' } },
@@ -89,8 +92,12 @@ test('Home Viva preview returns only three upcoming titles and preserves full wo
     })),
   ];
   const route = await loadModule('app/api/dashboard/supervisor/viva/route.ts', {
+    '/workAdmission': admission,
     'next/server': { NextResponse: Response },
-    '/security/auth': { requireCurrentUser: async () => authenticated ? { id: 'examiner-1' } : null },
+    '/security/auth': { requireCurrentUser: async () => {
+      if (authError) throw authError;
+      return authenticated ? { id: 'examiner-1' } : null;
+    } },
     '/security/input': { isRecord: () => true },
     '/security/request': {
       JSON_BODY_LIMITS: { form: 1000 },
@@ -98,7 +105,10 @@ test('Home Viva preview returns only three upcoming titles and preserves full wo
     },
     '/vivaSessionDashboard': {
       getVivaPanelSessions: async (...args) => { calls.push(args); return sessions; },
-      requeueVivaSession: async () => ({ success: true }),
+      requeueVivaSession: async () => {
+        if (mutationError) throw mutationError;
+        return { success: true };
+      },
     },
   });
   const preview = await (await route.GET(request('?preview=1'))).json();
@@ -113,6 +123,16 @@ test('Home Viva preview returns only three upcoming titles and preserves full wo
   authenticated = false;
   assert.equal((await route.GET(request('?preview=1'))).status, 401);
   assert.equal(calls.length, 3);
+
+  const checkoutTimeout = Object.assign(new Error('Connection checkout timed out'), {
+    name: 'MongoWaitQueueTimeoutError',
+  });
+  authError = checkoutTimeout;
+  assert.equal((await route.POST(request())).status, 503);
+  authError = undefined;
+  authenticated = true;
+  mutationError = checkoutTimeout;
+  assert.equal((await route.POST(request())).status, 503);
 });
 
 test('student dashboard keeps text/audio broadcasts once and limits supervisor fields to contact details', async () => {

@@ -2,7 +2,7 @@ import { isProjectGraded, GRADED_PROJECT_LOCK_MESSAGE } from '../../../../lib/gr
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { withTransaction, TransactionBusyError } from '../../../../lib/transaction';
-import connectToDatabase from '../../../../lib/mongodb';
+import { isCheckoutTimeout, workAdmission, WorkBusyError } from '../../../../lib/workAdmission';
 import User from '../../../../models/User';
 import Project from '../../../../models/Project';
 import RegistrationPolicy from '../../../../models/RegistrationPolicy';
@@ -95,21 +95,24 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  let release: (() => void) | undefined;
   try {
+    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
+    if (json.ok && isRecord(json.value) && json.value.action === 'submitProject') {
+      release = await workAdmission.proposal();
+    }
     const currentUser = await requireCurrentUser(req, ['student']);
     if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized student request.' }, { status: 401 });
     }
 
-    await connectToDatabase();
-    const json = await readBoundedJson(req, JSON_BODY_LIMITS.form);
     if (!json.ok) return json.response;
     const body = json.value;
     if (!isRecord(body)) {
       return NextResponse.json({ error: 'Invalid student action.' }, { status: 400 });
     }
     const action = body.action;
-    if (!['updateName', 'updateProgramBatch', 'resetProject', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(String(action))) {
+    if (typeof action !== 'string' || !['updateName', 'updateProgramBatch', 'resetProject', 'changeSupervisor', 'assignSupervisor', 'submitProject'].includes(action)) {
       return NextResponse.json({ error: 'Unknown student action.' }, { status: 400 });
     }
 
@@ -196,6 +199,7 @@ export async function POST(req: NextRequest) {
 
       try {
         await getOrCreateRegistrationPolicy();
+        release = await workAdmission.reset();
         const queuedDeletionBytes = await withStorageTransaction(async (session) => {
           const resetPolicy = await RegistrationPolicy.updateOne(
             { policyKey: REGISTRATION_POLICY_KEY, projectResetEnabled: { $ne: false } },
@@ -253,6 +257,8 @@ export async function POST(req: NextRequest) {
           return deletedBytes;
         });
 
+        release();
+        release = undefined;
         await recordCurrentUserActivity('student-project-reset', currentUser);
         return NextResponse.json(
           {
@@ -265,6 +271,7 @@ export async function POST(req: NextRequest) {
         if (error instanceof StorageProtocolError || error instanceof TransactionBusyError) {
           return NextResponse.json({ error: error.message }, { status: error.statusCode });
         }
+        if (error instanceof WorkBusyError || isCheckoutTimeout(error)) throw error;
         console.error('student_project_reset_failed');
         return NextResponse.json({ error: 'Failed to reset project.' }, { status: 500 });
       }
@@ -743,10 +750,15 @@ if (oldPdfKey && oldPdfKey !== uploadedObject.key) {
 
     return NextResponse.json({ message: 'Project Submitted!' }, { status: 200 });
   } catch (error) {
+    if (error instanceof WorkBusyError || isCheckoutTimeout(error)) {
+      return NextResponse.json({ error: 'The portal is busy. Please try again shortly.' }, { status: 503 });
+    }
     console.error('student_dashboard_submission_failed');
     if (error instanceof StorageProtocolError || error instanceof TransactionBusyError) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
+  } finally {
+    release?.();
   }
 }

@@ -1,3 +1,4 @@
+import { WorkBusyError } from '../../../../../lib/workAdmission';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCurrentUser } from '../../../../../lib/security/auth';
 import { readBoundedJson } from '../../../../../lib/security/request';
@@ -11,7 +12,8 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
     const response = await updateStudentEmail(student.id, parsed.value, req.headers);
     return NextResponse.json(response.body, { status: response.status, headers: { 'Cache-Control': 'no-store' } });
-  } catch {
+  } catch (error) {
+    if (error instanceof WorkBusyError) return NextResponse.json({ error: error.message }, { status: 503 });
     console.error('student_email_change_failed');
     return NextResponse.json({ error: 'Unable to change email.' }, { status: 500 });
   }

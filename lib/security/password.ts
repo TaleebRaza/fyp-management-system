@@ -1,3 +1,4 @@
+import { workAdmission } from '../workAdmission';
 import bcrypt from 'bcryptjs';
 import { randomBytes, scrypt as nodeScrypt, timingSafeEqual } from 'node:crypto';
 
@@ -77,14 +78,17 @@ async function verifyScryptPassword(password: string, storedPassword: string) {
 }
 
 export async function verifyPassword(password: string, storedPassword: string) {
-  if (isScryptHash(storedPassword)) {
-    return { matches: await verifyScryptPassword(password, storedPassword), needsRehash: false };
-  }
-  if (isBcryptHash(storedPassword)) {
-    if (bcrypt.truncates(password)) return { matches: false, needsRehash: false };
-    const matches = await bcrypt.compare(password, storedPassword);
-    return { matches, needsRehash: matches };
+  const scrypt = isScryptHash(storedPassword);
+  if (!scrypt && (!isBcryptHash(storedPassword) || bcrypt.truncates(password))) {
+    return { matches: false, needsRehash: false };
   }
 
-  return { matches: false, needsRehash: false };
+  const release = await workAdmission.password();
+  try {
+    if (scrypt) return { matches: await verifyScryptPassword(password, storedPassword), needsRehash: false };
+    const matches = await bcrypt.compare(password, storedPassword);
+    return { matches, needsRehash: matches };
+  } finally {
+    release();
+  }
 }

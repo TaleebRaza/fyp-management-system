@@ -9,6 +9,7 @@ const originalSecret = process.env.PASSWORD_RESET_SECRET;
 process.env.PASSWORD_RESET_SECRET = 'email-change-test-secret-at-least-32-bytes';
 after(() => { if (originalSecret === undefined) delete process.env.PASSWORD_RESET_SECRET; else process.env.PASSWORD_RESET_SECRET = originalSecret; });
 const credentials = await importTypeScriptModuleWithDependencies('lib/auth/passwordResetCredentials.ts');
+const admission = await importTypeScriptModuleWithDependencies('lib/workAdmission.ts');
 const password = await importTypeScriptModuleWithDependencies('lib/security/password.ts');
 const input = await importTypeScriptModuleWithDependencies('lib/security/input.ts');
 const hash = await password.hashPassword('existing-password-123');
@@ -157,6 +158,7 @@ test('route takes account identity from authenticated student, rejects unauthent
   vm.runInNewContext(compiled, {
     exports, console: { error: () => {} },
     require: (name) => {
+      if (name.endsWith('/workAdmission')) return admission;
       if (name === 'next/server') return { NextResponse: Response };
       if (name.endsWith('/security/auth')) return { requireCurrentUser: async (_req, roles) => { assert.equal(JSON.stringify(roles), '["student"]'); return authenticated ? { id: 'authenticated-student' } : null; } };
       if (name.endsWith('/security/request')) return helpers;
